@@ -1,6 +1,5 @@
-let counter = 0;
 let identity = 13;
-console.log(`I am service worker ${identity} ${counter++}`);
+console.log(`I am service worker ${identity}`);
 let worker = self as unknown as ServiceWorkerGlobalScope;
 
 worker.addEventListener('install', () => {
@@ -18,7 +17,7 @@ worker.addEventListener('activate', () => {
 
   let socket = new WebSocket('ws://localhost:3000');
   socket.onmessage = event => {
-    console.log(event.data);
+    console.log('Received file change notification', event.data);
   };
 });
 
