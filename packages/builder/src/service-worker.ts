@@ -1,5 +1,3 @@
-/// <reference lib="webworker" />
-
 let counter = 0;
 let identity = 13;
 console.log(`I am service worker ${identity} ${counter++}`);
