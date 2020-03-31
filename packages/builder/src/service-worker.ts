@@ -1,19 +1,22 @@
-let counter = 0;
-let identity = 12;
-console.log(`I am service worker ${identity} ${counter++}`);
+/// <reference lib="webworker" />
 
-self.addEventListener('install', event => {
+let counter = 0;
+let identity = 13;
+console.log(`I am service worker ${identity} ${counter++}`);
+let worker = self as unknown as ServiceWorkerGlobalScope;
+
+worker.addEventListener('install', () => {
   console.log(`${identity} installing`);
 
   // force moving on to activation even if another service worker had control
-  self.skipWaiting();
+  worker.skipWaiting();
 });
 
-self.addEventListener('activate', event => {
+worker.addEventListener('activate', () => {
   console.log(`${identity} now ready to handle fetches!`);
 
   // takes over when there is *no* existing service worker
-  clients.claim();
+  worker.clients.claim();
 
   let socket = new WebSocket('ws://localhost:3000');
   socket.onmessage = event => {
@@ -21,7 +24,7 @@ self.addEventListener('activate', event => {
   };
 });
 
-self.addEventListener('fetch', event => {
+worker.addEventListener('fetch', (event: FetchEvent) => {
   console.log(`fetch in ${identity}: ${event.request.url}`);
   event.respondWith(fetch(event.request));
 });

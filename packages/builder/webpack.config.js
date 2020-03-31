@@ -5,8 +5,8 @@ const { CleanWebpackPlugin } = require("clean-webpack-plugin");
 module.exports = {
   mode: "development",
   entry: {
-    main: "./src/index.js",
-    "service-worker": "./src/service-worker.js"
+    main: "./src/index.ts",
+    "service-worker": "./src/service-worker.ts"
   },
   devtool: "inline-source-map",
   devServer: {
@@ -26,5 +26,23 @@ module.exports = {
   output: {
     filename: "[name].js",
     path: path.resolve(__dirname, "dist/assets")
+  },
+  resolve: {
+    extensions: [".wasm", ".mjs", ".ts", ".js", ".json"]
+  },
+  module: {
+    rules: [
+      {
+        test: /\.ts$/,
+        exclude: /(node_modules)/,
+        use: {
+          loader: "babel-loader",
+          options: {
+            presets: [],
+            plugins: ["@babel/plugin-transform-typescript"]
+          }
+        }
+      }
+    ]
   }
 };

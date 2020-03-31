@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "license": "MIT",
   "devDependencies": {
+    "@babel/core": "^7.9.0",
+    "@babel/plugin-transform-typescript": "^7.9.4",
+    "babel-loader": "^8.1.0",
     "clean-webpack-plugin": "^3.0.0",
     "html-webpack-plugin": "^4.0.3",
     "webpack": "^4.42.1",
@@ -11,5 +14,8 @@
   },
   "scripts": {
     "start": "webpack-dev-server"
+  },
+  "dependencies": {
+    "typescript": "^3.8.3"
   }
 }
