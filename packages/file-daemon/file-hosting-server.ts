@@ -39,8 +39,7 @@ export default class FileHostingServer {
           const info = await stat(fsPath);
           if (normalizedUrl === '/') {
             response = await serveFile(req, posix.join(fsPath, 'index.html'));
-          }
-          if (info.isFile()) {
+          } else if (info.isFile()) {
             response = await serveFile(req, fsPath);
           }
         } catch (e) {
