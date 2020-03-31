@@ -1,5 +1,5 @@
 let counter = 0;
-let identity = 11;
+let identity = 12;
 console.log(`I am service worker ${identity} ${counter++}`);
 
 self.addEventListener('install', event => {
@@ -14,6 +14,11 @@ self.addEventListener('activate', event => {
 
   // takes over when there is *no* existing service worker
   clients.claim();
+
+  let socket = new WebSocket('ws://localhost:3000');
+  socket.onmessage = event => {
+    console.log(event.data);
+  };
 });
 
 self.addEventListener('fetch', event => {

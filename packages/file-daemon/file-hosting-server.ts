@@ -1,5 +1,6 @@
 const { stat, open } = Deno;
 import { posix } from "https://deno.land/std/path/mod.ts";
+import { contentType, lookup } from "https://deno.land/std/media_types/mod.ts";
 import { assert } from "https://deno.land/std/testing/asserts.ts";
 import {
   listenAndServe,
@@ -36,11 +37,20 @@ export default class FileHostingServer {
 
         let response: Response | undefined;
         try {
-          const info = await stat(fsPath);
-          if (info.isDirectory()) {
-            response = await serveFile(req, posix.join(fsPath, 'index.html'));
-          } else if (info.isFile()) {
-            response = await serveFile(req, fsPath);
+          console.log(`Handling URL: ${normalizedUrl}`);
+          if (normalizedUrl === "/service-worker.js") {
+            // TODO we should probably add config option for this
+            let originRes = await fetch(
+              `http://localhost:8080/service-worker.js`
+            );
+            response = originRes;
+          } else {
+            const info = await stat(fsPath);
+            if (info.isDirectory()) {
+              response = await serveFile(req, posix.join(fsPath, "index.html"));
+            } else if (info.isFile()) {
+              response = await serveFile(req, fsPath);
+            }
           }
         } catch (e) {
           console.error(e.message);
@@ -65,7 +75,10 @@ async function serveFile(
   const [file, fileInfo] = await Promise.all([open(filePath), stat(filePath)]);
   const headers = new Headers();
   headers.set("content-length", fileInfo.size.toString());
-  headers.set("content-type", "text/plain; charset=utf-8");
+  headers.set(
+    "content-type",
+    contentType(lookup(filePath) ?? "application/octet-stream")!
+  );
 
   const res = {
     status: 200,
