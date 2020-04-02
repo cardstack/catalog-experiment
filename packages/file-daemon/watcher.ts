@@ -1,6 +1,6 @@
 import { WebSocket } from "https://deno.land/std/ws/mod.ts";
 import { walkSync } from "https://deno.land/std/fs/mod.ts";
-import { WatchInfo, FileInfo } from "./interfaces.ts";
+import { WatchInfo, FileInfo } from "http://localhost:8081/interfaces.ts";
 
 interface DirectoryMapEntry {
   hash: string;
@@ -22,8 +22,8 @@ export default class Watcher {
     let info: WatchInfo = {
       files: [...this.previousDirectoryMap.entries()].map(([name, entry]) => ({
         name,
-        etag: entry.hash
-      }))
+        etag: entry.hash,
+      })),
     };
     await sock.send(JSON.stringify(info));
 

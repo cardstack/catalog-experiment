@@ -1,0 +1,13 @@
+{
+  "name": "files-daemon",
+  "license": "MIT",
+  "version": "0.0.1",
+  "dependencies": {
+    "http-server": "^0.12.1",
+    "typescript": "^3.8.3"
+  },
+  "scripts": {
+    "start": "http-server -p 8081",
+    "typecheck": "tsc"
+  }
+}

@@ -7,15 +7,14 @@
     "module": "esnext",
     "moduleResolution": "node",
     "noEmit": true,
-    "paths": {
-      "http://*": ["../../Library/Caches/deno/deps/http/*"],
-      "https://*": ["../../Library/Caches/deno/deps/https/*"],
-    },
     "pretty": true,
     "resolveJsonModule": true,
-    "target": "esnext"
+    "target": "esnext",
+    "typeRoots": [],
+    "strict": true,
+    "allowUnreachableCode": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
   },
-  "include": [
-    "./**/*.ts"
-  ]
+  "include": ["./**/*.ts"]
 }

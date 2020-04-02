@@ -3,9 +3,9 @@ import {
   acceptWebSocket,
   isWebSocketCloseEvent,
   isWebSocketPingEvent,
-  WebSocket
+  WebSocket,
 } from "https://deno.land/std/ws/mod.ts";
-import Watcher from "./watcher.ts";
+import Watcher from "http://localhost:8081/watcher.ts";
 
 export default class FileWatcherServer {
   watcher: Watcher;
@@ -21,7 +21,7 @@ export default class FileWatcherServer {
         conn,
         headers,
         bufReader: req.r,
-        bufWriter: req.w
+        bufWriter: req.w,
       })
         .then(
           async (sock: WebSocket): Promise<void> => {
