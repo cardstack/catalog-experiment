@@ -56,12 +56,20 @@ export default class FileHostingServer {
           console.error(e.message);
           response = await serveFallback(req, e);
         } finally {
-          if (this.corsEnabled) {
-            assert(response);
-            setCORS(response);
+          try {
+            if (this.corsEnabled) {
+              assert(response);
+              setCORS(response);
+            }
+            serverLog(req, response!);
+            await req.respond(response!);
+          } finally {
+            // Note that there is an open issue in Deno around having to manually
+            // close files like this: https://github.com/denoland/deno/issues/3982
+            if (response && isCloser(response.body)) {
+              response.body.close();
+            }
           }
-          serverLog(req, response!);
-          req.respond(response!);
         }
       }
     );
@@ -118,4 +126,8 @@ function serverLog(req: ServerRequest, res: Response): void {
   const dateFmt = `[${d.slice(0, 10)} ${d.slice(11, 19)}]`;
   const s = `${dateFmt} "${req.method} ${req.url} ${req.proto}" ${res.status}`;
   console.log(s);
+}
+
+function isCloser(object: any): object is Deno.Closer {
+  return "close" in object;
 }
