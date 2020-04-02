@@ -1,5 +1,5 @@
-import { WatchInfo } from '../../file-daemon/interfaces';
-import { FileSystem } from './filesystem';
+import { WatchInfo } from "../../file-daemon/interfaces";
+import { FileSystem } from "./filesystem";
 
 export class FileDaemonClient {
   private socket: WebSocket | undefined;
@@ -55,11 +55,14 @@ export class FileDaemonClient {
   private async backoff() {
     console.log(`using backoff delay ${this.backoffInterval}`);
     await new Promise(resolve => setTimeout(resolve, this.backoffInterval));
-    this.backoffInterval = Math.min(Math.max(this.backoffInterval, 100) * 2, 10000);
+    this.backoffInterval = Math.min(
+      Math.max(this.backoffInterval, 100) * 2,
+      10000
+    );
   }
 
   private handleMessage(event: MessageEvent) {
     let watchInfo = JSON.parse(event.data) as WatchInfo;
-    console.log("handleMessage4: Received file change notification", watchInfo);
+    console.log("handleMessage: Received file change notification", watchInfo);
   }
 }
