@@ -38,10 +38,10 @@ export default class FileHostingServer {
         let response: Response | undefined;
         try {
           console.log(`Handling URL: ${normalizedUrl}`);
-          if (normalizedUrl === "/service-worker.js") {
+          if (["/service-worker.js"].includes(normalizedUrl)) {
             // TODO we should probably add config option for this
             let originRes = await fetch(
-              `http://localhost:8080/service-worker.js`
+              `http://localhost:8080${normalizedUrl}`
             );
             response = originRes;
           } else {

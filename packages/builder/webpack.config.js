@@ -2,12 +2,8 @@ const path = require("path");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
 const { CleanWebpackPlugin } = require("clean-webpack-plugin");
 
-module.exports = {
+let config = {
   mode: "development",
-  entry: {
-    main: "./src/index.ts",
-    "service-worker": "./src/service-worker.ts"
-  },
   devtool: "inline-source-map",
   devServer: {
     headers: {
@@ -17,18 +13,16 @@ module.exports = {
     },
     contentBase: path.resolve(__dirname, "dist")
   },
-  plugins: [
-    new CleanWebpackPlugin(),
-    new HtmlWebpackPlugin({
-      title: "Output Management"
-    })
-  ],
   output: {
     filename: "[name].js",
     path: path.resolve(__dirname, "dist/assets")
   },
   resolve: {
     extensions: [".wasm", ".mjs", ".ts", ".js", ".json"]
+  },
+  node: {
+    // for @babel/core
+    fs: 'empty',
   },
   module: {
     rules: [
@@ -38,11 +32,33 @@ module.exports = {
         use: {
           loader: "babel-loader",
           options: {
-            presets: [],
-            plugins: ["@babel/plugin-transform-typescript"]
+            presets: [["@babel/preset-env", { targets: { browsers: ['last 1 Chrome versions']}} ]],
+            plugins: ["@babel/plugin-transform-typescript", '@babel/plugin-proposal-optional-chaining', '@babel/plugin-proposal-nullish-coalescing-operator']
           }
         }
       }
     ]
   }
 };
+
+let dom = Object.assign({}, config, {
+  entry: {
+    main: "./src/main.ts",
+  },
+  plugins: [
+    new CleanWebpackPlugin(),
+    new HtmlWebpackPlugin({
+      title: "Output Management"
+    })
+  ],
+});
+
+let worker = Object.assign({}, config, {
+  target: 'webworker',
+  entry: {
+    "service-worker": "./src/service-worker.ts"
+  },
+});
+
+module.exports = [dom, worker];
+
