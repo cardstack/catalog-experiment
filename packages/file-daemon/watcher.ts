@@ -18,10 +18,7 @@ export default class Watcher {
   constructor(private directory: string) {}
 
   async add(sock: WebSocket): Promise<void> {
-    this.watchers.set(sock, true);
-
-    // tell the new watcher about all the files that exist if the file watching
-    // is already underway
+    // tell the new watcher about all the files that exist before subscribing to file changes
     let info: WatchInfo = {
       files: [...this.previousDirectoryMap.entries()].map(([name, entry]) => ({
         name,
@@ -30,6 +27,8 @@ export default class Watcher {
     };
     console.log(`adding socket number of files: ${info.files.length}`);
     await sock.send(JSON.stringify(info));
+
+    this.watchers.set(sock, true);
 
     if (!this.nextWatch) {
       this.scheduleNextWatch();
