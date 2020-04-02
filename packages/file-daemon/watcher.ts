@@ -20,6 +20,8 @@ export default class Watcher {
   async add(sock: WebSocket): Promise<void> {
     // tell the new watcher about all the files that exist before subscribing to file changes
     let info: WatchInfo = {
+      type: "full",
+      lastMessage: true,
       files: [...this.previousDirectoryMap.entries()].map(([name, entry]) => ({
         name,
         etag: entry.hash,
@@ -90,7 +92,7 @@ export default class Watcher {
         files.push({ name: file, etag: hash });
       }
     }
-    return { files };
+    return { files, type: "incremental" };
   }
 
   private buildDirectoryMap(): DirectoryMap {

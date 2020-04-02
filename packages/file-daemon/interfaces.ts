@@ -1,8 +1,15 @@
 // interfaces we want to share with the client
 
-export interface WatchInfo {
-  files: FileInfo[];
-};
+export type WatchInfo =
+  | {
+      type: "full";
+      lastMessage: boolean;
+      files: FileInfo[];
+    }
+  | {
+      type: "incremental";
+      files: FileInfo[];
+    };
 
 export interface FileInfo {
   name: string;
