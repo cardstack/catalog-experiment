@@ -1,6 +1,12 @@
 import { parse } from '@babel/core';
+import { FileSystem } from './filesystem';
+import { FileDaemonClient } from './file-daemon-client';
 
-let worker = (self as unknown) as ServiceWorkerGlobalScope;
+const worker = (self as unknown) as ServiceWorkerGlobalScope;
+const fs = new FileSystem();
+const client = new FileDaemonClient("ws://localhost:3000", fs);
+
+console.log("service worker evaluated");
 
 worker.addEventListener("install", () => {
   console.log(`installing`);
@@ -15,10 +21,7 @@ worker.addEventListener("activate", () => {
   // takes over when there is *no* existing service worker
   worker.clients.claim();
 
-  let socket = new WebSocket("ws://localhost:3000");
-  socket.onmessage = event => {
-    console.log("Received file change notification", event.data);
-  };
+
 });
 
 worker.addEventListener("fetch", (event: FetchEvent) => {
@@ -50,3 +53,4 @@ async function bundled(rawResponse: Response): Promise<Response> {
   response.headers.set('content-type', rawResponse.headers.get('content-type') ?? 'application/octet-stream');
   return response;
 }
+

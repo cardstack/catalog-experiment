@@ -2,11 +2,8 @@ import {
   WebSocket
 } from "https://deno.land/std/ws/mod.ts";
 import { walkSync } from "https://deno.land/std/fs/mod.ts";
+import { WatchInfo, FileInfo } from './interfaces.ts';
 
-interface WatchInfo {
-  modifiedFiles: string[];
-  removedFiles: string[]
-};
 interface DirectoryMapEntry {
   hash: string;
   info: Deno.FileInfo
@@ -29,8 +26,10 @@ export default class Watcher {
     // is already underway
     if (this.nextWatch != null) {
       let info: WatchInfo = {
-        modifiedFiles: [...this.buildDirectoryMap().keys()],
-        removedFiles: []
+        files: [...this.previousDirectoryMap.entries()].map(([name, entry]) => ({
+          name,
+          etag: entry.hash,
+        }))
       };
       await sock.send(JSON.stringify(info));
     } else {
@@ -64,14 +63,8 @@ export default class Watcher {
 
     let current = this.buildDirectoryMap();
     let info = this.diffDirectories(this.previousDirectoryMap, current);
-    let { modifiedFiles, removedFiles } = info;
-    if (modifiedFiles.length) {
-      console.log(`files modified: ${JSON.stringify(modifiedFiles, null, 2)}`);
-    }
-    if (removedFiles.length) {
-      console.log(`files removed: ${JSON.stringify(removedFiles, null, 2)}`);
-    }
-    if (modifiedFiles.length || removedFiles.length) {
+    if (info.files.length) {
+      console.log(`files modified: ${JSON.stringify(info.files, null, 2)}`);
       this.notifyPromise = Promise.resolve(this.notifyPromise)
         .then(() => this.notify(info))
         .catch(e => {
@@ -84,18 +77,15 @@ export default class Watcher {
   }
 
   private diffDirectories(source: DirectoryMap, target: DirectoryMap): WatchInfo {
-    let modifiedFiles: string[] = [];
-    let targetFiles = [...target.keys()];
-    let removedFiles = [...source.keys()].filter(i => !targetFiles.includes(i));
+    let files: FileInfo[] = [...source.keys()].filter(i => !target.has(i)).map(name => ({ name, etag: null }));
     for (let [file, { hash }] of target) {
       if (!source.has(file)) {
-        modifiedFiles.push(file);
+        files.push({ name: file, etag: hash });
       } else if (source.get(file)!.hash !== hash) {
-        modifiedFiles.push(file);
+        files.push({ name: file, etag: hash });
       }
     }
-
-    return { modifiedFiles, removedFiles };
+    return { files };
   }
 
   private buildDirectoryMap(): DirectoryMap {

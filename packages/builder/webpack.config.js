@@ -9,20 +9,20 @@ let config = {
     headers: {
       "access-control-allow-origin": "*",
       "access-control-allow-headers":
-        "Origin, X-Requested-With, Content-Type, Accept, Range"
+        "Origin, X-Requested-With, Content-Type, Accept, Range",
     },
-    contentBase: path.resolve(__dirname, "dist")
+    contentBase: path.resolve(__dirname, "dist"),
   },
   output: {
     filename: "[name].js",
-    path: path.resolve(__dirname, "dist/assets")
+    path: path.resolve(__dirname, "dist/assets"),
   },
   resolve: {
-    extensions: [".wasm", ".mjs", ".ts", ".js", ".json"]
+    extensions: [".wasm", ".mjs", ".ts", ".js", ".json"],
   },
   node: {
     // for @babel/core
-    fs: 'empty',
+    fs: "empty",
   },
   module: {
     rules: [
@@ -32,13 +32,23 @@ let config = {
         use: {
           loader: "babel-loader",
           options: {
-            presets: [["@babel/preset-env", { targets: { browsers: ['last 1 Chrome versions']}} ]],
-            plugins: ["@babel/plugin-transform-typescript", '@babel/plugin-proposal-optional-chaining', '@babel/plugin-proposal-nullish-coalescing-operator']
-          }
-        }
-      }
-    ]
-  }
+            presets: [
+              [
+                "@babel/preset-env",
+                { targets: { browsers: ["last 1 Chrome versions"] } },
+              ],
+            ],
+            plugins: [
+              "@babel/plugin-transform-typescript",
+              "@babel/plugin-proposal-optional-chaining",
+              "@babel/plugin-proposal-nullish-coalescing-operator",
+              "@babel/plugin-proposal-class-properties",
+            ],
+          },
+        },
+      },
+    ],
+  },
 };
 
 let dom = Object.assign({}, config, {
@@ -48,17 +58,16 @@ let dom = Object.assign({}, config, {
   plugins: [
     new CleanWebpackPlugin(),
     new HtmlWebpackPlugin({
-      title: "Output Management"
-    })
+      title: "Output Management",
+    }),
   ],
 });
 
 let worker = Object.assign({}, config, {
-  target: 'webworker',
+  target: "webworker",
   entry: {
-    "service-worker": "./src/service-worker.ts"
+    "service-worker": "./src/service-worker.ts",
   },
 });
 
 module.exports = [dom, worker];
-
