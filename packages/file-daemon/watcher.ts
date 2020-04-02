@@ -28,6 +28,7 @@ export default class Watcher {
     console.log(`adding socket number of files: ${info.files.length}`);
     await sock.send(JSON.stringify(info));
 
+    // we only add the watcher *after* the initial list of files is sent
     this.watchers.set(sock, true);
 
     if (!this.nextWatch) {
