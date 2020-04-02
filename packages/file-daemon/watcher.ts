@@ -23,18 +23,17 @@ export default class Watcher {
   constructor(private directory: string) { }
 
   async add(sock: WebSocket): Promise<void> {
+    this.watchers.set(sock, true);
+
     // tell the new watcher about all the files that exist if the file watching
     // is already underway
-    if (this.nextWatch) {
+    if (this.nextWatch != null) {
       let info: WatchInfo = {
         modifiedFiles: [...this.buildDirectoryMap().keys()],
         removedFiles: []
       };
       await sock.send(JSON.stringify(info));
-    }
-
-    this.watchers.set(sock, true);
-    if (!this.nextWatch) {
+    } else {
       this.watch();
       this.scheduleNextWatch();
     }
@@ -45,6 +44,7 @@ export default class Watcher {
     if (this.watchers.size === 0) {
       clearTimeout(this.nextWatch);
       this.nextWatch = undefined;
+      this.previousDirectoryMap.clear();
     }
   }
 
