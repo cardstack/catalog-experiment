@@ -39,7 +39,6 @@ export default class FileHostingServer {
         try {
           console.log(`Handling URL: ${normalizedUrl}`);
           if (["/service-worker.js"].includes(normalizedUrl)) {
-            // TODO we should probably add config option for this
             let originRes = await fetch(
               `http://localhost:8080${normalizedUrl}`
             );
