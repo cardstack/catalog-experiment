@@ -5,7 +5,6 @@
 if (!navigator.serviceWorker.controller) {
   // first load
   navigator.serviceWorker.register('/service-worker.js', {
-    type: 'module',
     scope: '/'
   });
   console.log("Waiting for service worker");
