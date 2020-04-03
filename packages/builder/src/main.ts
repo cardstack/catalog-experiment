@@ -4,8 +4,8 @@
 
 if (!navigator.serviceWorker.controller) {
   // first load
-  navigator.serviceWorker.register('/service-worker.js', {
-    scope: '/'
+  navigator.serviceWorker.register("/service-worker.js", {
+    scope: "/",
   });
   console.log("Waiting for service worker");
   navigator.serviceWorker.ready.then(() => {
@@ -13,3 +13,12 @@ if (!navigator.serviceWorker.controller) {
     window.location.reload();
   });
 }
+
+import { Tar } from "tarstream";
+
+window.test = async function test() {
+  let t = new Tar();
+  t.addFile({ name: "hello.txt", data: new Uint8Array([65, 66]) });
+  let stream = t.finish();
+  await fetch("/tartest", { body: stream, method: "POST" });
+};
