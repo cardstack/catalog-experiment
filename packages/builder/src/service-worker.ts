@@ -1,6 +1,8 @@
-import { parse } from '@babel/core';
-import { FileSystem } from './filesystem';
-import { FileDaemonClient } from './file-daemon-client';
+import { parse } from "@babel/core";
+import { FileSystem } from "./filesystem";
+import { FileDaemonClient } from "./file-daemon-client";
+
+import { tarTest } from "./tar-test";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 const fs = new FileSystem();
@@ -20,8 +22,6 @@ worker.addEventListener("activate", () => {
 
   // takes over when there is *no* existing service worker
   worker.clients.claim();
-
-
 });
 
 worker.addEventListener("fetch", (event: FetchEvent) => {
@@ -32,11 +32,19 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
     return;
   }
 
+  if (url.pathname === "/tartest") {
+    event.respondWith(tarTest());
+    return;
+  }
+
   event.respondWith(
     (async () => {
       let response = await fetch(event.request);
-      let mediaType = response.headers.get("content-type")?.split(';')?.[0]?.trim();
-      if (mediaType !== 'application/javascript') {
+      let mediaType = response.headers
+        .get("content-type")
+        ?.split(";")?.[0]
+        ?.trim();
+      if (mediaType !== "application/javascript") {
         return response;
       } else {
         return bundled(response);
@@ -50,7 +58,9 @@ async function bundled(rawResponse: Response): Promise<Response> {
   let result = await parse(text, {});
   console.log(result);
   let response = new Response(text);
-  response.headers.set('content-type', rawResponse.headers.get('content-type') ?? 'application/octet-stream');
+  response.headers.set(
+    "content-type",
+    rawResponse.headers.get("content-type") ?? "application/octet-stream"
+  );
   return response;
 }
-

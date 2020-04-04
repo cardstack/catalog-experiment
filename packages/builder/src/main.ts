@@ -13,12 +13,3 @@ if (!navigator.serviceWorker.controller) {
     window.location.reload();
   });
 }
-
-import { Tar } from "tarstream";
-
-window.test = async function test() {
-  let t = new Tar();
-  t.addFile({ name: "hello.txt", data: new Uint8Array([65, 66]) });
-  let stream = t.finish();
-  await fetch("/tartest", { body: stream, method: "POST" });
-};

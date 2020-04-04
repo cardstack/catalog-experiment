@@ -327,7 +327,7 @@ export function formatTarNumber(
   let valueAsNumber = toNumberWithDefault(value, defaultValue);
   let valueAsString = valueAsNumber.toString(8).substr(-length, length);
   while (valueAsString.length < length) {
-    valueAsString = "0" + value;
+    valueAsString = "0" + valueAsString;
   }
   return valueAsString + constants.NULL_CHAR;
 }
