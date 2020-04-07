@@ -2,7 +2,6 @@ import { serve } from "https://deno.land/std/http/server.ts";
 import {
   acceptWebSocket,
   isWebSocketCloseEvent,
-  isWebSocketPingEvent,
   WebSocket,
 } from "https://deno.land/std/ws/mod.ts";
 import Watcher from "http://localhost:8081/watcher.ts";
@@ -35,19 +34,7 @@ export default class FileWatcherServer {
                   break;
                 }
                 const ev = value;
-                if (typeof ev === "string") {
-                  // text message
-                  console.log("ws:Text", ev);
-                  await sock.send(ev);
-                } else if (ev instanceof Uint8Array) {
-                  // binary message
-                  console.log("ws:Binary", ev);
-                } else if (isWebSocketPingEvent(ev)) {
-                  const [, body] = ev;
-                  // ping
-                  console.log("ws:Ping", body);
-                } else if (isWebSocketCloseEvent(ev)) {
-                  // close
+                if (isWebSocketCloseEvent(ev)) {
                   const { code, reason } = ev;
                   this.watcher.remove(sock);
                   console.log("ws:Close", code, reason);

@@ -6,8 +6,8 @@ declare module "https://deno.land/std/path/mod.ts" {
   export * from "std/path/mod";
 }
 
-declare module "https://deno.land/std/media_types/mod.ts" {
-  export * from "std/media_types/mod";
+declare module "https://deno.land/x/media_types/mod.ts" {
+  export * from "media_types/mod";
 }
 
 declare module "https://deno.land/std/testing/asserts.ts" {
@@ -44,4 +44,16 @@ declare module "http://localhost:8081/file-hosting-server.ts" {
 
 declare module "http://localhost:8081/file-watcher-server.ts" {
   export { default } from "file-daemon/file-watcher-server";
+}
+
+declare module "http://localhost:8081/tarstream.ts" {
+  export * from "file-daemon/tarstream";
+}
+
+declare module "http://localhost:8081/stream-shims.ts" {
+  export * from "file-daemon/stream-shims";
+}
+
+declare module "http://localhost:8081/vendor/web-streams/index.js" {
+  export * from "web-streams";
 }

@@ -8,6 +8,7 @@
   },
   "scripts": {
     "start": "http-server -p 8081",
+    "clear-cache": "rm -rf $HOME/Library/Caches/deno",
     "typecheck": "tsc"
   }
 }

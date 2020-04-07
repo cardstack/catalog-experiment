@@ -3,6 +3,7 @@
   "license": "MIT",
   "version": "0.0.1",
   "scripts": {
-    "start": "../file-daemon/file-daemon.ts"
+    "start": "../file-daemon/file-daemon.ts",
+    "clear-cache": "rm -rf $HOME/Library/Caches/deno"
   }
 }

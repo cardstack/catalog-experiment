@@ -6,7 +6,11 @@ import { tarTest } from "./tar-test";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 const fs = new FileSystem();
-const client = new FileDaemonClient("ws://localhost:3000", fs);
+const client = new FileDaemonClient(
+  "http://localhost:4200",
+  "ws://localhost:3000",
+  fs
+);
 
 console.log("service worker evaluated");
 

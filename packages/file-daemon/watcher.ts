@@ -18,20 +18,7 @@ export default class Watcher {
   constructor(private directory: string) {}
 
   async add(sock: WebSocket): Promise<void> {
-    // tell the new watcher about all the files that exist before subscribing to file changes
-    let info: WatchInfo = {
-      type: "full",
-      lastMessage: true,
-      files: [...this.previousDirectoryMap.entries()].map(([name, entry]) => ({
-        name,
-        etag: entry.hash,
-      })),
-    };
-    await sock.send(JSON.stringify(info));
-
-    // we only add the watcher *after* the initial list of files is sent
     this.watchers.set(sock, true);
-
     if (!this.nextWatch) {
       this.scheduleNextWatch();
     }
@@ -47,7 +34,7 @@ export default class Watcher {
 
   private async notify(info: WatchInfo) {
     await Promise.all(
-      [...this.watchers.keys()].map(sock => sock.send(JSON.stringify(info)))
+      [...this.watchers.keys()].map((sock) => sock.send(JSON.stringify(info)))
     );
   }
 
@@ -69,7 +56,7 @@ export default class Watcher {
       console.log(`files modified: ${JSON.stringify(info.files, null, 2)}`);
       this.notifyPromise = Promise.resolve(this.notifyPromise)
         .then(() => this.notify(info))
-        .catch(e => {
+        .catch((e) => {
           console.error(`Encountered error sending notification to socket`, e);
           throw e;
         });
@@ -83,8 +70,8 @@ export default class Watcher {
     target: DirectoryMap
   ): WatchInfo {
     let files: FileInfo[] = [...source.keys()]
-      .filter(i => !target.has(i))
-      .map(name => ({ name, etag: null }));
+      .filter((i) => !target.has(i))
+      .map((name) => ({ name, etag: null }));
     for (let [file, { hash }] of target) {
       if (!source.has(file)) {
         files.push({ name: file, etag: hash });
@@ -92,7 +79,7 @@ export default class Watcher {
         files.push({ name: file, etag: hash });
       }
     }
-    return { files, type: "incremental" };
+    return { files };
   }
 
   private buildDirectoryMap(): DirectoryMap {
