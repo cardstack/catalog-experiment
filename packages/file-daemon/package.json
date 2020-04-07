@@ -3,12 +3,15 @@
   "license": "MIT",
   "version": "0.0.1",
   "dependencies": {
+    "@types/mime-types": "^2.1.0",
+    "deno": "habdelra/deno#cad1cf19cfa594c1e24115384d44e41bb21d8625",
     "http-server": "^0.12.1",
+    "mime-types": "^2.1.26",
+    "tarstream": "0.0.1",
     "typescript": "^3.8.3"
   },
   "scripts": {
-    "start": "http-server -p 8081",
-    "clear-cache": "rm -rf $HOME/Library/Caches/deno",
+    "start": "webpack --watch",
     "typecheck": "tsc"
   }
 }

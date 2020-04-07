@@ -1,15 +1,11 @@
 const { stat, open } = Deno;
-import { walkSync } from "https://deno.land/std/fs/mod.ts";
-import { posix } from "https://deno.land/std/path/mod.ts";
-import { contentType, lookup } from "https://deno.land/x/media_types/mod.ts";
-import { assert } from "https://deno.land/std/testing/asserts.ts";
-import {
-  listenAndServe,
-  ServerRequest,
-  Response,
-} from "https://deno.land/std/http/mod.ts";
-import { Tar } from "http://localhost:8081/tarstream.ts";
-import { DenoStreamToDOM } from "http://localhost:8081/stream-shims.ts";
+import { walkSync } from "deno/std/fs/mod";
+import { posix } from "deno/std/path/mod";
+import { contentType, lookup } from "mime-types";
+import { assert } from "deno/std/testing/asserts";
+import { listenAndServe, ServerRequest, Response } from "deno/std/http/mod";
+import { Tar } from "tarstream";
+import { DenoStreamToDOM } from "./stream-shims";
 
 const encoder = new TextEncoder();
 
@@ -25,7 +21,7 @@ export default class FileHostingServer {
 
   async start() {
     console.log(`HTTP server listening on http://${this.addr}/`);
-    listenAndServe(
+    await listenAndServe(
       String(this.addr),
       async (req: ServerRequest): Promise<void> => {
         let normalizedUrl = posix.normalize(req.url);
@@ -123,11 +119,9 @@ async function streamFileSystem(root: string, path: string): Promise<Response> {
 async function serveFile(filePath: string): Promise<Response> {
   const [file, fileInfo] = await Promise.all([open(filePath), stat(filePath)]);
   const headers = new Headers();
+  let mime = lookup(filePath) || "application/octet-stream";
   headers.set("content-length", fileInfo.size.toString());
-  headers.set(
-    "content-type",
-    contentType(lookup(filePath) ?? "application/octet-stream")!
-  );
+  headers.set("content-type", contentType(mime) as Exclude<string, false>);
 
   const res = {
     status: 200,

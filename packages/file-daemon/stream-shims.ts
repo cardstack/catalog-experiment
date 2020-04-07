@@ -1,11 +1,17 @@
 // @deno-types="./vendor/web-streams/index.d.ts"
-import * as webstreams from "http://localhost:8081/vendor/web-streams/index.js";
+import {
+  ReadableStream,
+  ReadableStreamBYOBReader,
+  ReadableStreamDefaultReader,
+  ReadableStreamAsyncIterator,
+  ReadResult,
+} from "./vendor/web-streams";
 
 // deno-types are described here: https://github.com/denoland/deno/blob/92f1c71a6fde3701224f213f48e14776f9f8adee/std/manual.md#compiler-hint
 // Hmmmm, deno doesn't seem to like the IFFE that web-stream utilizes for the
 // ponyfill.
 
-export class DenoStreamToDOM implements webstreams.ReadableStream {
+export class DenoStreamToDOM implements ReadableStream {
   private _locked = false;
 
   constructor(private denoReader: Deno.Reader) {}
@@ -18,24 +24,22 @@ export class DenoStreamToDOM implements webstreams.ReadableStream {
     throw new Error(`unimplemented`);
   }
 
-  getReader({ mode }: { mode: "byob" }): webstreams.ReadableStreamBYOBReader;
-  getReader(): webstreams.ReadableStreamDefaultReader<Uint8Array>;
+  getReader({ mode }: { mode: "byob" }): ReadableStreamBYOBReader;
+  getReader(): ReadableStreamDefaultReader<Uint8Array>;
   getReader(
     _opts?: any
-  ):
-    | webstreams.ReadableStreamDefaultReader<Uint8Array>
-    | webstreams.ReadableStreamBYOBReader {
+  ): ReadableStreamDefaultReader<Uint8Array> | ReadableStreamBYOBReader {
     this._locked = true;
     return new DenoStreamToDOMReader(this.denoReader, () => {
       this._locked = false;
     });
   }
 
-  tee(): [webstreams.ReadableStream, webstreams.ReadableStream] {
+  tee(): [ReadableStream, ReadableStream] {
     throw new Error("unimplemented");
   }
 
-  pipeThrough(): webstreams.ReadableStream {
+  pipeThrough(): ReadableStream {
     throw new Error("unimplemented");
   }
 
@@ -43,7 +47,7 @@ export class DenoStreamToDOM implements webstreams.ReadableStream {
     throw new Error("unimplemented");
   }
 
-  getIterator(): webstreams.ReadableStreamAsyncIterator<Uint8Array> {
+  getIterator(): ReadableStreamAsyncIterator<Uint8Array> {
     throw new Error("unimplemented");
   }
 
@@ -52,15 +56,14 @@ export class DenoStreamToDOM implements webstreams.ReadableStream {
   }
 }
 
-class DenoStreamToDOMReader
-  implements webstreams.ReadableStreamDefaultReader<Uint8Array> {
+class DenoStreamToDOMReader implements ReadableStreamDefaultReader<Uint8Array> {
   constructor(private denoReader: Deno.Reader, private unlock: () => void) {}
 
   async cancel(): Promise<void> {
     throw new Error(`unimplemented`);
   }
 
-  async read(): Promise<webstreams.ReadResult<Uint8Array>> {
+  async read(): Promise<ReadResult<Uint8Array>> {
     const bufferSize = 4096;
     let buffer = new Uint8Array(bufferSize);
     let result = await this.denoReader.read(buffer);
@@ -85,10 +88,10 @@ class DenoStreamToDOMReader
 }
 
 export class DOMToDenoStream implements Deno.Reader {
-  private reader: webstreams.ReadableStreamDefaultReader<Uint8Array>;
+  private reader: ReadableStreamDefaultReader<Uint8Array>;
   private pendingBuffer: Uint8Array | undefined;
 
-  constructor(stream: webstreams.ReadableStream) {
+  constructor(stream: ReadableStream) {
     this.reader = stream.getReader();
   }
   async read(outputBuffer: Uint8Array): Promise<number | typeof Deno.EOF> {

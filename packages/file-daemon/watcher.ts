@@ -1,6 +1,6 @@
-import { WebSocket } from "https://deno.land/std/ws/mod.ts";
-import { walkSync } from "https://deno.land/std/fs/mod.ts";
-import { WatchInfo, FileInfo } from "http://localhost:8081/interfaces.ts";
+import { WebSocket } from "deno/std/ws/mod";
+import { walkSync } from "deno/std/fs/mod";
+import { WatchInfo, FileInfo } from "./interfaces";
 
 interface DirectoryMapEntry {
   hash: string;
@@ -13,9 +13,12 @@ const DIRECTORY_POLL = 500;
 export default class Watcher {
   nextWatch?: number;
   watchers = new Map<WebSocket, boolean>();
-  previousDirectoryMap = this.buildDirectoryMap();
+  previousDirectoryMap: DirectoryMap;
   notifyPromise?: Promise<void>;
-  constructor(private directory: string) {}
+
+  constructor(private directory: string) {
+    this.previousDirectoryMap = this.buildDirectoryMap();
+  }
 
   async add(sock: WebSocket): Promise<void> {
     this.watchers.set(sock, true);

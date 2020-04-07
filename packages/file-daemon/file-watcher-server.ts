@@ -1,10 +1,10 @@
-import { serve } from "https://deno.land/std/http/server.ts";
+import { serve } from "deno/std/http/server";
 import {
   acceptWebSocket,
   isWebSocketCloseEvent,
   WebSocket,
-} from "https://deno.land/std/ws/mod.ts";
-import Watcher from "http://localhost:8081/watcher.ts";
+} from "deno/std/ws/mod";
+import Watcher from "./watcher";
 
 export default class FileWatcherServer {
   watcher: Watcher;

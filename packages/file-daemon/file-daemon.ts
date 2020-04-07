@@ -1,9 +1,7 @@
-#!/usr/bin/env -S deno --allow-net --allow-read
-
-import { posix } from "https://deno.land/std/path/mod.ts";
-import { parse } from "https://deno.land/std/flags/mod.ts";
-import FileWatcherServer from "http://localhost:8081/file-watcher-server.ts";
-import FileHostingServer from "http://localhost:8081/file-hosting-server.ts";
+import { posix } from "deno/std/path/mod";
+import { parse } from "deno/std/flags/mod";
+import FileWatcherServer from "./file-watcher-server";
+import FileHostingServer from "./file-hosting-server";
 
 interface CommandLineArgs {
   p?: number;
@@ -39,4 +37,5 @@ const websocketPort = serverArgs.websocketPort ?? serverArgs.w ?? "3000";
 let watcher = new FileWatcherServer(websocketPort, rootDir);
 let hoster = new FileHostingServer(fileServerPort, rootDir, true);
 
-await Promise.all([hoster.start(), watcher.start()]);
+hoster.start();
+watcher.start();
