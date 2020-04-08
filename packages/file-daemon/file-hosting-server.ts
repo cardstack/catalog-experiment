@@ -104,11 +104,13 @@ async function streamFileSystem(root: string, path: string): Promise<Response> {
         type: DIRTYPE,
       });
     } else {
+      // we should not open the file until we are ready to start streaming it
       let file = await open(filename);
       console.log(`Adding file ${filename} to tar`);
       tar.addFile({
         name: filename.substring(root.length),
-        stream: new DenoStreamToDOM(file),
+        stream: new DenoStreamToDOM(file), // instead of passing in a stream pass in a closure that will open the steam when it needs to be read
+        // move open and closing into the DenoStreamToDOM
         size: info.size,
         close: () => file.close(),
       });
@@ -117,6 +119,10 @@ async function streamFileSystem(root: string, path: string): Promise<Response> {
 
   return {
     status: 200,
+    // TODO let's not wait until we call finish to start streaming, start
+    // streaming when add file is called. this means that when we get to teh end
+    // of the queue, we need to keep waitting in case a new file is added--needs
+    // a new state in our state machine
     body: new DOMToDenoStream(tar.finish()),
     headers,
   };

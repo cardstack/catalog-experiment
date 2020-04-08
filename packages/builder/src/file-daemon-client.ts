@@ -1,5 +1,6 @@
 import { WatchInfo } from "../../file-daemon/interfaces";
 import { FileSystem } from "./filesystem";
+import { UnTar } from "tarstream";
 
 interface FullSync {
   tempDir: string;
@@ -126,9 +127,14 @@ export class FileDaemonClient {
         accept: "application/x-tar",
       },
     });
-    // let tarStream = res.body;
-    let tarBlob = await res.blob();
-    console.log(`received tar ${tarBlob.size} bytes`);
+    if (res.body) {
+      let untar = new UnTar(res.body, {
+        file() {},
+        directory() {},
+      });
+
+      await untar.done;
+    }
 
     // TODO pass the tar stream into the FileSystem instance, where we can
     // decode the tar stream to create the resulting filesystem

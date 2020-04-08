@@ -48,9 +48,19 @@ interface BaseFileEntry {
   createTime?: number | string | Date;
 }
 
+export interface Header extends Required<BaseFileEntry> {
+  size: number;
+  checksum: number;
+  linkName: string;
+  ustar: string;
+  majorNumber: number;
+  minorNumber: number;
+}
+
 export interface StreamFileEntry extends BaseFileEntry {
   stream: ReadableStream<Uint8Array>;
   size: number;
+  // TODO remove this
   close?: () => void;
 }
 
@@ -400,35 +410,38 @@ export function parseTarDateTime(bytes: Uint8Array) {
   return new Date(1000 * parseTarNumber(bytes));
 }
 
-export function calculateChecksum(
-  buffer: Uint8Array,
-  from: number,
-  skipChecksum: boolean
-) {
-  let to = Math.min(from + effectiveHeaderSize, buffer.length);
+export function calculateChecksum(buffer: Uint8Array) {
+  let to = Math.min(effectiveHeaderSize, buffer.length);
   let result = 0;
 
   // When calculating checksum, `checksum` field should be
   // threat as filled with space char (byte 32)
   let skipFrom = 0;
   let skipTo = 0;
-  if (skipChecksum) {
-    posixHeader.every(function (field) {
-      if (field[0] == "checksum") {
-        skipFrom = from + field[2];
-        skipTo = skipFrom + field[1];
-        return false;
-      }
-      return true;
-    });
-  }
+  posixHeader.every(function (field) {
+    if (field[0] == "checksum") {
+      skipFrom = field[2];
+      skipTo = skipFrom + field[1];
+      return false;
+    }
+    return true;
+  });
 
   let whitespace = " ".charCodeAt(0);
-  for (let i = from; i < to; i++) {
+  for (let i = 0; i < to; i++) {
     // 262144 = 8^6 - 6 octal digits - maximum possible value for checksum;
     // wrap to avoid numeric overflow
     let byte = i >= skipFrom && i < skipTo ? whitespace : buffer[i];
     result = (result + byte) % 262144;
   }
   return result;
+}
+
+export function paddingNeeded(size: number) {
+  // align to record boundary
+  return Math.ceil(size / recordSize) * recordSize - size;
+}
+
+export function assertNever(_value: never): never {
+  throw new Error(`not never`);
 }
