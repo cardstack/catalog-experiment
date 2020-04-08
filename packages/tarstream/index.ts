@@ -12,7 +12,7 @@ import {
   formatTarNumber,
   recordSize,
 } from "./types";
-import constants from "./constants";
+import { DIRTYPE, NULL_CHAR } from "./constants";
 
 type State =
   | { name: "readyForNextFile" }
@@ -82,6 +82,14 @@ class TarSource implements UnderlyingSource<Uint8Array> {
         controller.enqueue(buffer);
         return;
       case "sentHeader":
+        if (this.state.currentFile.type === DIRTYPE) {
+          // it's a directory, there's nothing else to send
+          this.state = {
+            name: "sentUnpaddedFile",
+            paddingNeeded: 0,
+          };
+          return;
+        }
         if ("data" in this.state.currentFile) {
           // it's a buffer, so we can finish it right now
           console.log(
@@ -96,17 +104,20 @@ class TarSource implements UnderlyingSource<Uint8Array> {
           controller.enqueue(buffer);
           return;
         }
-        // start streaming the file
-        console.log(
-          `tar stream writing ${this.state.currentFile.name} to buffer of size ${this.state.currentFile.size} bytes`
-        );
-        this.state = {
-          name: "streamingFile",
-          reader: this.state.currentFile.stream.getReader(),
-          currentFile: this.state.currentFile,
-          bytesSent: 0,
-        };
-        return this.pull(controller);
+        if ("stream" in this.state.currentFile) {
+          // start streaming the file
+          console.log(
+            `tar stream writing ${this.state.currentFile.name} to buffer of size ${this.state.currentFile.size} bytes`
+          );
+          this.state = {
+            name: "streamingFile",
+            reader: this.state.currentFile.stream.getReader(),
+            currentFile: this.state.currentFile,
+            bytesSent: 0,
+          };
+          return this.pull(controller);
+        }
+        throw new Error(`bug: should not get here`);
       case "streamingFile":
         let chunk = await this.state.reader.read();
         if (chunk.done) {
@@ -165,8 +176,7 @@ function writeHeader(buffer: Uint8Array, file: FileEntry) {
   if (field) {
     // Patch checksum field
     let checksum = calculateChecksum(buffer, 0, true);
-    let value =
-      formatTarNumber(checksum, field[1] - 2) + constants.NULL_CHAR + " ";
+    let value = formatTarNumber(checksum, field[1] - 2) + NULL_CHAR + " ";
     currentOffset = field[2];
     for (let i = 0; i < value.length; i += 1) {
       // put bytes

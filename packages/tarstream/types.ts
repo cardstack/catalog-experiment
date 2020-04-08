@@ -1,8 +1,13 @@
-import constants from "./constants";
-
+import {
+  NULL_CHAR,
+  TMAGIC,
+  OLDGNU_MAGIC,
+  TPERMMASK,
+  TPERMALL,
+} from "./constants";
 const utf8 = new TextDecoder("utf-8");
 export const recordSize = 512;
-export const defaultFileMode = constants.TPERMALL; // rwxrwxrwx
+export const defaultFileMode = TPERMALL; // rwxrwxrwx
 export const defaultUid = 0; // root
 export const defaultGid = 0; // root
 
@@ -52,7 +57,11 @@ export interface BufferFileEntry extends BaseFileEntry {
   data: Uint8Array;
 }
 
-export type FileEntry = StreamFileEntry | BufferFileEntry;
+export interface DirectoryEntry extends BaseFileEntry {
+  type: 5; // DIRTYPE
+}
+
+export type FileEntry = StreamFileEntry | BufferFileEntry | DirectoryEntry;
 
 type PosixHeader = [
   string,
@@ -68,10 +77,10 @@ export const posixHeader: PosixHeader[] = [
     "name",
     100,
     0,
-    function(file, field) {
+    function (file, field) {
       return formatTarString(file.name, field[1]);
     },
-    function(buffer, offset, field) {
+    function (buffer, offset, field) {
       return parseTarString(buffer.slice(offset, offset + field[1]));
     },
   ],
@@ -79,14 +88,14 @@ export const posixHeader: PosixHeader[] = [
     "mode",
     8,
     100,
-    function(file, field) {
+    function (file, field) {
       let mode = file.mode || defaultFileMode;
-      mode = mode & constants.TPERMMASK;
+      mode = mode & TPERMMASK;
       return formatTarNumber(mode, field[1], defaultFileMode);
     },
-    function(buffer, offset, field) {
+    function (buffer, offset, field) {
       let result = parseTarNumber(buffer.slice(offset, offset + field[1]));
-      result &= constants.TPERMMASK;
+      result &= TPERMMASK;
       return result;
     },
   ],
@@ -94,10 +103,10 @@ export const posixHeader: PosixHeader[] = [
     "uid",
     8,
     108,
-    function(file, field) {
+    function (file, field) {
       return formatTarNumber(file.uid, field[1], defaultUid);
     },
-    function(buffer, offset, field) {
+    function (buffer, offset, field) {
       return parseTarNumber(buffer.slice(offset, offset + field[1]));
     },
   ],
@@ -105,10 +114,10 @@ export const posixHeader: PosixHeader[] = [
     "gid",
     8,
     116,
-    function(file, field) {
+    function (file, field) {
       return formatTarNumber(file.gid, field[1], defaultGid);
     },
-    function(buffer, offset, field) {
+    function (buffer, offset, field) {
       return parseTarNumber(buffer.slice(offset, offset + field[1]));
     },
   ],
@@ -116,16 +125,18 @@ export const posixHeader: PosixHeader[] = [
     "size",
     12,
     124,
-    function(file, field) {
+    function (file, field) {
       let size: number;
       if ("stream" in file) {
         size = file.size;
-      } else {
+      } else if ("data" in file) {
         size = file.data.length;
+      } else {
+        size = 0;
       }
       return formatTarNumber(size, field[1]);
     },
-    function(buffer, offset, field) {
+    function (buffer, offset, field) {
       return parseTarNumber(buffer.slice(offset, offset + field[1]));
     },
   ],
@@ -133,10 +144,10 @@ export const posixHeader: PosixHeader[] = [
     "modifyTime",
     12,
     136,
-    function(file, field) {
+    function (file, field) {
       return formatTarDateTime(file.modifyTime, field[1]);
     },
-    function(buffer, offset, field) {
+    function (buffer, offset, field) {
       return parseTarDateTime(buffer.slice(offset, offset + field[1]));
     },
   ],
@@ -144,10 +155,10 @@ export const posixHeader: PosixHeader[] = [
     "checksum",
     8,
     148,
-    function(_file, _field) {
+    function (_file, _field) {
       return "        "; // placeholder
     },
-    function(buffer, offset, field) {
+    function (buffer, offset, field) {
       return parseTarNumber(buffer.slice(offset, offset + field[1]));
     },
   ],
@@ -155,11 +166,11 @@ export const posixHeader: PosixHeader[] = [
     "type",
     1,
     156,
-    function(file, _field) {
+    function (file, _field) {
       // get last octal digit; 0 - regular file
       return "" + (toNumberWithDefault(file.type, 0) % 8);
     },
-    function(buffer, offset, _field) {
+    function (buffer, offset, _field) {
       return (parseInt(String.fromCharCode(buffer[offset]), 10) || 0) % 8;
     },
   ],
@@ -167,10 +178,10 @@ export const posixHeader: PosixHeader[] = [
     "linkName",
     100,
     157,
-    function(_file, _field) {
+    function (_file, _field) {
       return ""; // only regular files are supported
     },
-    function(buffer, offset, field) {
+    function (buffer, offset, field) {
       return parseTarString(buffer.slice(offset, offset + field[1]));
     },
   ],
@@ -178,17 +189,17 @@ export const posixHeader: PosixHeader[] = [
     "ustar",
     8,
     257,
-    function(_file, _field) {
-      return constants.TMAGIC; // magic + version
+    function (_file, _field) {
+      return TMAGIC; // magic + version
     },
-    function(buffer, offset, field) {
+    function (buffer, offset, field) {
       return fixUstarMagic(
         parseTarString(buffer.slice(offset, offset + field[1]), true)
       );
     },
     // function(file, field) {
     //   return (
-    //     file.ustar == constants.TMAGIC || file.ustar == constants.OLDGNU_MAGIC
+    //     file.ustar == TMAGIC || file.ustar == OLDGNU_MAGIC
     //   );
     // },
   ],
@@ -196,10 +207,10 @@ export const posixHeader: PosixHeader[] = [
     "owner",
     32,
     265,
-    function(file, field) {
+    function (file, field) {
       return formatTarString(file.owner, field[1]);
     },
-    function(buffer, offset, field) {
+    function (buffer, offset, field) {
       return parseTarString(buffer.slice(offset, offset + field[1]));
     },
   ],
@@ -207,10 +218,10 @@ export const posixHeader: PosixHeader[] = [
     "group",
     32,
     297,
-    function(file, field) {
+    function (file, field) {
       return formatTarString(file.group, field[1]);
     },
-    function(buffer, offset, field) {
+    function (buffer, offset, field) {
       return parseTarString(buffer.slice(offset, offset + field[1]));
     },
   ],
@@ -218,10 +229,10 @@ export const posixHeader: PosixHeader[] = [
     "majorNumber",
     8,
     329,
-    function(_file, _field) {
+    function (_file, _field) {
       return ""; // only regular files are supported
     },
-    function(buffer, offset, field) {
+    function (buffer, offset, field) {
       return parseTarNumber(buffer.slice(offset, offset + field[1]));
     },
   ],
@@ -229,10 +240,10 @@ export const posixHeader: PosixHeader[] = [
     "minorNumber",
     8,
     337,
-    function(_file, _field) {
+    function (_file, _field) {
       return ""; // only regular files are supported
     },
-    function(buffer, offset, field) {
+    function (buffer, offset, field) {
       return parseTarNumber(buffer.slice(offset, offset + field[1]));
     },
   ],
@@ -240,10 +251,10 @@ export const posixHeader: PosixHeader[] = [
     "prefix",
     131,
     345,
-    function(file, field) {
+    function (file, field) {
       return formatTarString(file.prefix, field[1]);
     },
-    function(buffer, offset, field) {
+    function (buffer, offset, field) {
       return parseTarString(buffer.slice(offset, offset + field[1]));
     },
   ],
@@ -251,10 +262,10 @@ export const posixHeader: PosixHeader[] = [
     "accessTime",
     12,
     476,
-    function(file, field) {
+    function (file, field) {
       return formatTarDateTime(file.accessTime, field[1]);
     },
-    function(buffer, offset, field) {
+    function (buffer, offset, field) {
       return parseTarDateTime(buffer.slice(offset, offset + field[1]));
     },
   ],
@@ -262,16 +273,16 @@ export const posixHeader: PosixHeader[] = [
     "createTime",
     12,
     488,
-    function(file, field) {
+    function (file, field) {
       return formatTarDateTime(file.createTime, field[1]);
     },
-    function(buffer, offset, field) {
+    function (buffer, offset, field) {
       return parseTarDateTime(buffer.slice(offset, offset + field[1]));
     },
   ],
 ];
 
-export const effectiveHeaderSize = (function(header) {
+export const effectiveHeaderSize = (function (header) {
   let last = header[header.length - 1];
   return last[2] + last[1]; // offset + size
 })(posixHeader);
@@ -280,26 +291,26 @@ function fixUstarMagic(value: string) {
   if (value.length == 8) {
     let chars = value.split("");
 
-    if (chars[5] == constants.NULL_CHAR) {
+    if (chars[5] == NULL_CHAR) {
       // TMAGIC ?
-      if (chars[6] == " " || chars[6] == constants.NULL_CHAR) {
+      if (chars[6] == " " || chars[6] == NULL_CHAR) {
         chars[6] = "0";
       }
-      if (chars[7] == " " || chars[7] == constants.NULL_CHAR) {
+      if (chars[7] == " " || chars[7] == NULL_CHAR) {
         chars[7] = "0";
       }
       let joinedChars = chars.join("");
-      return joinedChars == constants.TMAGIC ? joinedChars : value;
-    } else if (chars[7] == constants.NULL_CHAR) {
+      return joinedChars == TMAGIC ? joinedChars : value;
+    } else if (chars[7] == NULL_CHAR) {
       // OLDGNU_MAGIC ?
-      if (chars[5] == constants.NULL_CHAR) {
+      if (chars[5] == NULL_CHAR) {
         chars[5] = " ";
       }
-      if (chars[6] == constants.NULL_CHAR) {
+      if (chars[6] == NULL_CHAR) {
         chars[6] = " ";
       }
       let joinedChars = chars.join("");
-      return joinedChars == constants.OLDGNU_MAGIC ? joinedChars : value;
+      return joinedChars == OLDGNU_MAGIC ? joinedChars : value;
     }
   }
   return value;
@@ -314,7 +325,7 @@ export function formatTarString(
     value = "";
   }
   value = ("" + value).substr(0, length);
-  return value + constants.NULL_CHAR;
+  return value + NULL_CHAR;
 }
 
 export function formatTarNumber(
@@ -329,7 +340,7 @@ export function formatTarNumber(
   while (valueAsString.length < length) {
     valueAsString = "0" + valueAsString;
   }
-  return valueAsString + constants.NULL_CHAR;
+  return valueAsString + NULL_CHAR;
 }
 
 function toNumberWithDefault(
@@ -372,7 +383,7 @@ export function parseTarString(
   if (returnUnprocessed) {
     return result;
   }
-  let index = result.indexOf(constants.NULL_CHAR);
+  let index = result.indexOf(NULL_CHAR);
   return index >= 0 ? result.substr(0, index) : result;
 }
 
@@ -401,7 +412,7 @@ export function calculateChecksum(
   let skipFrom = 0;
   let skipTo = 0;
   if (skipChecksum) {
-    posixHeader.every(function(field) {
+    posixHeader.every(function (field) {
       if (field[0] == "checksum") {
         skipFrom = from + field[2];
         skipTo = skipFrom + field[1];

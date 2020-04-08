@@ -1,4 +1,4 @@
-const { stat, open, readFileSync } = Deno;
+const { stat, open } = Deno;
 import { walkSync } from "deno/std/fs/mod";
 import { posix } from "deno/std/path/mod";
 import { contentType, lookup } from "mime-types";
@@ -6,6 +6,7 @@ import { assert } from "deno/std/testing/asserts";
 import { listenAndServe, ServerRequest, Response } from "deno/std/http/mod";
 import { Tar } from "tarstream";
 import { DenoStreamToDOM, DOMToDenoStream } from "./stream-shims";
+import { DIRTYPE } from "tarstream/constants";
 
 const encoder = new TextEncoder();
 
@@ -104,37 +105,37 @@ async function streamFileSystem(
   headers.set("content-type", "application/x-tar");
 
   let tar = new Tar();
-  let files: { file: Deno.File; filename: string }[] = [];
+  let files: Deno.File[] = [];
   for (let { filename, info } of walkSync(path)) {
-    // TODO use a stream instead of writing the whole buffer
-
-    // let file = await open(path);
-    // files.push({ file, filename });
-    console.log(`Adding file ${filename} to tar`);
-    tar.addFile({
-      name: filename.substring(root.length),
-      // stream: new DenoStreamToDOM(file),
-      // size: info.size,
-      data: readFileSync(filename),
-    });
+    if (info.isDirectory()) {
+      console.log(`Adding directory ${filename} to tar`);
+      tar.addFile({
+        name: filename.substring(root.length),
+        type: DIRTYPE,
+      });
+    } else {
+      let file = await open(filename);
+      files.push(file);
+      console.log(`Adding file ${filename} to tar`);
+      tar.addFile({
+        name: filename.substring(root.length),
+        stream: new DenoStreamToDOM(file),
+        size: info.size,
+      });
+    }
   }
-
-  let stream = tar.finish();
-  console.log("finalized tar");
 
   const response = {
     status: 200,
-    body: new DOMToDenoStream(stream),
+    body: new DOMToDenoStream(tar.finish()),
     headers,
   };
 
   return {
     response,
     close: () => {
-      for (let { file, filename } of files) {
-        console.log(`closing file ${filename}`);
-        // TODO use this after we start using streams
-        // file.close();
+      for (let file of files) {
+        file.close();
       }
     },
   };
