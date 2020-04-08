@@ -17,7 +17,7 @@ import { DIRTYPE, NULL_CHAR } from "./constants";
 type State =
   | { name: "readyForNextFile" }
   | { name: "sentHeader"; currentFile: FileEntry }
-  | { name: "sentUnpaddedFile"; paddingNeeded: number }
+  | { name: "sentUnpaddedFile"; paddingNeeded: number; close?: () => void }
   | {
       name: "streamingFile";
       reader: ReadableStreamDefaultReader<Uint8Array>;
@@ -130,6 +130,7 @@ class TarSource implements UnderlyingSource<Uint8Array> {
           this.state = {
             name: "sentUnpaddedFile",
             paddingNeeded: paddingNeeded(this.state.bytesSent),
+            close: this.state.currentFile.close,
           };
           return this.pull(controller);
         }
@@ -143,6 +144,9 @@ class TarSource implements UnderlyingSource<Uint8Array> {
         controller.enqueue(chunk.value);
         return;
       case "sentUnpaddedFile":
+        if (typeof this.state.close === "function") {
+          this.state.close();
+        }
         if (this.state.paddingNeeded === 0) {
           this.state = { name: "readyForNextFile" };
           return this.pull(controller);

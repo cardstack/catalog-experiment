@@ -36,7 +36,6 @@ export default class FileHostingServer {
         const fsPath = posix.join(this.directory, normalizedUrl);
 
         let response: Response | undefined;
-        let close: () => void | undefined;
         try {
           console.log(
             `Handling URL: ${normalizedUrl}, with accept header: ${req.headers.get(
@@ -56,10 +55,7 @@ export default class FileHostingServer {
                 ?.split(",")
                 .includes("application/x-tar")
             ) {
-              ({ response, close } = await streamFileSystem(
-                this.directory,
-                fsPath
-              ));
+              response = await streamFileSystem(this.directory, fsPath);
             } else {
               const info = await stat(fsPath);
               if (info.isDirectory()) {
@@ -85,8 +81,6 @@ export default class FileHostingServer {
             // close files like this: https://github.com/denoland/deno/issues/3982
             if (response && isCloser(response.body)) {
               response.body.close();
-            } else if (typeof close! === "function") {
-              close();
             }
           }
         }
@@ -95,17 +89,13 @@ export default class FileHostingServer {
   }
 }
 
-async function streamFileSystem(
-  root: string,
-  path: string
-): Promise<{ response: Response; close: () => void }> {
+async function streamFileSystem(root: string, path: string): Promise<Response> {
   console.log(`streaming filesystem: ${path}`);
 
   const headers = new Headers();
   headers.set("content-type", "application/x-tar");
 
   let tar = new Tar();
-  let files: Deno.File[] = [];
   for (let { filename, info } of walkSync(path)) {
     if (info.isDirectory()) {
       console.log(`Adding directory ${filename} to tar`);
@@ -115,29 +105,20 @@ async function streamFileSystem(
       });
     } else {
       let file = await open(filename);
-      files.push(file);
       console.log(`Adding file ${filename} to tar`);
       tar.addFile({
         name: filename.substring(root.length),
         stream: new DenoStreamToDOM(file),
         size: info.size,
+        close: () => file.close(),
       });
     }
   }
 
-  const response = {
+  return {
     status: 200,
     body: new DOMToDenoStream(tar.finish()),
     headers,
-  };
-
-  return {
-    response,
-    close: () => {
-      for (let file of files) {
-        file.close();
-      }
-    },
   };
 }
 

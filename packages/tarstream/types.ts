@@ -51,6 +51,7 @@ interface BaseFileEntry {
 export interface StreamFileEntry extends BaseFileEntry {
   stream: ReadableStream<Uint8Array>;
   size: number;
+  close?: () => void;
 }
 
 export interface BufferFileEntry extends BaseFileEntry {
