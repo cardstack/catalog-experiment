@@ -5,7 +5,7 @@ import {
   ReadableStreamDefaultReader,
   ReadableStreamAsyncIterator,
   ReadResult,
-} from "./vendor/web-streams";
+} from "../../vendor/web-streams";
 
 // deno-types are described here: https://github.com/denoland/deno/blob/92f1c71a6fde3701224f213f48e14776f9f8adee/std/manual.md#compiler-hint
 // Hmmmm, deno doesn't seem to like the IFFE that web-stream utilizes for the

@@ -126,7 +126,10 @@ export class FileDaemonClient {
         accept: "application/x-tar",
       },
     });
-    let tarStream = res.body;
+    // let tarStream = res.body;
+    let tarBlob = await res.blob();
+    console.log(`received tar ${tarBlob.size} bytes`);
+
     // TODO pass the tar stream into the FileSystem instance, where we can
     // decode the tar stream to create the resulting filesystem
   }

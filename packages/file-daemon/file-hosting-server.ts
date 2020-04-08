@@ -1,11 +1,11 @@
-const { stat, open } = Deno;
+const { stat, open, readFileSync } = Deno;
 import { walkSync } from "deno/std/fs/mod";
 import { posix } from "deno/std/path/mod";
 import { contentType, lookup } from "mime-types";
 import { assert } from "deno/std/testing/asserts";
 import { listenAndServe, ServerRequest, Response } from "deno/std/http/mod";
 import { Tar } from "tarstream";
-import { DenoStreamToDOM } from "./stream-shims";
+import { DenoStreamToDOM, DOMToDenoStream } from "./stream-shims";
 
 const encoder = new TextEncoder();
 
@@ -35,6 +35,7 @@ export default class FileHostingServer {
         const fsPath = posix.join(this.directory, normalizedUrl);
 
         let response: Response | undefined;
+        let close: () => void | undefined;
         try {
           console.log(
             `Handling URL: ${normalizedUrl}, with accept header: ${req.headers.get(
@@ -54,7 +55,10 @@ export default class FileHostingServer {
                 ?.split(",")
                 .includes("application/x-tar")
             ) {
-              response = await streamFileSystem(this.directory, fsPath);
+              ({ response, close } = await streamFileSystem(
+                this.directory,
+                fsPath
+              ));
             } else {
               const info = await stat(fsPath);
               if (info.isDirectory()) {
@@ -80,6 +84,8 @@ export default class FileHostingServer {
             // close files like this: https://github.com/denoland/deno/issues/3982
             if (response && isCloser(response.body)) {
               response.body.close();
+            } else if (typeof close! === "function") {
+              close();
             }
           }
         }
@@ -88,32 +94,50 @@ export default class FileHostingServer {
   }
 }
 
-async function streamFileSystem(root: string, path: string): Promise<Response> {
+async function streamFileSystem(
+  root: string,
+  path: string
+): Promise<{ response: Response; close: () => void }> {
   console.log(`streaming filesystem: ${path}`);
 
   const headers = new Headers();
   headers.set("content-type", "application/x-tar");
 
-  // TODO need to walk the file system getting the file sizes and file readers
-  // to pass into the tarstream. (TODO need to think thru when to close files
-  // that we open for streaming into the tarstream).
-
   let tar = new Tar();
+  let files: { file: Deno.File; filename: string }[] = [];
   for (let { filename, info } of walkSync(path)) {
+    // TODO use a stream instead of writing the whole buffer
+
+    // let file = await open(path);
+    // files.push({ file, filename });
+    console.log(`Adding file ${filename} to tar`);
     tar.addFile({
       name: filename.substring(root.length),
-      stream: new DenoStreamToDOM(await open(path)),
-      size: info.size,
+      // stream: new DenoStreamToDOM(file),
+      // size: info.size,
+      data: readFileSync(filename),
     });
   }
-  // then finalize the tar
-  // figure out how we should close the files
 
-  const res = {
+  let stream = tar.finish();
+  console.log("finalized tar");
+
+  const response = {
     status: 200,
+    body: new DOMToDenoStream(stream),
     headers,
   };
-  return res;
+
+  return {
+    response,
+    close: () => {
+      for (let { file, filename } of files) {
+        console.log(`closing file ${filename}`);
+        // TODO use this after we start using streams
+        // file.close();
+      }
+    },
+  };
 }
 
 async function serveFile(filePath: string): Promise<Response> {

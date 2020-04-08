@@ -1,4 +1,10 @@
 import {
+  ReadableStream,
+  UnderlyingSource,
+  ReadableStreamDefaultReader,
+  ReadableStreamDefaultController,
+} from "../../vendor/web-streams";
+import {
   FileEntry,
   StreamFileEntry,
   posixHeader,
@@ -41,11 +47,13 @@ export class Tar {
   }
 
   private get source(): UnderlyingSource<Uint8Array> {
+    console.log("starting tar file stream");
     return new TarSource(this.queue);
   }
 }
 
 class TarSource implements UnderlyingSource<Uint8Array> {
+  private bytesSent = 0;
   private state: State = { name: "readyForNextFile" };
   constructor(private queue: FileEntry[]) {}
   start(_controller: ReadableStreamDefaultController<Uint8Array>) {
@@ -61,26 +69,37 @@ class TarSource implements UnderlyingSource<Uint8Array> {
         if (!file) {
           // at the end we have to emit two empty records
           controller.enqueue(new Uint8Array(recordSize * 2));
+          this.bytesSent += recordSize * 2;
           controller.close();
+          console.log(`streamed ${this.bytesSent} bytes`);
           return;
         }
+        console.log(`tar stream starting ${file.name}`);
         let buffer = new Uint8Array(recordSize);
         writeHeader(buffer, file);
         this.state = { name: "sentHeader", currentFile: file };
+        this.bytesSent += buffer.length;
         controller.enqueue(buffer);
         return;
       case "sentHeader":
         if ("data" in this.state.currentFile) {
           // it's a buffer, so we can finish it right now
+          console.log(
+            `tar stream writing ${this.state.currentFile.name} to buffer of size ${this.state.currentFile.data.length} bytes`
+          );
           let buffer = this.state.currentFile.data;
           this.state = {
             name: "sentUnpaddedFile",
             paddingNeeded: paddingNeeded(buffer.length),
           };
+          this.bytesSent += buffer.length;
           controller.enqueue(buffer);
           return;
         }
         // start streaming the file
+        console.log(
+          `tar stream writing ${this.state.currentFile.name} to buffer of size ${this.state.currentFile.size} bytes`
+        );
         this.state = {
           name: "streamingFile",
           reader: this.state.currentFile.stream.getReader(),
@@ -109,6 +128,7 @@ class TarSource implements UnderlyingSource<Uint8Array> {
           currentFile: this.state.currentFile,
           bytesSent: this.state.bytesSent + chunk.value.length,
         };
+        this.bytesSent += chunk.value.length;
         controller.enqueue(chunk.value);
         return;
       case "sentUnpaddedFile":
@@ -118,6 +138,7 @@ class TarSource implements UnderlyingSource<Uint8Array> {
         }
         let padding = new Uint8Array(this.state.paddingNeeded);
         this.state = { name: "readyForNextFile" };
+        this.bytesSent += padding.length;
         controller.enqueue(padding);
         return;
       default:
