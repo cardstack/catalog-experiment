@@ -3,6 +3,7 @@
   "license": "MIT",
   "version": "0.0.1",
   "scripts": {
-    "start": "deno --allow-net --allow-read ../file-daemon/dist/main.js -d ."
+    "start": "node ../file-daemon/dist/main.js -d .",
+    "start-src": "node ../file-daemon -d ."
   }
 }

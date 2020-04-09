@@ -1,3 +1,9 @@
 /node_modules
 /packages/*/node_modules
 /packages/*/dist
+/packages/file-daemon/**/*.d.ts
+/packages/file-daemon/**/*.js
+/packages/file-daemon/**/*.js.map
+/packages/tarstream/**/*.d.ts
+/packages/tarstream/**/*.js
+/packages/tarstream/**/*.js.map

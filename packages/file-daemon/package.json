@@ -3,12 +3,21 @@
   "license": "MIT",
   "version": "0.0.1",
   "dependencies": {
+    "@types/fs-extra": "^8.1.0",
+    "@types/http-proxy": "^1.17.4",
     "@types/mime-types": "^2.1.0",
-    "deno": "habdelra/deno#cad1cf19cfa594c1e24115384d44e41bb21d8625",
+    "@types/ws": "^7.2.3",
+    "@types/yargs": "^15.0.4",
+    "esm": "^3.2.25",
+    "fs-extra": "^9.0.0",
+    "http-proxy": "^1.18.0",
     "http-server": "^0.12.1",
     "mime-types": "^2.1.26",
     "tarstream": "0.0.1",
-    "typescript": "^3.8.3"
+    "typescript": "^3.8.3",
+    "walk-sync": "^2.0.2",
+    "ws": "^7.2.3",
+    "yargs": "^15.3.1"
   },
   "scripts": {
     "start": "webpack --watch",

@@ -4,6 +4,7 @@ const { CleanWebpackPlugin } = require("clean-webpack-plugin");
 
 module.exports = {
   mode: "development",
+  target: "node",
   devtool: "inline-source-map",
   entry: {
     main: "./file-daemon.ts",
@@ -15,10 +16,6 @@ module.exports = {
   },
   resolve: {
     extensions: [".wasm", ".mjs", ".ts", ".js", ".json"],
-  },
-  node: {
-    // for our mime-types npm pkg
-    path: true,
   },
   module: {
     rules: [

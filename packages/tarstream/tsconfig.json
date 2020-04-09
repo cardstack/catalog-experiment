@@ -11,9 +11,6 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noEmit": true,
-    "lib": [
-      "ES2020","ScriptHost", "WebWorker", "WebWorker.ImportScripts"
-    ]
+    "lib": ["ES2020", "ScriptHost", "WebWorker", "WebWorker.ImportScripts"]
   }
 }

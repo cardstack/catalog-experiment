@@ -1,20 +1,13 @@
-// @deno-types="./vendor/web-streams/index.d.ts"
+import { Readable } from "stream";
 import {
-  ReadableStream,
-  ReadableStreamBYOBReader,
-  ReadableStreamDefaultReader,
   ReadableStreamAsyncIterator,
   ReadResult,
 } from "../../vendor/web-streams";
 
-// deno-types are described here: https://github.com/denoland/deno/blob/92f1c71a6fde3701224f213f48e14776f9f8adee/std/manual.md#compiler-hint
-// Hmmmm, deno doesn't seem to like the IFFE that web-stream utilizes for the
-// ponyfill.
-
-export class DenoStreamToDOM implements ReadableStream {
+export class NodeReadableToDOM implements ReadableStream {
   private _locked = false;
 
-  constructor(private denoReader: Deno.Reader) {}
+  constructor(private readable: Readable) {}
 
   get locked() {
     return this._locked;
@@ -30,7 +23,7 @@ export class DenoStreamToDOM implements ReadableStream {
     _opts?: any
   ): ReadableStreamDefaultReader<Uint8Array> | ReadableStreamBYOBReader {
     this._locked = true;
-    return new DenoStreamToDOMReader(this.denoReader, () => {
+    return new NodeReadableToDOMReader(this.readable, () => {
       this._locked = false;
     });
   }
@@ -56,30 +49,71 @@ export class DenoStreamToDOM implements ReadableStream {
   }
 }
 
-class DenoStreamToDOMReader implements ReadableStreamDefaultReader<Uint8Array> {
-  constructor(private denoReader: Deno.Reader, private unlock: () => void) {}
+class NodeReadableToDOMReader
+  implements ReadableStreamDefaultReader<Uint8Array> {
+  private readyToRead?: () => void;
+  private doneReading!: () => void;
+  private interruptReading!: (error: Error) => void;
+  // I'm racing the finished and error promises instead of creating a closed
+  // promise from the "close" event so that there is no ambiguity between the
+  // "close" event and the "end" event.
+  private errorReceived!: () => void;
+
+  private isFinished = false;
+  private finishedPromise: Promise<void>;
+  private errorPromise: Promise<void>;
+
+  constructor(private readable: Readable, private unlock: () => void) {
+    this.finishedPromise = new Promise((res, rej) => {
+      this.doneReading = res;
+      this.interruptReading = rej;
+    });
+    this.errorPromise = new Promise((res) => (this.errorReceived = res));
+    this.readable.on("error", (error: Error) => {
+      this.errorReceived();
+      this.interruptReading(error);
+    });
+    this.readable.on("end", () => {
+      this.isFinished = true;
+      this.doneReading();
+    });
+    this.readable.on("readable", () => {
+      if (this.readyToRead) {
+        this.readyToRead();
+      }
+    });
+  }
 
   async cancel(): Promise<void> {
-    throw new Error(`unimplemented`);
+    this.readable.destroy(new Error("client interrupted stream"));
   }
 
   async read(): Promise<ReadResult<Uint8Array>> {
-    const bufferSize = 4096;
-    let buffer = new Uint8Array(bufferSize);
-    let result = await this.denoReader.read(buffer);
-    if (typeof result === "number") {
-      if (result === bufferSize) {
-        return { value: buffer, done: false };
-      } else {
-        return { value: buffer.subarray(0, result), done: false };
-      }
+    let chunk = await this.readBytes();
+    if (chunk) {
+      return { value: chunk, done: false };
     } else {
       return { value: undefined, done: true };
     }
   }
 
+  private async readBytes(): Promise<Buffer | null> {
+    let waitForReadable = new Promise((res) => (this.readyToRead = res));
+    let buf = this.readable.read();
+    if (buf) {
+      return buf;
+    } else {
+      await Promise.race([waitForReadable, this.finishedPromise]);
+      if (this.isFinished) {
+        return null;
+      } else {
+        return this.readBytes();
+      }
+    }
+  }
+
   get closed(): Promise<void> {
-    throw new Error("unimplemented");
+    return Promise.race([this.finishedPromise, this.errorPromise]);
   }
 
   releaseLock() {
@@ -87,33 +121,24 @@ class DenoStreamToDOMReader implements ReadableStreamDefaultReader<Uint8Array> {
   }
 }
 
-export class DOMToDenoStream implements Deno.Reader {
+export class DOMToNodeReadable extends Readable {
   private reader: ReadableStreamDefaultReader<Uint8Array>;
-  private pendingBuffer: Uint8Array | undefined;
 
-  constructor(stream: ReadableStream) {
+  constructor(stream: ReadableStream, options = {}) {
+    super(options);
     this.reader = stream.getReader();
   }
-  async read(outputBuffer: Uint8Array): Promise<number | typeof Deno.EOF> {
-    let sourceBuffer: Uint8Array;
-    if (this.pendingBuffer) {
-      sourceBuffer = this.pendingBuffer;
-      this.pendingBuffer = undefined;
-    } else {
-      let chunk = await this.reader.read();
-      if (chunk.done) {
-        return Deno.EOF;
-      }
-      sourceBuffer = chunk.value;
-    }
 
-    if (sourceBuffer.length <= outputBuffer.length) {
-      outputBuffer.set(sourceBuffer, 0);
-      return sourceBuffer.length;
-    } else {
-      outputBuffer.set(sourceBuffer.subarray(0, outputBuffer.length), 0);
-      this.pendingBuffer = sourceBuffer.subarray(outputBuffer.length);
-      return outputBuffer.length;
-    }
+  _read() {
+    this.reader
+      .read()
+      .then((chunk) => {
+        if (chunk.done) {
+          this.push(null);
+        } else {
+          this.push(chunk.value);
+        }
+      })
+      .catch((err) => this.destroy(err));
   }
 }

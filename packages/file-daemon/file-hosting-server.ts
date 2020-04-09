@@ -1,180 +1,128 @@
-const { stat, open } = Deno;
-import { walkSync } from "deno/std/fs/mod";
-import { posix } from "deno/std/path/mod";
+import { join, resolve } from "path";
+import http from "http";
+import httpProxy from "http-proxy";
+import { statSync } from "fs-extra";
+import walkSync from "walk-sync";
+import { createReadStream, existsSync } from "fs";
+import { Readable } from "stream";
 import { contentType, lookup } from "mime-types";
-import { assert } from "deno/std/testing/asserts";
-import { listenAndServe, ServerRequest, Response } from "deno/std/http/mod";
 import { Tar } from "tarstream";
-import { DenoStreamToDOM, DOMToDenoStream } from "./stream-shims";
 import { DIRTYPE } from "tarstream/constants";
+import { NodeReadableToDOM, DOMToNodeReadable } from "./stream-shims";
 
-const encoder = new TextEncoder();
+const webpackDevServer = "http://localhost:8080";
 
 export default class FileHostingServer {
-  addr: string;
   constructor(
-    port: string | number,
+    private port: number,
     private directory: string,
     private corsEnabled = true
-  ) {
-    this.addr = `0.0.0.0:${port}`;
-  }
+  ) {}
 
-  async start() {
-    console.log(`HTTP server listening on http://${this.addr}/`);
-    await listenAndServe(
-      String(this.addr),
-      async (req: ServerRequest): Promise<void> => {
-        let normalizedUrl = posix.normalize(req.url);
-        try {
-          normalizedUrl = decodeURIComponent(normalizedUrl);
-        } catch (e) {
-          if (!(e instanceof URIError)) {
-            throw e;
-          }
+  start() {
+    let proxy = httpProxy.createProxyServer();
+
+    console.log(`HTTP server listening on port: ${this.port}`);
+    const server = http.createServer((req, res) => {
+      let path = req.url!;
+      console.log(
+        `Handling URL: ${path}, with accept header: ${req.headers.accept}`
+      );
+
+      try {
+        let filePath = resolve(join(this.directory, decodeURIComponent(path)));
+        if (filePath.indexOf(this.directory) !== 0) {
+          res.statusCode = 403;
+          res.end();
+          return;
         }
-        const fsPath = posix.join(this.directory, normalizedUrl);
 
-        let response: Response | undefined;
-        try {
-          console.log(
-            `Handling URL: ${normalizedUrl}, with accept header: ${req.headers.get(
-              "accept"
-            )}`
+        if (this.corsEnabled) {
+          res.setHeader("access-control-allow-origin", "*");
+          res.setHeader(
+            "access-control-allow-headers",
+            "Origin, X-Requested-With, Content-Type, Accept, Range"
           );
-          if (["/service-worker.js"].includes(normalizedUrl)) {
-            let originRes = await fetch(
-              `http://localhost:8080${normalizedUrl}`
-            );
-            response = originRes;
-          } else {
-            if (
-              req.headers.has("accept") &&
-              req.headers
-                .get("accept")
-                ?.split(",")
-                .includes("application/x-tar")
-            ) {
-              response = await streamFileSystem(this.directory, fsPath);
+        }
+        if (
+          req.headers.accept &&
+          req.headers.accept.split(",").includes("application/x-tar")
+        ) {
+          res.setHeader("content-type", "application/x-tar");
+          streamFileSystem(this.directory, filePath).pipe(res);
+        } else {
+          if (existsSync(filePath)) {
+            let stat = statSync(filePath);
+            if (stat.isDirectory()) {
+              serveFile(res, join(filePath, "index.html"));
             } else {
-              const info = await stat(fsPath);
-              if (info.isDirectory()) {
-                response = await serveFile(posix.join(fsPath, "index.html"));
-              } else if (info.isFile()) {
-                response = await serveFile(fsPath);
-              }
+              serveFile(res, filePath);
             }
-          }
-        } catch (e) {
-          console.error(e.message);
-          response = await serveFallback(e);
-        } finally {
-          try {
-            if (this.corsEnabled) {
-              assert(response);
-              setCORS(response);
-            }
-            serverLog(req, response!);
-            await req.respond(response!);
-          } finally {
-            // Note that there is an open issue in Deno around having to manually
-            // close files like this: https://github.com/denoland/deno/issues/3982
-            if (response && isCloser(response.body)) {
-              response.body.close();
-            }
+          } else {
+            proxy.web(req, res, { target: webpackDevServer });
           }
         }
+      } catch (e) {
+        console.error(
+          `Unexpected error serving ${path}: ${e.message} ${e.stack}`
+        );
+        res.statusCode = 500;
+        res.end(e.message);
+      } finally {
+        serverLog(req, res);
       }
-    );
+    });
+    server.listen(this.port);
   }
 }
 
-async function streamFileSystem(root: string, path: string): Promise<Response> {
+function streamFileSystem(root: string, path: string): Readable {
   console.log(`streaming filesystem: ${path}`);
 
-  const headers = new Headers();
-  headers.set("content-type", "application/x-tar");
-
   let tar = new Tar();
-  for (let { filename, info } of walkSync(path)) {
-    if (info.isDirectory()) {
-      console.log(`Adding directory ${filename} to tar`);
-      tar.addFile({
-        name: filename.substring(root.length),
-        type: DIRTYPE,
-      });
+  // walk sync ignores the current directory, so we add that first
+  console.log(`Adding directory ${path} to tar`);
+  tar.addFile({ name: "/", type: DIRTYPE });
+  for (let entry of walkSync.entries(path)) {
+    let { fullPath, size } = entry;
+    let relativePath = fullPath.substring(root.length);
+    if (entry.isDirectory()) {
+      console.log(`Adding directory ${fullPath} to tar`);
+      tar.addFile({ name: relativePath, type: DIRTYPE });
     } else {
-      // we should not open the file until we are ready to start streaming it
-      let file = await open(filename);
-      console.log(`Adding file ${filename} to tar`);
+      //TODO: we should not open the file until we are ready to start streaming it
+      let readStream = createReadStream(fullPath);
+
+      console.log(`Adding file ${fullPath} to tar`);
       tar.addFile({
-        name: filename.substring(root.length),
-        stream: new DenoStreamToDOM(file), // instead of passing in a stream pass in a closure that will open the steam when it needs to be read
+        name: relativePath,
+        //TODO: instead of passing in a stream pass in a closure that will open
+        //the steam when it needs to be read
+        stream: new NodeReadableToDOM(readStream),
+        size,
         // move open and closing into the DenoStreamToDOM
-        size: info.size,
-        close: () => file.close(),
+        close: () => readStream.close(),
       });
     }
   }
 
-  return {
-    status: 200,
-    // TODO let's not wait until we call finish to start streaming, start
-    // streaming when add file is called. this means that when we get to teh end
-    // of the queue, we need to keep waitting in case a new file is added--needs
-    // a new state in our state machine
-    body: new DOMToDenoStream(tar.finish()),
-    headers,
-  };
+  // TODO let's not wait until we call finish to start streaming, start
+  // streaming when add file is called. this means that when we get to teh end
+  // of the queue, we need to keep waitting in case a new file is added--needs a
+  // new state in our state machine
+
+  return new DOMToNodeReadable(tar.finish());
 }
 
-async function serveFile(filePath: string): Promise<Response> {
-  const [file, fileInfo] = await Promise.all([open(filePath), stat(filePath)]);
-  const headers = new Headers();
-  let mime = lookup(filePath) || "application/octet-stream";
-  headers.set("content-length", fileInfo.size.toString());
-  headers.set("content-type", contentType(mime) as Exclude<string, false>);
-
-  const res = {
-    status: 200,
-    body: file,
-    headers,
-  };
-  return res;
+function serveFile(res: http.ServerResponse, path: string) {
+  let mime = lookup(path) || "application/octet-stream";
+  res.setHeader("content-length", statSync(path).size);
+  res.setHeader("content-type", contentType(mime) as Exclude<string, false>);
+  createReadStream(path).pipe(res);
 }
 
-async function serveFallback(e: Error): Promise<Response> {
-  if (e instanceof Deno.errors.NotFound) {
-    return Promise.resolve({
-      status: 404,
-      body: encoder.encode("Not found"),
-    });
-  } else {
-    return Promise.resolve({
-      status: 500,
-      body: encoder.encode("Internal server error"),
-    });
-  }
-}
-
-function setCORS(res: Response): void {
-  if (!res.headers) {
-    res.headers = new Headers();
-  }
-  res.headers.append("access-control-allow-origin", "*");
-  res.headers.append(
-    "access-control-allow-headers",
-    "Origin, X-Requested-With, Content-Type, Accept, Range"
-  );
-}
-
-function serverLog(req: ServerRequest, res: Response): void {
+function serverLog(req: http.IncomingMessage, res: http.ServerResponse): void {
   const d = new Date().toISOString();
   const dateFmt = `[${d.slice(0, 10)} ${d.slice(11, 19)}]`;
-  const s = `${dateFmt} "${req.method} ${req.url} ${req.proto}" ${res.status}`;
-  console.log(s);
-}
-
-function isCloser(object: any): object is Deno.Closer {
-  return "close" in object;
+  console.log(`${dateFmt} "${req.method} ${req.url}" ${res.statusCode}`);
 }

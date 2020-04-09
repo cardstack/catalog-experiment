@@ -1,11 +1,3 @@
-// TODO move these pony fills into the file-daemon so that browsers that know
-// about Readable stream aren't required to use the pony fill
-import {
-  ReadableStream,
-  UnderlyingSource,
-  ReadableStreamDefaultReader,
-  ReadableStreamDefaultController,
-} from "../../vendor/web-streams";
 import {
   FileEntry,
   StreamFileEntry,
@@ -127,7 +119,7 @@ class TarSource implements UnderlyingSource<Uint8Array> {
         if (chunk.done) {
           if (this.state.bytesSent !== this.state.currentFile.size) {
             throw new Error(
-              `file size mismatch: you said ${this.state.currentFile} is ` +
+              `file size mismatch: you said file is ` +
                 `${this.state.currentFile.size} bytes, but streamed ${this.state.bytesSent} bytes`
             );
           }

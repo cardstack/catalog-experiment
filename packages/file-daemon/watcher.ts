@@ -1,17 +1,17 @@
-import { WebSocket } from "deno/std/ws/mod";
-import { walkSync } from "deno/std/fs/mod";
+import WebSocket from "ws";
+import walkSync from "walk-sync";
 import { WatchInfo, FileInfo } from "./interfaces";
 
 interface DirectoryMapEntry {
   hash: string;
-  info: Deno.FileInfo;
+  info: walkSync.Entry;
 }
 type DirectoryMap = Map<string, DirectoryMapEntry>;
 
 const DIRECTORY_POLL = 500;
 
 export default class Watcher {
-  nextWatch?: number;
+  nextWatch?: NodeJS.Timeout;
   watchers = new Map<WebSocket, boolean>();
   previousDirectoryMap: DirectoryMap;
   notifyPromise?: Promise<void>;
@@ -29,7 +29,7 @@ export default class Watcher {
 
   remove(sock: WebSocket) {
     this.watchers.delete(sock);
-    if (this.watchers.size === 0) {
+    if (this.watchers.size === 0 && this.nextWatch != null) {
       clearTimeout(this.nextWatch);
       this.nextWatch = undefined;
     }
@@ -87,13 +87,12 @@ export default class Watcher {
 
   private buildDirectoryMap(): DirectoryMap {
     let directoryMap = new Map<string, DirectoryMapEntry>();
-    for (let { filename, info } of walkSync(this.directory)) {
-      if (!info.isFile()) {
+    for (let entry of walkSync.entries(this.directory)) {
+      if (entry.isDirectory()) {
         continue;
       }
-      let relativeFile = filename.slice(this.directory.length + 1);
-      let fileHash = `${info.size}_${info.modified || 0}`;
-      directoryMap.set(relativeFile, { hash: fileHash, info });
+      let fileHash = `${entry.size}_${entry.mtime}`;
+      directoryMap.set(entry.relativePath, { hash: fileHash, info: entry });
     }
     return directoryMap;
   }
