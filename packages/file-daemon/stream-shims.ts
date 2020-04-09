@@ -131,6 +131,7 @@ class NodeReadableToDOMReader
     }
   }
 
+  @Memoize()
   get closed(): Promise<void> {
     return Promise.race([this.finishedPromise, this.errorPromise]);
   }
