@@ -1,6 +1,8 @@
 import { WatchInfo } from "../../file-daemon/interfaces";
 import { FileSystem } from "./filesystem";
 import { UnTar } from "tarstream";
+import { StreamFileEntry } from "tarstream/types";
+import { ReadableStream } from "../../../vendor/web-streams";
 
 interface FullSync {
   tempDir: string;
@@ -21,7 +23,7 @@ export class FileDaemonClient {
   constructor(
     private fileServerURL: string,
     private websocketServerURL: string,
-    private fs: FileSystem
+    private fs: FileSystem // target directory to write the files received from the file daemon
   ) {
     this.run();
   }
@@ -128,12 +130,34 @@ export class FileDaemonClient {
       },
     });
     if (res.body) {
-      let untar = new UnTar(res.body, {
-        file() {},
+      let untar = new UnTar(res.body as ReadableStream, {
+        file(entry) {
+          console.log(
+            `Received ${entry.name} from the tar stream, should be ${entry.size} bytes`
+          );
+          let reader = entry.stream().getReader();
+          (async () => {
+            let byteCount = 0;
+            while (true) {
+              let chunk = await reader.read();
+              if (chunk.done) {
+                console.log(`read ${byteCount} bytes from ${entry.name}`);
+                break;
+              } else {
+                byteCount += chunk.value.length;
+              }
+            }
+          })();
+        },
         directory() {},
       });
 
       await untar.done;
+      // make tmp dir
+      // save files into tmp dir
+      // rename the tmp dir into its final location
+
+      console.log("untar is done");
     }
 
     // TODO pass the tar stream into the FileSystem instance, where we can
@@ -144,5 +168,8 @@ export class FileDaemonClient {
     console.log("handleMessage: Received file change notification", watchInfo);
 
     // TODO update file system for changed files
+    // get the file the server (as a stream)
+    // stream into a temp area
+    // rename into the final position after the stream is done
   }
 }

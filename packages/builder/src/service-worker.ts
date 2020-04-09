@@ -30,6 +30,8 @@ worker.addEventListener("activate", () => {
 
 worker.addEventListener("fetch", (event: FetchEvent) => {
   let url = new URL(event.request.url);
+  // TODO we should serve files out of the file system abstration--no more going
+  // back to the server.
   if (url.origin !== worker.origin) {
     console.log(`ignore ${event.request.url} based on origin`);
     event.respondWith(fetch(event.request));
@@ -41,6 +43,8 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
     return;
   }
 
+  // TODO we should serve files out of the file system abstration--no more going
+  // back to the server.
   event.respondWith(
     (async () => {
       let response = await fetch(event.request);

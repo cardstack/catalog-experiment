@@ -1,3 +1,4 @@
+import { Memoize } from "typescript-memoize";
 import {
   StreamFileEntry,
   DirectoryEntry,
@@ -9,6 +10,7 @@ import {
   assertNever,
 } from "./types";
 import { TMAGIC, OLDGNU_MAGIC } from "./constants";
+import { ReadableStream } from "../../vendor/web-streams";
 
 interface Controller {
   file(entry: StreamFileEntry): void;
@@ -40,9 +42,13 @@ type State =
       initialBytes: Uint8Array;
     }
   | {
-      name: "readingFile";
-      paddedFileSize: number;
-      bytesRead: number;
+      name: "startReadingPadding";
+      initialBytes: Uint8Array;
+      bytesRemaining: number;
+    }
+  | {
+      name: "readingPadding";
+      bytesRemaining: number;
     }
   | {
       name: "finished";
@@ -138,48 +144,61 @@ export class UnTar {
         }
         case "startReadingFile": {
           console.log(`starting reading file ${this.state.header.name}`);
-          let paddedFileSize =
-            this.state.header.size + paddingNeeded(this.state.header.size);
-          if (paddedFileSize < this.state.initialBytes.length) {
-            // TODO directories will be found here (they are 0 bytes)--dont forget to handle those....
-            console.log(`read ${paddedFileSize} bytes of file`);
+          let streamer = new FileStreamer(
+            this.state.header,
+            this.state.initialBytes,
+            this.reader
+          );
+          this.controller.file(streamer.entry);
+          let initialBytes = await streamer.done;
+
+          this.state = {
+            name: "startReadingPadding",
+            initialBytes,
+            bytesRemaining: paddingNeeded(this.state.header.size),
+          };
+          break;
+        }
+
+        case "startReadingPadding": {
+          if (this.state.initialBytes.length >= this.state.bytesRemaining) {
             this.state = {
               name: "startReadingHeader",
-              initialBytes: this.state.initialBytes.subarray(paddedFileSize),
+              initialBytes: this.state.initialBytes.subarray(
+                this.state.bytesRemaining
+              ),
             };
           } else {
             this.state = {
-              name: "readingFile",
-              bytesRead: this.state.initialBytes.length,
-              paddedFileSize,
+              name: "readingPadding",
+              bytesRemaining:
+                this.state.bytesRemaining - this.state.initialBytes.length,
             };
           }
           break;
         }
-        case "readingFile": {
+
+        case "readingPadding": {
           let result = await this.reader.read();
-          if (result.done && this.state.bytesRead < this.state.paddedFileSize) {
+          if (result.done) {
             this.streamError(new Error(`Unexpected end of file`));
             return;
           }
 
-          let bytesLeft = this.state.paddedFileSize - this.state.bytesRead;
-          if (result.value) {
-            this.state.bytesRead += result.value.length;
-            if (this.state.bytesRead >= this.state.paddedFileSize) {
-              console.log(`read ${this.state.bytesRead} bytes of file`);
-              this.state = {
-                name: "startReadingHeader",
-                initialBytes: result.value.subarray(bytesLeft),
-              };
-            }
+          if (result.value.length >= this.state.bytesRemaining) {
+            this.state = {
+              name: "startReadingHeader",
+              initialBytes: result.value.subarray(this.state.bytesRemaining),
+            };
+          } else {
+            this.state.bytesRemaining -= result.value.length;
           }
-          // this includes the case where you still need to read more bytes and
-          // remain in the readingFile state
+
           break;
         }
 
         case "finished": {
+          console.log(`completed processing untar stream`);
           this.streamCompleted();
           return;
         }
@@ -217,4 +236,78 @@ function readHeader(buffer: Uint8Array, options: Required<Options>): Header {
   }
 
   return header;
+}
+
+class FileStreamer {
+  private stream: ReadableStream;
+  private bytesSent = 0;
+  private isDone!: (extraBytes: Uint8Array) => void;
+  private interrupted!: (error: Error) => void;
+  done: Promise<Uint8Array>;
+
+  constructor(
+    private header: Header,
+    private initialBytes: Uint8Array,
+    private reader: ReadableStreamDefaultReader
+  ) {
+    this.stream = new ReadableStream(this);
+    this.done = new Promise((res, rej) => {
+      this.isDone = res;
+      this.interrupted = rej;
+    });
+  }
+
+  async start(controller: ReadableStreamDefaultController) {
+    if (this.initialBytes.length < this.header.size) {
+      controller.enqueue(this.initialBytes);
+      this.bytesSent += this.initialBytes.length;
+    } else {
+      let buffer = this.initialBytes.subarray(0, this.header.size);
+      controller.enqueue(buffer);
+      this.bytesSent += buffer.length;
+      controller.close();
+      this.isDone(this.initialBytes.subarray(buffer.length));
+    }
+  }
+
+  async pull(controller: ReadableStreamDefaultController) {
+    let chunk = await this.reader.read();
+    if (chunk.done) {
+      let error = new Error(`Unexpected end of file`);
+      this.interrupted(error);
+      controller.error(error);
+      return;
+    }
+    let bytesLeft = this.header.size - this.bytesSent;
+    if (chunk.value.length < bytesLeft) {
+      controller.enqueue(chunk.value);
+      this.bytesSent += chunk.value.length;
+    } else {
+      let buffer = chunk.value.subarray(0, bytesLeft);
+      controller.enqueue(buffer);
+      this.bytesSent += buffer.length;
+      controller.close();
+      this.isDone(chunk.value.subarray(bytesLeft));
+    }
+  }
+
+  @Memoize()
+  get entry(): StreamFileEntry {
+    let header = this.header;
+    return {
+      stream: () => this.stream,
+      name: header.name,
+      size: header.size,
+      mode: header.mode,
+      uid: header.uid,
+      gid: header.gid,
+      type: header.type,
+      owner: header.owner,
+      group: header.group,
+      prefix: header.prefix,
+      accessTime: header.accessTime,
+      createTime: header.createTime,
+      modifyTime: header.modifyTime,
+    };
+  }
 }
