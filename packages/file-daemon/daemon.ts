@@ -10,6 +10,7 @@ interface CommandLineArgs {
 }
 
 function polyfill() {
+  // TODO use this as an npm dependency--dont vendor
   const webStreams = require("../../vendor/web-streams");
   global = Object.assign(global, webStreams);
 }

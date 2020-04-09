@@ -141,6 +141,8 @@ export class UnTar {
           let paddedFileSize =
             this.state.header.size + paddingNeeded(this.state.header.size);
           if (paddedFileSize < this.state.initialBytes.length) {
+            // TODO directories will be found here (they are 0 bytes)--dont forget to handle those....
+            console.log(`read ${paddedFileSize} bytes of file`);
             this.state = {
               name: "startReadingHeader",
               initialBytes: this.state.initialBytes.subarray(paddedFileSize),
@@ -161,15 +163,14 @@ export class UnTar {
             return;
           }
 
+          let bytesLeft = this.state.paddedFileSize - this.state.bytesRead;
           if (result.value) {
             this.state.bytesRead += result.value.length;
             if (this.state.bytesRead >= this.state.paddedFileSize) {
               console.log(`read ${this.state.bytesRead} bytes of file`);
               this.state = {
                 name: "startReadingHeader",
-                initialBytes: result.value.subarray(
-                  result.value.length - this.state.bytesRead
-                ),
+                initialBytes: result.value.subarray(bytesLeft),
               };
             }
           }
@@ -207,11 +208,7 @@ function readHeader(buffer: Uint8Array, options: Required<Options>): Header {
 
   let header: Header = partialHeader;
 
-  if (
-    options.checkHeader &&
-    header.ustar !== TMAGIC &&
-    header.ustar !== OLDGNU_MAGIC
-  ) {
+  if (options.checkHeader && ![TMAGIC, OLDGNU_MAGIC].includes(header.ustar)) {
     throw new Error(`The file is corrupted`);
   }
 

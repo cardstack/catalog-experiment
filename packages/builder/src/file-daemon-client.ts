@@ -128,15 +128,12 @@ export class FileDaemonClient {
       },
     });
     if (res.body) {
-      let blob = await res.blob();
-      console.log(`received tar with ${blob.size} bytes`);
+      let untar = new UnTar(res.body, {
+        file() {},
+        directory() {},
+      });
 
-      // let untar = new UnTar(res.body, {
-      //   file() {},
-      //   directory() {},
-      // });
-
-      // await untar.done;
+      await untar.done;
     }
 
     // TODO pass the tar stream into the FileSystem instance, where we can

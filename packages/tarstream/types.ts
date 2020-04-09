@@ -206,11 +206,6 @@ export const posixHeader: PosixHeader[] = [
         parseTarString(buffer.slice(offset, offset + field[1]), true)
       );
     },
-    // function(file, field) {
-    //   return (
-    //     file.ustar == TMAGIC || file.ustar == OLDGNU_MAGIC
-    //   );
-    // },
   ],
   [
     "owner",
