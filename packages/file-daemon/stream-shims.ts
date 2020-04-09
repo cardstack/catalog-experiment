@@ -1,4 +1,5 @@
 import { Readable } from "stream";
+import { ReadStream } from "fs";
 import {
   ReadableStreamAsyncIterator,
   ReadResult,
@@ -7,7 +8,7 @@ import {
 export class NodeReadableToDOM implements ReadableStream {
   private _locked = false;
 
-  constructor(private readable: Readable) {}
+  constructor(private readable: Readable | ReadStream) {}
 
   get locked() {
     return this._locked;
@@ -63,19 +64,34 @@ class NodeReadableToDOMReader
   private finishedPromise: Promise<void>;
   private errorPromise: Promise<void>;
 
-  constructor(private readable: Readable, private unlock: () => void) {
+  constructor(
+    private readable: Readable | ReadStream,
+    private unlock: () => void
+  ) {
     this.finishedPromise = new Promise((res, rej) => {
       this.doneReading = res;
       this.interruptReading = rej;
     });
     this.errorPromise = new Promise((res) => (this.errorReceived = res));
     this.readable.on("error", (error: Error) => {
-      this.errorReceived();
-      this.interruptReading(error);
+      try {
+        this.errorReceived();
+        this.interruptReading(error);
+      } finally {
+        if ("close" in this.readable) {
+          this.readable.close();
+        }
+      }
     });
     this.readable.on("end", () => {
-      this.isFinished = true;
-      this.doneReading();
+      try {
+        this.isFinished = true;
+        this.doneReading();
+      } finally {
+        if ("close" in this.readable) {
+          this.readable.close();
+        }
+      }
     });
     this.readable.on("readable", () => {
       if (this.readyToRead) {

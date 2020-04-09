@@ -90,27 +90,14 @@ function streamFileSystem(root: string, path: string): Readable {
       console.log(`Adding directory ${fullPath} to tar`);
       tar.addFile({ name: relativePath, type: DIRTYPE });
     } else {
-      //TODO: we should not open the file until we are ready to start streaming it
-      let readStream = createReadStream(fullPath);
-
       console.log(`Adding file ${fullPath} to tar`);
       tar.addFile({
         name: relativePath,
-        //TODO: instead of passing in a stream pass in a closure that will open
-        //the steam when it needs to be read
-        stream: new NodeReadableToDOM(readStream),
+        stream: () => new NodeReadableToDOM(createReadStream(fullPath)),
         size,
-        // move open and closing into the DenoStreamToDOM
-        close: () => readStream.close(),
       });
     }
   }
-
-  // TODO let's not wait until we call finish to start streaming, start
-  // streaming when add file is called. this means that when we get to teh end
-  // of the queue, we need to keep waitting in case a new file is added--needs a
-  // new state in our state machine
-
   return new DOMToNodeReadable(tar.finish());
 }
 

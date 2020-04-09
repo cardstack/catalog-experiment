@@ -58,10 +58,8 @@ export interface Header extends Required<BaseFileEntry> {
 }
 
 export interface StreamFileEntry extends BaseFileEntry {
-  stream: ReadableStream<Uint8Array>;
+  stream: () => ReadableStream<Uint8Array>;
   size: number;
-  // TODO remove this
-  close?: () => void;
 }
 
 export interface BufferFileEntry extends BaseFileEntry {

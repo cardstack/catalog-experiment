@@ -13,7 +13,7 @@ import { DIRTYPE, NULL_CHAR } from "./constants";
 type State =
   | { name: "readyForNextFile" }
   | { name: "sentHeader"; currentFile: FileEntry }
-  | { name: "sentUnpaddedFile"; paddingNeeded: number; close?: () => void }
+  | { name: "sentUnpaddedFile"; paddingNeeded: number }
   | {
       name: "streamingFile";
       reader: ReadableStreamDefaultReader<Uint8Array>;
@@ -27,6 +27,10 @@ export class Tar {
 
   constructor() {}
 
+  // TODO consider starting streaming files into the tar when add() is called.
+  // This will mean that we'll need an extra state in our state machine to deal
+  // with the fact that we have streamed all the files, but we are still waiting
+  // for another addFile() to be called.
   addFile(file: FileEntry): void {
     if (this.finished) {
       throw new Error(`can't addFile after calling finish`);
@@ -107,7 +111,7 @@ class TarSource implements UnderlyingSource<Uint8Array> {
           );
           this.state = {
             name: "streamingFile",
-            reader: this.state.currentFile.stream.getReader(),
+            reader: this.state.currentFile.stream().getReader(),
             currentFile: this.state.currentFile,
             bytesSent: 0,
           };
@@ -126,7 +130,6 @@ class TarSource implements UnderlyingSource<Uint8Array> {
           this.state = {
             name: "sentUnpaddedFile",
             paddingNeeded: paddingNeeded(this.state.bytesSent),
-            close: this.state.currentFile.close,
           };
           return this.pull(controller);
         }
@@ -140,9 +143,6 @@ class TarSource implements UnderlyingSource<Uint8Array> {
         controller.enqueue(chunk.value);
         return;
       case "sentUnpaddedFile":
-        if (typeof this.state.close === "function") {
-          this.state.close();
-        }
         if (this.state.paddingNeeded === 0) {
           this.state = { name: "readyForNextFile" };
           return this.pull(controller);

@@ -15,7 +15,7 @@ export async function tarTest() {
   }
   t.addFile({
     name: "tartest/bike.jpg",
-    stream: photo.body!,
+    stream: () => photo.body!,
     size: parseInt(length, 10),
   });
 
@@ -26,7 +26,7 @@ export async function tarTest() {
   }
   t.addFile({
     name: "tartest/index.html",
-    stream: html.body!,
+    stream: () => html.body!,
     size: parseInt(length, 10),
   });
 
