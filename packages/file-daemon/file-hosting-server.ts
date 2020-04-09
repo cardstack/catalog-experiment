@@ -10,7 +10,7 @@ import { Tar } from "tarstream";
 import { DIRTYPE } from "tarstream/constants";
 import { NodeReadableToDOM, DOMToNodeReadable } from "./stream-shims";
 
-const webpackDevServer = "http://localhost:8080";
+const builderServer = "http://localhost:8080";
 
 export default class FileHostingServer {
   constructor(
@@ -44,6 +44,7 @@ export default class FileHostingServer {
             "Origin, X-Requested-With, Content-Type, Accept, Range"
           );
         }
+
         if (
           req.headers.accept &&
           req.headers.accept.split(",").includes("application/x-tar")
@@ -59,7 +60,7 @@ export default class FileHostingServer {
               serveFile(res, filePath);
             }
           } else {
-            proxy.web(req, res, { target: webpackDevServer });
+            proxy.web(req, res, { target: builderServer });
           }
         }
       } catch (e) {
@@ -72,6 +73,7 @@ export default class FileHostingServer {
         serverLog(req, res);
       }
     });
+
     server.listen(this.port);
   }
 }

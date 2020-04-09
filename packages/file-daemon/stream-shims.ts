@@ -1,3 +1,4 @@
+import { Memoize } from "typescript-memoize";
 import { Readable } from "stream";
 import { ReadStream } from "fs";
 import {
@@ -15,11 +16,13 @@ export class NodeReadableToDOM implements ReadableStream {
   }
 
   async cancel(): Promise<void> {
-    throw new Error(`unimplemented`);
+    let reader = this.getReader();
+    await reader.cancel();
   }
 
   getReader({ mode }: { mode: "byob" }): ReadableStreamBYOBReader;
   getReader(): ReadableStreamDefaultReader<Uint8Array>;
+  @Memoize()
   getReader(
     _opts?: any
   ): ReadableStreamDefaultReader<Uint8Array> | ReadableStreamBYOBReader {
