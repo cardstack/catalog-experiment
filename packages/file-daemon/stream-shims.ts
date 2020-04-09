@@ -55,6 +55,9 @@ export class NodeReadableToDOM implements ReadableStream {
 
 class NodeReadableToDOMReader
   implements ReadableStreamDefaultReader<Uint8Array> {
+  private isFinished = false;
+  private finishedPromise: Promise<void>;
+  private errorPromise: Promise<void>;
   private readyToRead?: () => void;
   private doneReading!: () => void;
   private interruptReading!: (error: Error) => void;
@@ -62,10 +65,6 @@ class NodeReadableToDOMReader
   // promise from the "close" event so that there is no ambiguity between the
   // "close" event and the "end" event.
   private errorReceived!: () => void;
-
-  private isFinished = false;
-  private finishedPromise: Promise<void>;
-  private errorPromise: Promise<void>;
 
   constructor(
     private readable: Readable | ReadStream,
