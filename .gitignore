@@ -7,3 +7,6 @@
 /packages/tarstream/**/*.d.ts
 /packages/tarstream/**/*.js
 /packages/tarstream/**/*.js.map
+/packages/builder/**/*.d.ts
+/packages/builder/**/*.js
+/packages/builder/**/*.js.map

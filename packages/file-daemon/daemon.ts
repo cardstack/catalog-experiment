@@ -9,7 +9,14 @@ interface CommandLineArgs {
   directory: string;
 }
 
+function polyfill() {
+  const webStreams = require("../../vendor/web-streams");
+  global = Object.assign(global, webStreams);
+}
+
 export function start() {
+  polyfill();
+
   const argv = yargs.options({
     port: {
       alias: "p",

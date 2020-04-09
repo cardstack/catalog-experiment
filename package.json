@@ -3,6 +3,14 @@
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",
-  "workspaces": ["packages/*"],
-  "private": true
+  "workspaces": [
+    "packages/*"
+  ],
+  "private": true,
+  "scripts": {
+    "watch": "tsc --watch",
+    "build": "tsc",
+    "builder": "cd packages/builder && yarn start",
+    "serve": "cd packages/app && yarn start"
+  }
 }

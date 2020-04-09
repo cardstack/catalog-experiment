@@ -1,12 +1,39 @@
 # Running it
 
-1. Start a webpack watch to compile conventional typescript for deno to consume: `cd packages/file-daemon && yarn start`.
-2. Start compiling the build's own code with `cd packages/builder && yarn start`
-3. Start serving the app with `cd app && yarn start`
+1. Start typescript compilation:
+
+   ```sh
+   yarn build --watch
+   ```
+
+   Alternatively if you don't want to watch typescript files for changes and only
+   want to perform just a single build, then omit the `--watch` parameter.
+
+2. Start serving the builder:
+   ```sh
+   yarn builder
+   ```
+3. Start serving the app:
+   ```sh
+   yarn serve
+   ```
+
+Conversely, if you want to use webpack to package up the file-daemon's js into a single bundle and run the file daemon from the webpack generated package, then:
+
+1. Run the webpack for the file-daemon:
+   ```sh
+   cd ./packages/file-daemon && yarn start
+   ```
+2. Start serving the builder:
+   ```sh
+   yarn builder
+   ```
+3. Start serving the from the webpack package:
+   ```sh
+   cd ./package/app && yarn start-pkg
+   ```
 
 # Explanation
-
-TypeScript does not like relative imports with extensions. Deno _insists_ on relative imports with extensions. To keep both happy, we have forked the deno codebase and have stripped out all the `.ts` extensions from the Deno std libs. Additionally we use webpack to compile the resulting typescipt so that all imports are inlined, and we launch deno using the compiled result.
 
 The builder package is the in-browser (mostly in-service-worker) toolset that gets loaded into your app. It builds itself with webpack.
 

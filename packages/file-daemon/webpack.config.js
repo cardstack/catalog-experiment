@@ -7,7 +7,7 @@ module.exports = {
   target: "node",
   devtool: "inline-source-map",
   entry: {
-    main: "./file-daemon.ts",
+    main: "./webpack-entrypoint.ts",
   },
   devServer: {},
   output: {
