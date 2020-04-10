@@ -2,7 +2,6 @@ import { WatchInfo } from "../../file-daemon/interfaces";
 import { FileSystem } from "./filesystem";
 import { UnTar } from "tarstream";
 import { StreamFileEntry } from "tarstream/types";
-import { ReadableStream } from "../../../vendor/web-streams";
 
 interface FullSync {
   tempDir: string;

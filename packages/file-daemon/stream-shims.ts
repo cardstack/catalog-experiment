@@ -4,7 +4,7 @@ import { ReadStream } from "fs";
 import {
   ReadableStreamAsyncIterator,
   ReadResult,
-} from "../../vendor/web-streams";
+} from "web-streams-polyfill/ponyfill/es2018";
 
 export class NodeReadableToDOM implements ReadableStream {
   private _locked = false;

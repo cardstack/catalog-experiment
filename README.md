@@ -1,4 +1,22 @@
-# Running it
+# Catalog-Experiment
+
+This repo proves out ideas for "CatalogJS", our planned JS CDN that eliminates the need for running `npm` or `yarn` and maintaining a `node_modules` folder in your web projects.
+
+## Building it
+
+1. Setup all the npm dependencies:
+
+   ```sh
+   yarn install
+   ```
+
+2. We are temporarily relying on a PR branch of webstreams, which requires us to build the `dist/` assets for that package. To build these assets run:
+   ```sh
+   yarn init
+   ```
+   As soon as our PR https://github.com/MattiasBuelens/web-streams-polyfill/pull/49 is upstreamed, we can remove this step.
+
+## Running it
 
 1. Start typescript compilation:
 
@@ -33,7 +51,7 @@ Conversely, if you want to use webpack to package up the file-daemon's js into a
    cd ./package/app && yarn start-pkg
    ```
 
-# Explanation
+## Explanation
 
 The builder package is the in-browser (mostly in-service-worker) toolset that gets loaded into your app. It builds itself with webpack.
 

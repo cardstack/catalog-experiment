@@ -10,7 +10,6 @@ import {
   assertNever,
 } from "./types";
 import { TMAGIC, OLDGNU_MAGIC } from "./constants";
-import { ReadableStream } from "../../vendor/web-streams";
 
 interface Controller {
   file(entry: StreamFileEntry): void;
