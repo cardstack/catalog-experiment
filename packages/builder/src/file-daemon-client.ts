@@ -1,20 +1,19 @@
 import { WatchInfo } from "../../file-daemon/interfaces";
 import { FileSystem } from "./filesystem";
 import { UnTar } from "tarstream";
-import { StreamFileEntry } from "tarstream/types";
-
-interface FullSync {
-  tempDir: string;
-}
+import columnify from "columnify";
+import { DIRTYPE } from "tarstream/constants";
+import moment from "moment";
+//@ts-ignore
+import perms from "perms";
 
 export class FileDaemonClient {
-  // keeping track of this for future tests so we don't leak async
-  fullSyncPromise?: Promise<void>;
+  ready: Promise<void>;
 
   private socket: WebSocket | undefined;
   private socketClosed: Promise<void> | undefined;
   private backoffInterval = 0;
-  private runningFullSync: FullSync | undefined;
+  private doneSyncing!: () => void;
 
   private queue: WatchInfo[] = [];
   private resolveQueuePromise: undefined | (() => void);
@@ -24,6 +23,7 @@ export class FileDaemonClient {
     private websocketServerURL: string,
     private fs: FileSystem // target directory to write the files received from the file daemon
   ) {
+    this.ready = new Promise((res) => (this.doneSyncing = res));
     this.run();
   }
 
@@ -78,14 +78,13 @@ export class FileDaemonClient {
       console.log(`websocket open`, event);
       this.backoffInterval = 0;
 
-      this.fullSyncPromise = this.startFullSync().catch((err) => {
+      this.startFullSync().catch((err) => {
         console.error(`Error encountered running full sync`, err);
         throw err;
       });
     };
     this.socket = socket;
     this.socketClosed = socketClosed;
-    this.runningFullSync = undefined;
   }
 
   private async nextMessage(): Promise<{ info: WatchInfo } | { done: true }> {
@@ -128,39 +127,36 @@ export class FileDaemonClient {
         accept: "application/x-tar",
       },
     });
-    if (res.body) {
-      let untar = new UnTar(res.body as ReadableStream, {
-        file(entry) {
-          console.log(
-            `Received ${entry.name} from the tar stream, should be ${entry.size} bytes`
-          );
-          let reader = entry.stream().getReader();
-          (async () => {
-            let byteCount = 0;
-            while (true) {
-              let chunk = await reader.read();
-              if (chunk.done) {
-                console.log(`read ${byteCount} bytes from ${entry.name}`);
-                break;
-              } else {
-                byteCount += chunk.value.length;
-              }
-            }
-          })();
-        },
-        directory() {},
-      });
-
-      await untar.done;
-      // make tmp dir
-      // save files into tmp dir
-      // rename the tmp dir into its final location
-
-      console.log("untar is done");
-    }
 
     // TODO pass the tar stream into the FileSystem instance, where we can
     // decode the tar stream to create the resulting filesystem
+    if (res.body) {
+      let fs = this.fs;
+      let { dirName: temp, root: tempRoot } = fs.makeTemp();
+      let untar = new UnTar(res.body as ReadableStream, {
+        file(entry) {
+          (async () => {
+            await fs.write(entry.name, entry, entry.stream(), tempRoot);
+          })();
+        },
+      });
+
+      await untar.done;
+      fs.move("/", undefined, tempRoot);
+      fs.removeFromTemp(temp);
+
+      let listing = fs.list("/", true).map(({ stat }) => ({
+        mode: `${stat.type === DIRTYPE ? "d" : "-"}${perms.toString(
+          stat.mode
+        )}`,
+        size: stat.size,
+        modified: moment(stat.modifyTime! * 1000).format("MMM D YYYY hh:mm"),
+        etag: stat.etag,
+        name: stat.name,
+      }));
+      this.doneSyncing();
+      console.log(`syncing complete, file system: \n${columnify(listing)}`);
+    }
   }
 
   private handleInfo(watchInfo: WatchInfo) {
