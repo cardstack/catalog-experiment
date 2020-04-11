@@ -50,7 +50,7 @@ export default class FileHostingServer {
           req.headers.accept.split(",").includes("application/x-tar")
         ) {
           res.setHeader("content-type", "application/x-tar");
-          streamFileSystem(this.directory, filePath).pipe(res);
+          streamFileSystem(filePath).pipe(res);
         } else {
           if (existsSync(filePath)) {
             let stat = statSync(filePath);
@@ -78,7 +78,7 @@ export default class FileHostingServer {
   }
 }
 
-function streamFileSystem(root: string, path: string): Readable {
+function streamFileSystem(path: string): Readable {
   console.log(`streaming filesystem: ${path}`);
 
   let tar = new Tar();
