@@ -5,6 +5,8 @@ export async function tarTest() {
 
   t.addFile({
     name: "tartest/hello.txt",
+    mode: 644,
+    modifyTime: now(),
     data: new TextEncoder().encode("This is a text file."),
   });
 
@@ -15,6 +17,8 @@ export async function tarTest() {
   }
   t.addFile({
     name: "tartest/bike.jpg",
+    mode: 644,
+    modifyTime: now(),
     stream: () => photo.body!,
     size: parseInt(length, 10),
   });
@@ -26,6 +30,8 @@ export async function tarTest() {
   }
   t.addFile({
     name: "tartest/index.html",
+    mode: 644,
+    modifyTime: now(),
     stream: () => html.body!,
     size: parseInt(length, 10),
   });
@@ -36,4 +42,8 @@ export async function tarTest() {
       "content-type": "application/octet-stream; charset=utf-8",
     },
   });
+}
+
+function now() {
+  return Math.floor(Date.now() / 1000);
 }

@@ -84,17 +84,28 @@ function streamFileSystem(root: string, path: string): Readable {
   let tar = new Tar();
   // walk sync ignores the current directory, so we add that first
   console.log(`Adding directory ${path} to tar`);
-  tar.addFile({ name: "/", type: DIRTYPE });
+  tar.addFile({
+    name: "/",
+    type: DIRTYPE,
+    mode: statSync(path).mode,
+    modifyTime: unixTime(statSync(path).mtime.getTime()),
+  });
   for (let entry of walkSync.entries(path)) {
-    let { fullPath, size } = entry;
+    let { fullPath, size, mtime, mode } = entry;
     let relativePath = fullPath.substring(root.length);
     if (entry.isDirectory()) {
       console.log(`Adding directory ${fullPath} to tar`);
-      tar.addFile({ name: relativePath, type: DIRTYPE });
-    } else {
-      console.log(`Adding file ${fullPath} to tar`);
       tar.addFile({
         name: relativePath,
+        type: DIRTYPE,
+        modifyTime: mtime,
+        mode,
+      });
+    } else {
+      tar.addFile({
+        name: relativePath,
+        mode,
+        modifyTime: unixTime(mtime),
         stream: () => new NodeReadableToDOM(createReadStream(fullPath)),
         size,
       });
@@ -114,4 +125,8 @@ function serverLog(req: http.IncomingMessage, res: http.ServerResponse): void {
   const d = new Date().toISOString();
   const dateFmt = `[${d.slice(0, 10)} ${d.slice(11, 19)}]`;
   console.log(`${dateFmt} "${req.method} ${req.url}" ${res.statusCode}`);
+}
+
+function unixTime(time: number) {
+  return Math.floor(time / 1000);
 }

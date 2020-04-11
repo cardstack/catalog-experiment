@@ -36,16 +36,16 @@ export const defaultGid = 0; // root
 
 interface BaseFileEntry {
   name: string;
-  mode?: number;
+  mode: number;
+  modifyTime: number;
   uid?: number;
   gid?: number;
-  modifyTime?: number | string | Date;
-  type?: number | string;
+  type?: number;
   owner?: string;
   group?: string;
   prefix?: string;
-  accessTime?: number | string | Date;
-  createTime?: number | string | Date;
+  accessTime?: number;
+  createTime?: number;
 }
 
 export interface Header extends Required<BaseFileEntry> {
@@ -154,10 +154,10 @@ export const posixHeader: PosixHeader[] = [
     12,
     136,
     function (file, field) {
-      return formatTarDateTime(file.modifyTime, field[1]);
+      return formatTarNumber(file.modifyTime, field[1]);
     },
     function (buffer, offset, field) {
-      return parseTarDateTime(buffer.slice(offset, offset + field[1]));
+      return parseTarNumber(buffer.slice(offset, offset + field[1]));
     },
   ],
   [
@@ -267,10 +267,10 @@ export const posixHeader: PosixHeader[] = [
     12,
     476,
     function (file, field) {
-      return formatTarDateTime(file.accessTime, field[1]);
+      return formatTarNumber(file.accessTime, field[1]);
     },
     function (buffer, offset, field) {
-      return parseTarDateTime(buffer.slice(offset, offset + field[1]));
+      return parseTarNumber(buffer.slice(offset, offset + field[1]));
     },
   ],
   [
@@ -278,10 +278,10 @@ export const posixHeader: PosixHeader[] = [
     12,
     488,
     function (file, field) {
-      return formatTarDateTime(file.createTime, field[1]);
+      return formatTarNumber(file.createTime, field[1]);
     },
     function (buffer, offset, field) {
-      return parseTarDateTime(buffer.slice(offset, offset + field[1]));
+      return parseTarNumber(buffer.slice(offset, offset + field[1]));
     },
   ],
 ];
@@ -360,25 +360,6 @@ function toNumberWithDefault(
   }
 }
 
-export function formatTarDateTime(
-  value: Date | number | string | undefined,
-  length: number
-): string {
-  let valueAsNumber: number;
-  if (value instanceof Date) {
-    valueAsNumber = Math.floor(value.getTime() / 1000);
-  } else {
-    if (typeof value === "string") {
-      valueAsNumber = parseInt(value, 10);
-    } else if (typeof value === "number" && isFinite(value)) {
-      valueAsNumber = value;
-    } else {
-      valueAsNumber = Math.floor(Date.now() / 1000);
-    }
-  }
-  return formatTarNumber(valueAsNumber, length, 0);
-}
-
 export function parseTarString(
   bytes: Uint8Array,
   returnUnprocessed = false
@@ -394,13 +375,6 @@ export function parseTarString(
 export function parseTarNumber(bytes: Uint8Array) {
   let result = utf8.decode(bytes);
   return parseInt(result.replace(/^0+$/g, ""), 8) || 0;
-}
-
-export function parseTarDateTime(bytes: Uint8Array) {
-  if (bytes.length == 0 || bytes[0] == 0) {
-    return null;
-  }
-  return new Date(1000 * parseTarNumber(bytes));
 }
 
 export function calculateChecksum(buffer: Uint8Array) {
