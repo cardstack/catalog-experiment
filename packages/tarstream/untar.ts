@@ -1,7 +1,6 @@
 import { Memoize } from "typescript-memoize";
 import {
   StreamFileEntry,
-  DirectoryEntry,
   recordSize,
   posixHeader,
   Header,
@@ -13,7 +12,6 @@ import { TMAGIC, OLDGNU_MAGIC } from "./constants";
 
 interface Controller {
   file(entry: StreamFileEntry): void;
-  directory?(entry: DirectoryEntry): void;
 }
 
 interface Options {
@@ -142,7 +140,6 @@ export class UnTar {
           break;
         }
         case "startReadingFile": {
-          console.log(`starting reading file ${this.state.header.name}`);
           let streamer = new FileStreamer(
             this.state.header,
             this.state.initialBytes,
@@ -197,7 +194,6 @@ export class UnTar {
         }
 
         case "finished": {
-          console.log(`completed processing untar stream`);
           this.streamCompleted();
           return;
         }
@@ -249,45 +245,49 @@ class FileStreamer {
     private initialBytes: Uint8Array,
     private reader: ReadableStreamDefaultReader
   ) {
-    this.stream = new ReadableStream(this);
     this.done = new Promise((res, rej) => {
       this.isDone = res;
       this.interrupted = rej;
     });
+    this.stream = new ReadableStream(this);
   }
 
   async start(controller: ReadableStreamDefaultController) {
-    if (this.initialBytes.length < this.header.size) {
-      controller.enqueue(this.initialBytes);
-      this.bytesSent += this.initialBytes.length;
-    } else {
-      let buffer = this.initialBytes.subarray(0, this.header.size);
-      controller.enqueue(buffer);
-      this.bytesSent += buffer.length;
-      controller.close();
-      this.isDone(this.initialBytes.subarray(buffer.length));
-    }
+    withStreamingErrorHandling(controller, async () => {
+      if (this.initialBytes.length < this.header.size) {
+        controller.enqueue(this.initialBytes);
+        this.bytesSent += this.initialBytes.length;
+      } else {
+        let buffer = this.initialBytes.subarray(0, this.header.size);
+        controller.enqueue(buffer);
+        this.bytesSent += buffer.length;
+        controller.close();
+        this.isDone(this.initialBytes.subarray(buffer.length));
+      }
+    });
   }
 
   async pull(controller: ReadableStreamDefaultController) {
-    let chunk = await this.reader.read();
-    if (chunk.done) {
-      let error = new Error(`Unexpected end of file`);
-      this.interrupted(error);
-      controller.error(error);
-      return;
-    }
-    let bytesLeft = this.header.size - this.bytesSent;
-    if (chunk.value.length < bytesLeft) {
-      controller.enqueue(chunk.value);
-      this.bytesSent += chunk.value.length;
-    } else {
-      let buffer = chunk.value.subarray(0, bytesLeft);
-      controller.enqueue(buffer);
-      this.bytesSent += buffer.length;
-      controller.close();
-      this.isDone(chunk.value.subarray(bytesLeft));
-    }
+    withStreamingErrorHandling(controller, async () => {
+      let chunk = await this.reader.read();
+      if (chunk.done) {
+        let error = new Error(`Unexpected end of file`);
+        this.interrupted(error);
+        controller.error(error);
+        return;
+      }
+      let bytesLeft = this.header.size - this.bytesSent;
+      if (chunk.value.length < bytesLeft) {
+        controller.enqueue(chunk.value);
+        this.bytesSent += chunk.value.length;
+      } else {
+        let buffer = chunk.value.subarray(0, bytesLeft);
+        controller.enqueue(buffer);
+        this.bytesSent += buffer.length;
+        controller.close();
+        this.isDone(chunk.value.subarray(bytesLeft));
+      }
+    });
   }
 
   @Memoize()
@@ -308,5 +308,16 @@ class FileStreamer {
       createTime: header.createTime,
       modifyTime: header.modifyTime,
     };
+  }
+}
+
+function withStreamingErrorHandling(
+  controller: ReadableStreamDefaultController,
+  fn: () => Promise<unknown>
+) {
+  try {
+    return fn();
+  } catch (err) {
+    controller.error(err);
   }
 }
