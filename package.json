@@ -8,9 +8,7 @@
   ],
   "private": true,
   "scripts": {
-    "init": "npm run build:web-streams-polyfill",
     "build": "tsc",
-    "build:web-streams-polyfill": "cd ./node_modules/web-streams-polyfill && npm run build",
     "builder": "cd packages/builder && yarn start",
     "serve": "cd packages/app && yarn start"
   }

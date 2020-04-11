@@ -4,17 +4,11 @@ This repo proves out ideas for "CatalogJS", our planned JS CDN that eliminates t
 
 ## Building it
 
-1. Setup all the npm dependencies:
+Setup all the npm dependencies:
 
-   ```sh
-   yarn install
-   ```
-
-2. We are temporarily relying on a PR branch of webstreams, which requires us to build the `dist/` assets for that package. To build these assets run:
-   ```sh
-   yarn init
-   ```
-   As soon as our PR https://github.com/MattiasBuelens/web-streams-polyfill/pull/49 is upstreamed, we can remove this step.
+```sh
+yarn install
+```
 
 ## Running it
 
