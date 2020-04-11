@@ -10,13 +10,13 @@ export async function tarTest() {
     data: new TextEncoder().encode("This is a text file."),
   });
 
-  let photo = await fetch("http://localhost:4200/bike.jpg");
+  let photo = await fetch("http://localhost:4200/images/bike.jpg");
   let length = photo.headers.get("content-length");
   if (length == null) {
     throw new Error(`we need a content length to make this work`);
   }
   t.addFile({
-    name: "tartest/bike.jpg",
+    name: "tartest/images/bike.jpg",
     mode: 644,
     modifyTime: now(),
     stream: () => photo.body!,

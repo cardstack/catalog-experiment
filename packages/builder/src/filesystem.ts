@@ -13,9 +13,71 @@ interface ListingEntry {
 type FileHeader = Omit<Stat, "etag" | "stream">;
 type Files = Map<string, File>;
 
+/*
+The FileSystem class is an abstraction for the file system that the file daemon
+is serving. The FileSystem class leverages a graph to represent the filesystem,
+where each node in the graph is an instance of a `File`. Parent nodes in the
+graph effectively represent directories (and leaf nodes are files). The
+directory is represented as a `Directory` instance which is a specialization of
+the `File` class--specifically it has an additional `files` property that holds
+its child nodes (which may be File instances or Directory instances).
+
+The FileSystem has 2 top level `Directory` instances:
+1. `FileSystem.temp`: This is a scratch root folder that is used when we are
+   streaming file data into this class. After all the streaming has completed
+   for a specific write transaction (where a transaction may be writing a single
+   file up to replacing the entire file system), we'll move the root folder that
+   we were streaming into to the "real" file system. This way clients of the
+   `FileSystem` never see partial files--all the writes appear atomic to the
+   outside world.
+2. `FileSystem.root`: This is the "real" file system that clients of this class
+   will interact with. When we stream files into the `FileSystem` we'll always
+   stream files into the `temp` root first, and then once completed, move into
+   this directory.
+
+The FileSystem contains normal CRUD opertations that you'd expect for a file
+system: `mkdir()`, `retrieve()`, `write()`, `move()`, `remove()`, `list()`, etc.
+All the operations allow you to optionally specify which "root" you'd like to
+operate against: the "real" root or the temp root. If you don't specify a root,
+then the "real" root will be assumed. You can only operate against a specific
+temp root that has been created and passed to you via `makeTemp()`, which allow
+us to nicely sandbox our temp folders.
+
+To make it easy to to leverage the temp root swapping functionality for
+streaming files into the filesystem, there is a FileSystem.transaction()
+function. This function yields a temp root to a callback that you provide that
+allows you to perform mulitple file system actions (e.g. like streaming in the
+entire file system). After your callback is executed, this function will move
+your temp root into the "real" root at the path that you specify (or `undefined`
+to replace the entire FileSystem). If your transaction throws an exception, the
+temp root will be removed, and no lingering artifacts will remain in the temp
+root.
+
+Note that `.` and `..` are not currently recognized in path names for the
+various FileSystem functions.
+*/
+
+type TransactionCallBack = (root: Directory) => Promise<unknown>;
+
 export class FileSystem {
   private temp = new Directory("temp");
   private root = new Directory("root");
+
+  // Note that there is no need to wrap a tansaction for a single write()
+  // operation. write() will inherently use a transaction. Use transaction()
+  // when you need to make multiple writes to the FileSystem as a siingle transaction.
+  async transaction(
+    fn: TransactionCallBack,
+    replacePath?: string // don't specify this if you want to replace the entire filesystem
+  ): Promise<void> {
+    let { dirName: temp, root: tempRoot } = this.makeTemp();
+    try {
+      await fn(tempRoot);
+      this.move("/", replacePath, tempRoot);
+    } finally {
+      this.removeFromTemp(temp);
+    }
+  }
 
   // this acts like mkdirp, creating any interior dirs and clobbering any
   // already existing dirs
@@ -36,7 +98,6 @@ export class FileSystem {
     }
   }
 
-  // This clobbers any existing files
   async write(
     path: string,
     header: FileHeader,
@@ -55,11 +116,23 @@ export class FileSystem {
     streamOrBuffer: ReadableStream | Uint8Array,
     root?: Directory
   ): Promise<File | Directory> {
-    let temp: string | undefined;
     if (!root) {
-      ({ dirName: temp, root } = this.makeTemp());
+      let resource: File | Directory;
+      await this.transaction(async (tempRoot) => {
+        resource = await this._write(path, header, streamOrBuffer, tempRoot);
+      });
+      return resource!;
+    } else {
+      return await this._write(path, header, streamOrBuffer, root);
     }
+  }
 
+  private async _write(
+    path: string,
+    header: FileHeader,
+    streamOrBuffer: ReadableStream | Uint8Array,
+    root: Directory
+  ): Promise<File | Directory> {
     let dirName = this.dirName(path);
     let parentDir: Directory;
     if (dirName === undefined) {
@@ -92,11 +165,6 @@ export class FileSystem {
     }
     parentDir.files.set(resource.name, resource);
     await resource.done;
-
-    if (temp) {
-      this.move(path, dirName, root, this.root);
-      this.removeFromTemp(temp);
-    }
     return resource;
   }
 
@@ -284,13 +352,13 @@ export class FileSystem {
 }
 
 class File {
-  private _name: string;
+  private readonly _name: string;
+  private readonly header: FileHeader;
+  private readonly reader?: ReadableStreamDefaultReader<Uint8Array>;
   // TODO eventually let's hold the data in IndexDB so that the entire
   // filesystem is not resident in memory.
-  private buffer?: Uint8Array;
-  private header: FileHeader;
-  private reader?: ReadableStreamDefaultReader<Uint8Array>;
-  done: Promise<void>;
+  private readonly buffer?: Uint8Array;
+  readonly done: Promise<void>;
 
   constructor(
     name: string,
@@ -304,7 +372,7 @@ class File {
       this.done = Promise.resolve();
     } else {
       // this reader is on loan to us to it's really important that we start
-      // consuming its stream.
+      // consuming its stream immediately.
       this.buffer = new Uint8Array(this.header.size);
       this.reader = bufferOrReader;
       this.done = new Promise(async (done) => {
@@ -347,7 +415,7 @@ class File {
 }
 
 class Directory extends File {
-  files: Files = new Map();
+  readonly files: Files = new Map();
   constructor(
     name: string,
     header?: FileHeader,

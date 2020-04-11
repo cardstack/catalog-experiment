@@ -132,18 +132,16 @@ export class FileDaemonClient {
     // decode the tar stream to create the resulting filesystem
     if (res.body) {
       let fs = this.fs;
-      let { dirName: temp, root: tempRoot } = fs.makeTemp();
-      let untar = new UnTar(res.body as ReadableStream, {
-        file(entry) {
-          (async () => {
-            await fs.write(entry.name, entry, entry.stream(), tempRoot);
-          })();
-        },
+      await fs.transaction(async (root) => {
+        let untar = new UnTar(res.body as ReadableStream, {
+          file(entry) {
+            (async () => {
+              await fs.write(entry.name, entry, entry.stream(), root);
+            })();
+          },
+        });
+        await untar.done;
       });
-
-      await untar.done;
-      fs.move("/", undefined, tempRoot);
-      fs.removeFromTemp(temp);
 
       let listing = fs.list("/", true).map(({ stat }) => ({
         mode: `${stat.type === DIRTYPE ? "d" : "-"}${perms.toString(
