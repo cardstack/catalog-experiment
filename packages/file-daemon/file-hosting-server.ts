@@ -7,8 +7,9 @@ import { createReadStream, existsSync } from "fs";
 import { Readable } from "stream";
 import { contentType, lookup } from "mime-types";
 import { Tar } from "tarstream";
-import { DIRTYPE } from "tarstream/constants";
+import { DIRTYPE, REGTYPE } from "tarstream/constants";
 import { NodeReadableToDOM, DOMToNodeReadable } from "./stream-shims";
+import { DirectoryEntry } from "tarstream/types";
 
 const builderServer = "http://localhost:8080";
 
@@ -83,32 +84,29 @@ function streamFileSystem(path: string): Readable {
 
   let tar = new Tar();
   // walk sync ignores the current directory, so we add that first
-  console.log(`Adding directory ${path} to tar`);
   tar.addFile({
     name: "/",
     type: DIRTYPE,
     mode: statSync(path).mode,
     modifyTime: unixTime(statSync(path).mtime.getTime()),
   });
-  let entries = walkSync.entries(path);
-  for (let entry of entries) {
+
+  for (let entry of walkSync.entries(path)) {
     let { fullPath, size, mtime, mode, relativePath } = entry;
     relativePath = `/${relativePath}`;
+    let file = {
+      mode,
+      size,
+      modifyTime: unixTime(mtime),
+      type: entry.isDirectory() ? DIRTYPE : REGTYPE,
+      name: entry.isDirectory() ? relativePath.slice(0, -1) : relativePath,
+    };
     if (entry.isDirectory()) {
-      console.log(`Adding directory ${fullPath} to tar`);
-      tar.addFile({
-        name: relativePath.slice(0, -1),
-        type: DIRTYPE,
-        modifyTime: mtime,
-        mode,
-      });
+      tar.addFile(file as DirectoryEntry);
     } else {
       tar.addFile({
-        name: relativePath,
-        mode,
-        modifyTime: unixTime(mtime),
+        ...file,
         stream: () => new NodeReadableToDOM(createReadStream(fullPath)),
-        size,
       });
     }
   }
