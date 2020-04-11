@@ -90,13 +90,14 @@ function streamFileSystem(root: string, path: string): Readable {
     mode: statSync(path).mode,
     modifyTime: unixTime(statSync(path).mtime.getTime()),
   });
-  for (let entry of walkSync.entries(path)) {
-    let { fullPath, size, mtime, mode } = entry;
-    let relativePath = fullPath.substring(root.length);
+  let entries = walkSync.entries(path);
+  for (let entry of entries) {
+    let { fullPath, size, mtime, mode, relativePath } = entry;
+    relativePath = `/${relativePath}`;
     if (entry.isDirectory()) {
       console.log(`Adding directory ${fullPath} to tar`);
       tar.addFile({
-        name: relativePath,
+        name: relativePath.slice(0, -1),
         type: DIRTYPE,
         modifyTime: mtime,
         mode,

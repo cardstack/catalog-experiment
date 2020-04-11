@@ -231,7 +231,11 @@ export class FileSystem {
     | string
     | undefined /* the root dir '/' has no parent dir (same with the temp roots) */ {
     if (path === "/" || !path.includes("/")) return;
-    return path.slice(0, -1 * this.baseName(path).length);
+    let dirName = path.slice(0, -1 * this.baseName(path).length - 1);
+    if (path.charAt(0) === "/") {
+      return dirName || "/";
+    }
+    return dirName;
   }
 
   makeTemp(): { dirName: string; root: Directory } {
@@ -296,7 +300,7 @@ export class FileSystem {
     for (let name of [...directory.files.keys()].sort()) {
       let item = directory.files.get(name)!;
       results.push({ path: join(absolutePath, name), stat: item.stat });
-      if (item instanceof Map && recurse) {
+      if (item instanceof Directory && recurse) {
         results.push(...this._list(name, true, directory, absolutePath));
       }
     }
