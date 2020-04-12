@@ -1,6 +1,5 @@
 import { WatchInfo } from "../../file-daemon/interfaces";
 import { FileSystem } from "./filesystem";
-import { UnTar } from "tarstream";
 import columnify from "columnify";
 import { DIRTYPE } from "tarstream/constants";
 import moment from "moment";
@@ -8,20 +7,20 @@ import moment from "moment";
 import perms from "perms";
 
 export class FileDaemonClient {
-  ready: Promise<void>;
+  ready: Promise<FileSystem>;
 
   private socket: WebSocket | undefined;
   private socketClosed: Promise<void> | undefined;
   private backoffInterval = 0;
-  private doneSyncing!: () => void;
+  private doneSyncing!: (fs: FileSystem) => void;
+  fs?: FileSystem;
 
   private queue: WatchInfo[] = [];
   private resolveQueuePromise: undefined | (() => void);
 
   constructor(
     private fileServerURL: string,
-    private websocketServerURL: string,
-    private fs: FileSystem // target directory to write the files received from the file daemon
+    private websocketServerURL: string
   ) {
     this.ready = new Promise((res) => (this.doneSyncing = res));
     this.run();
@@ -122,39 +121,26 @@ export class FileDaemonClient {
 
   private async startFullSync() {
     console.log("starting full sync");
-    let res = await fetch(`${this.fileServerURL}/`, {
-      headers: {
-        accept: "application/x-tar",
-      },
-    });
-
-    // TODO pass the tar stream into the FileSystem instance, where we can
-    // decode the tar stream to create the resulting filesystem
-    if (res.body) {
-      let fs = this.fs;
-      await fs.transaction(async (root) => {
-        let untar = new UnTar(res.body as ReadableStream, {
-          file(entry) {
-            (async () => {
-              await fs.write(entry.name, entry, entry.stream(), root);
-            })();
+    let fs = new FileSystem(
+      (
+        await fetch(`${this.fileServerURL}/`, {
+          headers: {
+            accept: "application/x-tar",
           },
-        });
-        await untar.done;
-      });
+        })
+      ).body as ReadableStream
+    );
+    await fs.ready;
 
-      let listing = fs.list("/", true).map(({ stat }) => ({
-        mode: `${stat.type === DIRTYPE ? "d" : "-"}${perms.toString(
-          stat.mode
-        )}`,
-        size: stat.size,
-        modified: moment(stat.modifyTime! * 1000).format("MMM D YYYY hh:mm"),
-        etag: stat.etag,
-        name: stat.name,
-      }));
-      this.doneSyncing();
-      console.log(`syncing complete, file system: \n${columnify(listing)}`);
-    }
+    let listing = fs.list("/", true).map(({ stat }) => ({
+      mode: `${stat.type === DIRTYPE ? "d" : "-"}${perms.toString(stat.mode)}`,
+      size: stat.size,
+      modified: moment(stat.modifyTime! * 1000).format("MMM D YYYY hh:mm"),
+      etag: stat.etag,
+      name: stat.name,
+    }));
+    this.doneSyncing(fs);
+    console.log(`syncing complete, file system: \n${columnify(listing)}`);
   }
 
   private handleInfo(watchInfo: WatchInfo) {
