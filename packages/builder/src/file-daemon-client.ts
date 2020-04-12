@@ -8,7 +8,7 @@ import moment from "moment";
 import perms from "perms";
 
 export class FileDaemonClient {
-  ready: Promise<void>;
+  ready: Promise<blah>;
 
   private socket: WebSocket | undefined;
   private socketClosed: Promise<void> | undefined;
