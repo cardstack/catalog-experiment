@@ -1,5 +1,6 @@
 import { StreamFileEntry } from "tarstream/types";
 import { DIRTYPE } from "tarstream/constants";
+import { UnTar } from "tarstream";
 
 interface Stat extends Omit<StreamFileEntry, "stream"> {
   etag: string;
@@ -60,8 +61,15 @@ various FileSystem functions.
 type TransactionCallBack = (root: Directory) => Promise<unknown>;
 
 export class FileSystem {
+  ready: Promise<void>;
+  private completedSync!: () => void;
   private temp = new Directory("temp");
   private root = new Directory("root");
+
+  constructor(fsStream: ReadableStream) {
+    this.ready = new Promise((res) => (this.completedSync = res));
+    this.initialize(fsStream);
+  }
 
   // Note that there is no need to wrap a tansaction for a single write()
   // operation. write() will inherently use a transaction. Use transaction()
@@ -352,6 +360,21 @@ export class FileSystem {
       }
     }
     return tempDir;
+  }
+
+  private async initialize(stream: ReadableStream): Promise<void> {
+    await this.transaction(async (root) => {
+      let fs = this;
+      let untar = new UnTar(stream, {
+        file(entry) {
+          (async () => {
+            await fs.write(entry.name, entry, entry.stream(), root);
+          })();
+        },
+      });
+      await untar.done;
+    });
+    this.completedSync();
   }
 }
 

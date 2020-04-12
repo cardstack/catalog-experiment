@@ -1,12 +1,10 @@
 import { parse } from "@babel/core";
-import { FileSystem } from "./filesystem";
 import { FileDaemonClient } from "./file-daemon-client";
 
 import { tarTest } from "./tar-test";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
-const fs = new FileSystem();
-new FileDaemonClient("http://localhost:4200", "ws://localhost:3000", fs);
+new FileDaemonClient("http://localhost:4200", "ws://localhost:3000");
 
 console.log("service worker evaluated");
 
