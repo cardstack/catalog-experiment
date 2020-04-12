@@ -131,6 +131,8 @@ export class FileDaemonClient {
       ).body as ReadableStream
     );
     await fs.ready;
+    this.fs = fs;
+    this.doneSyncing(fs);
 
     let listing = fs.list("/", true).map(({ stat }) => ({
       mode: `${stat.type === DIRTYPE ? "d" : "-"}${perms.toString(stat.mode)}`,
@@ -139,7 +141,6 @@ export class FileDaemonClient {
       etag: stat.etag,
       name: stat.name,
     }));
-    this.doneSyncing(fs);
     console.log(`syncing complete, file system: \n${columnify(listing)}`);
   }
 
