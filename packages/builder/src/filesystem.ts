@@ -362,6 +362,7 @@ class File {
   // TODO eventually let's hold the data in IndexDB so that the entire
   // filesystem is not resident in memory.
   private readonly buffer?: Uint8Array;
+  private doneReading?: () => void;
   readonly done: Promise<void>;
 
   constructor(
@@ -379,10 +380,8 @@ class File {
       // consuming its stream immediately.
       this.buffer = new Uint8Array(this.header.size);
       this.reader = bufferOrReader;
-      this.done = new Promise(async (done) => {
-        await this.startReading();
-        done();
-      });
+      this.done = new Promise(async (res) => (this.doneReading = res));
+      this.startReading();
     }
   }
   get name() {
@@ -400,7 +399,7 @@ class File {
   }
 
   private async startReading() {
-    if (!this.reader) {
+    if (!this.reader || typeof this.doneReading !== "function") {
       throw new Error("bug: should never get here");
     }
     let byteCount = 0;
@@ -409,6 +408,7 @@ class File {
       let chunk = await this.reader.read();
       if (chunk.done) {
         console.log(`read ${byteCount} bytes from ${this.name}`);
+        this.doneReading();
         break;
       } else {
         buffer.set(chunk.value, byteCount);
