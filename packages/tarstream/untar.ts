@@ -253,7 +253,7 @@ class FileStreamer {
   }
 
   async start(controller: ReadableStreamDefaultController) {
-    withStreamingErrorHandling(controller, async () => {
+    return withStreamingErrorHandling(controller, async () => {
       if (this.initialBytes.length < this.header.size) {
         controller.enqueue(this.initialBytes);
         this.bytesSent += this.initialBytes.length;
@@ -268,7 +268,7 @@ class FileStreamer {
   }
 
   async pull(controller: ReadableStreamDefaultController) {
-    withStreamingErrorHandling(controller, async () => {
+    return withStreamingErrorHandling(controller, async () => {
       let chunk = await this.reader.read();
       if (chunk.done) {
         let error = new Error(`Unexpected end of file`);
@@ -313,7 +313,7 @@ class FileStreamer {
 
 function withStreamingErrorHandling(
   controller: ReadableStreamDefaultController,
-  fn: () => Promise<unknown>
+  fn: () => Promise<void>
 ) {
   try {
     return fn();
