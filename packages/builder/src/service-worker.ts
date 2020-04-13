@@ -1,10 +1,16 @@
 import { parse } from "@babel/core";
 import { FileDaemonClient } from "./file-daemon-client";
+import { contentType, lookup } from "mime-types";
+import { File } from "./filesystem";
 
 import { tarTest } from "./tar-test";
 
+const utf8 = new TextDecoder("utf-8");
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
-new FileDaemonClient("http://localhost:4200", "ws://localhost:3000");
+const client = new FileDaemonClient(
+  "http://localhost:4200",
+  "ws://localhost:3000"
+);
 
 console.log("service worker evaluated");
 
@@ -24,8 +30,6 @@ worker.addEventListener("activate", () => {
 
 worker.addEventListener("fetch", (event: FetchEvent) => {
   let url = new URL(event.request.url);
-  // TODO we should serve files out of the file system abstration--no more going
-  // back to the server.
   if (url.origin !== worker.origin) {
     console.log(`ignore ${event.request.url} based on origin`);
     event.respondWith(fetch(event.request));
@@ -37,32 +41,42 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
     return;
   }
 
-  // TODO we should serve files out of the file system abstration--no more going
-  // back to the server.
   event.respondWith(
     (async () => {
-      let response = await fetch(event.request);
-      let mediaType = response.headers
-        .get("content-type")
-        ?.split(";")?.[0]
-        ?.trim();
-      if (mediaType !== "application/javascript") {
-        return response;
+      let url = new URL(event.request.url);
+      if (url.pathname === "/") {
+        return await fetch(event.request);
       } else {
-        return bundled(response);
+        let file = (await client.fs).retrieve(url.pathname);
+        if (file.name.split(".").pop() === "js") {
+          return bundled(file);
+        } else {
+          let response = new Response(await file.data);
+          setContentHeaders(response, file);
+          return response;
+        }
       }
     })()
   );
 });
 
-async function bundled(rawResponse: Response): Promise<Response> {
-  let text = await rawResponse.text();
-  let result = await parse(text, {});
-  console.log(result);
-  let response = new Response(text);
+function setContentHeaders(response: Response, file: File): void {
+  let mime = lookup(file.name) || "application/octet-stream";
   response.headers.set(
     "content-type",
-    rawResponse.headers.get("content-type") ?? "application/octet-stream"
+    contentType(mime) as Exclude<string, false>
   );
+  response.headers.set("content-length", String(file.stat.size));
+}
+
+async function bundled(file: File): Promise<Response> {
+  let js = utf8.decode(await file.data);
+  let result = await parse(js, {});
+  console.log(result);
+
+  let response = new Response(js);
+  response.headers.set("content-type", "application/javascript");
+  response.headers.set("content-length", String(js.length));
+
   return response;
 }

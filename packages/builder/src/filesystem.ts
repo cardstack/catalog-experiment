@@ -191,7 +191,7 @@ export class FileSystem {
       }
     }
     parentDir.files.set(resource.name, resource);
-    await resource.done;
+    await resource.data;
     return resource;
   }
 
@@ -437,14 +437,14 @@ export class FileSystem {
 }
 
 export class File {
-  private readonly _name: string;
+  readonly data: Promise<Uint8Array>;
+
   protected readonly header: FileHeader;
+  private readonly _name: string;
   private readonly reader?: ReadableStreamDefaultReader<Uint8Array>;
   // TODO eventually let's hold the data in IndexDB so that the entire
   // filesystem is not resident in memory.
-  private buffer?: Uint8Array;
-  private doneReading?: () => void;
-  readonly done: Promise<void>;
+  private doneReading?: (buffer: Uint8Array) => void;
 
   constructor(
     name: string,
@@ -454,22 +454,17 @@ export class File {
     this._name = name;
     this.header = { ...header };
     if (bufferOrReader instanceof Uint8Array) {
-      this.buffer = bufferOrReader;
-      this.done = Promise.resolve();
+      this.data = Promise.resolve(bufferOrReader);
     } else {
       // this reader is on loan to us to it's really important that we start
       // consuming its stream immediately.
-      this.buffer = new Uint8Array(this.header.size);
       this.reader = bufferOrReader;
-      this.done = new Promise(async (res) => (this.doneReading = res));
+      this.data = new Promise(async (res) => (this.doneReading = res));
       this.startReading();
     }
   }
   get name() {
     return this._name;
-  }
-  get data() {
-    return this.buffer;
   }
   get stat(): Stat {
     return {
@@ -480,8 +475,7 @@ export class File {
   }
 
   async clone(): Promise<File> {
-    await this.done;
-    return new File(this.name, this.header, new Uint8Array(this.buffer!));
+    return new File(this.name, this.header, new Uint8Array(await this.data));
   }
 
   private async startReading() {
@@ -489,15 +483,15 @@ export class File {
       throw new Error("bug: should never get here");
     }
     let byteCount = 0;
-    this.buffer = new Uint8Array(this.header.size);
+    let buffer = new Uint8Array(this.header.size);
     while (true) {
       let chunk = await this.reader.read();
       if (chunk.done) {
         console.log(`read ${byteCount} bytes from ${this.name}`);
-        this.doneReading();
+        this.doneReading(buffer);
         break;
       } else {
-        this.buffer.set(chunk.value, byteCount);
+        buffer.set(chunk.value, byteCount);
         byteCount += chunk.value.length;
       }
     }
@@ -526,7 +520,7 @@ export class Directory extends File {
   }
 
   async clone(): Promise<Directory> {
-    await this.done;
+    await this.data;
     return new Directory(this.name, this.header, new Uint8Array());
   }
 }
