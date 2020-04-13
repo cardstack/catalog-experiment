@@ -200,7 +200,7 @@ export class FileSystem {
       dest = this.retrieve(destPath, destRoot) as any;
       if (dest instanceof File) {
         throw new Error(
-          `${destPath} is not a directory in root '${destRoot.name}`
+          `The destination directory '${destPath}' cannot be a file in root '${destRoot.name}`
         );
       }
     } else {
