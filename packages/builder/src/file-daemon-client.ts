@@ -137,7 +137,7 @@ export class FileDaemonClient {
     let listing = fs.list("/", true).map(({ stat }) => ({
       mode: `${stat.type === DIRTYPE ? "d" : "-"}${perms.toString(stat.mode)}`,
       size: stat.size,
-      modified: moment(stat.modifyTime! * 1000).format("MMM D YYYY hh:mm"),
+      modified: moment(stat.modifyTime! * 1000).format("MMM D YYYY HH:mm"),
       etag: stat.etag,
       name: stat.name,
     }));
