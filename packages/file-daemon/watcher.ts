@@ -1,10 +1,14 @@
 import WebSocket from "ws";
 import walkSync from "walk-sync";
-import { WatchInfo, FileInfo } from "./interfaces";
+import { statSync } from "fs-extra";
+import { WatchInfo, FileInfo, FileHeader } from "./interfaces";
+import { unixTime } from "./utils";
+import { REGTYPE } from "tarstream/constants";
 
 interface DirectoryMapEntry {
   hash: string;
   info: walkSync.Entry;
+  header: FileHeader;
 }
 type DirectoryMap = Map<string, DirectoryMapEntry>;
 
@@ -75,11 +79,11 @@ export default class Watcher {
     let files: FileInfo[] = [...source.keys()]
       .filter((i) => !target.has(i))
       .map((name) => ({ name, etag: null }));
-    for (let [file, { hash }] of target) {
+    for (let [file, { hash, header }] of target) {
       if (!source.has(file)) {
-        files.push({ name: file, etag: hash });
+        files.push({ name: file, etag: hash, header });
       } else if (source.get(file)!.hash !== hash) {
-        files.push({ name: file, etag: hash });
+        files.push({ name: file, etag: hash, header });
       }
     }
     return { files };
@@ -91,8 +95,21 @@ export default class Watcher {
       if (entry.isDirectory()) {
         continue;
       }
+      let relativePath = `/${entry.relativePath}`;
+      let stat = statSync(entry.fullPath);
+      let header = {
+        name: relativePath,
+        mode: stat.mode,
+        type: REGTYPE,
+        size: stat.size,
+        modifyTime: unixTime(stat.mtime.getTime()),
+      };
       let fileHash = `${entry.size}_${entry.mtime}`;
-      directoryMap.set(entry.relativePath, { hash: fileHash, info: entry });
+      directoryMap.set(relativePath, {
+        hash: fileHash,
+        info: entry,
+        header,
+      });
     }
     return directoryMap;
   }
