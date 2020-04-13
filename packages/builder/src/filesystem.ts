@@ -78,10 +78,25 @@ export class FileSystem {
     fn: TransactionCallBack,
     replacePath?: string // don't specify this if you want to replace the entire filesystem
   ): Promise<void> {
+    if (
+      replacePath &&
+      (!this.exists(replacePath) || this.isFile(replacePath))
+    ) {
+      throw new Error(
+        `The replacePath '${replacePath}' must be a directory that exists in the root file system`
+      );
+    }
     let { dirName: temp, root: tempRoot } = this.makeTemp();
     try {
+      if (replacePath) {
+        await this.copy(replacePath, undefined, this.root, tempRoot);
+      }
       await fn(tempRoot);
-      this.move("/", replacePath, tempRoot);
+      await this.move(
+        replacePath ? this.baseName(replacePath) : "/",
+        replacePath ? this.dirName(replacePath) : undefined,
+        tempRoot
+      );
     } finally {
       this.removeFromTemp(temp);
     }
@@ -159,6 +174,10 @@ export class FileSystem {
 
     let resource: File;
     let name = this.baseName(path);
+
+    // we don't hold the full path in the header name so that moving directories
+    // doest trigger a cascade of file changes
+    header.name = name;
     if (streamOrBuffer instanceof Uint8Array) {
       let buffer = streamOrBuffer;
       resource = new File(name, header, buffer);
@@ -176,29 +195,50 @@ export class FileSystem {
     return resource;
   }
 
-  move(
+  async move(
     sourcePath: string,
     // when the path is undefined that means copy the source to a direct child
     // of the destRoot.
     destPath?: string,
     sourceRoot?: Directory,
     destRoot?: Directory
-  ): void {
+  ): Promise<void> {
+    await this._copy(sourcePath, destPath, sourceRoot, destRoot, false, false);
+    this.remove(sourcePath, sourceRoot);
+  }
+
+  async copy(
+    sourcePath: string,
+    // when the path is undefined that means copy the source to a direct child
+    // of the destRoot.
+    destPath?: string,
+    sourceRoot?: Directory,
+    destRoot?: Directory
+  ): Promise<void> {
+    await this._copy(sourcePath, destPath, sourceRoot, destRoot, true, true);
+  }
+
+  private async _copy(
+    sourcePath: string,
+    destPath: string | undefined,
+    sourceRoot: Directory | undefined,
+    destRoot: Directory | undefined,
+    recursive: boolean,
+    cloneItems: boolean
+  ): Promise<void> {
     if (!sourceRoot) {
       sourceRoot = this.root;
     }
     if (!destRoot) {
       destRoot = this.root;
     }
-
-    let name = this.baseName(sourcePath);
     let source = this.retrieve(sourcePath, sourceRoot);
     let dest: Directory;
     if (destPath && !this.exists(destPath, destRoot)) {
       dest = this.mkdir(destPath, destRoot);
     } else if (destPath) {
       dest = this.retrieve(destPath, destRoot) as any;
-      if (dest instanceof File) {
+      if (!(dest instanceof Directory)) {
         throw new Error(
           `The destination directory '${destPath}' cannot be a file in root '${destRoot.name}`
         );
@@ -206,8 +246,24 @@ export class FileSystem {
     } else {
       dest = destRoot;
     }
-    dest.files.set(name, source);
-    this.remove(sourcePath, sourceRoot);
+
+    let name = this.baseName(sourcePath);
+    let destItem: File | Directory;
+    if (cloneItems) {
+      destItem = await source.clone();
+    } else {
+      destItem = source;
+    }
+    dest.files.set(name, destItem);
+    if (
+      source instanceof Directory &&
+      destItem instanceof Directory &&
+      recursive
+    ) {
+      for (let childName of [...source.files.keys()]) {
+        await this._copy(childName, undefined, source, destItem, true, true);
+      }
+    }
   }
 
   remove(path: string, root?: Directory): void {
@@ -303,13 +359,15 @@ export class FileSystem {
 
     let results: ListingEntry[] = [];
     if (absolutePath === path) {
-      results.push({ path: ".", stat: directory.stat });
+      results.push({ path: "./", stat: directory.stat });
     }
     for (let name of [...directory.files.keys()].sort()) {
       let item = directory.files.get(name)!;
-      results.push({ path: join(absolutePath, name), stat: item.stat });
+      results.push({ path: `.${join(absolutePath, name)}`, stat: item.stat });
       if (item instanceof Directory && recurse) {
-        results.push(...this._list(name, true, directory, absolutePath));
+        results.push(
+          ...this._list(name, true, directory, join(absolutePath, name))
+        );
       }
     }
     return results;
@@ -378,13 +436,13 @@ export class FileSystem {
   }
 }
 
-class File {
+export class File {
   private readonly _name: string;
-  private readonly header: FileHeader;
+  protected readonly header: FileHeader;
   private readonly reader?: ReadableStreamDefaultReader<Uint8Array>;
   // TODO eventually let's hold the data in IndexDB so that the entire
   // filesystem is not resident in memory.
-  private readonly buffer?: Uint8Array;
+  private buffer?: Uint8Array;
   private doneReading?: () => void;
   readonly done: Promise<void>;
 
@@ -421,12 +479,17 @@ class File {
     };
   }
 
+  async clone(): Promise<File> {
+    await this.done;
+    return new File(this.name, this.header, new Uint8Array(this.buffer!));
+  }
+
   private async startReading() {
     if (!this.reader || typeof this.doneReading !== "function") {
       throw new Error("bug: should never get here");
     }
     let byteCount = 0;
-    let buffer = new Uint8Array(this.header.size);
+    this.buffer = new Uint8Array(this.header.size);
     while (true) {
       let chunk = await this.reader.read();
       if (chunk.done) {
@@ -434,14 +497,14 @@ class File {
         this.doneReading();
         break;
       } else {
-        buffer.set(chunk.value, byteCount);
+        this.buffer.set(chunk.value, byteCount);
         byteCount += chunk.value.length;
       }
     }
   }
 }
 
-class Directory extends File {
+export class Directory extends File {
   readonly files: Files = new Map();
   constructor(
     name: string,
@@ -461,9 +524,14 @@ class Directory extends File {
       bufferOrReader ?? new Uint8Array()
     );
   }
+
+  async clone(): Promise<Directory> {
+    await this.done;
+    return new Directory(this.name, this.header, new Uint8Array());
+  }
 }
 
-function splitPath(path: string): string[] {
+export function splitPath(path: string): string[] {
   if (path === "/") {
     return ["/"];
   }
@@ -474,7 +542,7 @@ function splitPath(path: string): string[] {
   return segments;
 }
 
-function join(...pathParts: string[]): string {
+export function join(...pathParts: string[]): string {
   if (pathParts.length === 0) {
     throw new Error(`no path parameters specified`);
   }

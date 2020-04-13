@@ -10,6 +10,7 @@ import { Tar } from "tarstream";
 import { DIRTYPE, REGTYPE } from "tarstream/constants";
 import { NodeReadableToDOM, DOMToNodeReadable } from "./stream-shims";
 import { DirectoryEntry } from "tarstream/types";
+import { unixTime } from "./utils";
 
 const builderServer = "http://localhost:8080";
 
@@ -124,8 +125,4 @@ function serverLog(req: http.IncomingMessage, res: http.ServerResponse): void {
   const d = new Date().toISOString();
   const dateFmt = `[${d.slice(0, 10)} ${d.slice(11, 19)}]`;
   console.log(`${dateFmt} "${req.method} ${req.url}" ${res.statusCode}`);
-}
-
-function unixTime(time: number) {
-  return Math.floor(time / 1000);
 }

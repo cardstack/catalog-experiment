@@ -34,7 +34,7 @@ export const defaultGid = 0; // root
  };
  */
 
-interface BaseFileEntry {
+export interface BaseFileEntry {
   name: string;
   mode: number;
   modifyTime: number;
