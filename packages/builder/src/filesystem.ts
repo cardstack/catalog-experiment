@@ -1,6 +1,5 @@
 import { StreamFileEntry } from "tarstream/types";
 import { DIRTYPE } from "tarstream/constants";
-import { UnTar } from "tarstream";
 
 interface Stat extends Omit<StreamFileEntry, "stream"> {
   etag: string;
@@ -37,7 +36,7 @@ The FileSystem has 2 top level `Directory` instances:
    this directory.
 
 The FileSystem contains normal CRUD operations that you'd expect for a file
-system: `mkdir()`, `retrieve()`, `write()`, `move()`, `copy()`, `remove()`,
+system: `mkdir()`, `open()`, `write()`, `move()`, `copy()`, `remove()`,
 `list()`, etc. All the operations allow you to optionally specify which "root"
 you'd like to operate against: the "real" root or the temp root. If you don't
 specify a root, then the "real" root will be assumed. You can only operate
@@ -61,15 +60,8 @@ various FileSystem functions.
 type TransactionCallBack = (root: Directory) => Promise<unknown>;
 
 export class FileSystem {
-  ready: Promise<void>;
-  private completedSync!: () => void;
   private temp = new Directory("temp");
   private root = new Directory("root");
-
-  constructor(fsStream: ReadableStream) {
-    this.ready = new Promise((res) => (this.completedSync = res));
-    this.initialize(fsStream);
-  }
 
   // TODO we should create a write lock on the replacementPath directory so that
   // there are not conflicting writes within it while the transaction is
@@ -85,22 +77,11 @@ export class FileSystem {
     fn: TransactionCallBack,
     replacePath?: string // don't specify this if you want to replace the entire filesystem
   ): Promise<void> {
-    if (
-      replacePath &&
-      (!this.exists(replacePath) || this.isFile(replacePath))
-    ) {
-      throw new Error(
-        `The replacePath '${replacePath}' must be a directory that exists in the root file system`
-      );
-    }
     let { dirName: temp, root: tempRoot } = this.makeTemp();
     try {
-      if (replacePath) {
-        await this.copy(replacePath, undefined, this.root, tempRoot);
-      }
       await fn(tempRoot);
       await this.move(
-        replacePath ? this.baseName(replacePath) : "/",
+        replacePath ? replacePath.slice(1) : "/",
         replacePath ? this.dirName(replacePath) : undefined,
         tempRoot
       );
@@ -116,12 +97,11 @@ export class FileSystem {
       root = this.root;
     }
 
-    let pathSegments = splitPath(path);
-    let name = this.baseName(path);
+    let pathSegments = splitPath(path).filter((i) => i !== "/");
+    let name = pathSegments.shift()!;
     let newDir = new Directory(name);
     root.files.set(name, newDir);
-    if (pathSegments.length > 1) {
-      pathSegments.shift();
+    if (pathSegments.length > 0) {
       return this.mkdir(join(...pathSegments), newDir);
     } else {
       return newDir;
@@ -156,7 +136,7 @@ export class FileSystem {
       let resource: File | Directory;
       await this.transaction(async (tempRoot) => {
         resource = await this._write(path, header, streamOrBuffer, tempRoot);
-      });
+      }, path);
       return resource!;
     } else {
       return await this._write(path, header, streamOrBuffer, root);
@@ -181,7 +161,7 @@ export class FileSystem {
           `Cannot create file '${path}' in root '${root.name}', the specified parent directory '${dirName}' is actually already a file`
         );
       } else {
-        parentDir = this.retrieve(dirName, root) as Directory;
+        parentDir = this.open(dirName, root) as Directory;
       }
     }
 
@@ -265,12 +245,12 @@ export class FileSystem {
     if (!destRoot) {
       destRoot = this.root;
     }
-    let source = this.retrieve(sourcePath, sourceRoot);
+    let source = this.open(sourcePath, sourceRoot);
     let dest: Directory;
     if (destPath && !this.exists(destPath, destRoot)) {
       dest = this.mkdir(destPath, destRoot);
     } else if (destPath) {
-      dest = this.retrieve(destPath, destRoot) as any;
+      dest = this.open(destPath, destRoot) as any;
       if (!(dest instanceof Directory)) {
         throw new Error(
           `The destination directory '${destPath}' cannot be a file in root '${destRoot.name}`
@@ -316,7 +296,7 @@ export class FileSystem {
     if (!dirName) {
       root.files.delete(name);
     } else {
-      let sourceDir = this.retrieve(dirName, root) as Directory;
+      let sourceDir = this.open(dirName, root) as Directory;
       sourceDir.files.delete(name);
     }
   }
@@ -346,7 +326,7 @@ export class FileSystem {
   }
 
   isDirectory(path: string, root?: Directory): boolean {
-    return this.retrieve(path, root) instanceof Directory;
+    return this.open(path, root) instanceof Directory;
   }
 
   isFile(path: string, root?: Directory): boolean {
@@ -355,7 +335,7 @@ export class FileSystem {
 
   exists(path: string, root?: Directory): boolean {
     try {
-      this.retrieve(path, root);
+      this.open(path, root);
       return true;
     } catch (err) {
       if (err.message.includes("does not exist")) {
@@ -363,10 +343,6 @@ export class FileSystem {
       }
       throw err;
     }
-  }
-
-  isEmpty(): boolean {
-    return !this.exists("/");
   }
 
   list(path: string, recurse = false, root?: Directory): ListingEntry[] {
@@ -386,13 +362,9 @@ export class FileSystem {
       absolutePath = path;
     }
 
-    let directory = this.retrieve(path, root);
+    let directory = this.open(path, root);
     if (!(directory instanceof Directory)) {
-      throw new Error(
-        `${path} is not a directory in root '${root.name}'${
-          this.isEmpty() ? ", the filesystem is empty" : ""
-        }`
-      );
+      throw new Error(`${path} is not a directory in root '${root.name}'`);
     }
 
     let results: ListingEntry[] = [];
@@ -411,11 +383,11 @@ export class FileSystem {
     return results;
   }
 
-  retrieve(path: string, root?: Directory): File | Directory {
-    return this._retrieve(path, root);
+  open(path: string, root?: Directory): File | Directory {
+    return this._open(path, root);
   }
 
-  private _retrieve(
+  private _open(
     path: string,
     root?: Directory,
     absolutePath?: string
@@ -438,7 +410,7 @@ export class FileSystem {
     if (pathSegments.length === 0) {
       return resource;
     } else if (resource instanceof Directory) {
-      return this._retrieve(join(...pathSegments), resource, absolutePath);
+      return this._open(join(...pathSegments), resource, absolutePath);
     } else {
       // there is unconsumed path left over...
       throw new Error(
@@ -456,21 +428,6 @@ export class FileSystem {
       }
     }
     return tempDir;
-  }
-
-  private async initialize(stream: ReadableStream): Promise<void> {
-    await this.transaction(async (root) => {
-      let fs = this;
-      let untar = new UnTar(stream, {
-        file(entry) {
-          (async () => {
-            await fs.write(entry.name, entry, entry.stream(), root);
-          })();
-        },
-      });
-      await untar.done;
-    });
-    this.completedSync();
   }
 }
 

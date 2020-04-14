@@ -1,15 +1,18 @@
 import { parse } from "@babel/core";
 import { FileDaemonClient } from "./file-daemon-client";
 import { contentType, lookup } from "mime-types";
-import { File } from "./filesystem";
+import { File, FileSystem } from "./filesystem";
 
 import { tarTest } from "./tar-test";
 
 const utf8 = new TextDecoder("utf-8");
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
+const fs = new FileSystem();
 const client = new FileDaemonClient(
   "http://localhost:4200",
-  "ws://localhost:3000"
+  "ws://localhost:3000",
+  fs,
+  "/"
 );
 
 console.log("service worker evaluated");
@@ -43,8 +46,9 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
 
   event.respondWith(
     (async () => {
+      await client.ready;
       let url = new URL(event.request.url);
-      let fs = await client.fs;
+
       let path = url.pathname;
       if (path.slice(-1) === "/") {
         path = path.slice(0, -1);
@@ -52,7 +56,7 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
       if (fs.isDirectory(path || "/")) {
         path = `${path}/index.html`;
       }
-      let file = (await client.fs).retrieve(path);
+      let file = fs.open(path);
       if (file.name.split(".").pop() === "js") {
         return bundled(file);
       } else {
