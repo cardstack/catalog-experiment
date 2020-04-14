@@ -543,5 +543,6 @@ export function join(...pathParts: string[]): string {
   if (pathParts[0] === "/") {
     pathParts[0] = "";
   }
+
   return pathParts.join("/");
 }

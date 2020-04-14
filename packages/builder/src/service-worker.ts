@@ -44,7 +44,14 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
   event.respondWith(
     (async () => {
       let url = new URL(event.request.url);
-      let path = url.pathname === "/" ? "/index.html" : url.pathname;
+      let fs = await client.fs;
+      let path = url.pathname;
+      if (path.slice(-1) === "/") {
+        path = path.slice(0, -1);
+      }
+      if (fs.isDirectory(path || "/")) {
+        path = `${path}/index.html`;
+      }
       let file = (await client.fs).retrieve(path);
       if (file.name.split(".").pop() === "js") {
         return bundled(file);
