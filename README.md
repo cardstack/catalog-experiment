@@ -1,6 +1,6 @@
 # Catalog-Experiment
 
-This repo proves out ideas for "CatalogJS", our planned JS CDN that eliminates the need for running `npm` or `yarn` and maintaining a `node_modules` folder in your web projects.
+This repo proves out ideas for "CatalogJS", our planned JS CDN that eliminates the need for running `npm`/`yarn` and eliminating maintaining a `node_modules` folder in your web projects.
 
 ## Building it
 
