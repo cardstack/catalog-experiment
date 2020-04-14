@@ -101,15 +101,23 @@ export class FileSystem {
       root = this.root;
     }
 
-    let pathSegments =
-      path === "/" ? ["/"] : splitPath(path).filter((i) => i !== "/");
+    let pathSegments = splitPath(path);
     let name = pathSegments.shift()!;
-    let newDir = new Directory(name);
-    root.files.set(name, newDir);
-    if (pathSegments.length > 0) {
-      return this.mkdir(join(...pathSegments), newDir);
+    let dir: Directory;
+    if (!this.exists(name, root)) {
+      dir = new Directory(name);
+      root.files.set(name, dir);
+    } else if (this.isDirectory(name, root)) {
+      dir = this.open(name, root) as Directory;
     } else {
-      return newDir;
+      throw new Error(
+        `The directory '${path}' specified is already a file in root ${root}`
+      );
+    }
+    if (pathSegments.length > 0) {
+      return this.mkdir(join(...pathSegments), dir);
+    } else {
+      return dir;
     }
   }
 
