@@ -36,13 +36,13 @@ The FileSystem has 2 top level `Directory` instances:
    stream files into the `temp` root first, and then once completed, move into
    this directory.
 
-The FileSystem contains normal CRUD opertations that you'd expect for a file
-system: `mkdir()`, `retrieve()`, `write()`, `move()`, `remove()`, `list()`, etc.
-All the operations allow you to optionally specify which "root" you'd like to
-operate against: the "real" root or the temp root. If you don't specify a root,
-then the "real" root will be assumed. You can only operate against a specific
-temp root that has been created and passed to you via `makeTemp()`, which allow
-us to nicely sandbox our temp folders.
+The FileSystem contains normal CRUD operations that you'd expect for a file
+system: `mkdir()`, `retrieve()`, `write()`, `move()`, `copy()`, `remove()`,
+`list()`, etc. All the operations allow you to optionally specify which "root"
+you'd like to operate against: the "real" root or the temp root. If you don't
+specify a root, then the "real" root will be assumed. You can only operate
+against a specific temp root that has been created and passed to you via
+`makeTemp()`, which allow us to nicely sandbox our temp folders.
 
 To make it easy to to leverage the temp root swapping functionality for
 streaming files into the filesystem, there is a FileSystem.transaction()
@@ -197,7 +197,7 @@ export class FileSystem {
 
   async move(
     sourcePath: string,
-    // when the path is undefined that means copy the source to a direct child
+    // when the path is undefined that means move the source to a direct child
     // of the destRoot.
     destPath?: string,
     sourceRoot?: Directory,
@@ -310,12 +310,10 @@ export class FileSystem {
     return splitPath(path).pop()!;
   }
 
-  dirName(
-    path: string
-  ):
-    | string
-    | undefined /* the root dir '/' has no parent dir (same with the temp roots) */ {
+  dirName(path: string): string | undefined {
+    // the root dir '/' has no parent dir (same with the temp roots)
     if (path === "/" || !path.includes("/")) return;
+
     let dirName = path.slice(0, -1 * this.baseName(path).length - 1);
     if (path.charAt(0) === "/") {
       return dirName || "/";
@@ -463,8 +461,6 @@ export class File {
   protected readonly header: FileHeader;
   private readonly _name: string;
   private readonly reader?: ReadableStreamDefaultReader<Uint8Array>;
-  // TODO eventually let's hold the data in IndexDB so that the entire
-  // filesystem is not resident in memory.
   private doneReading?: (buffer: Uint8Array) => void;
 
   constructor(

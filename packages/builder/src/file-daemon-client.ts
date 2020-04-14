@@ -187,8 +187,8 @@ export class FileDaemonClient {
   }
 
   // This is the path to replace in the filee system after the streaming has
-  // completed--it must be the deepest directory that currently exists in the
-  // filesytem that is the parent of all the changed files.
+  // completed--it is the deepest directory that currently exists in the
+  // filesytem that a common ancestor of all the changed files.
   private async replacementPathForChanges(
     changes: FileInfo[]
   ): Promise<string> {
