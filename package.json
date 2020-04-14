@@ -11,5 +11,8 @@
     "build": "tsc",
     "builder": "cd packages/builder && yarn start",
     "serve": "cd packages/app && yarn start"
+  },
+  "resolutions": {
+    "minimist": "^0.2.1"
   }
 }
