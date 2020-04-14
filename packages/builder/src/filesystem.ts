@@ -63,6 +63,12 @@ export class FileSystem {
   private temp = new Directory("temp");
   private root = new Directory("root");
 
+  constructor() {
+    // TODO this is temproary until we refactor all the "root" params out of the
+    // methods in this class
+    this.mkdir("/");
+  }
+
   // TODO we should create a write lock on the replacementPath directory so that
   // there are not conflicting writes within it while the transaction is
   // running. Right now we rely on the fact that the file daemon client uses a
