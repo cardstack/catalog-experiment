@@ -143,7 +143,13 @@ export class FileSystem {
   async write(
     path: string,
     header: FileHeader,
-    streamOrBuffer: ReadableStream | Uint8Array,
+    text: string,
+    root?: Directory
+  ): Promise<File | Directory>;
+  async write(
+    path: string,
+    header: FileHeader,
+    streamOrBuffer: ReadableStream | Uint8Array | string,
     root?: Directory
   ): Promise<File | Directory> {
     if (!root) {
@@ -160,7 +166,7 @@ export class FileSystem {
   private async _write(
     path: string,
     header: FileHeader,
-    streamOrBuffer: ReadableStream | Uint8Array,
+    streamOrBuffer: ReadableStream | Uint8Array | string,
     root: Directory
   ): Promise<File | Directory> {
     let dirName = this.dirName(path);
@@ -188,6 +194,12 @@ export class FileSystem {
     if (streamOrBuffer instanceof Uint8Array) {
       let buffer = streamOrBuffer;
       resource = new File(name, header, buffer);
+    } else if (typeof streamOrBuffer === "string") {
+      resource = new File(
+        name,
+        header,
+        new TextEncoder().encode(streamOrBuffer)
+      );
     } else {
       let stream = streamOrBuffer;
       let reader = stream.getReader();
