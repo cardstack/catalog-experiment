@@ -203,7 +203,14 @@ export class FileSystem {
     sourceRoot?: Directory,
     destRoot?: Directory
   ): Promise<void> {
-    await this._copy(sourcePath, destPath, sourceRoot, destRoot, false, false);
+    await this.copyOrMove(
+      sourcePath,
+      destPath,
+      sourceRoot,
+      destRoot,
+      false,
+      false
+    );
     this.remove(sourcePath, sourceRoot);
   }
 
@@ -215,10 +222,17 @@ export class FileSystem {
     sourceRoot?: Directory,
     destRoot?: Directory
   ): Promise<void> {
-    await this._copy(sourcePath, destPath, sourceRoot, destRoot, true, true);
+    await this.copyOrMove(
+      sourcePath,
+      destPath,
+      sourceRoot,
+      destRoot,
+      true,
+      true
+    );
   }
 
-  private async _copy(
+  private async copyOrMove(
     sourcePath: string,
     destPath: string | undefined,
     sourceRoot: Directory | undefined,
@@ -261,7 +275,14 @@ export class FileSystem {
       recursive
     ) {
       for (let childName of [...source.files.keys()]) {
-        await this._copy(childName, undefined, source, destItem, true, true);
+        await this.copyOrMove(
+          childName,
+          undefined,
+          source,
+          destItem,
+          true,
+          true
+        );
       }
     }
   }
