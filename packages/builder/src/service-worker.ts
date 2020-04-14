@@ -44,17 +44,14 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
   event.respondWith(
     (async () => {
       let url = new URL(event.request.url);
-      if (url.pathname === "/") {
-        return await fetch(event.request);
+      let path = url.pathname === "/" ? "/index.html" : url.pathname;
+      let file = (await client.fs).retrieve(path);
+      if (file.name.split(".").pop() === "js") {
+        return bundled(file);
       } else {
-        let file = (await client.fs).retrieve(url.pathname);
-        if (file.name.split(".").pop() === "js") {
-          return bundled(file);
-        } else {
-          let response = new Response(await file.data);
-          setContentHeaders(response, file);
-          return response;
-        }
+        let response = new Response(await file.data);
+        setContentHeaders(response, file);
+        return response;
       }
     })()
   );
