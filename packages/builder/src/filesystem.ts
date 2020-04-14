@@ -64,8 +64,6 @@ export class FileSystem {
   private root = new Directory("root");
 
   constructor() {
-    // TODO this is temproary until we refactor all the "root" params out of the
-    // methods in this class
     this.mkdir("/");
   }
 
@@ -87,7 +85,7 @@ export class FileSystem {
     try {
       await fn(tempRoot);
       await this.move(
-        replacePath ? replacePath.slice(1) : "/",
+        replacePath ? replacePath : "/",
         replacePath ? this.dirName(replacePath) : undefined,
         tempRoot
       );
@@ -103,7 +101,8 @@ export class FileSystem {
       root = this.root;
     }
 
-    let pathSegments = splitPath(path).filter((i) => i !== "/");
+    let pathSegments =
+      path === "/" ? ["/"] : splitPath(path).filter((i) => i !== "/");
     let name = pathSegments.shift()!;
     let newDir = new Directory(name);
     root.files.set(name, newDir);
