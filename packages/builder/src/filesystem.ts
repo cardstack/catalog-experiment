@@ -74,6 +74,9 @@ export class FileSystem {
   // Note that there is no need to wrap a tansaction for a single write()
   // operation. write() will inherently use a transaction. Use transaction()
   // when you need to make multiple writes to the FileSystem as a siingle transaction.
+
+  // TODO we should create a write lock on the replacementPath directory so that
+  // there are not conflicting writes within it while the transaction is running.
   async transaction(
     fn: TransactionCallBack,
     replacePath?: string // don't specify this if you want to replace the entire filesystem
