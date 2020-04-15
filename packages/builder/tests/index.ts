@@ -24,8 +24,8 @@ QUnit.module("module rewriter", function () {
 
   test("can combine two modules", async (assert) => {
     let scenario = {
-      "/a.js": "export const alpha = 1;",
-      "/b.js": `import { alpha } from '.a';
+      "a.js": "export const alpha = 1;",
+      "b.js": `import { alpha } from '.a';
         export const b = a + 1;
       `,
     };
