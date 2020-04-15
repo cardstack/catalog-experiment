@@ -52,10 +52,19 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
 
       let path = url.pathname;
       path = join(webroot, path);
-      if (fs.isDirectory(path || "/")) {
-        path = `${path}/index.html`;
+      let file: File;
+      try {
+        if (fs.isDirectory(path || "/")) {
+          path = `${path}/index.html`;
+        }
+        file = fs.open(path) as File;
+      } catch (err) {
+        // TODO let's add some codes on the errors that we throw like node does (e.g. NOENT)
+        if (err.message.includes("does not exist")) {
+          return new Response("Not found", { status: 404 });
+        }
+        throw err;
       }
-      let file = fs.open(path) as File;
       if (path.split(".").pop() === "js") {
         return bundled(file);
       } else {
