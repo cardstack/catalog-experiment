@@ -11,7 +11,7 @@ import {
 import { TMAGIC, OLDGNU_MAGIC } from "./constants";
 
 interface Controller {
-  file(entry: StreamFileEntry): void;
+  file(entry: StreamFileEntry): Promise<void>;
 }
 
 interface Options {
@@ -145,7 +145,7 @@ export class UnTar {
             this.state.initialBytes,
             this.reader
           );
-          this.controller.file(streamer.entry);
+          await this.controller.file(streamer.entry);
           let initialBytes = await streamer.done;
 
           this.state = {

@@ -29,10 +29,6 @@ type TransactionCallBack = (txn: string) => Promise<unknown>;
 export class FileSystem {
   private root = new Directory();
 
-  constructor() {
-    this.mkdir("/tmp");
-  }
-
   // Note that there is no need to wrap a transaction for a single write()
   // operation. write() will inherently use a transaction. Use transaction()
   // when you need to make multiple writes to the FileSystem as a single transaction.
@@ -40,40 +36,48 @@ export class FileSystem {
     fn: TransactionCallBack,
     replacePath: string
   ): Promise<void> {
-    let temp = this.makeTemp();
+    let temp = await this.makeTemp();
     try {
       await fn(temp);
-      this.move(join(temp, replacePath), replacePath);
+      await this.move(join(temp, replacePath), replacePath);
     } finally {
-      this.remove(temp);
+      await this.remove(temp);
     }
   }
 
   // this acts like mkdirp, creating any new interior dirs. If dir already
   // exists, then this will just return the existing dir.
-  mkdir(path: string, header?: FileHeader, txnDir?: string): Directory {
-    return this._mkdir(splitPath(join(txnDir || "", path)), undefined, header);
+  async mkdir(
+    path: string,
+    header?: FileHeader,
+    txnDir?: string
+  ): Promise<Directory> {
+    return await this._mkdir(
+      splitPath(join(txnDir || "", path)),
+      undefined,
+      header
+    );
   }
 
-  private _mkdir(
+  private async _mkdir(
     pathSegments: string[],
     parent: string = "",
     header?: FileHeader
-  ): Directory {
+  ): Promise<Directory> {
     let parentDir = parent ? (this.open(parent) as Directory) : this.root;
     let name = pathSegments.shift()!;
     let dir: Directory;
     let dirName = join(parent, name);
-    if (!this.exists(dirName)) {
+    if (!(await this.exists(dirName))) {
       dir = new Directory(pathSegments.length === 0 ? header : undefined);
       parentDir.files.set(name, dir);
-    } else if (this.isDirectory(dirName)) {
+    } else if (await this.isDirectory(dirName)) {
       dir = this.open(dirName) as Directory;
     } else {
       throw new Error(`The directory '${dirName}' specified is already a file`);
     }
     if (pathSegments.length > 0) {
-      return this._mkdir(pathSegments, dirName, header);
+      return await this._mkdir(pathSegments, dirName, header);
     } else {
       if (header) {
         dir.setHeader(header);
@@ -128,7 +132,7 @@ export class FileSystem {
     if (!dirName) {
       throw new Error(`cannot overwrite '/'`);
     }
-    let parentDir = this.mkdir(dirName);
+    let parentDir = await this.mkdir(dirName);
     let resource: File;
     let name = this.baseName(path);
     if (streamOrBuffer instanceof Uint8Array) {
@@ -146,25 +150,25 @@ export class FileSystem {
     return resource;
   }
 
-  move(sourcePath: string, destPath: string): void {
+  async move(sourcePath: string, destPath: string): Promise<void> {
     let source = this.open(sourcePath);
     let destParentDirName = this.dirName(destPath);
     if (destParentDirName) {
-      this.mkdir(destParentDirName);
+      await this.mkdir(destParentDirName);
     }
     let destParent = destParentDirName
       ? (this.open(destParentDirName) as Directory)
       : this.root;
     let name = this.baseName(destPath);
     destParent.files.set(name, source);
-    this.remove(sourcePath);
+    await this.remove(sourcePath);
   }
 
   async copy(sourcePath: string, destPath: string): Promise<void> {
     let source = this.open(sourcePath);
     let destParentDirName = this.dirName(destPath);
     if (destParentDirName) {
-      this.mkdir(destParentDirName);
+      await this.mkdir(destParentDirName);
     }
     let destParent = destParentDirName
       ? (this.open(destParentDirName) as Directory)
@@ -183,7 +187,7 @@ export class FileSystem {
     }
   }
 
-  remove(path: string): void {
+  async remove(path: string): Promise<void> {
     let name = this.baseName(path);
     let dirName = this.dirName(path);
     if (!dirName) {
@@ -209,21 +213,21 @@ export class FileSystem {
     return dirName;
   }
 
-  makeTemp(): string {
-    let dirName = `/tmp/${this.tempDirName()}`;
-    this.mkdir(dirName);
+  async makeTemp(): Promise<string> {
+    let dirName = `/tmp/${await this.tempDirName()}`;
+    await this.mkdir(dirName);
     return dirName;
   }
 
-  isDirectory(path: string): boolean {
+  async isDirectory(path: string): Promise<boolean> {
     return this.open(path) instanceof Directory;
   }
 
-  isFile(path: string): boolean {
-    return !this.isDirectory(path);
+  async isFile(path: string): Promise<boolean> {
+    return !(await this.isDirectory(path));
   }
 
-  exists(path: string): boolean {
+  async exists(path: string): Promise<boolean> {
     try {
       this.open(path);
       return true;
@@ -297,11 +301,11 @@ export class FileSystem {
     }
   }
 
-  private tempDirName(): string {
+  private async tempDirName(): Promise<string> {
     let tempDir: string;
     while (true) {
       tempDir = String(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
-      if (!this.exists(`/tmp/${tempDir}`)) {
+      if (!(await this.exists(`/tmp/${tempDir}`))) {
         break;
       }
     }

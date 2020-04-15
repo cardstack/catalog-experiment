@@ -129,23 +129,21 @@ export class FileDaemonClient {
         },
       })
     ).body as ReadableStream;
-    this.fs.mkdir(this.mountPath);
+    await this.fs.mkdir(this.mountPath);
     await this.fs.transaction(async (txn) => {
       let fs = this.fs;
       let mountedPath = this.mountedPath.bind(this);
       let untar = new UnTar(stream, {
-        file(entry) {
+        async file(entry) {
           if (entry.type === REGTYPE) {
-            (async () => {
-              await fs.write(
-                mountedPath(entry.name),
-                { size: entry.size, mtime: entry.modifyTime },
-                entry.stream(),
-                txn
-              );
-            })();
+            await fs.write(
+              mountedPath(entry.name),
+              { size: entry.size, mtime: entry.modifyTime },
+              entry.stream(),
+              txn
+            );
           } else {
-            fs.mkdir(
+            await fs.mkdir(
               mountedPath(entry.name),
               { mtime: entry.modifyTime, size: 0 },
               txn
@@ -191,7 +189,7 @@ export class FileDaemonClient {
     // removals are synchronous, so no need to wrap in a transaction
     for (let { name } of removals) {
       console.log(`removing ${name}`);
-      this.fs.remove(this.mountedPath(name));
+      await this.fs.remove(this.mountedPath(name));
     }
 
     console.log(`completed processing changes, file system:`);
@@ -203,13 +201,20 @@ export class FileDaemonClient {
   }
 
   private async pruneChanges(changes: FileInfo[]): Promise<FileInfo[]> {
-    return changes.filter(({ name, etag }) => {
-      if (!this.fs.exists(name)) {
-        return true;
-      }
-      let currentFile = this.fs.open(name);
-      return currentFile.stat.etag !== etag;
-    });
+    let changed = await Promise.all(
+      changes.map(async (change) => {
+        let { name, etag } = change;
+        if (!(await this.fs.exists(name))) {
+          return change;
+        }
+        let currentFile = this.fs.open(name);
+        if (currentFile.stat.etag !== etag) {
+          return change;
+        }
+        return false;
+      })
+    );
+    return changed.filter(Boolean) as FileInfo[];
   }
 
   private async displayListing(): Promise<void> {

@@ -54,7 +54,7 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
       path = join(webroot, path);
       let file: File;
       try {
-        if (fs.isDirectory(path || "/")) {
+        if (await fs.isDirectory(path || "/")) {
           path = `${path}/index.html`;
         }
         file = fs.open(path) as File;
