@@ -3971,11 +3971,6 @@ pbkdf2@^3.0.3:
     safe-buffer "^5.0.1"
     sha.js "^2.4.8"
 
-perms@^0.1.0:
-  version "0.1.0"
-  resolved "https://registry.yarnpkg.com/perms/-/perms-0.1.0.tgz#0c3a21de0d4eb67f54d66a4b98b5aedb1f5621b8"
-  integrity sha1-DDoh3g1Otn9U1mpLmLWu2x9WIbg=
-
 pify@^2.0.0:
   version "2.3.0"
   resolved "https://registry.yarnpkg.com/pify/-/pify-2.3.0.tgz#ed141a6ac043a849ea588498e7dca8b15330e90c"

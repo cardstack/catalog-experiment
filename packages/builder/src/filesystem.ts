@@ -1,122 +1,83 @@
-import { StreamFileEntry } from "tarstream/types";
-import { DIRTYPE } from "tarstream/constants";
-
-interface Stat extends Omit<StreamFileEntry, "stream"> {
-  etag: string;
-}
-
 interface ListingEntry {
   path: string;
   stat: Stat;
 }
 
-type FileHeader = Omit<Stat, "etag" | "stream">;
-type Files = Map<string, File>;
+interface FileHeader {
+  mtime: number;
+  size: number;
+  type: "file" | "directory";
+}
+interface Stat extends FileHeader {
+  etag: string;
+}
+type Files = Map<string, File | Directory>;
 
 /*
 The FileSystem class is an abstraction for the file system that the file daemon
 is serving. The FileSystem class leverages a graph to represent the filesystem,
 where each node in the graph is an instance of a `File`. Parent nodes in the
 graph effectively represent directories (and leaf nodes are files). The
-directory is represented as a `Directory` instance which is a specialization of
-the `File` class--specifically it has an additional `files` property that holds
-its child nodes (which may be File instances or Directory instances).
+directory is represented as a `Directory` instance.
 
-The FileSystem has 2 top level `Directory` instances:
-1. `FileSystem.temp`: This is a scratch root folder that is used when we are
-   streaming file data into this class. After all the streaming has completed
-   for a specific write transaction (where a transaction may be writing a single
-   file up to replacing the entire file system), we'll move the root folder that
-   we were streaming into to the "real" file system. This way clients of the
-   `FileSystem` never see partial files--all the writes appear atomic to the
-   outside world.
-2. `FileSystem.root`: This is the "real" file system that clients of this class
-   will interact with. When we stream files into the `FileSystem` we'll always
-   stream files into the `temp` root first, and then once completed, move into
-   this directory.
-
-The FileSystem contains normal CRUD operations that you'd expect for a file
-system: `mkdir()`, `open()`, `write()`, `move()`, `copy()`, `remove()`,
-`list()`, etc. All the operations allow you to optionally specify which "root"
-you'd like to operate against: the "real" root or the temp root. If you don't
-specify a root, then the "real" root will be assumed. You can only operate
-against a specific temp root that has been created and passed to you via
-`makeTemp()`, which allow us to nicely sandbox our temp folders.
-
-To make it easy to to leverage the temp root swapping functionality for
-streaming files into the filesystem, there is a FileSystem.transaction()
-function. This function yields a temp root to a callback that you provide that
-allows you to perform mulitple file system actions (e.g. like streaming in the
-entire file system). After your callback is executed, this function will move
-your temp root into the "real" root at the path that you specify (or `undefined`
-to replace the entire FileSystem). If your transaction throws an exception, the
-temp root will be removed, and no lingering artifacts will remain in the temp
-root.
-
-Note that `.` and `..` are not currently recognized in path names for the
+Note that `.` and `..` are not yet currently recognized in path names for the
 various FileSystem functions.
 */
 
-type TransactionCallBack = (root: Directory) => Promise<unknown>;
+type TransactionCallBack = (txn: string) => Promise<unknown>;
 
 export class FileSystem {
-  private temp = new Directory("temp");
-  private root = new Directory("root");
+  private root = new Directory();
 
   constructor() {
-    this.mkdir("/");
+    this.mkdir("/tmp");
   }
 
-  // TODO we should create a write lock on the replacementPath directory so that
-  // there are not conflicting writes within it while the transaction is
-  // running. Right now we rely on the fact that the file daemon client uses a
-  // queing mechanism to process the file system change notification to prevent
-  // collisions, but writes that happen outside of that loop might collide with
-  // file system changes from the file-daemon.
-
-  // Note that there is no need to wrap a tansaction for a single write()
+  // Note that there is no need to wrap a transaction for a single write()
   // operation. write() will inherently use a transaction. Use transaction()
-  // when you need to make multiple writes to the FileSystem as a siingle transaction.
+  // when you need to make multiple writes to the FileSystem as a single transaction.
   async transaction(
     fn: TransactionCallBack,
-    replacePath?: string // don't specify this if you want to replace the entire filesystem
+    replacePath: string
   ): Promise<void> {
-    let { dirName: temp, root: tempRoot } = this.makeTemp();
+    let temp = this.makeTemp();
     try {
-      await fn(tempRoot);
-      await this.move(
-        replacePath ? replacePath : "/",
-        replacePath ? this.dirName(replacePath) : undefined,
-        tempRoot
-      );
+      await fn(temp);
+      this.move(join(temp, replacePath), replacePath);
     } finally {
-      this.removeFromTemp(temp);
+      this.remove(temp);
     }
   }
 
-  // this acts like mkdirp, creating any interior dirs and clobbering any
-  // already existing dirs
-  mkdir(path: string, root?: Directory): Directory {
-    if (!root) {
-      root = this.root;
-    }
+  // this acts like mkdirp, creating any new interior dirs. If dir already
+  // exists, then this will just return the existing dir.
+  mkdir(path: string, header?: FileHeader, txnDir?: string): Directory {
+    return this._mkdir(splitPath(join(txnDir || "", path)), undefined, header);
+  }
 
-    let pathSegments = splitPath(path);
+  private _mkdir(
+    pathSegments: string[],
+    parent: string = "",
+    header?: FileHeader
+  ): Directory {
+    let parentDir = parent ? (this.open(parent) as Directory) : this.root;
     let name = pathSegments.shift()!;
     let dir: Directory;
-    if (!this.exists(name, root)) {
-      dir = new Directory(name);
-      root.files.set(name, dir);
-    } else if (this.isDirectory(name, root)) {
-      dir = this.open(name, root) as Directory;
+    let dirName = join(parent, name);
+    if (!this.exists(dirName)) {
+      dir = new Directory(pathSegments.length === 0 ? header : undefined);
+      parentDir.files.set(name, dir);
+    } else if (this.isDirectory(dirName)) {
+      dir = this.open(dirName) as Directory;
     } else {
-      throw new Error(
-        `The directory '${path}' specified is already a file in root ${root}`
-      );
+      throw new Error(`The directory '${dirName}' specified is already a file`);
     }
     if (pathSegments.length > 0) {
-      return this.mkdir(join(...pathSegments), dir);
+      return this._mkdir(pathSegments, dirName, header);
     } else {
+      if (header) {
+        dir.setHeader(header);
+      }
       return dir;
     }
   }
@@ -125,34 +86,34 @@ export class FileSystem {
     path: string,
     header: FileHeader,
     buffer: Uint8Array,
-    root?: Directory
+    txnDir?: string
   ): Promise<File | Directory>;
   async write(
     path: string,
     header: FileHeader,
     stream: ReadableStream,
-    root?: Directory
+    txnDir?: string
   ): Promise<File | Directory>;
   async write(
     path: string,
     header: FileHeader,
     text: string,
-    root?: Directory
+    txnDir?: string
   ): Promise<File | Directory>;
   async write(
     path: string,
     header: FileHeader,
     streamOrBuffer: ReadableStream | Uint8Array | string,
-    root?: Directory
+    txnDir?: string
   ): Promise<File | Directory> {
-    if (!root) {
+    if (!txnDir) {
       let resource: File | Directory;
-      await this.transaction(async (tempRoot) => {
-        resource = await this._write(path, header, streamOrBuffer, tempRoot);
+      await this.transaction(async (txn) => {
+        resource = await this._write(path, header, streamOrBuffer, txn);
       }, path);
       return resource!;
     } else {
-      return await this._write(path, header, streamOrBuffer, root);
+      return await this._write(path, header, streamOrBuffer, txnDir);
     }
   }
 
@@ -160,162 +121,77 @@ export class FileSystem {
     path: string,
     header: FileHeader,
     streamOrBuffer: ReadableStream | Uint8Array | string,
-    root: Directory
+    txnDir: string
   ): Promise<File | Directory> {
+    path = join(txnDir, path);
     let dirName = this.dirName(path);
-    let parentDir: Directory;
-    if (dirName === undefined) {
-      parentDir = root;
-    } else {
-      if (!this.exists(dirName, root)) {
-        parentDir = this.mkdir(dirName, root);
-      } else if (this.isFile(dirName, root)) {
-        throw new Error(
-          `Cannot create file '${path}' in root '${root.name}', the specified parent directory '${dirName}' is actually already a file`
-        );
-      } else {
-        parentDir = this.open(dirName, root) as Directory;
-      }
+    if (!dirName) {
+      throw new Error(`cannot overwrite '/'`);
     }
-
+    let parentDir = this.mkdir(dirName);
     let resource: File;
     let name = this.baseName(path);
-
-    // we don't hold the full path in the header name so that moving directories
-    // doest trigger a cascade of file changes
-    header.name = name;
     if (streamOrBuffer instanceof Uint8Array) {
       let buffer = streamOrBuffer;
-      resource = new File(name, header, buffer);
+      resource = new File(header, buffer);
     } else if (typeof streamOrBuffer === "string") {
-      resource = new File(
-        name,
-        header,
-        new TextEncoder().encode(streamOrBuffer)
-      );
+      resource = new File(header, new TextEncoder().encode(streamOrBuffer));
     } else {
       let stream = streamOrBuffer;
       let reader = stream.getReader();
-      if (header.type === DIRTYPE) {
-        resource = new Directory(name, header, reader);
-      } else {
-        resource = new File(name, header, reader);
-      }
+      resource = new File(header, reader);
     }
-    parentDir.files.set(resource.name, resource);
+    parentDir.files.set(name, resource);
     await resource.data;
     return resource;
   }
 
-  async move(
-    sourcePath: string,
-    // when the path is undefined that means move the source to a direct child
-    // of the destRoot.
-    destPath?: string,
-    sourceRoot?: Directory,
-    destRoot?: Directory
-  ): Promise<void> {
-    await this.copyOrMove(
-      sourcePath,
-      destPath,
-      sourceRoot,
-      destRoot,
-      false,
-      false
-    );
-    this.remove(sourcePath, sourceRoot);
+  move(sourcePath: string, destPath: string): void {
+    let source = this.open(sourcePath);
+    let destParentDirName = this.dirName(destPath);
+    if (destParentDirName) {
+      this.mkdir(destParentDirName);
+    }
+    let destParent = destParentDirName
+      ? (this.open(destParentDirName) as Directory)
+      : this.root;
+    let name = this.baseName(destPath);
+    destParent.files.set(name, source);
+    this.remove(sourcePath);
   }
 
-  async copy(
-    sourcePath: string,
-    // when the path is undefined that means copy the source to a direct child
-    // of the destRoot.
-    destPath?: string,
-    sourceRoot?: Directory,
-    destRoot?: Directory
-  ): Promise<void> {
-    await this.copyOrMove(
-      sourcePath,
-      destPath,
-      sourceRoot,
-      destRoot,
-      true,
-      true
-    );
-  }
+  async copy(sourcePath: string, destPath: string): Promise<void> {
+    let source = this.open(sourcePath);
+    let destParentDirName = this.dirName(destPath);
+    if (destParentDirName) {
+      this.mkdir(destParentDirName);
+    }
+    let destParent = destParentDirName
+      ? (this.open(destParentDirName) as Directory)
+      : this.root;
 
-  private async copyOrMove(
-    sourcePath: string,
-    destPath: string | undefined,
-    sourceRoot: Directory | undefined,
-    destRoot: Directory | undefined,
-    recursive: boolean,
-    cloneItems: boolean
-  ): Promise<void> {
-    if (!sourceRoot) {
-      sourceRoot = this.root;
-    }
-    if (!destRoot) {
-      destRoot = this.root;
-    }
-    let source = this.open(sourcePath, sourceRoot);
-    let dest: Directory;
-    if (destPath && !this.exists(destPath, destRoot)) {
-      dest = this.mkdir(destPath, destRoot);
-    } else if (destPath) {
-      dest = this.open(destPath, destRoot) as any;
-      if (!(dest instanceof Directory)) {
-        throw new Error(
-          `The destination directory '${destPath}' cannot be a file in root '${destRoot.name}`
-        );
-      }
-    } else {
-      dest = destRoot;
-    }
-
-    let name = this.baseName(sourcePath);
-    let destItem: File | Directory;
-    if (cloneItems) {
-      destItem = await source.clone();
-    } else {
-      destItem = source;
-    }
-    dest.files.set(name, destItem);
-    if (
-      source instanceof Directory &&
-      destItem instanceof Directory &&
-      recursive
-    ) {
+    let name = this.baseName(destPath);
+    let destItem = await source.clone();
+    destParent.files.set(name, destItem);
+    if (source instanceof Directory) {
       for (let childName of [...source.files.keys()]) {
-        await this.copyOrMove(
-          childName,
-          undefined,
-          source,
-          destItem,
-          true,
-          true
+        await this.copy(
+          join(sourcePath, childName),
+          destPath ? join(destPath, name, childName) : name
         );
       }
     }
   }
 
-  remove(path: string, root?: Directory): void {
-    if (!root) {
-      root = this.root;
-    }
-
+  remove(path: string): void {
     let name = this.baseName(path);
     let dirName = this.dirName(path);
     if (!dirName) {
-      root.files.delete(name);
+      this.root.files.delete(name);
     } else {
-      let sourceDir = this.open(dirName, root) as Directory;
+      let sourceDir = this.open(dirName) as Directory;
       sourceDir.files.delete(name);
     }
-  }
-
-  removeFromTemp(path: string): void {
-    this.remove(path, this.temp);
   }
 
   baseName(path: string): string {
@@ -333,22 +209,23 @@ export class FileSystem {
     return dirName;
   }
 
-  makeTemp(): { dirName: string; root: Directory } {
-    let dirName = this.tempDirName();
-    return { dirName, root: this.mkdir(dirName, this.temp) };
+  makeTemp(): string {
+    let dirName = `/tmp/${this.tempDirName()}`;
+    this.mkdir(dirName);
+    return dirName;
   }
 
-  isDirectory(path: string, root?: Directory): boolean {
-    return this.open(path, root) instanceof Directory;
+  isDirectory(path: string): boolean {
+    return this.open(path) instanceof Directory;
   }
 
-  isFile(path: string, root?: Directory): boolean {
-    return !this.isDirectory(path, root);
+  isFile(path: string): boolean {
+    return !this.isDirectory(path);
   }
 
-  exists(path: string, root?: Directory): boolean {
+  exists(path: string): boolean {
     try {
-      this.open(path, root);
+      this.open(path);
       return true;
     } catch (err) {
       if (err.message.includes("does not exist")) {
@@ -358,85 +235,73 @@ export class FileSystem {
     }
   }
 
-  list(path: string, recurse = false, root?: Directory): ListingEntry[] {
-    return this._list(path, recurse, root);
+  list(path: string, recurse = false): ListingEntry[] {
+    return this._list(path, recurse);
   }
 
   private _list(
     path: string,
     recurse = false,
-    root?: Directory,
-    absolutePath?: string
+    startingPath?: string
   ): ListingEntry[] {
-    if (!root) {
-      root = this.root;
-    }
-    if (!absolutePath) {
-      absolutePath = path;
+    if (!startingPath) {
+      startingPath = path;
     }
 
-    let directory = this.open(path, root);
+    let directory = this.open(path);
     if (!(directory instanceof Directory)) {
-      throw new Error(`${path} is not a directory in root '${root.name}'`);
+      throw new Error(`${path} is not a directory`);
     }
 
     let results: ListingEntry[] = [];
-    if (absolutePath === path) {
+    if (startingPath === path) {
       results.push({ path: "./", stat: directory.stat });
     }
     for (let name of [...directory.files.keys()].sort()) {
       let item = directory.files.get(name)!;
-      results.push({ path: `.${join(absolutePath, name)}`, stat: item.stat });
+      results.push({ path: `.${join(path, name)}`, stat: item.stat });
       if (item instanceof Directory && recurse) {
-        results.push(
-          ...this._list(name, true, directory, join(absolutePath, name))
-        );
+        results.push(...this._list(join(path, name), true, startingPath));
       }
     }
     return results;
   }
 
-  open(path: string, root?: Directory): File | Directory {
-    return this._open(path, root);
+  open(path: string): File | Directory {
+    return this._open(splitPath(path));
   }
 
   private _open(
-    path: string,
-    root?: Directory,
-    absolutePath?: string
+    pathSegments: string[],
+    parent?: Directory,
+    initialPath?: string
   ): File | Directory {
-    if (!root) {
-      root = this.root;
+    if (!initialPath) {
+      initialPath = join(...pathSegments);
     }
-    if (!absolutePath) {
-      absolutePath = path;
-    }
-    let pathSegments = splitPath(path);
     let name = pathSegments.shift()!;
-    if (!root.files.has(name)) {
-      throw new Error(
-        `'${absolutePath}' does not exist in root '${root.name}'`
-      );
+
+    parent = parent || this.root;
+    if (!parent.files.has(name)) {
+      throw new Error(`'${initialPath}' does not exist`);
     }
 
-    let resource = root.files.get(name)!;
+    let resource = parent.files.get(name)!;
     if (pathSegments.length === 0) {
       return resource;
     } else if (resource instanceof Directory) {
-      return this._open(join(...pathSegments), resource, absolutePath);
+      return this._open(pathSegments, resource, initialPath);
     } else {
       // there is unconsumed path left over...
-      throw new Error(
-        `'${absolutePath}' does not exist in root '${root.name}'`
-      );
+      throw new Error(`'${initialPath}' does not exist`);
     }
   }
 
   private tempDirName(): string {
     let tempDir: string;
     while (true) {
-      tempDir = `tmp_${Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)}`;
-      if (!this.temp.files.has(tempDir)) {
+      tempDir = String(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
+      if (!this.exists(`/tmp/${tempDir}`)) {
         break;
       }
     }
@@ -448,16 +313,13 @@ export class File {
   readonly data: Promise<Uint8Array>;
 
   protected readonly header: FileHeader;
-  private readonly _name: string;
   private readonly reader?: ReadableStreamDefaultReader<Uint8Array>;
   private doneReading?: (buffer: Uint8Array) => void;
 
   constructor(
-    name: string,
     header: FileHeader,
     bufferOrReader: Uint8Array | ReadableStreamDefaultReader<Uint8Array>
   ) {
-    this._name = name;
     this.header = { ...header };
     if (bufferOrReader instanceof Uint8Array) {
       this.data = Promise.resolve(bufferOrReader);
@@ -469,19 +331,16 @@ export class File {
       this.startReading();
     }
   }
-  get name() {
-    return this._name;
-  }
   get stat(): Stat {
     return {
-      name: this.name,
-      etag: `${this.header.size}_${this.header.modifyTime}`,
       ...this.header,
+      etag: `${this.header.size}_${this.header.mtime}`,
+      type: "file",
     };
   }
 
   async clone(): Promise<File> {
-    return new File(this.name, this.header, new Uint8Array(await this.data));
+    return new File(this.header, new Uint8Array(await this.data));
   }
 
   private async startReading() {
@@ -493,7 +352,6 @@ export class File {
     while (true) {
       let chunk = await this.reader.read();
       if (chunk.done) {
-        console.log(`read ${byteCount} bytes from ${this.name}`);
         this.doneReading(buffer);
         break;
       } else {
@@ -504,30 +362,30 @@ export class File {
   }
 }
 
-export class Directory extends File {
+export class Directory {
   readonly files: Files = new Map();
-  constructor(
-    name: string,
-    header?: FileHeader,
-    bufferOrReader?: Uint8Array | ReadableStreamDefaultReader<Uint8Array>
-  ) {
-    super(
-      name,
-      {
-        ...(header ?? {
-          name,
-          size: 0,
-          mode: 755, // seems like a reasonable default...
-          modifyTime: Math.floor(Date.now() / 1000),
-        }),
-      },
-      bufferOrReader ?? new Uint8Array()
-    );
+  private header: FileHeader;
+  constructor(header?: FileHeader) {
+    this.header = header ?? {
+      size: 0,
+      type: "directory",
+      mtime: Math.floor(Date.now() / 1000),
+    };
+  }
+
+  setHeader(header: FileHeader) {
+    this.header = header;
+  }
+
+  get stat(): Stat {
+    return {
+      etag: String(this.header.mtime),
+      ...this.header,
+    };
   }
 
   async clone(): Promise<Directory> {
-    await this.data;
-    return new Directory(this.name, this.header, new Uint8Array());
+    return new Directory(this.header);
   }
 }
 
@@ -543,12 +401,22 @@ export function splitPath(path: string): string[] {
 }
 
 export function join(...pathParts: string[]): string {
+  pathParts = pathParts.filter(Boolean);
   if (pathParts.length === 0) {
     throw new Error(`no path parameters specified`);
   }
-  if (pathParts[0] === "/") {
-    pathParts[0] = "";
+  if (pathParts.length === 1 && pathParts[0] === "/") {
+    return "/";
   }
 
-  return pathParts.join("/");
+  for (let part of pathParts) {
+    if (part.slice(0, 1) === "/") {
+      part = part.slice(1);
+    }
+  }
+  pathParts = pathParts.map((part) =>
+    part.slice(0, 1) === "/" ? part.slice(1) : part
+  );
+
+  return `/${pathParts.filter(Boolean).join("/")}`;
 }

@@ -1,10 +1,9 @@
 import { WatchInfo, FileInfo } from "../../file-daemon/interfaces";
 import { FileSystem, join } from "./filesystem";
 import columnify from "columnify";
-import { DIRTYPE } from "tarstream/constants";
+import { REGTYPE } from "tarstream/constants";
 import moment from "moment";
 //@ts-ignore
-import perms from "perms";
 import { UnTar } from "tarstream";
 
 export class FileDaemonClient {
@@ -130,23 +129,32 @@ export class FileDaemonClient {
         },
       })
     ).body as ReadableStream;
-    await this.fs.transaction(async (root) => {
+    this.fs.mkdir(this.mountPath);
+    await this.fs.transaction(async (txn) => {
       let fs = this.fs;
       let mountedPath = this.mountedPath.bind(this);
       let untar = new UnTar(stream, {
         file(entry) {
-          (async () => {
-            await fs.write(
+          if (entry.type === REGTYPE) {
+            (async () => {
+              await fs.write(
+                mountedPath(entry.name),
+                { size: entry.size, mtime: entry.modifyTime, type: "file" },
+                entry.stream(),
+                txn
+              );
+            })();
+          } else {
+            fs.mkdir(
               mountedPath(entry.name),
-              entry,
-              entry.stream(),
-              root
+              { mtime: entry.modifyTime, type: "directory", size: 0 },
+              txn
             );
-          })();
+          }
         },
       });
       await untar.done;
-    });
+    }, this.mountPath);
     this.doneSyncing();
 
     console.log(`syncing complete, file system:`);
@@ -172,7 +180,11 @@ export class FileDaemonClient {
       }
       await this.fs.write(
         this.mountedPath(change.name),
-        change.header!,
+        {
+          size: change.header!.size,
+          mtime: change.header!.modifyTime,
+          type: "file",
+        },
         stream
       );
     }
@@ -180,7 +192,7 @@ export class FileDaemonClient {
     // removals are synchronous, so no need to wrap in a transaction
     for (let { name } of removals) {
       console.log(`removing ${name}`);
-      this.fs.remove(name);
+      this.fs.remove(this.mountedPath(name));
     }
 
     console.log(`completed processing changes, file system:`);
@@ -188,8 +200,7 @@ export class FileDaemonClient {
   }
 
   private mountedPath(path: string): string {
-    let relativePath = path.slice(0, 1) === "/" ? path.slice(1) : path;
-    return join(this.mountPath, relativePath);
+    return join(this.mountPath, path);
   }
 
   private async pruneChanges(changes: FileInfo[]): Promise<FileInfo[]> {
@@ -205,9 +216,9 @@ export class FileDaemonClient {
   private async displayListing(): Promise<void> {
     await this.ready;
     let listing = this.fs.list("/", true).map(({ path, stat }) => ({
-      mode: `${stat.type === DIRTYPE ? "d" : "-"}${perms.toString(stat.mode)}`,
+      type: stat.type,
       size: stat.size,
-      modified: moment(stat.modifyTime! * 1000).format("MMM D YYYY HH:mm"),
+      modified: moment(stat.mtime! * 1000).format("MMM D YYYY HH:mm"),
       etag: stat.etag,
       path,
     }));

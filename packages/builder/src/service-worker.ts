@@ -1,18 +1,19 @@
 import { parse } from "@babel/core";
 import { FileDaemonClient } from "./file-daemon-client";
 import { contentType, lookup } from "mime-types";
-import { File, FileSystem } from "./filesystem";
+import { File, FileSystem, join } from "./filesystem";
 
 import { tarTest } from "./tar-test";
 
 const utf8 = new TextDecoder("utf-8");
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 const fs = new FileSystem();
+const webroot = "/webroot";
 const client = new FileDaemonClient(
   "http://localhost:4200",
   "ws://localhost:3000",
   fs,
-  "/"
+  webroot
 );
 
 console.log("service worker evaluated");
@@ -50,26 +51,24 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
       let url = new URL(event.request.url);
 
       let path = url.pathname;
-      if (path.slice(-1) === "/") {
-        path = path.slice(0, -1);
-      }
+      path = join(webroot, path);
       if (fs.isDirectory(path || "/")) {
         path = `${path}/index.html`;
       }
-      let file = fs.open(path);
-      if (file.name.split(".").pop() === "js") {
+      let file = fs.open(path) as File;
+      if (path.split(".").pop() === "js") {
         return bundled(file);
       } else {
         let response = new Response(await file.data);
-        setContentHeaders(response, file);
+        setContentHeaders(response, path, file);
         return response;
       }
     })()
   );
 });
 
-function setContentHeaders(response: Response, file: File): void {
-  let mime = lookup(file.name) || "application/octet-stream";
+function setContentHeaders(response: Response, path: string, file: File): void {
+  let mime = lookup(path) || "application/octet-stream";
   response.headers.set(
     "content-type",
     contentType(mime) as Exclude<string, false>

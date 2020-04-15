@@ -29,7 +29,6 @@
   },
   "dependencies": {
     "columnify": "^1.5.4",
-    "moment": "^2.24.0",
-    "perms": "^0.1.0"
+    "moment": "^2.24.0"
   }
 }
