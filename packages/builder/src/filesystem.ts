@@ -87,27 +87,27 @@ export class FileSystem {
     header: FileHeader,
     buffer: Uint8Array,
     txnDir?: string
-  ): Promise<File | Directory>;
+  ): Promise<File>;
   async write(
     path: string,
     header: FileHeader,
     stream: ReadableStream,
     txnDir?: string
-  ): Promise<File | Directory>;
+  ): Promise<File>;
   async write(
     path: string,
     header: FileHeader,
     text: string,
     txnDir?: string
-  ): Promise<File | Directory>;
+  ): Promise<File>;
   async write(
     path: string,
     header: FileHeader,
     streamOrBuffer: ReadableStream | Uint8Array | string,
     txnDir?: string
-  ): Promise<File | Directory> {
+  ): Promise<File> {
     if (!txnDir) {
-      let resource: File | Directory;
+      let resource: File;
       await this.transaction(async (txn) => {
         resource = await this._write(path, header, streamOrBuffer, txn);
       }, path);
@@ -122,7 +122,7 @@ export class FileSystem {
     header: FileHeader,
     streamOrBuffer: ReadableStream | Uint8Array | string,
     txnDir: string
-  ): Promise<File | Directory> {
+  ): Promise<File> {
     path = join(txnDir, path);
     let dirName = this.dirName(path);
     if (!dirName) {
