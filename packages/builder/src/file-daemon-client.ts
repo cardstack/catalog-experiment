@@ -139,7 +139,7 @@ export class FileDaemonClient {
             (async () => {
               await fs.write(
                 mountedPath(entry.name),
-                { size: entry.size, mtime: entry.modifyTime, type: "file" },
+                { size: entry.size, mtime: entry.modifyTime },
                 entry.stream(),
                 txn
               );
@@ -147,7 +147,7 @@ export class FileDaemonClient {
           } else {
             fs.mkdir(
               mountedPath(entry.name),
-              { mtime: entry.modifyTime, type: "directory", size: 0 },
+              { mtime: entry.modifyTime, size: 0 },
               txn
             );
           }
@@ -183,7 +183,6 @@ export class FileDaemonClient {
         {
           size: change.header!.size,
           mtime: change.header!.modifyTime,
-          type: "file",
         },
         stream
       );

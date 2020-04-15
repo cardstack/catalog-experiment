@@ -6,10 +6,10 @@ interface ListingEntry {
 interface FileHeader {
   mtime: number;
   size: number;
-  type: "file" | "directory";
 }
 interface Stat extends FileHeader {
   etag: string;
+  type: "file" | "directory";
 }
 type Files = Map<string, File | Directory>;
 
@@ -199,7 +199,7 @@ export class FileSystem {
   }
 
   dirName(path: string): string | undefined {
-    // the root dir '/' has no parent dir (same with the temp roots)
+    // the root dir '/' has no parent dir
     if (path === "/" || !path.includes("/")) return;
 
     let dirName = path.slice(0, -1 * this.baseName(path).length - 1);
@@ -368,7 +368,6 @@ export class Directory {
   constructor(header?: FileHeader) {
     this.header = header ?? {
       size: 0,
-      type: "directory",
       mtime: Math.floor(Date.now() / 1000),
     };
   }
@@ -380,6 +379,7 @@ export class Directory {
   get stat(): Stat {
     return {
       etag: String(this.header.mtime),
+      type: "directory",
       ...this.header,
     };
   }
