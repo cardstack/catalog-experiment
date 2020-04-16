@@ -1,10 +1,6 @@
 import { WatchInfo, FileInfo } from "../../file-daemon/interfaces";
-import {
-  FileSystem,
-  join,
-  FileSystemError,
-  FileDescriptor,
-} from "./filesystem";
+import { FileSystem, FileSystemError, FileDescriptor } from "./filesystem";
+import { join } from "./path";
 import columnify from "columnify";
 import { REGTYPE } from "tarstream/constants";
 import moment from "moment";
