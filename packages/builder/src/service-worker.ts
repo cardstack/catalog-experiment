@@ -1,12 +1,8 @@
 import { parse } from "@babel/core";
 import { FileDaemonClient } from "./file-daemon-client";
 import { contentType, lookup } from "mime-types";
-import {
-  FileDescriptor,
-  FileSystem,
-  FileSystemError,
-  join,
-} from "./filesystem";
+import { FileDescriptor, FileSystem, FileSystemError } from "./filesystem";
+import { join } from "./path";
 
 import { tarTest } from "./tar-test";
 

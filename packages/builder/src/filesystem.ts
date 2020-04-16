@@ -1,3 +1,5 @@
+import { join, splitPath, baseName, dirName } from "./path";
+
 const textEncoder = new TextEncoder();
 const utf8 = new TextDecoder("utf8");
 
@@ -6,23 +8,23 @@ export class FileSystem {
 
   async move(sourcePath: string, destPath: string): Promise<void> {
     let source = await this.openFileOrDir(sourcePath);
-    let destParentDirName = this.dirName(destPath);
+    let destParentDirName = dirName(destPath);
     let destParent = destParentDirName
       ? await this.openDir(destParentDirName)
       : this.root;
-    let name = this.baseName(destPath);
+    let name = baseName(destPath);
     destParent.files.set(name, source);
     await this.remove(sourcePath);
   }
 
   async copy(sourcePath: string, destPath: string): Promise<void> {
     let source = await this.openFileOrDir(sourcePath);
-    let destParentDirName = this.dirName(destPath);
+    let destParentDirName = dirName(destPath);
     let destParent = destParentDirName
       ? await this.openDir(destParentDirName)
       : this.root;
 
-    let name = this.baseName(destPath);
+    let name = baseName(destPath);
     let destItem = source instanceof File ? source.clone() : new Directory();
     destParent.files.set(name, destItem);
     if (source instanceof Directory) {
@@ -36,12 +38,12 @@ export class FileSystem {
   }
 
   async remove(path: string): Promise<void> {
-    let name = this.baseName(path);
-    let dirName = this.dirName(path);
-    if (!dirName) {
+    let name = baseName(path);
+    let dir = dirName(path);
+    if (!dir) {
       this.root.files.delete(name);
     } else {
-      let sourceDir = await this.openFileOrDir(dirName);
+      let sourceDir = await this.openFileOrDir(dir);
       if (sourceDir instanceof File) {
         throw new FileSystemError(
           "IS_NOT_A_DIRECTORY",
@@ -50,21 +52,6 @@ export class FileSystem {
       }
       sourceDir.files.delete(name);
     }
-  }
-
-  baseName(path: string): string {
-    return splitPath(path).pop()!;
-  }
-
-  dirName(path: string): string | undefined {
-    // the root dir '/' has no parent dir
-    if (path === "/" || !path.includes("/")) return;
-
-    let dirName = path.slice(0, -1 * this.baseName(path).length - 1);
-    if (path.charAt(0) === "/") {
-      return dirName || "/";
-    }
-    return dirName;
   }
 
   async list(path: string, recurse = false): Promise<ListingEntry[]> {
@@ -303,47 +290,11 @@ class Directory {
   }
 }
 
-type ErrorCodes =
-  | "NOT_FOUND"
-  | "IS_NOT_A_FILE"
-  | "IS_NOT_A_DIRECTORY"
-  | "MISSING_PATH";
+type ErrorCodes = "NOT_FOUND" | "IS_NOT_A_FILE" | "IS_NOT_A_DIRECTORY";
 export class FileSystemError extends Error {
   constructor(public readonly code: ErrorCodes, message?: string) {
     super(message ?? code);
   }
-}
-
-export function splitPath(path: string): string[] {
-  if (path === "/") {
-    return ["/"];
-  }
-  let segments = path.split("/");
-  if (segments[0] === "") {
-    segments[0] = "/";
-  }
-  return segments;
-}
-
-export function join(...pathParts: string[]): string {
-  pathParts = pathParts.filter(Boolean);
-  if (pathParts.length === 0) {
-    throw new FileSystemError("MISSING_PATH");
-  }
-  if (pathParts.length === 1 && pathParts[0] === "/") {
-    return "/";
-  }
-
-  for (let part of pathParts) {
-    if (part.slice(0, 1) === "/") {
-      part = part.slice(1);
-    }
-  }
-  pathParts = pathParts.map((part) =>
-    part.slice(0, 1) === "/" ? part.slice(1) : part
-  );
-
-  return `/${pathParts.filter(Boolean).join("/")}`;
 }
 
 async function readStream(stream: ReadableStream): Promise<Uint8Array> {
