@@ -10,7 +10,7 @@ export class FileSystem {
     let source = await this.openFileOrDir(sourcePath);
     let destParentDirName = dirName(destPath);
     let destParent = destParentDirName
-      ? await this.openDir(destParentDirName)
+      ? await this.openDir(destParentDirName, true)
       : this.root;
     let name = baseName(destPath);
     destParent.files.set(name, source);
@@ -21,7 +21,7 @@ export class FileSystem {
     let source = await this.openFileOrDir(sourcePath);
     let destParentDirName = dirName(destPath);
     let destParent = destParentDirName
-      ? await this.openDir(destParentDirName)
+      ? await this.openDir(destParentDirName, true)
       : this.root;
 
     let name = baseName(destPath);
@@ -43,7 +43,7 @@ export class FileSystem {
     if (!dir) {
       this.root.files.delete(name);
     } else {
-      let sourceDir = await this.openDir(dir, false);
+      let sourceDir = await this.openDir(dir);
       sourceDir.files.delete(name);
     }
   }
@@ -60,7 +60,7 @@ export class FileSystem {
     if (!startingPath) {
       startingPath = path;
     }
-    let directory = await this.openDir(path, false);
+    let directory = await this.openDir(path);
     let results: ListingEntry[] = [];
     if (startingPath === path) {
       results.push({
@@ -87,7 +87,7 @@ export class FileSystem {
     return (await this._open(splitPath(path), { createMode })).getDescriptor();
   }
 
-  private async openDir(path: string, create = true): Promise<Directory> {
+  private async openDir(path: string, create = false): Promise<Directory> {
     let directory = await this._open(splitPath(path), {
       createMode: create ? "directory" : undefined,
     });
