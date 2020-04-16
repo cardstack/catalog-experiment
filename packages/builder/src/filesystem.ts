@@ -164,6 +164,23 @@ export class FileSystem {
       }
     }
   }
+
+  async tempDir(): Promise<string> {
+    let tempDir: string;
+    while (true) {
+      tempDir = `/tmp/${String(
+        Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
+      )}`;
+      try {
+        await this.open(tempDir);
+      } catch (err) {
+        if (err instanceof FileSystemError && err.code === "NOT_FOUND") {
+          return tempDir;
+        }
+        throw err;
+      }
+    }
+  }
 }
 
 class File {

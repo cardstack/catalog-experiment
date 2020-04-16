@@ -133,16 +133,19 @@ export class FileDaemonClient {
 
     let mountedPath = this.mountedPath.bind(this);
     let fs = this.fs;
+    let temp = await fs.tempDir();
     let untar = new UnTar(stream, {
       async file(entry) {
         if (entry.type === REGTYPE) {
-          let file = await fs.open(mountedPath(entry.name), "file");
+          let file = await fs.open(join(temp, mountedPath(entry.name)), "file");
           file.setEtag(`${entry.size}_${entry.modifyTime}`);
           await file.write(entry.stream());
         }
       },
     });
     await untar.done;
+    await fs.move(join(temp, this.mountPath), this.mountPath);
+    await fs.remove(temp);
     this.doneSyncing();
 
     console.log(`syncing complete, file system:`);
