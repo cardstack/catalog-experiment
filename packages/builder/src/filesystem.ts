@@ -246,11 +246,11 @@ export class FileDescriptor {
     return this.resource.buffer ? this.resource.buffer : new Uint8Array();
   }
 
-  async readText(): Promise<string | undefined> {
+  async readText(): Promise<string> {
     if (this.resource instanceof Directory) {
       throw new FileSystemError("IS_NOT_A_FILE");
     }
-    return this.resource.buffer ? utf8.decode(this.resource.buffer) : undefined;
+    return this.resource.buffer ? utf8.decode(this.resource.buffer) : "";
   }
 
   getReadbleStream(): ReadableStream {

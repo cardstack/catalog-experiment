@@ -1,33 +1,24 @@
 import "qunit";
 import "qunit/qunit/qunit.css";
-import { combineModules as rewriteCombineModules } from "../src/rewrite";
-import { FileSystem } from "../src/filesystem";
+import { installFileAssertions } from "./file-assertions";
 
-const { test } = QUnit;
+QUnit.module("module rewriter", function (origHooks) {
+  let { test } = installFileAssertions(origHooks);
 
-interface Scenario {
-  [file: string]: string;
-}
-
-async function pushIntoFs(fs: FileSystem, scenario: Scenario) {
-  for (let [path, text] of Object.entries(scenario)) {
-    let file = await fs.open(path, "file");
-    file.write(text);
-  }
-}
-
-QUnit.module("module rewriter", function () {
-  // function combineModules({ [filename: string]: string }
-
-  test("can combine two modules", async (assert) => {
-    let scenario = {
+  test("file existence assertions are working", async (assert) => {
+    await assert.setupFiles({
       "a.js": "export const alpha = 1;",
-      "b.js": `import { alpha } from '.a';
-        export const b = a + 1;
-      `,
-    };
-    let fs = new FileSystem();
-    await pushIntoFs(fs, scenario);
+    });
+    await assert.file("a.js").exists();
+    await assert.file("b.js").doesNotExist();
+  });
+
+  test("file content assertions are working", async (assert) => {
+    await assert.setupFiles({
+      "a.js": "export const alpha = 1;",
+    });
+    await assert.file("a.js").matches(/const alpha/);
+    await assert.file("a.js").doesNotMatch(/const beta/);
   });
 });
 
