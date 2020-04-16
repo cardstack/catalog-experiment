@@ -30,7 +30,7 @@
   "dependencies": {
     "@types/parse5": "^5.0.2",
     "columnify": "^1.5.4",
-    "moment": "^2.24.0",
-    "parse5": "^6.0.0"
+    "htmlparser2": "^4.1.0",
+    "moment": "^2.24.0"
   }
 }
