@@ -43,13 +43,7 @@ export class FileSystem {
     if (!dir) {
       this.root.files.delete(name);
     } else {
-      let sourceDir = await this.openFileOrDir(dir);
-      if (sourceDir instanceof File) {
-        throw new FileSystemError(
-          "IS_NOT_A_DIRECTORY",
-          `'${path}' is not a directory (it's a file and we were expecting it to be a directory)`
-        );
-      }
+      let sourceDir = await this.openDir(dir, false);
       sourceDir.files.delete(name);
     }
   }
@@ -66,13 +60,7 @@ export class FileSystem {
     if (!startingPath) {
       startingPath = path;
     }
-    let directory = await this.openFileOrDir(path);
-    if (directory instanceof File) {
-      throw new FileSystemError(
-        "IS_NOT_A_DIRECTORY",
-        `'${path}' is not a directory (it's a file and we were expecting it to be a directory)`
-      );
-    }
+    let directory = await this.openDir(path, false);
     let results: ListingEntry[] = [];
     if (startingPath === path) {
       results.push({
@@ -99,26 +87,23 @@ export class FileSystem {
     return (await this._open(splitPath(path), { createMode })).getDescriptor();
   }
 
-  private async openDir(path: string): Promise<Directory> {
-    return await this._open(splitPath(path), { createMode: "directory" });
+  private async openDir(path: string, create = true): Promise<Directory> {
+    let directory = await this._open(splitPath(path), {
+      createMode: create ? "directory" : undefined,
+    });
+    if (directory instanceof File) {
+      throw new FileSystemError(
+        "IS_NOT_A_DIRECTORY",
+        `'${path}' is not a directory (it's a file and we were expecting it to be a directory)`
+      );
+    }
+    return directory;
   }
 
   private async openFileOrDir(path: string): Promise<File | Directory> {
     return await this._open(splitPath(path));
   }
 
-  private async _open(
-    pathSegments: string[],
-    opts: { createMode: "file" },
-    parent?: Directory,
-    initialPath?: string
-  ): Promise<File>;
-  private async _open(
-    pathSegments: string[],
-    opts: { createMode: "directory" },
-    parent?: Directory,
-    initialPath?: string
-  ): Promise<Directory>;
   private async _open(
     pathSegments: string[],
     opts?: Options,
