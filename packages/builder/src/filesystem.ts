@@ -106,12 +106,6 @@ export class FileSystem {
 
   private async _open(
     pathSegments: string[],
-    opts?: Options,
-    parent?: Directory,
-    initialPath?: string
-  ): Promise<File | Directory>;
-  private async _open(
-    pathSegments: string[],
     opts: Options = {},
     parent?: Directory,
     initialPath?: string
@@ -193,6 +187,15 @@ class File {
   }
 }
 
+class Directory {
+  etag?: string;
+  readonly files: Files = new Map();
+
+  getDescriptor(): FileDescriptor {
+    return new FileDescriptor(this);
+  }
+}
+
 export class FileDescriptor {
   constructor(private resource: File | Directory) {}
 
@@ -263,15 +266,6 @@ export class FileDescriptor {
         }
       },
     });
-  }
-}
-
-class Directory {
-  etag?: string;
-  readonly files: Files = new Map();
-
-  getDescriptor(): FileDescriptor {
-    return new FileDescriptor(this);
   }
 }
 
