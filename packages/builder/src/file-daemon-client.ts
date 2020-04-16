@@ -171,7 +171,6 @@ export class FileDaemonClient {
       await file.write(stream);
     }
 
-    // removals are synchronous, so no need to wrap in a transaction
     for (let { name } of removals) {
       console.log(`removing ${name}`);
       await this.fs.remove(this.mountedPath(name));
