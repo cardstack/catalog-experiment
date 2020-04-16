@@ -4,8 +4,6 @@ import { contentType, lookup } from "mime-types";
 import { FileDescriptor, FileSystem, FileSystemError } from "./filesystem";
 import { join } from "./path";
 
-import { tarTest } from "./tar-test";
-
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 const fs = new FileSystem();
 const webroot = "/webroot";
@@ -37,11 +35,6 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
   if (url.origin !== worker.origin) {
     console.log(`ignore ${event.request.url} based on origin`);
     event.respondWith(fetch(event.request));
-    return;
-  }
-
-  if (url.pathname === "/tartest") {
-    event.respondWith(tarTest());
     return;
   }
 
