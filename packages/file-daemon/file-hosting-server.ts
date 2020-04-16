@@ -31,6 +31,12 @@ export default class FileHostingServer {
         `Handling URL: ${path}, with accept header: ${req.headers.accept}`
       );
 
+      if (path === "/__alive__") {
+        res.statusCode = 200;
+        res.end();
+        return;
+      }
+
       try {
         let filePath = resolve(join(this.directory, decodeURIComponent(path)));
         if (filePath.indexOf(this.directory) !== 0) {

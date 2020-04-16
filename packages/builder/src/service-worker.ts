@@ -7,14 +7,16 @@ import { join } from "./path";
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 const fs = new FileSystem();
 const webroot = "/webroot";
-const client = new FileDaemonClient(
-  "http://localhost:4200",
-  "ws://localhost:3000",
-  fs,
-  webroot
-);
+const fileSeverURL = "http://localhost:4200";
+const websocketURL = "ws://localhost:3000";
+const client = new FileDaemonClient(fileSeverURL, websocketURL, fs, webroot);
+let isDisabled = false;
 
 console.log("service worker evaluated");
+
+(async () => {
+  await checkForAliveness();
+})();
 
 worker.addEventListener("install", () => {
   console.log(`installing`);
@@ -32,8 +34,12 @@ worker.addEventListener("activate", () => {
 
 worker.addEventListener("fetch", (event: FetchEvent) => {
   let url = new URL(event.request.url);
-  if (url.origin !== worker.origin) {
-    console.log(`ignore ${event.request.url} based on origin`);
+  if (url.origin !== worker.origin || isDisabled) {
+    if (isDisabled) {
+      console.log(`service worker is disabled, ignoring ${event.request.url}`);
+    } else {
+      console.log(`ignore ${event.request.url} based on origin`);
+    }
     event.respondWith(fetch(event.request));
     return;
   }
@@ -107,4 +113,29 @@ async function bundled(path: string, file: FileDescriptor): Promise<Response> {
   response.headers.set("content-length", String(js.length));
 
   return response;
+}
+
+async function checkForAliveness() {
+  while (true) {
+    console.log("checking for file daemon aliveness");
+    let status;
+    try {
+      status = (await fetch(`${fileSeverURL}/__alive__`)).status;
+    } catch (err) {
+      console.log(
+        `Encountered error performing aliveness check (server is probably not running):`,
+        err
+      );
+    }
+    if (status === 404) {
+      console.error(
+        "some other server is running instead of the file daemon, unregistering this service worker."
+      );
+      isDisabled = true;
+      await worker.registration.unregister();
+      break;
+    } else {
+      await new Promise((res) => setTimeout(() => res(), 10 * 1000));
+    }
+  }
 }
