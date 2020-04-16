@@ -138,6 +138,8 @@ export class FileSystem {
       }
     } else {
       resource = parent.files.get(name)!;
+
+      // resource is a file
       if (resource instanceof File && pathSegments.length === 0) {
         return resource;
       } else if (resource instanceof File) {
