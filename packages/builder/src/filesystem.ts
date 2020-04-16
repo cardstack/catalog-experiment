@@ -1,163 +1,14 @@
-interface ListingEntry {
-  path: string;
-  stat: Stat;
-}
-
-interface FileHeader {
-  mtime: number;
-  size: number;
-}
-interface Stat extends FileHeader {
-  etag: string;
-  type: "file" | "directory";
-}
-type Files = Map<string, File | Directory>;
-
-/*
-The FileSystem class is an abstraction for the file system that the file daemon
-is serving. The FileSystem class leverages a graph to represent the filesystem,
-where each node in the graph is an instance of a `File`. Parent nodes in the
-graph effectively represent directories (and leaf nodes are files). The
-directory is represented as a `Directory` instance.
-
-Note that `.` and `..` are not yet currently recognized in path names for the
-various FileSystem functions.
-*/
-
-type TransactionCallBack = (txn: string) => Promise<unknown>;
+const textEncoder = new TextEncoder();
+const utf8 = new TextDecoder("utf8");
 
 export class FileSystem {
   private root = new Directory();
 
-  // Note that there is no need to wrap a transaction for a single write()
-  // operation. write() will inherently use a transaction. Use transaction()
-  // when you need to make multiple writes to the FileSystem as a single transaction.
-  async transaction(
-    fn: TransactionCallBack,
-    replacePath: string
-  ): Promise<void> {
-    let temp = await this.makeTemp();
-    try {
-      await fn(temp);
-      await this.move(join(temp, replacePath), replacePath);
-    } finally {
-      await this.remove(temp);
-    }
-  }
-
-  // this acts like mkdirp, creating any new interior dirs. If dir already
-  // exists, then this will just return the existing dir.
-  async mkdir(
-    path: string,
-    header?: FileHeader,
-    txnDir?: string
-  ): Promise<Directory> {
-    return await this._mkdir(
-      splitPath(join(txnDir || "", path)),
-      undefined,
-      header
-    );
-  }
-
-  private async _mkdir(
-    pathSegments: string[],
-    parent: string = "",
-    header?: FileHeader
-  ): Promise<Directory> {
-    let parentDir = parent ? (this.open(parent) as Directory) : this.root;
-    let name = pathSegments.shift()!;
-    let dir: Directory;
-    let dirName = join(parent, name);
-    if (!(await this.exists(dirName))) {
-      dir = new Directory(pathSegments.length === 0 ? header : undefined);
-      parentDir.files.set(name, dir);
-    } else if (await this.isDirectory(dirName)) {
-      dir = this.open(dirName) as Directory;
-    } else {
-      throw new Error(`The directory '${dirName}' specified is already a file`);
-    }
-    if (pathSegments.length > 0) {
-      return await this._mkdir(pathSegments, dirName, header);
-    } else {
-      if (header) {
-        dir.setHeader(header);
-      }
-      return dir;
-    }
-  }
-
-  async write(
-    path: string,
-    header: FileHeader,
-    buffer: Uint8Array,
-    txnDir?: string
-  ): Promise<File>;
-  async write(
-    path: string,
-    header: FileHeader,
-    stream: ReadableStream,
-    txnDir?: string
-  ): Promise<File>;
-  async write(
-    path: string,
-    header: FileHeader,
-    text: string,
-    txnDir?: string
-  ): Promise<File>;
-  async write(
-    path: string,
-    header: FileHeader,
-    streamOrBuffer: ReadableStream | Uint8Array | string,
-    txnDir?: string
-  ): Promise<File> {
-    if (!txnDir) {
-      let resource: File;
-      await this.transaction(async (txn) => {
-        resource = await this._write(path, header, streamOrBuffer, txn);
-      }, path);
-      return resource!;
-    } else {
-      return await this._write(path, header, streamOrBuffer, txnDir);
-    }
-  }
-
-  private async _write(
-    path: string,
-    header: FileHeader,
-    streamOrBuffer: ReadableStream | Uint8Array | string,
-    txnDir: string
-  ): Promise<File> {
-    path = join(txnDir, path);
-    let dirName = this.dirName(path);
-    if (!dirName) {
-      throw new Error(`cannot overwrite '/'`);
-    }
-    let parentDir = await this.mkdir(dirName);
-    let resource: File;
-    let name = this.baseName(path);
-    if (streamOrBuffer instanceof Uint8Array) {
-      let buffer = streamOrBuffer;
-      resource = new File(header, buffer);
-    } else if (typeof streamOrBuffer === "string") {
-      resource = new File(header, new TextEncoder().encode(streamOrBuffer));
-    } else {
-      let stream = streamOrBuffer;
-      let reader = stream.getReader();
-      resource = new File(header, reader);
-    }
-    parentDir.files.set(name, resource);
-    await resource.data;
-    return resource;
-  }
-
   async move(sourcePath: string, destPath: string): Promise<void> {
-    let source = this.open(sourcePath);
+    let source = await this.openFileOrDir(sourcePath);
     let destParentDirName = this.dirName(destPath);
-    if (destParentDirName) {
-      await this.mkdir(destParentDirName);
-    }
     let destParent = destParentDirName
-      ? (this.open(destParentDirName) as Directory)
+      ? await this.openDir(destParentDirName)
       : this.root;
     let name = this.baseName(destPath);
     destParent.files.set(name, source);
@@ -165,17 +16,14 @@ export class FileSystem {
   }
 
   async copy(sourcePath: string, destPath: string): Promise<void> {
-    let source = this.open(sourcePath);
+    let source = await this.openFileOrDir(sourcePath);
     let destParentDirName = this.dirName(destPath);
-    if (destParentDirName) {
-      await this.mkdir(destParentDirName);
-    }
     let destParent = destParentDirName
-      ? (this.open(destParentDirName) as Directory)
+      ? await this.openDir(destParentDirName)
       : this.root;
 
     let name = this.baseName(destPath);
-    let destItem = await source.clone();
+    let destItem = source instanceof File ? source.clone() : new Directory();
     destParent.files.set(name, destItem);
     if (source instanceof Directory) {
       for (let childName of [...source.files.keys()]) {
@@ -193,7 +41,13 @@ export class FileSystem {
     if (!dirName) {
       this.root.files.delete(name);
     } else {
-      let sourceDir = this.open(dirName) as Directory;
+      let sourceDir = await this.openFileOrDir(dirName);
+      if (sourceDir instanceof File) {
+        throw new FileSystemError(
+          "IS_NOT_A_DIRECTORY",
+          `'${path}' is not a directory (it's a file and we were expecting it to be a directory)`
+        );
+      }
       sourceDir.files.delete(name);
     }
   }
@@ -213,183 +67,250 @@ export class FileSystem {
     return dirName;
   }
 
-  async makeTemp(): Promise<string> {
-    let dirName = `/tmp/${await this.tempDirName()}`;
-    await this.mkdir(dirName);
-    return dirName;
+  async list(path: string, recurse = false): Promise<ListingEntry[]> {
+    return await this._list(path, recurse);
   }
 
-  async isDirectory(path: string): Promise<boolean> {
-    return this.open(path) instanceof Directory;
-  }
-
-  async isFile(path: string): Promise<boolean> {
-    return !(await this.isDirectory(path));
-  }
-
-  async exists(path: string): Promise<boolean> {
-    try {
-      this.open(path);
-      return true;
-    } catch (err) {
-      if (err.message.includes("does not exist")) {
-        return false;
-      }
-      throw err;
-    }
-  }
-
-  list(path: string, recurse = false): ListingEntry[] {
-    return this._list(path, recurse);
-  }
-
-  private _list(
+  private async _list(
     path: string,
     recurse = false,
     startingPath?: string
-  ): ListingEntry[] {
+  ): Promise<ListingEntry[]> {
     if (!startingPath) {
       startingPath = path;
     }
-
-    let directory = this.open(path);
-    if (!(directory instanceof Directory)) {
-      throw new Error(`${path} is not a directory`);
+    let directory = await this.openFileOrDir(path);
+    if (directory instanceof File) {
+      throw new FileSystemError(
+        "IS_NOT_A_DIRECTORY",
+        `'${path}' is not a directory (it's a file and we were expecting it to be a directory)`
+      );
     }
-
     let results: ListingEntry[] = [];
     if (startingPath === path) {
-      results.push({ path: "./", stat: directory.stat });
+      results.push({
+        path: join(path),
+        stat: directory.getDescriptor().stat,
+      });
     }
     for (let name of [...directory.files.keys()].sort()) {
       let item = directory.files.get(name)!;
-      results.push({ path: `.${join(path, name)}`, stat: item.stat });
+      results.push({ path: join(path, name), stat: item.getDescriptor().stat });
       if (item instanceof Directory && recurse) {
-        results.push(...this._list(join(path, name), true, startingPath));
+        results.push(
+          ...(await this._list(join(path, name), true, startingPath))
+        );
       }
     }
     return results;
   }
 
-  open(path: string): File | Directory {
-    return this._open(splitPath(path));
+  async open(
+    path: string,
+    createMode?: Options["createMode"]
+  ): Promise<FileDescriptor> {
+    return (await this._open(splitPath(path), { createMode })).getDescriptor();
   }
 
-  private _open(
+  private async openDir(path: string): Promise<Directory> {
+    return await this._open(splitPath(path), { createMode: "directory" });
+  }
+
+  private async openFileOrDir(path: string): Promise<File | Directory> {
+    return await this._open(splitPath(path));
+  }
+
+  private async _open(
     pathSegments: string[],
+    opts: { createMode: "file" },
     parent?: Directory,
     initialPath?: string
-  ): File | Directory {
+  ): Promise<File>;
+  private async _open(
+    pathSegments: string[],
+    opts: { createMode: "directory" },
+    parent?: Directory,
+    initialPath?: string
+  ): Promise<Directory>;
+  private async _open(
+    pathSegments: string[],
+    opts?: Options,
+    parent?: Directory,
+    initialPath?: string
+  ): Promise<File | Directory>;
+  private async _open(
+    pathSegments: string[],
+    opts: Options = {},
+    parent?: Directory,
+    initialPath?: string
+  ): Promise<File | Directory> {
     if (!initialPath) {
       initialPath = join(...pathSegments);
     }
     let name = pathSegments.shift()!;
 
     parent = parent || this.root;
+    let resource: File | Directory;
     if (!parent.files.has(name)) {
-      throw new Error(`'${initialPath}' does not exist`);
-    }
-
-    let resource = parent.files.get(name)!;
-    if (pathSegments.length === 0) {
-      return resource;
-    } else if (resource instanceof Directory) {
-      return this._open(pathSegments, resource, initialPath);
+      if (pathSegments.length > 0 && opts.createMode) {
+        resource = new Directory();
+        parent.files.set(name, resource);
+        return await this._open(pathSegments, opts, resource, initialPath);
+      } else if (opts.createMode === "file") {
+        resource = new File();
+        parent.files.set(name, resource);
+        return resource;
+      } else if (opts.createMode === "directory") {
+        resource = new Directory();
+        parent.files.set(name, resource);
+        return resource;
+      } else {
+        throw new FileSystemError(
+          "NOT_FOUND",
+          `'${initialPath}' does not exist`
+        );
+      }
     } else {
-      // there is unconsumed path left over...
-      throw new Error(`'${initialPath}' does not exist`);
-    }
-  }
+      resource = parent.files.get(name)!;
+      if (resource instanceof File && pathSegments.length === 0) {
+        return resource;
+      } else if (resource instanceof File) {
+        // there is unconsumed path left over...
+        throw new FileSystemError(
+          "NOT_FOUND",
+          `'${initialPath}' does not exist`
+        );
+      }
 
-  private async tempDirName(): Promise<string> {
-    let tempDir: string;
-    while (true) {
-      tempDir = String(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
-      if (!(await this.exists(`/tmp/${tempDir}`))) {
-        break;
+      // resource is a directory
+      if (pathSegments.length > 0) {
+        return await this._open(pathSegments, opts, resource, initialPath);
+      } else if (pathSegments.length === 0 && opts.createMode !== "file") {
+        return resource;
+      } else {
+        // we asked for a file and got a directory back
+        throw new FileSystemError(
+          "IS_NOT_A_FILE",
+          `'${initialPath}' is not a file (it's a directory and we were expecting it to be a file)`
+        );
       }
     }
-    return tempDir;
   }
 }
 
-export class File {
-  readonly data: Promise<Uint8Array>;
+class File {
+  buffer?: Uint8Array;
+  etag?: string;
+  mtime: number;
 
-  protected readonly header: FileHeader;
-  private readonly reader?: ReadableStreamDefaultReader<Uint8Array>;
-  private doneReading?: (buffer: Uint8Array) => void;
-
-  constructor(
-    header: FileHeader,
-    bufferOrReader: Uint8Array | ReadableStreamDefaultReader<Uint8Array>
-  ) {
-    this.header = { ...header };
-    if (bufferOrReader instanceof Uint8Array) {
-      this.data = Promise.resolve(bufferOrReader);
-    } else {
-      // this reader is on loan to us to it's really important that we start
-      // consuming its stream immediately.
-      this.reader = bufferOrReader;
-      this.data = new Promise(async (res) => (this.doneReading = res));
-      this.startReading();
-    }
+  constructor() {
+    this.mtime = Math.floor(Date.now() / 1000);
   }
+
+  getDescriptor(): FileDescriptor {
+    return new FileDescriptor(this);
+  }
+
+  clone(): File {
+    let file = new File();
+    file.etag = this.etag;
+    if (this.buffer) {
+      file.buffer = new Uint8Array(this.buffer);
+    }
+    return file;
+  }
+}
+
+export class FileDescriptor {
+  constructor(private resource: File | Directory) {}
+
+  setEtag(etag: string) {
+    this.resource.etag = etag;
+  }
+
   get stat(): Stat {
+    if (this.resource instanceof Directory) {
+      return {
+        etag: this.resource.etag,
+        type: "directory",
+      };
+    }
     return {
-      ...this.header,
-      etag: `${this.header.size}_${this.header.mtime}`,
+      etag: this.resource.etag,
+      mtime: this.resource.mtime,
+      size: this.resource.buffer ? this.resource.buffer.length : 0,
       type: "file",
     };
   }
 
-  async clone(): Promise<File> {
-    return new File(this.header, new Uint8Array(await this.data));
+  async write(buffer: Uint8Array): Promise<void>;
+  async write(stream: ReadableStream): Promise<void>;
+  async write(text: string): Promise<void>;
+  async write(
+    streamOrBuffer: ReadableStream | Uint8Array | string
+  ): Promise<void> {
+    if (this.resource instanceof Directory) {
+      throw new FileSystemError("IS_NOT_A_FILE");
+    }
+    if (streamOrBuffer instanceof Uint8Array) {
+      this.resource.buffer = streamOrBuffer;
+    } else if (typeof streamOrBuffer === "string") {
+      this.resource.buffer = textEncoder.encode(streamOrBuffer);
+    } else {
+      this.resource.buffer = await readStream(streamOrBuffer);
+    }
+    this.resource.mtime = Math.floor(Date.now() / 1000);
   }
 
-  private async startReading() {
-    if (!this.reader || typeof this.doneReading !== "function") {
-      throw new Error("bug: should never get here");
+  async read(): Promise<Uint8Array> {
+    if (this.resource instanceof Directory) {
+      throw new FileSystemError("IS_NOT_A_FILE");
     }
-    let byteCount = 0;
-    let buffer = new Uint8Array(this.header.size);
-    while (true) {
-      let chunk = await this.reader.read();
-      if (chunk.done) {
-        this.doneReading(buffer);
-        break;
-      } else {
-        buffer.set(chunk.value, byteCount);
-        byteCount += chunk.value.length;
-      }
+    return this.resource.buffer ? this.resource.buffer : new Uint8Array();
+  }
+
+  async readText(): Promise<string | undefined> {
+    if (this.resource instanceof Directory) {
+      throw new FileSystemError("IS_NOT_A_FILE");
     }
+    return this.resource.buffer ? utf8.decode(this.resource.buffer) : undefined;
+  }
+
+  getReadbleStream(): ReadableStream {
+    if (this.resource instanceof Directory) {
+      throw new FileSystemError("IS_NOT_A_FILE");
+    }
+    let buffer = this.resource.buffer;
+    return new ReadableStream({
+      async start(controller: ReadableStreamDefaultController) {
+        if (!buffer) {
+          controller.close();
+        } else {
+          controller.enqueue(new Uint8Array(buffer));
+          controller.close();
+        }
+      },
+    });
   }
 }
 
-export class Directory {
+class Directory {
+  etag?: string;
   readonly files: Files = new Map();
-  private header: FileHeader;
-  constructor(header?: FileHeader) {
-    this.header = header ?? {
-      size: 0,
-      mtime: Math.floor(Date.now() / 1000),
-    };
-  }
 
-  setHeader(header: FileHeader) {
-    this.header = header;
+  getDescriptor(): FileDescriptor {
+    return new FileDescriptor(this);
   }
+}
 
-  get stat(): Stat {
-    return {
-      etag: String(this.header.mtime),
-      type: "directory",
-      ...this.header,
-    };
-  }
-
-  async clone(): Promise<Directory> {
-    return new Directory(this.header);
+type ErrorCodes =
+  | "NOT_FOUND"
+  | "IS_NOT_A_FILE"
+  | "IS_NOT_A_DIRECTORY"
+  | "MISSING_PATH";
+export class FileSystemError extends Error {
+  constructor(public readonly code: ErrorCodes, message?: string) {
+    super(message ?? code);
   }
 }
 
@@ -407,7 +328,7 @@ export function splitPath(path: string): string[] {
 export function join(...pathParts: string[]): string {
   pathParts = pathParts.filter(Boolean);
   if (pathParts.length === 0) {
-    throw new Error(`no path parameters specified`);
+    throw new FileSystemError("MISSING_PATH");
   }
   if (pathParts.length === 1 && pathParts[0] === "/") {
     return "/";
@@ -423,4 +344,42 @@ export function join(...pathParts: string[]): string {
   );
 
   return `/${pathParts.filter(Boolean).join("/")}`;
+}
+
+async function readStream(stream: ReadableStream): Promise<Uint8Array> {
+  let reader = stream.getReader();
+  let buffers: Uint8Array[] = [];
+  while (true) {
+    let chunk = await reader.read();
+    if (chunk.done) {
+      break;
+    } else {
+      buffers.push(chunk.value);
+    }
+  }
+
+  let size = buffers.reduce((a, b) => a + b.length, 0);
+  let result = new Uint8Array(size);
+  let offset = 0;
+  for (let buffer of buffers) {
+    result.set(buffer, offset);
+    offset += buffer.length;
+  }
+  return result;
+}
+
+interface ListingEntry {
+  path: string;
+  stat: Stat;
+}
+interface Stat {
+  etag?: string;
+  mtime?: number;
+  size?: number;
+  type: "directory" | "file";
+}
+type Files = Map<string, File | Directory>;
+
+interface Options {
+  createMode?: "file" | "directory";
 }

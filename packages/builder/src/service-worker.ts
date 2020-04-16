@@ -1,11 +1,15 @@
 import { parse } from "@babel/core";
 import { FileDaemonClient } from "./file-daemon-client";
 import { contentType, lookup } from "mime-types";
-import { File, FileSystem, join } from "./filesystem";
+import {
+  FileDescriptor,
+  FileSystem,
+  FileSystemError,
+  join,
+} from "./filesystem";
 
 import { tarTest } from "./tar-test";
 
-const utf8 = new TextDecoder("utf-8");
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 const fs = new FileSystem();
 const webroot = "/webroot";
@@ -52,23 +56,21 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
 
       let path = url.pathname;
       path = join(webroot, path);
-      let file: File;
-      try {
-        if (await fs.isDirectory(path || "/")) {
-          path = `${path}/index.html`;
+      let file = await openFile(fs, path);
+      if (file instanceof Response) {
+        return file;
+      }
+      if (file.stat.type === "directory") {
+        path = join(path, "index.html");
+        file = await openFile(fs, path);
+        if (file instanceof Response) {
+          return file;
         }
-        file = fs.open(path) as File;
-      } catch (err) {
-        // TODO let's add some codes on the errors that we throw like node does (e.g. NOENT)
-        if (err.message.includes("does not exist")) {
-          return new Response("Not found", { status: 404 });
-        }
-        throw err;
       }
       if (path.split(".").pop() === "js") {
-        return bundled(file);
+        return bundled(path, file);
       } else {
-        let response = new Response(await file.data);
+        let response = new Response(file.getReadbleStream());
         setContentHeaders(response, path, file);
         return response;
       }
@@ -76,7 +78,25 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
   );
 });
 
-function setContentHeaders(response: Response, path: string, file: File): void {
+async function openFile(
+  fs: FileSystem,
+  path: string
+): Promise<FileDescriptor | Response> {
+  try {
+    return await fs.open(path);
+  } catch (err) {
+    if (err instanceof FileSystemError && err.code === "NOT_FOUND") {
+      return new Response("Not found", { status: 404 });
+    }
+    throw err;
+  }
+}
+
+function setContentHeaders(
+  response: Response,
+  path: string,
+  file: FileDescriptor
+): void {
   let mime = lookup(path) || "application/octet-stream";
   response.headers.set(
     "content-type",
@@ -85,8 +105,11 @@ function setContentHeaders(response: Response, path: string, file: File): void {
   response.headers.set("content-length", String(file.stat.size));
 }
 
-async function bundled(file: File): Promise<Response> {
-  let js = utf8.decode(await file.data);
+async function bundled(path: string, file: FileDescriptor): Promise<Response> {
+  let js = await file.readText();
+  if (!js) {
+    return new Response(`'${path}' is an empty file`, { status: 500 });
+  }
   let result = await parse(js, {});
   console.log(result);
 

@@ -1,5 +1,10 @@
 import { WatchInfo, FileInfo } from "../../file-daemon/interfaces";
-import { FileSystem, join } from "./filesystem";
+import {
+  FileSystem,
+  join,
+  FileSystemError,
+  FileDescriptor,
+} from "./filesystem";
 import columnify from "columnify";
 import { REGTYPE } from "tarstream/constants";
 import moment from "moment";
@@ -129,30 +134,19 @@ export class FileDaemonClient {
         },
       })
     ).body as ReadableStream;
-    await this.fs.mkdir(this.mountPath);
-    await this.fs.transaction(async (txn) => {
-      let fs = this.fs;
-      let mountedPath = this.mountedPath.bind(this);
-      let untar = new UnTar(stream, {
-        async file(entry) {
-          if (entry.type === REGTYPE) {
-            await fs.write(
-              mountedPath(entry.name),
-              { size: entry.size, mtime: entry.modifyTime },
-              entry.stream(),
-              txn
-            );
-          } else {
-            await fs.mkdir(
-              mountedPath(entry.name),
-              { mtime: entry.modifyTime, size: 0 },
-              txn
-            );
-          }
-        },
-      });
-      await untar.done;
-    }, this.mountPath);
+
+    let mountedPath = this.mountedPath.bind(this);
+    let fs = this.fs;
+    let untar = new UnTar(stream, {
+      async file(entry) {
+        if (entry.type === REGTYPE) {
+          let file = await fs.open(mountedPath(entry.name), "file");
+          file.setEtag(`${entry.size}_${entry.modifyTime}`);
+          await file.write(entry.stream());
+        }
+      },
+    });
+    await untar.done;
     this.doneSyncing();
 
     console.log(`syncing complete, file system:`);
@@ -176,14 +170,9 @@ export class FileDaemonClient {
       if (!stream) {
         throw new Error(`Couldn't fetch ${change.name} from file server`);
       }
-      await this.fs.write(
-        this.mountedPath(change.name),
-        {
-          size: change.header!.size,
-          mtime: change.header!.modifyTime,
-        },
-        stream
-      );
+      let file = await this.fs.open(this.mountedPath(change.name), "file");
+      file.setEtag(change.etag!);
+      await file.write(stream);
     }
 
     // removals are synchronous, so no need to wrap in a transaction
@@ -204,10 +193,15 @@ export class FileDaemonClient {
     let changed = await Promise.all(
       changes.map(async (change) => {
         let { name, etag } = change;
-        if (!(await this.fs.exists(name))) {
-          return change;
+        let currentFile: FileDescriptor;
+        try {
+          currentFile = await this.fs.open(name);
+        } catch (err) {
+          if (err instanceof FileSystemError && err.code === "NOT_FOUND") {
+            return change;
+          }
+          throw err;
         }
-        let currentFile = this.fs.open(name);
         if (currentFile.stat.etag !== etag) {
           return change;
         }
@@ -219,11 +213,14 @@ export class FileDaemonClient {
 
   private async displayListing(): Promise<void> {
     await this.ready;
-    let listing = this.fs.list("/", true).map(({ path, stat }) => ({
+    let listing = (await this.fs.list("/", true)).map(({ path, stat }) => ({
       type: stat.type,
-      size: stat.size,
-      modified: moment(stat.mtime! * 1000).format("MMM D YYYY HH:mm"),
-      etag: stat.etag,
+      size: stat.type === "directory" ? "-" : stat.size,
+      modified:
+        stat.type === "directory"
+          ? "-"
+          : moment(stat.mtime! * 1000).format("MMM D YYYY HH:mm"),
+      etag: stat.etag ?? "-",
       path,
     }));
     console.log(columnify(listing));
