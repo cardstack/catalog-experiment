@@ -11,11 +11,8 @@ interface Scenario {
 
 async function pushIntoFs(fs: FileSystem, scenario: Scenario) {
   for (let [path, text] of Object.entries(scenario)) {
-    await fs.write(
-      path,
-      { size: text.length, mtime: Math.floor(Date.now() / 1000) },
-      text
-    );
+    let file = await fs.open(path, "file");
+    file.write(text);
   }
 }
 
