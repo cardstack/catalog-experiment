@@ -18,6 +18,9 @@ export class FileSystem {
   }
 
   async copy(sourcePath: string, destPath: string): Promise<void> {
+    if (sourcePath === destPath) {
+      return; // nothing to do
+    }
     let source = await this.openFileOrDir(sourcePath);
     let destParentDirName = dirName(destPath);
     let destParent = destParentDirName
@@ -31,7 +34,7 @@ export class FileSystem {
       for (let childName of [...source.files.keys()]) {
         await this.copy(
           join(sourcePath, childName),
-          destPath ? join(destPath, name, childName) : name
+          destPath ? join(destPath, childName) : name
         );
       }
     }
@@ -140,8 +143,22 @@ export class FileSystem {
       resource = parent.files.get(name)!;
 
       // resource is a file
-      if (resource instanceof File && pathSegments.length === 0) {
+      if (
+        resource instanceof File &&
+        pathSegments.length === 0 &&
+        opts.createMode !== "directory"
+      ) {
         return resource;
+      } else if (
+        resource instanceof File &&
+        pathSegments.length === 0 &&
+        opts.createMode === "directory"
+      ) {
+        // we asked for a directory and got a file back
+        throw new FileSystemError(
+          "IS_NOT_A_DIRECTORY",
+          `'${initialPath}' is not a directory (it's a file and we were expecting it to be a directory)`
+        );
       } else if (resource instanceof File) {
         // there is unconsumed path left over...
         throw new FileSystemError(

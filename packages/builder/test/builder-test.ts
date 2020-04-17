@@ -1,5 +1,3 @@
-import "qunit";
-import "qunit/qunit/qunit.css";
 import { installFileAssertions } from "./file-assertions";
 import { Builder } from "../src/builder";
 import { FileSystem } from "../src/filesystem";
