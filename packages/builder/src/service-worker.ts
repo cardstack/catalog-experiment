@@ -1,5 +1,5 @@
 import { parse } from "@babel/core";
-import { FileDaemonClient } from "./file-daemon-client";
+import { FileDaemonClient, origin } from "./file-daemon-client";
 import { contentType, lookup } from "mime-types";
 import { FileDescriptor, FileSystem, FileSystemError } from "./filesystem";
 import { join } from "./path";
@@ -7,9 +7,8 @@ import { join } from "./path";
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 const fs = new FileSystem();
 const webroot = "/webroot";
-const fileSeverURL = "http://localhost:4200";
 const websocketURL = "ws://localhost:3000";
-const client = new FileDaemonClient(fileSeverURL, websocketURL, fs, webroot);
+const client = new FileDaemonClient(origin, websocketURL, fs, webroot);
 let isDisabled = false;
 
 console.log("service worker evaluated");
@@ -78,7 +77,7 @@ async function openFile(
   path: string
 ): Promise<FileDescriptor | Response> {
   try {
-    return await fs.open(path);
+    return await fs.open(new URL(path, origin));
   } catch (err) {
     if (err instanceof FileSystemError && err.code === "NOT_FOUND") {
       return new Response("Not found", { status: 404 });
@@ -120,7 +119,7 @@ async function checkForAliveness() {
     console.log("checking for file daemon aliveness");
     let status;
     try {
-      status = (await fetch(`${fileSeverURL}/__alive__`)).status;
+      status = (await fetch(`${origin}/__alive__`)).status;
     } catch (err) {
       console.log(
         `Encountered error performing aliveness check (server is probably not running):`,

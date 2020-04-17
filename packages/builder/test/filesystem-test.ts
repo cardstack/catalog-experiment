@@ -1,5 +1,9 @@
-import { installFileAssertions, FileAssert } from "./file-assertions";
+import { installFileAssertions, FileAssert, origin } from "./file-assertions";
 import { FileDescriptor } from "../src/filesystem";
+
+function url(path: string, base = origin): URL {
+  return new URL(path, base);
+}
 
 QUnit.module("module filesystem", function (origHooks) {
   let { test } = installFileAssertions(origHooks);
@@ -9,7 +13,7 @@ QUnit.module("module filesystem", function (origHooks) {
       await assert.setupFiles({
         "/foo.txt": "hi",
       });
-      let file = await assert.fs.open("/foo.txt");
+      let file = await assert.fs.open(url("/foo.txt"));
       assert.equal(file.stat.type, "file", "type is correct");
     });
 
@@ -17,14 +21,14 @@ QUnit.module("module filesystem", function (origHooks) {
       await assert.setupFiles({
         "/test/foo.txt": "hi",
       });
-      let file = await assert.fs.open("/test");
+      let file = await assert.fs.open(url("/test"));
       assert.equal(file.stat.type, "directory", "type is correct");
     });
 
     test("throws when path does not exist and create mode is not specified", async function (assert) {
       await assert.setupFiles();
       try {
-        await assert.fs.open("/not-there");
+        await assert.fs.open(url("/not-there"));
         throw new Error(`should not be able to open file`);
       } catch (e) {
         assert.equal(e.code, "NOT_FOUND", "error code is correct");
@@ -34,7 +38,7 @@ QUnit.module("module filesystem", function (origHooks) {
     test("can create a file", async function (assert) {
       await assert.setupFiles();
       await assert.file("/foo.txt").doesNotExist();
-      let file = await assert.fs.open("/foo.txt", "file");
+      let file = await assert.fs.open(url("/foo.txt"), "file");
 
       await assert.file("/foo.txt").exists();
       await assert.equal(file.stat.type, "file", "the stat type is correct");
@@ -43,7 +47,7 @@ QUnit.module("module filesystem", function (origHooks) {
     test("can create a directory", async function (assert) {
       await assert.setupFiles();
       await assert.file("/foo").doesNotExist();
-      let file = await assert.fs.open("/foo", "directory");
+      let file = await assert.fs.open(url("/foo"), "directory");
 
       await assert.file("/foo").exists();
       await assert.equal(
@@ -57,7 +61,7 @@ QUnit.module("module filesystem", function (origHooks) {
       await assert.setupFiles({
         "/foo.txt": "hi",
       });
-      let file = await assert.fs.open("/foo.txt", "file");
+      let file = await assert.fs.open(url("/foo.txt"), "file");
       assert.equal(file.stat.type, "file", "type is correct");
     });
 
@@ -65,17 +69,17 @@ QUnit.module("module filesystem", function (origHooks) {
       await assert.setupFiles({
         "/test/foo.txt": "hi",
       });
-      let file = await assert.fs.open("/test", "directory");
+      let file = await assert.fs.open(url("/test"), "directory");
       assert.equal(file.stat.type, "directory", "type is correct");
     });
 
     test("can create interior directories when create mode is 'file'", async function (assert) {
       await assert.setupFiles();
       await assert.file("/foo").doesNotExist();
-      await assert.fs.open("/foo/bar.txt", "file");
+      await assert.fs.open(url("/foo/bar.txt"), "file");
 
       await assert.file("/foo").exists();
-      let dir = await assert.fs.open("/foo");
+      let dir = await assert.fs.open(url("/foo"));
       await assert.equal(
         dir.stat.type,
         "directory",
@@ -86,10 +90,10 @@ QUnit.module("module filesystem", function (origHooks) {
     test("can create interior directories when create mode is 'directory'", async function (assert) {
       await assert.setupFiles();
       await assert.file("/foo").doesNotExist();
-      await assert.fs.open("/foo/bar", "directory");
+      await assert.fs.open(url("/foo/bar"), "directory");
 
       await assert.file("/foo").exists();
-      let dir = await assert.fs.open("/foo");
+      let dir = await assert.fs.open(url("/foo"));
       await assert.equal(
         dir.stat.type,
         "directory",
@@ -99,10 +103,10 @@ QUnit.module("module filesystem", function (origHooks) {
 
     test("throws when path specifies a directory but create mode is 'file'", async function (assert) {
       await assert.setupFiles();
-      await assert.fs.open("/test", "directory");
+      await assert.fs.open(url("/test"), "directory");
 
       try {
-        await assert.fs.open("/test", "file");
+        await assert.fs.open(url("/test"), "file");
         throw new Error(`should not be able to open file`);
       } catch (e) {
         assert.equal(e.code, "IS_NOT_A_FILE", "error code is correct");
@@ -115,7 +119,7 @@ QUnit.module("module filesystem", function (origHooks) {
       });
 
       try {
-        await assert.fs.open("/test/foo", "directory");
+        await assert.fs.open(url("/test/foo"), "directory");
         throw new Error(`should not be able to open directory`);
       } catch (e) {
         assert.equal(e.code, "IS_NOT_A_DIRECTORY", "error code is correct");
@@ -127,7 +131,7 @@ QUnit.module("module filesystem", function (origHooks) {
         "/test/foo.txt": "hi",
       });
       try {
-        await assert.fs.open("/test", "file");
+        await assert.fs.open(url("/test"), "file");
         throw new Error(`should not be able to open file`);
       } catch (e) {
         assert.equal(e.code, "IS_NOT_A_FILE", "error code is correct");
@@ -144,8 +148,8 @@ QUnit.module("module filesystem", function (origHooks) {
       await fileAssert.setupFiles({
         "/foo/bar": "Hello World",
       });
-      directory = await fileAssert.fs.open("/foo");
-      file = await fileAssert.fs.open("/foo/bar");
+      directory = await fileAssert.fs.open(url("/foo"));
+      file = await fileAssert.fs.open(url("/foo/bar"));
     });
 
     QUnit.module("write", function () {
@@ -283,10 +287,11 @@ QUnit.module("module filesystem", function (origHooks) {
         "/foo/c.txt": "c",
         "/foo/bar/a.txt": "a",
         "/bleep/a.txt": "a",
+        "http://another-origin/blah.txt": "blah",
       });
 
-      let listing = (await assert.fs.list("/foo")).map(
-        (fd) => `${fd.stat.type}::${fd.path}`
+      let listing = (await assert.fs.list(url("/foo"))).map(
+        (fd) => `${fd.stat.type}::${fd.url.pathname}`
       );
       assert.deepEqual(
         listing,
@@ -300,6 +305,7 @@ QUnit.module("module filesystem", function (origHooks) {
         "the listing is correct"
       );
     });
+
     test("can get a recursive directory listing", async function (assert) {
       await assert.setupFiles({
         "/a.txt": "a",
@@ -309,10 +315,11 @@ QUnit.module("module filesystem", function (origHooks) {
         "/foo/bar/a.txt": "a",
         "/foo/bar/baz/a.txt": "a",
         "/bleep/a.txt": "a",
+        "http://another-origin/blah.txt": "blah",
       });
 
-      let listing = (await assert.fs.list("/foo", true)).map(
-        (fd) => `${fd.stat.type}::${fd.path}`
+      let listing = (await assert.fs.list(url("/foo"), true)).map(
+        (fd) => `${fd.stat.type}::${fd.url.pathname}`
       );
       assert.deepEqual(
         listing,
@@ -330,12 +337,69 @@ QUnit.module("module filesystem", function (origHooks) {
       );
     });
 
+    test("can list all origins non-recursively", async function (assert) {
+      await assert.setupFiles({
+        "http://origin-a/a.txt": "a",
+        "http://origin-b/foo/a.txt": "a",
+        "http://origin-b/foo/b.txt": "b",
+        "http://origin-b/foo/c.txt": "c",
+        "http://origin-b/foo/bar/a.txt": "a",
+        "http://origin-b/foo/bar/baz/a.txt": "a",
+        "http://origin-c/bleep/a.txt": "a",
+      });
+
+      let listing = (await assert.fs.listAllOrigins()).map((fd) =>
+        fd.url.toString()
+      );
+      assert.deepEqual(
+        listing,
+        ["http://origin-a/", "http://origin-b/", "http://origin-c/"],
+        "the listing is correct"
+      );
+    });
+
+    test("can list all origins recursively", async function (assert) {
+      await assert.setupFiles({
+        "http://origin-a/a.txt": "a",
+        "http://origin-b/foo/a.txt": "a",
+        "http://origin-b/foo/b.txt": "b",
+        "http://origin-b/foo/c.txt": "c",
+        "http://origin-b/foo/bar/a.txt": "a",
+        "http://origin-b/foo/bar/baz/a.txt": "a",
+        "http://origin-c/bleep/a.txt": "a",
+      });
+
+      let listing = (await assert.fs.listAllOrigins(true)).map((fd) =>
+        fd.url.toString()
+      );
+      assert.deepEqual(
+        listing,
+        [
+          "http://origin-a/",
+          "http://origin-a/a.txt",
+          "http://origin-b/",
+          "http://origin-b/foo",
+          "http://origin-b/foo/a.txt",
+          "http://origin-b/foo/b.txt",
+          "http://origin-b/foo/bar",
+          "http://origin-b/foo/bar/a.txt",
+          "http://origin-b/foo/bar/baz",
+          "http://origin-b/foo/bar/baz/a.txt",
+          "http://origin-b/foo/c.txt",
+          "http://origin-c/",
+          "http://origin-c/bleep",
+          "http://origin-c/bleep/a.txt",
+        ],
+        "the listing is correct"
+      );
+    });
+
     test("throws when getting a listing for a path that is a file", async function (assert) {
       await assert.setupFiles({
         "/a.txt": "a",
       });
       try {
-        await assert.fs.list("/a.txt");
+        await assert.fs.list(url("/a.txt"));
         throw new Error("should not be able to get a listing");
       } catch (e) {
         assert.equal(e.code, "IS_NOT_A_DIRECTORY", "the error code is correct");
@@ -350,7 +414,7 @@ QUnit.module("module filesystem", function (origHooks) {
       });
 
       await assert.file("/b.txt").doesNotExist();
-      await assert.fs.move("/a.txt", "/b.txt");
+      await assert.fs.move(url("/a.txt"), url("/b.txt"));
 
       await assert.file("/a.txt").doesNotExist();
       await assert.file("/b.txt").exists();
@@ -363,7 +427,7 @@ QUnit.module("module filesystem", function (origHooks) {
       });
 
       await assert.file("/foo").doesNotExist();
-      await assert.fs.move("/a.txt", "/foo/b.txt");
+      await assert.fs.move(url("/a.txt"), url("/foo/b.txt"));
 
       await assert.file("/a.txt").doesNotExist();
       await assert.file("/foo/b.txt").exists();
@@ -376,7 +440,7 @@ QUnit.module("module filesystem", function (origHooks) {
       });
 
       await assert.file("/bar").doesNotExist();
-      await assert.fs.move("/foo", "/bar");
+      await assert.fs.move(url("/foo"), url("/bar"));
       await assert.file("/foo").doesNotExist();
       await assert.file("/bar").exists();
       await assert.file("/bar/a.txt").exists();
@@ -389,7 +453,7 @@ QUnit.module("module filesystem", function (origHooks) {
       });
 
       await assert.file("/bar").doesNotExist();
-      await assert.fs.move("/foo", "/bar/baz");
+      await assert.fs.move(url("/foo"), url("/bar/baz"));
       await assert.file("/foo").doesNotExist();
       await assert.file("/bar/baz").exists();
       await assert.file("/bar/baz/a.txt").exists();
@@ -403,7 +467,7 @@ QUnit.module("module filesystem", function (origHooks) {
         "/a.txt": "a",
       });
       await assert.file("/b.txt").doesNotExist();
-      await assert.fs.copy("/a.txt", "/b.txt");
+      await assert.fs.copy(url("/a.txt"), url("/b.txt"));
 
       await assert.file("/a.txt").exists();
       await assert.file("/b.txt").exists();
@@ -414,7 +478,7 @@ QUnit.module("module filesystem", function (origHooks) {
       await assert.setupFiles({
         "/a.txt": "a",
       });
-      await assert.fs.copy("/a.txt", "/a.txt");
+      await assert.fs.copy(url("/a.txt"), url("/a.txt"));
 
       await assert.file("/a.txt").exists();
       await assert.file("/a.txt").matches(/a/);
@@ -426,7 +490,7 @@ QUnit.module("module filesystem", function (origHooks) {
         "/foo/bar/b.txt": "b",
       });
       await assert.file("/baz").doesNotExist();
-      await assert.fs.copy("/foo", "/baz");
+      await assert.fs.copy(url("/foo"), url("/baz"));
 
       await assert.file("/foo/bar/a.txt").exists();
       await assert.file("/foo/bar/b.txt").exists();
@@ -440,7 +504,7 @@ QUnit.module("module filesystem", function (origHooks) {
         "/foo/bar/a.txt": "a",
         "/foo/bar/b.txt": "b",
       });
-      await assert.fs.copy("/foo", "/foo");
+      await assert.fs.copy(url("/foo"), url("/foo"));
 
       await assert.file("/foo/bar/a.txt").exists();
       await assert.file("/foo/bar/b.txt").exists();
@@ -452,7 +516,7 @@ QUnit.module("module filesystem", function (origHooks) {
         "/a.txt": "a",
       });
       await assert.file("/foo").doesNotExist();
-      await assert.fs.copy("/a.txt", "/foo/a.txt");
+      await assert.fs.copy(url("/a.txt"), url("/foo/a.txt"));
 
       await assert.file("/a.txt").exists();
       await assert.file("/foo/a.txt").exists();
@@ -465,7 +529,7 @@ QUnit.module("module filesystem", function (origHooks) {
         "/foo/bar/b.txt": "b",
       });
       await assert.file("/baz").doesNotExist();
-      await assert.fs.copy("/foo", "/baz/bloop");
+      await assert.fs.copy(url("/foo"), url("/baz/bloop"));
 
       await assert.file("/foo/bar/a.txt").exists();
       await assert.file("/foo/bar/b.txt").exists();
@@ -482,7 +546,7 @@ QUnit.module("module filesystem", function (origHooks) {
       });
 
       await assert.file("/a.txt").exists();
-      await assert.fs.remove("/a.txt");
+      await assert.fs.remove(url("/a.txt"));
       await assert.file("/a.txt").doesNotExist();
     });
 
@@ -492,15 +556,34 @@ QUnit.module("module filesystem", function (origHooks) {
       });
 
       await assert.file("/foo/a.txt").exists();
-      await assert.fs.remove("/foo");
+      await assert.fs.remove(url("/foo"));
       await assert.file("/foo").doesNotExist();
+    });
+
+    test("can remove all origins", async function (assert) {
+      await assert.setupFiles({
+        "http://origin-a/foo.txt": "a",
+        "http://origin-b/foo.txt": "b",
+      });
+      await assert.file("http://origin-a/foo.txt").exists();
+      await assert.file("http://origin-b/foo.txt").exists();
+
+      await assert.fs.removeAll();
+
+      await assert.file("http://origin-a/foo.txt").doesNotExist();
+      await assert.file("http://origin-b/foo.txt").doesNotExist();
     });
   });
 
   test("can get a temp directory", async function (assert) {
     await assert.setupFiles();
-    let tempDir = await assert.fs.tempDir();
-    assert.ok(/\/tmp\/\d+/.test(tempDir), "a temp dir is specified");
+    let tempURL = await assert.fs.tempURL();
+    assert.ok(/\d+/.test(tempURL.pathname), "a temp URL path looks correct");
+    assert.equal(
+      tempURL.origin,
+      "http://tmp",
+      "the temp URL origin is correct"
+    );
   });
 });
 
