@@ -1,18 +1,22 @@
 import { parse } from "@babel/core";
 import { FileDaemonClient } from "./file-daemon-client";
 import { contentType, lookup } from "mime-types";
-import { File } from "./filesystem";
+import { FileDescriptor, FileSystem, FileSystemError } from "./filesystem";
+import { join } from "./path";
 
-import { tarTest } from "./tar-test";
-
-const utf8 = new TextDecoder("utf-8");
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
-const client = new FileDaemonClient(
-  "http://localhost:4200",
-  "ws://localhost:3000"
-);
+const fs = new FileSystem();
+const webroot = "/webroot";
+const fileSeverURL = "http://localhost:4200";
+const websocketURL = "ws://localhost:3000";
+const client = new FileDaemonClient(fileSeverURL, websocketURL, fs, webroot);
+let isDisabled = false;
 
 console.log("service worker evaluated");
+
+(async () => {
+  await checkForAliveness();
+})();
 
 worker.addEventListener("install", () => {
   console.log(`installing`);
@@ -30,42 +34,65 @@ worker.addEventListener("activate", () => {
 
 worker.addEventListener("fetch", (event: FetchEvent) => {
   let url = new URL(event.request.url);
-  if (url.origin !== worker.origin) {
-    console.log(`ignore ${event.request.url} based on origin`);
+  if (url.origin !== worker.origin || isDisabled) {
+    if (isDisabled) {
+      console.log(`service worker is disabled, ignoring ${event.request.url}`);
+    } else {
+      console.log(`ignore ${event.request.url} based on origin`);
+    }
     event.respondWith(fetch(event.request));
-    return;
-  }
-
-  if (url.pathname === "/tartest") {
-    event.respondWith(tarTest());
     return;
   }
 
   event.respondWith(
     (async () => {
+      await client.ready;
       let url = new URL(event.request.url);
-      let fs = await client.fs;
+
       let path = url.pathname;
-      if (path.slice(-1) === "/") {
-        path = path.slice(0, -1);
+      path = join(webroot, path);
+      let file = await openFile(fs, path);
+      if (file instanceof Response) {
+        return file;
       }
-      if (fs.isDirectory(path || "/")) {
-        path = `${path}/index.html`;
+      if (file.stat.type === "directory") {
+        path = join(path, "index.html");
+        file = await openFile(fs, path);
+        if (file instanceof Response) {
+          return file;
+        }
       }
-      let file = (await client.fs).retrieve(path);
-      if (file.name.split(".").pop() === "js") {
-        return bundled(file);
+      if (path.split(".").pop() === "js") {
+        return bundled(path, file);
       } else {
-        let response = new Response(await file.data);
-        setContentHeaders(response, file);
+        let response = new Response(file.getReadbleStream());
+        setContentHeaders(response, path, file);
         return response;
       }
     })()
   );
 });
 
-function setContentHeaders(response: Response, file: File): void {
-  let mime = lookup(file.name) || "application/octet-stream";
+async function openFile(
+  fs: FileSystem,
+  path: string
+): Promise<FileDescriptor | Response> {
+  try {
+    return await fs.open(path);
+  } catch (err) {
+    if (err instanceof FileSystemError && err.code === "NOT_FOUND") {
+      return new Response("Not found", { status: 404 });
+    }
+    throw err;
+  }
+}
+
+function setContentHeaders(
+  response: Response,
+  path: string,
+  file: FileDescriptor
+): void {
+  let mime = lookup(path) || "application/octet-stream";
   response.headers.set(
     "content-type",
     contentType(mime) as Exclude<string, false>
@@ -73,8 +100,11 @@ function setContentHeaders(response: Response, file: File): void {
   response.headers.set("content-length", String(file.stat.size));
 }
 
-async function bundled(file: File): Promise<Response> {
-  let js = utf8.decode(await file.data);
+async function bundled(path: string, file: FileDescriptor): Promise<Response> {
+  let js = await file.readText();
+  if (!js) {
+    return new Response(`'${path}' is an empty file`, { status: 500 });
+  }
   let result = await parse(js, {});
   console.log(result);
 
@@ -83,4 +113,29 @@ async function bundled(file: File): Promise<Response> {
   response.headers.set("content-length", String(js.length));
 
   return response;
+}
+
+async function checkForAliveness() {
+  while (true) {
+    console.log("checking for file daemon aliveness");
+    let status;
+    try {
+      status = (await fetch(`${fileSeverURL}/__alive__`)).status;
+    } catch (err) {
+      console.log(
+        `Encountered error performing aliveness check (server is probably not running):`,
+        err
+      );
+    }
+    if (status === 404) {
+      console.error(
+        "some other server is running instead of the file daemon, unregistering this service worker."
+      );
+      isDisabled = true;
+      await worker.registration.unregister();
+      break;
+    } else {
+      await new Promise((res) => setTimeout(() => res(), 10 * 1000));
+    }
+  }
 }

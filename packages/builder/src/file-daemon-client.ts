@@ -1,27 +1,30 @@
 import { WatchInfo, FileInfo } from "../../file-daemon/interfaces";
-import { FileSystem, splitPath, join } from "./filesystem";
+import { FileSystem, FileSystemError, FileDescriptor } from "./filesystem";
+import { join } from "./path";
 import columnify from "columnify";
-import { DIRTYPE } from "tarstream/constants";
+import { REGTYPE } from "tarstream/constants";
 import moment from "moment";
 //@ts-ignore
-import perms from "perms";
+import { UnTar } from "tarstream";
 
 export class FileDaemonClient {
-  fs: Promise<FileSystem>;
+  ready: Promise<void>;
 
   private socket: WebSocket | undefined;
   private socketClosed: Promise<void> | undefined;
   private backoffInterval = 0;
-  private doneSyncing!: (fs: FileSystem) => void;
+  private doneSyncing!: () => void;
 
   private queue: WatchInfo[] = [];
   private resolveQueuePromise: undefined | (() => void);
 
   constructor(
     private fileServerURL: string,
-    private websocketServerURL: string
+    private websocketServerURL: string,
+    private fs: FileSystem,
+    private mountPath: string
   ) {
-    this.fs = new Promise((res) => (this.doneSyncing = res));
+    this.ready = new Promise((res) => (this.doneSyncing = res));
     this.run();
   }
 
@@ -120,17 +123,30 @@ export class FileDaemonClient {
 
   private async startFullSync() {
     console.log("starting full sync");
-    let fs = new FileSystem(
-      (
-        await fetch(`${this.fileServerURL}/`, {
-          headers: {
-            accept: "application/x-tar",
-          },
-        })
-      ).body as ReadableStream
-    );
-    await fs.ready;
-    this.doneSyncing(fs);
+    let stream = (
+      await fetch(`${this.fileServerURL}/`, {
+        headers: {
+          accept: "application/x-tar",
+        },
+      })
+    ).body as ReadableStream;
+
+    let mountedPath = this.mountedPath.bind(this);
+    let fs = this.fs;
+    let temp = await fs.tempDir();
+    let untar = new UnTar(stream, {
+      async file(entry) {
+        if (entry.type === REGTYPE) {
+          let file = await fs.open(join(temp, mountedPath(entry.name)), "file");
+          file.setEtag(`${entry.size}_${entry.modifyTime}`);
+          await file.write(entry.stream());
+        }
+      },
+    });
+    await untar.done;
+    await fs.move(join(temp, this.mountPath), this.mountPath);
+    await fs.remove(temp);
+    this.doneSyncing();
 
     console.log(`syncing complete, file system:`);
     await this.displayListing();
@@ -145,101 +161,66 @@ export class FileDaemonClient {
     }
     let removals = changes.filter(({ etag }) => etag == null);
     let updates = changes.filter(({ etag }) => etag != null);
-    let replacementPath = await this.replacementPathForChanges(changes);
 
-    let fs = await this.fs;
-    await fs.transaction(async (root) => {
-      for (let change of updates) {
-        let absolutePath = change.name;
-        console.log(`updating ${absolutePath}`);
-        let stream = (await fetch(`${this.fileServerURL}${absolutePath}`))
-          .body as ReadableStream<Uint8Array>;
-        if (!stream) {
-          throw new Error(`Couldn't fetch ${absolutePath} from file server`);
-        }
-        let relativePath = join(
-          fs.baseName(replacementPath),
-          absolutePath.slice(replacementPath.length + 1)
-        );
-        await fs.write(relativePath, change.header!, stream, root);
+    for (let change of updates) {
+      console.log(`updating ${change.name}`);
+      let stream = (await fetch(`${this.fileServerURL}${change.name}`))
+        .body as ReadableStream<Uint8Array>;
+      if (!stream) {
+        throw new Error(`Couldn't fetch ${change.name} from file server`);
       }
-    }, replacementPath);
+      let file = await this.fs.open(this.mountedPath(change.name), "file");
+      file.setEtag(change.etag!);
+      await file.write(stream);
+    }
 
-    // removals are synchronous, so no need to wrap in a transaction
     for (let { name } of removals) {
       console.log(`removing ${name}`);
-      fs.remove(name);
+      await this.fs.remove(this.mountedPath(name));
     }
 
     console.log(`completed processing changes, file system:`);
     await this.displayListing();
   }
 
-  private async pruneChanges(changes: FileInfo[]): Promise<FileInfo[]> {
-    let fs = await this.fs;
-    return changes.filter(({ name, etag }) => {
-      if (!fs.exists(name)) {
-        return true;
-      }
-      let currentFile = fs.retrieve(name);
-      return currentFile.stat.etag !== etag;
-    });
+  private mountedPath(path: string): string {
+    return join(this.mountPath, path);
   }
 
-  // This is the path to replace in the filee system after the streaming has
-  // completed--it is the deepest directory that currently exists in the
-  // filesytem that a common ancestor of all the changed files.
-  private async replacementPathForChanges(
-    changes: FileInfo[]
-  ): Promise<string> {
-    let path = changes
-      .map((i) => i.name)
-      .reduce((changePath, filePath) => {
-        if (changePath == null) {
-          return filePath;
+  private async pruneChanges(changes: FileInfo[]): Promise<FileInfo[]> {
+    let changed = await Promise.all(
+      changes.map(async (change) => {
+        let { name, etag } = change;
+        let currentFile: FileDescriptor;
+        try {
+          currentFile = await this.fs.open(name);
+        } catch (err) {
+          if (err instanceof FileSystemError && err.code === "NOT_FOUND") {
+            return change;
+          }
+          throw err;
         }
-        return findOverlap(filePath, changePath);
-      });
-
-    let fs = await this.fs;
-    let segments = splitPath(path);
-    let replacementPath!: string;
-    for (let i = 0; i <= segments.length; i++) {
-      replacementPath = join(...segments.slice(0, segments.length - i));
-      if (fs.exists(replacementPath) && fs.isDirectory(replacementPath)) {
-        break;
-      }
-    }
-
-    return replacementPath;
+        if (currentFile.stat.etag !== etag) {
+          return change;
+        }
+        return false;
+      })
+    );
+    return changed.filter(Boolean) as FileInfo[];
   }
 
   private async displayListing(): Promise<void> {
-    let fs = await this.fs;
-    let listing = fs.list("/", true).map(({ path, stat }) => ({
-      mode: `${stat.type === DIRTYPE ? "d" : "-"}${perms.toString(stat.mode)}`,
-      size: stat.size,
-      modified: moment(stat.modifyTime! * 1000).format("MMM D YYYY HH:mm"),
-      etag: stat.etag,
+    await this.ready;
+    let listing = (await this.fs.list("/", true)).map(({ path, stat }) => ({
+      type: stat.type,
+      size: stat.type === "directory" ? "-" : stat.size,
+      modified:
+        stat.type === "directory"
+          ? "-"
+          : moment(stat.mtime! * 1000).format("MMM D YYYY HH:mm"),
+      etag: stat.etag ?? "-",
       path,
     }));
     console.log(columnify(listing));
   }
-}
-
-function findOverlap(a: string, b: string): string {
-  let longerString = a.length > b.length ? a : b;
-  let shorterString = a.length > b.length ? b : a;
-  if (shorterString.length === 0) {
-    return "";
-  }
-
-  if (longerString.startsWith(shorterString)) {
-    return shorterString;
-  }
-
-  return findOverlap(
-    longerString,
-    shorterString.substring(0, shorterString.length - 1)
-  );
 }

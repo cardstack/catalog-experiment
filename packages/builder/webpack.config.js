@@ -1,6 +1,4 @@
 const path = require("path");
-const HtmlWebpackPlugin = require("html-webpack-plugin");
-const { CleanWebpackPlugin } = require("clean-webpack-plugin");
 
 let config = {
   mode: "development",
@@ -11,11 +9,11 @@ let config = {
       "access-control-allow-headers":
         "Origin, X-Requested-With, Content-Type, Accept, Range",
     },
-    contentBase: path.resolve(__dirname, "dist"),
+    contentBase: path.resolve(__dirname, "tests"),
   },
   output: {
     filename: "[name].js",
-    path: path.resolve(__dirname, "dist/assets"),
+    path: path.resolve(__dirname, "assets"),
   },
   resolve: {
     extensions: [".wasm", ".mjs", ".ts", ".js", ".json"],
@@ -48,6 +46,10 @@ let config = {
           },
         },
       },
+      {
+        test: /\.css$/i,
+        use: ["style-loader", "css-loader"],
+      },
     ],
   },
 };
@@ -55,13 +57,8 @@ let config = {
 let dom = Object.assign({}, config, {
   entry: {
     main: "./src/main.ts",
+    tests: "./tests/index.ts",
   },
-  plugins: [
-    new CleanWebpackPlugin(),
-    new HtmlWebpackPlugin({
-      title: "Output Management",
-    }),
-  ],
 });
 
 let worker = Object.assign({}, config, {
