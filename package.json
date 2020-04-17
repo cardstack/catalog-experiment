@@ -9,10 +9,11 @@
   "private": true,
   "scripts": {
     "build": "tsc",
+    "test": "cd packages/builder && yarn test",
     "builder": "cd packages/builder && yarn start",
     "serve": "cd packages/app && yarn start"
   },
   "resolutions": {
-    "minimist": "^0.2.1"
+    "minimist": "^1.2.5"
   }
 }
