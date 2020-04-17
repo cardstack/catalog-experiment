@@ -16,7 +16,9 @@
     "assert-never": "^1.2.0",
     "babel-loader": "^8.1.0",
     "css-loader": "^3.5.2",
+    "node-qunit-puppeteer": "^2.0.1",
     "qunit": "^2.9.3",
+    "start-server-and-test": "^1.11.0",
     "style-loader": "^1.1.3",
     "tarstream": "0.0.1",
     "typescript": "^3.8.3",
@@ -25,7 +27,9 @@
     "webpack-dev-server": "^3.10.3"
   },
   "scripts": {
-    "start": "webpack-dev-server"
+    "start": "webpack-dev-server",
+    "test": "yarn start-server-and-test http-get://localhost:8080 test-headless",
+    "test-headless": "yarn node-qunit-puppeteer http://localhost:8080"
   },
   "dependencies": {
     "@types/parse5": "^5.0.2",

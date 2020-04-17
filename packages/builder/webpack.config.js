@@ -9,7 +9,7 @@ let config = {
       "access-control-allow-headers":
         "Origin, X-Requested-With, Content-Type, Accept, Range",
     },
-    contentBase: path.resolve(__dirname, "tests"),
+    contentBase: path.resolve(__dirname, "test"),
   },
   output: {
     filename: "[name].js",
@@ -57,7 +57,7 @@ let config = {
 let dom = Object.assign({}, config, {
   entry: {
     main: "./src/main.ts",
-    tests: "./tests/index.ts",
+    test: "./test/index.ts",
   },
 });
 
