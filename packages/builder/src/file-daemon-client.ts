@@ -7,6 +7,8 @@ import moment from "moment";
 //@ts-ignore
 import { UnTar } from "tarstream";
 
+export const origin = "http://localhost:4200";
+
 export class FileDaemonClient {
   ready: Promise<void>;
 
@@ -133,18 +135,24 @@ export class FileDaemonClient {
 
     let mountedPath = this.mountedPath.bind(this);
     let fs = this.fs;
-    let temp = await fs.tempDir();
+    let temp = await fs.tempURL();
     let untar = new UnTar(stream, {
       async file(entry) {
         if (entry.type === REGTYPE) {
-          let file = await fs.open(join(temp, mountedPath(entry.name)), "file");
+          let file = await fs.open(
+            new URL(mountedPath(entry.name), temp),
+            "file"
+          );
           file.setEtag(`${entry.size}_${entry.modifyTime}`);
           await file.write(entry.stream());
         }
       },
     });
     await untar.done;
-    await fs.move(join(temp, this.mountPath), this.mountPath);
+    await fs.move(
+      new URL(this.mountPath, temp),
+      new URL(this.mountPath, origin)
+    );
     await fs.remove(temp);
     this.doneSyncing();
 
@@ -169,14 +177,17 @@ export class FileDaemonClient {
       if (!stream) {
         throw new Error(`Couldn't fetch ${change.name} from file server`);
       }
-      let file = await this.fs.open(this.mountedPath(change.name), "file");
+      let file = await this.fs.open(
+        new URL(this.mountedPath(change.name), origin),
+        "file"
+      );
       file.setEtag(change.etag!);
       await file.write(stream);
     }
 
     for (let { name } of removals) {
       console.log(`removing ${name}`);
-      await this.fs.remove(this.mountedPath(name));
+      await this.fs.remove(new URL(this.mountedPath(name), origin));
     }
 
     console.log(`completed processing changes, file system:`);
@@ -193,7 +204,7 @@ export class FileDaemonClient {
         let { name, etag } = change;
         let currentFile: FileDescriptor;
         try {
-          currentFile = await this.fs.open(name);
+          currentFile = await this.fs.open(new URL(name, origin));
         } catch (err) {
           if (err instanceof FileSystemError && err.code === "NOT_FOUND") {
             return change;
@@ -211,7 +222,7 @@ export class FileDaemonClient {
 
   private async displayListing(): Promise<void> {
     await this.ready;
-    let listing = (await this.fs.list("/", true)).map(({ path, stat }) => ({
+    let listing = (await this.fs.listAllOrigins(true)).map(({ url, stat }) => ({
       type: stat.type,
       size: stat.type === "directory" ? "-" : stat.size,
       modified:
@@ -219,7 +230,7 @@ export class FileDaemonClient {
           ? "-"
           : moment(stat.mtime! * 1000).format("MMM D YYYY HH:mm"),
       etag: stat.etag ?? "-",
-      path,
+      url,
     }));
     console.log(columnify(listing));
   }

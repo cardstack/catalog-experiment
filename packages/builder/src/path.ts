@@ -1,3 +1,18 @@
+export function urlToPath(url: URL): string {
+  return join(url.origin.replace(/\//g, "|"), url.pathname);
+}
+
+export function pathToURL(path: string): URL {
+  if (path.slice(0, 1) === "/") {
+    path = path.slice(1);
+  }
+  let [origin, ...pathParts] = splitPath(path);
+  if (pathParts.length === 0) {
+    pathParts = ["/"];
+  }
+  return new URL(join(...pathParts), origin.replace(/\|/g, "/"));
+}
+
 export function baseName(path: string): string {
   return splitPath(path).pop()!;
 }

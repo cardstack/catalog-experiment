@@ -1,17 +1,18 @@
 import "qunit";
 import { Memoize } from "typescript-memoize";
 import { FileSystem } from "../src/filesystem";
-import { join } from "../src/path";
+
+export const origin = "http://localhost:4200";
 
 export interface Scenario {
-  [file: string]: string;
+  [fileURL: string]: string;
 }
 
 export interface FileAssert extends Assert {
-  setupFiles(scenario?: Scenario, basePath?: string): Promise<void>;
+  setupFiles(scenario?: Scenario, baseURL?: URL): Promise<void>;
   readonly fs: FileSystem;
-  readonly basePath: string;
-  file(path: string): BoundFileAssert;
+  readonly baseURL: URL;
+  file(relativeURL: string): BoundFileAssert;
 }
 
 type ContentsResult =
@@ -19,25 +20,24 @@ type ContentsResult =
   | { result: false; actual: any; expected: any; message: string };
 
 export class BoundFileAssert {
-  constructor(readonly path: string, private assert: FileAssert) {}
+  constructor(readonly relativeURL: string, private assert: FileAssert) {}
 
-  get basePath() {
-    return this.assert.basePath;
+  get baseURL(): URL {
+    return this.assert.baseURL;
   }
 
   @Memoize()
-  get fullPath() {
-    let path = this.path;
-    if (this.assert.basePath) {
-      path = join(this.assert.basePath, path);
+  get fullURL(): URL {
+    if (this.assert.baseURL && !isURL(this.relativeURL)) {
+      return new URL(this.relativeURL, this.assert.baseURL);
     }
-    return path;
+    return new URL(this.relativeURL);
   }
 
   @Memoize()
   protected async contents(): Promise<ContentsResult> {
     try {
-      let fd = await this.assert.fs.open(this.fullPath);
+      let fd = await this.assert.fs.open(this.fullURL);
       let data = await fd.readText();
       return {
         result: true,
@@ -51,28 +51,28 @@ export class BoundFileAssert {
         result: false,
         actual: "file missing",
         expected: "file present",
-        message: `${this.path} should exist`,
+        message: `${this.relativeURL} should exist`,
       };
     }
   }
 
   async exists(message?: string) {
-    let result = await exists(this.assert.fs, this.fullPath);
+    let result = await exists(this.assert.fs, this.fullURL);
     this.assert.pushResult({
       result,
       actual: "file missing",
       expected: "file present",
-      message: message || `${this.path} should exist`,
+      message: message || `${this.relativeURL} should exist`,
     });
   }
 
   async doesNotExist(message?: string) {
-    let result = await exists(this.assert.fs, this.fullPath);
+    let result = await exists(this.assert.fs, this.fullURL);
     this.assert.pushResult({
       result: !result,
       actual: "file present",
       expected: "file missing",
-      message: message || `${this.path} should not exist`,
+      message: message || `${this.relativeURL} should not exist`,
     });
   }
 
@@ -101,8 +101,8 @@ export class BoundFileAssert {
         message:
           message ||
           (result
-            ? `${this.path} has expected contents`
-            : `${this.path} contents unexpected`),
+            ? `${this.relativeURL} has expected contents`
+            : `${this.relativeURL} contents unexpected`),
       });
     }
   }
@@ -165,20 +165,25 @@ function fileSkip(
   });
 }
 
-function makeBoundFile(this: FileAssert, path: string) {
-  return new BoundFileAssert(path, this);
+function makeBoundFile(this: FileAssert, relativeURL: string) {
+  return new BoundFileAssert(relativeURL, this);
 }
 
 export function installFileAssertions(hooks: NestedHooks) {
-  let basePath = "/";
+  let baseURL = new URL(origin);
   let fs: FileSystem;
 
-  async function setupFiles(scenario: Scenario = {}, b = "/"): Promise<void> {
+  async function setupFiles(
+    scenario: Scenario = {},
+    b = new URL(origin)
+  ): Promise<void> {
     fs = new FileSystem();
-    basePath = b;
-    await fs.remove(basePath);
+    baseURL = b;
+    await fs.removeAll();
     for (let [path, text] of Object.entries(scenario)) {
-      let file = await fs.open(join(basePath, path), "file");
+      let file = isURL(path)
+        ? await fs.open(new URL(path), "file")
+        : await fs.open(new URL(path, baseURL), "file");
       file.write(text);
     }
   }
@@ -191,9 +196,9 @@ export function installFileAssertions(hooks: NestedHooks) {
           return fs;
         },
       });
-      Object.defineProperty(assert, "basePath", {
+      Object.defineProperty(assert, "baseURL", {
         get() {
-          return basePath;
+          return baseURL;
         },
       });
     }
@@ -214,14 +219,26 @@ export function installFileAssertions(hooks: NestedHooks) {
     hooks: hooks as FileHooks,
   };
 }
-async function exists(fs: FileSystem, path: string): Promise<boolean> {
+async function exists(fs: FileSystem, url: URL): Promise<boolean> {
   try {
-    await fs.open(path);
+    await fs.open(url);
     return true;
   } catch (err) {
     if (err.code === "NOT_FOUND") {
       return false;
     }
     throw err;
+  }
+}
+
+function isURL(possibleURL: string): boolean {
+  try {
+    new URL(possibleURL);
+    return true;
+  } catch (e) {
+    if (e.message.includes("Invalid URL")) {
+      return false;
+    }
+    throw e;
   }
 }

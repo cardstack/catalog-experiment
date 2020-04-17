@@ -1,4 +1,11 @@
-import { join, splitPath, baseName, dirName } from "./path";
+import {
+  join,
+  splitPath,
+  baseName,
+  dirName,
+  urlToPath,
+  pathToURL,
+} from "./path";
 
 const textEncoder = new TextEncoder();
 const utf8 = new TextDecoder("utf8");
@@ -6,7 +13,9 @@ const utf8 = new TextDecoder("utf8");
 export class FileSystem {
   private root = new Directory();
 
-  async move(sourcePath: string, destPath: string): Promise<void> {
+  async move(sourceURL: URL, destURL: URL): Promise<void> {
+    let sourcePath = urlToPath(sourceURL);
+    let destPath = urlToPath(destURL);
     let source = await this.openFileOrDir(sourcePath);
     let destParentDirName = dirName(destPath);
     let destParent = destParentDirName
@@ -14,13 +23,15 @@ export class FileSystem {
       : this.root;
     let name = baseName(destPath);
     destParent.files.set(name, source);
-    await this.remove(sourcePath);
+    await this.remove(sourceURL);
   }
 
-  async copy(sourcePath: string, destPath: string): Promise<void> {
-    if (sourcePath === destPath) {
+  async copy(sourceURL: URL, destURL: URL): Promise<void> {
+    if (sourceURL.toString() === destURL.toString()) {
       return; // nothing to do
     }
+    let sourcePath = urlToPath(sourceURL);
+    let destPath = urlToPath(destURL);
     let source = await this.openFileOrDir(sourcePath);
     let destParentDirName = dirName(destPath);
     let destParent = destParentDirName
@@ -33,14 +44,22 @@ export class FileSystem {
     if (source instanceof Directory) {
       for (let childName of [...source.files.keys()]) {
         await this.copy(
-          join(sourcePath, childName),
-          destPath ? join(destPath, childName) : name
+          pathToURL(join(sourcePath, childName)),
+          pathToURL(destPath ? join(destPath, childName) : name)
         );
       }
     }
   }
 
-  async remove(path: string): Promise<void> {
+  async remove(url: URL): Promise<void> {
+    await this._remove(urlToPath(url));
+  }
+
+  async removeAll(): Promise<void> {
+    await this._remove("/");
+  }
+
+  private async _remove(path: string): Promise<void> {
     let name = baseName(path);
     let dir = dirName(path);
     if (!dir) {
@@ -51,8 +70,12 @@ export class FileSystem {
     }
   }
 
-  async list(path: string, recurse = false): Promise<ListingEntry[]> {
-    return await this._list(path, recurse);
+  async list(url: URL, recurse = false): Promise<ListingEntry[]> {
+    return await this._list(urlToPath(url), recurse);
+  }
+
+  async listAllOrigins(recurse = false): Promise<ListingEntry[]> {
+    return await this._list("/", recurse);
   }
 
   private async _list(
@@ -65,15 +88,18 @@ export class FileSystem {
     }
     let directory = await this.openDir(path);
     let results: ListingEntry[] = [];
-    if (startingPath === path) {
+    if (startingPath === path && path !== "/") {
       results.push({
-        path: join(path),
+        url: pathToURL(path),
         stat: directory.getDescriptor().stat,
       });
     }
     for (let name of [...directory.files.keys()].sort()) {
       let item = directory.files.get(name)!;
-      results.push({ path: join(path, name), stat: item.getDescriptor().stat });
+      results.push({
+        url: pathToURL(join(path, name)),
+        stat: item.getDescriptor().stat,
+      });
       if (item instanceof Directory && recurse) {
         results.push(
           ...(await this._list(join(path, name), true, startingPath))
@@ -84,9 +110,10 @@ export class FileSystem {
   }
 
   async open(
-    path: string,
+    url: URL,
     createMode?: Options["createMode"]
   ): Promise<FileDescriptor> {
+    let path = urlToPath(url);
     return (await this._open(splitPath(path), { createMode })).getDescriptor();
   }
 
@@ -97,7 +124,9 @@ export class FileSystem {
     if (directory instanceof File) {
       throw new FileSystemError(
         "IS_NOT_A_DIRECTORY",
-        `'${path}' is not a directory (it's a file and we were expecting it to be a directory)`
+        `'${pathToURL(
+          path
+        )}' is not a directory (it's a file and we were expecting it to be a directory)`
       );
     }
     return directory;
@@ -136,7 +165,7 @@ export class FileSystem {
       } else {
         throw new FileSystemError(
           "NOT_FOUND",
-          `'${initialPath}' does not exist`
+          `'${pathToURL(initialPath)}' does not exist`
         );
       }
     } else {
@@ -157,13 +186,15 @@ export class FileSystem {
         // we asked for a directory and got a file back
         throw new FileSystemError(
           "IS_NOT_A_DIRECTORY",
-          `'${initialPath}' is not a directory (it's a file and we were expecting it to be a directory)`
+          `'${pathToURL(
+            initialPath
+          )}' is not a directory (it's a file and we were expecting it to be a directory)`
         );
       } else if (resource instanceof File) {
         // there is unconsumed path left over...
         throw new FileSystemError(
           "NOT_FOUND",
-          `'${initialPath}' does not exist`
+          `'${pathToURL(initialPath)}' does not exist`
         );
       }
 
@@ -176,23 +207,28 @@ export class FileSystem {
         // we asked for a file and got a directory back
         throw new FileSystemError(
           "IS_NOT_A_FILE",
-          `'${initialPath}' is not a file (it's a directory and we were expecting it to be a file)`
+          `'${pathToURL(
+            initialPath
+          )}' is not a file (it's a directory and we were expecting it to be a file)`
         );
       }
     }
   }
 
-  async tempDir(): Promise<string> {
-    let tempDir: string;
+  async tempURL(): Promise<URL> {
+    let tempURL: URL;
+    let tempOrigin = "http://tmp";
     while (true) {
-      tempDir = `/tmp/${String(
-        Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
-      )}`;
+      tempURL = new URL(
+        `/${Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)}`,
+        tempOrigin
+      );
+
       try {
-        await this.open(tempDir);
+        await this.open(tempURL);
       } catch (err) {
         if (err instanceof FileSystemError && err.code === "NOT_FOUND") {
-          return tempDir;
+          return tempURL;
         }
         throw err;
       }
@@ -335,7 +371,7 @@ async function readStream(stream: ReadableStream): Promise<Uint8Array> {
 }
 
 interface ListingEntry {
-  path: string;
+  url: URL;
   stat: Stat;
 }
 interface Stat {

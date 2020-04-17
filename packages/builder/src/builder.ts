@@ -1,5 +1,5 @@
 import { FileSystem, FileSystemError } from "./filesystem";
-import { join, splitPath } from "./path";
+import { join } from "./path";
 import { parseDOM, DomUtils } from "htmlparser2";
 import { Node } from "domhandler";
 
@@ -15,6 +15,7 @@ export interface BuilderConfig {
 }
 
 const parsedFileTypes = ["html", "js", "css"];
+const origin = `http://localhost:4200`;
 
 export class Builder {
   private entrypointCache: Map<string, EntryPointCacheItem> = new Map();
@@ -24,92 +25,91 @@ export class Builder {
   async build(): Promise<void> {
     for (let entryPointPath of this.config.htmlEntryPoints) {
       await this.processHTMLEntryPoint(
-        join(this.config.inputDir, entryPointPath)
+        new URL(join(this.config.inputDir, entryPointPath), origin)
       );
     }
     await this.copyAssets();
   }
 
-  private async processHTMLEntryPoint(path: string) {
+  private async processHTMLEntryPoint(url: URL) {
     let entryPointInfo: EntryPointCacheItem;
-    let entryPointFile = await this.fs.open(path);
+    let entryPointFile = await this.fs.open(url);
+    let key = url.toString();
     if (
-      !this.entrypointCache.has(path) ||
-      this.entrypointCache.get(path)!.etag !== entryPointFile.stat.etag
+      !this.entrypointCache.has(key) ||
+      this.entrypointCache.get(key)!.etag !== entryPointFile.stat.etag
     ) {
       entryPointInfo = {
         etag: entryPointFile.stat.etag!,
         dom: parseDOM(await entryPointFile.readText()),
       };
-      this.entrypointCache.set(path, entryPointInfo);
+      this.entrypointCache.set(key, entryPointInfo);
     } else {
-      entryPointInfo = this.entrypointCache.get(path)!;
+      entryPointInfo = this.entrypointCache.get(key)!;
     }
     let { dom } = entryPointInfo;
     for (let el of DomUtils.findAll((el) => el.tagName === "script", dom)) {
-      // TODO need to start thinking about how to resolve relative paths, the
-      // hack below should get removed.
       await this.processJSEntryPoint(
-        this.crappyResolve(el.attribs.src),
+        new URL(join(this.config.inputDir, el.attribs.src), origin),
         el.attribs.type
       );
     }
     for (let el of DomUtils.findAll((el) => el.tagName === "link", dom)) {
       if (el.attribs.rel === "stylesheet") {
-        await this.processCSSEntryPoint(this.crappyResolve(el.attribs.href));
+        await this.processCSSEntryPoint(
+          new URL(join(this.config.inputDir, el.attribs.href), origin)
+        );
       }
     }
-    await this.fs.copy(path, this.outputPath(path));
+    await this.fs.copy(url, this.outputURL(url));
   }
 
-  private async processJSEntryPoint(path: string, _type?: string) {
-    await this.fs.copy(path, this.outputPath(path));
+  private async processJSEntryPoint(url: URL, _type?: string) {
+    await this.fs.copy(url, this.outputURL(url));
   }
 
-  private async processCSSEntryPoint(path: string) {
-    await this.fs.copy(path, this.outputPath(path));
+  private async processCSSEntryPoint(url: URL) {
+    await this.fs.copy(url, this.outputURL(url));
   }
 
   private async copyAssets() {
-    let inputFiles = (await this.fs.list(this.config.inputDir)).filter(
+    let inputFiles = (
+      await this.fs.list(new URL(this.config.inputDir, origin), true)
+    ).filter(
       (entry) =>
         entry.stat.type === "file" &&
-        !parsedFileTypes.includes(entry.path.split(".").pop()!)
+        !parsedFileTypes.includes(entry.url.pathname.split(".").pop()!)
     );
-    for (let { path, stat } of inputFiles) {
-      let outputPath = this.outputPath(path);
-      if (!this.isAssetStale(outputPath, stat.etag!)) {
+    for (let { url, stat } of inputFiles) {
+      let outputURL = this.outputURL(url);
+      if (!this.isAssetStale(outputURL, stat.etag!)) {
         continue;
       }
-      let inputFile = await this.fs.open(path);
-      let outputFile = await this.fs.open(outputPath, "file");
+      let inputFile = await this.fs.open(url);
+      let outputFile = await this.fs.open(outputURL, "file");
       outputFile.setEtag(inputFile.stat.etag!);
       await outputFile.write(inputFile.getReadbleStream());
     }
   }
 
-  private outputPath(inputPath: string) {
-    return join(
-      this.config.outputDir,
-      inputPath.slice(this.config.inputDir.length)
+  private outputURL(inputURL: URL) {
+    return new URL(
+      join(
+        this.config.outputDir,
+        inputURL.pathname.slice(this.config.inputDir.length)
+      ),
+      origin
     );
   }
 
-  private async isAssetStale(outputPath: string, etag: string) {
+  private async isAssetStale(outputURL: URL, etag: string) {
     try {
-      return (await this.fs.open(outputPath)).stat.etag === etag;
+      return (await this.fs.open(outputURL)).stat.etag === etag;
     } catch (err) {
       if (err instanceof FileSystemError && err.code === "NOT_FOUND") {
         return true;
       }
       throw err;
     }
-  }
-
-  private crappyResolve(path: string) {
-    return join(
-      this.config.inputDir,
-      ...splitPath(path).filter((i) => i !== ".")
-    );
   }
 }
