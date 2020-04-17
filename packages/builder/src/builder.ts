@@ -49,7 +49,10 @@ export class Builder {
     for (let el of DomUtils.findAll((el) => el.tagName === "script", dom)) {
       // TODO need to start thinking about how to resolve relative paths, the
       // hack below should get removed.
-      await this.processJSEntryPoint(this.crappyResolve(el.attribs.src));
+      await this.processJSEntryPoint(
+        this.crappyResolve(el.attribs.src),
+        el.attribs.type
+      );
     }
     for (let el of DomUtils.findAll((el) => el.tagName === "link", dom)) {
       if (el.attribs.rel === "stylesheet") {
@@ -59,7 +62,7 @@ export class Builder {
     await this.fs.copy(path, this.outputPath(path));
   }
 
-  private async processJSEntryPoint(path: string) {
+  private async processJSEntryPoint(path: string, _type?: string) {
     await this.fs.copy(path, this.outputPath(path));
   }
 
