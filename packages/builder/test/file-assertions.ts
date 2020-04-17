@@ -8,7 +8,7 @@ export interface Scenario {
 }
 
 export interface FileAssert extends Assert {
-  setupFiles(scenario: Scenario, basePath?: string): Promise<void>;
+  setupFiles(scenario?: Scenario, basePath?: string): Promise<void>;
   readonly fs: FileSystem;
   readonly basePath: string;
   file(path: string): BoundFileAssert;
@@ -171,9 +171,10 @@ function makeBoundFile(this: FileAssert, path: string) {
 
 export function installFileAssertions(hooks: NestedHooks) {
   let basePath = "/";
-  let fs = new FileSystem();
+  let fs: FileSystem;
 
-  async function setupFiles(scenario: Scenario, b = "/"): Promise<void> {
+  async function setupFiles(scenario: Scenario = {}, b = "/"): Promise<void> {
+    fs = new FileSystem();
     basePath = b;
     await fs.remove(basePath);
     for (let [path, text] of Object.entries(scenario)) {

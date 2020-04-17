@@ -16,6 +16,7 @@
     "assert-never": "^1.2.0",
     "babel-loader": "^8.1.0",
     "css-loader": "^3.5.2",
+    "glob": "^7.1.6",
     "node-qunit-puppeteer": "^2.0.1",
     "qunit": "^2.9.3",
     "start-server-and-test": "^1.11.0",
