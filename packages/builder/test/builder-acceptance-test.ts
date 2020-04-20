@@ -30,6 +30,7 @@ QUnit.module("acceptance builder", function (hooks) {
     clearTestContainer();
     await setupScenario();
   });
+
   hooks.afterEach(async () => {
     clearTestContainer();
     await fetch("/teardown-fs", { method: "POST" });

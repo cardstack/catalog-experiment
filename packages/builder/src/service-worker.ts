@@ -25,7 +25,7 @@ export function start(opts: Options = {}) {
     webroot = "/";
 
     (async () => {
-      await checkForAliveness(testOrigin);
+      await checkForOurBackend(testOrigin);
     })();
   } else {
     console.log("starting service worker in normal mode");
@@ -33,7 +33,7 @@ export function start(opts: Options = {}) {
     client = new FileDaemonClient(origin, websocketURL, fs, webroot);
 
     (async () => {
-      await checkForAliveness(origin);
+      await checkForOurBackend(origin);
     })();
   }
 
@@ -92,9 +92,10 @@ export function start(opts: Options = {}) {
   });
 }
 
-async function checkForAliveness(alivenessOrigin: string) {
+// Check to make sure that our backend is _really_ ours. Otherwise unregister
+// this service worker so it doesnt get in the way of non catalogjs web apps.
+async function checkForOurBackend(alivenessOrigin: string) {
   while (true) {
-    console.log("checking for file daemon aliveness");
     let status;
     try {
       status = (await fetch(`${alivenessOrigin}/__alive__`)).status;
