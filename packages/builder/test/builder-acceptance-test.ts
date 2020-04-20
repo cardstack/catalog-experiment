@@ -20,7 +20,7 @@ QUnit.module("acceptance builder", function (hooks) {
     }
   }
 
-  async function get(path: string, origin: string = testOrigin) {
+  async function testFetch(path: string, origin: string = testOrigin) {
     return fetch(new URL(path, origin).toString(), { mode: "no-cors" });
   }
 
@@ -54,7 +54,7 @@ QUnit.module("acceptance builder", function (hooks) {
         })();
       `,
     });
-    let js = await (await get("/index.js")).text();
+    let js = await (await testFetch("/index.js")).text();
     eval(js);
 
     let container = getTestDOM();
