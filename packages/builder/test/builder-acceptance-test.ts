@@ -4,6 +4,7 @@
 import { Scenario } from "../src/test-request-handler";
 const { test } = QUnit;
 const testContainerId = "test-container";
+const testOrigin = "http://test";
 
 QUnit.module("acceptance builder", function (hooks) {
   function getTestDOM() {
@@ -19,8 +20,15 @@ QUnit.module("acceptance builder", function (hooks) {
     }
   }
 
-  async function setupScenario(scenario: Scenario = {}) {
-    await fetch("/setup-fs", {
+  async function testFetch(path: string, origin: string = testOrigin) {
+    return fetch(new URL(path, origin).toString(), { mode: "no-cors" });
+  }
+
+  async function setupScenario(
+    scenario: Scenario = {},
+    origin: string = testOrigin
+  ) {
+    await fetch(`/setup-fs?origin=${encodeURIComponent(origin)}`, {
       method: "POST",
       body: JSON.stringify(scenario),
     });
@@ -28,7 +36,6 @@ QUnit.module("acceptance builder", function (hooks) {
 
   hooks.beforeEach(async () => {
     clearTestDOM();
-    await setupScenario();
   });
 
   hooks.afterEach(async () => {
@@ -38,7 +45,7 @@ QUnit.module("acceptance builder", function (hooks) {
 
   test("can process a single module that has no imports", async function (assert) {
     await setupScenario({
-      "test-index.js": `
+      "index.js": `
         (function() {
           let container = document.getElementById('test-container');
           let elt = document.createElement("h1");
@@ -47,7 +54,7 @@ QUnit.module("acceptance builder", function (hooks) {
         })();
       `,
     });
-    let js = await (await fetch("/test-index.js")).text();
+    let js = await (await testFetch("/index.js")).text();
     eval(js);
 
     let container = getTestDOM();

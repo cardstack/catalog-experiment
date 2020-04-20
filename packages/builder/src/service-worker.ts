@@ -1,14 +1,16 @@
 import { FileDaemonClient, origin } from "./file-daemon-client";
 import { FileSystem } from "./filesystem";
-import { handleTestRequest, testOrigin } from "./test-request-handler";
+import { handleTestRequest } from "./test-request-handler";
 import { handleBuildRequest } from "./build-request-handler";
 import { Handler } from "./request-handler";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 const fs = new FileSystem();
 const websocketURL = "ws://localhost:3000";
+const ourBackendEndpoint = "__alive__";
 let webroot: string;
 let isDisabled = false;
+let testMode: boolean;
 
 console.log("service worker evaluated");
 
@@ -19,22 +21,19 @@ interface Options {
 export function start(opts: Options = {}) {
   let client: FileDaemonClient | undefined;
 
+  (async () => {
+    await checkForOurBackend();
+  })();
+
   if (opts.test) {
     console.log("starting service worker in test mode");
-    (self as any).testMode = true;
+    testMode = true;
     webroot = "/";
-
-    (async () => {
-      await checkForOurBackend(testOrigin);
-    })();
   } else {
     console.log("starting service worker in normal mode");
     webroot = "/webroot";
+    testMode = false;
     client = new FileDaemonClient(origin, websocketURL, fs, webroot);
-
-    (async () => {
-      await checkForOurBackend(origin);
-    })();
   }
 
   worker.addEventListener("install", () => {
@@ -54,18 +53,7 @@ export function start(opts: Options = {}) {
   worker.addEventListener("fetch", (event: FetchEvent) => {
     let url = new URL(event.request.url);
 
-    if (
-      url.origin !== worker.origin ||
-      isDisabled ||
-      url.pathname === "/__alive__"
-    ) {
-      if (isDisabled) {
-        console.log(
-          `service worker is disabled, ignoring ${event.request.url}`
-        );
-      } else {
-        console.log(`ignore ${event.request.url} based on origin`);
-      }
+    if (isDisabled || url.pathname === `/${ourBackendEndpoint}`) {
       event.respondWith(fetch(event.request));
       return;
     }
@@ -78,7 +66,7 @@ export function start(opts: Options = {}) {
 
         let stack: Handler[] = [handleTestRequest, handleBuildRequest];
         let response: Response | undefined;
-        let context = { fs, webroot };
+        let context = { fs, webroot, testMode };
         for (let handler of stack) {
           response = await handler(event.request, context);
           if (response) {
@@ -94,11 +82,11 @@ export function start(opts: Options = {}) {
 
 // Check to make sure that our backend is _really_ ours. Otherwise unregister
 // this service worker so it doesnt get in the way of non catalogjs web apps.
-async function checkForOurBackend(alivenessOrigin: string) {
+async function checkForOurBackend() {
   while (true) {
     let status;
     try {
-      status = (await fetch(`${alivenessOrigin}/__alive__`)).status;
+      status = (await fetch(`${worker.origin}/${ourBackendEndpoint}`)).status;
     } catch (err) {
       console.log(
         `Encountered error performing aliveness check (server is probably not running):`,
