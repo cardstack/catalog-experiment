@@ -59,3 +59,15 @@ export function join(...pathParts: string[]): string {
 
   return `/${pathParts.filter(Boolean).join("/")}`;
 }
+
+export function isURL(possibleURL: string): boolean {
+  try {
+    new URL(possibleURL);
+    return true;
+  } catch (e) {
+    if (e.message.includes("Invalid URL")) {
+      return false;
+    }
+    throw e;
+  }
+}

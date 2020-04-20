@@ -1,6 +1,7 @@
 import "qunit";
 import { Memoize } from "typescript-memoize";
 import { FileSystem } from "../src/filesystem";
+import { isURL } from "../src/path";
 
 export const origin = "http://localhost:4200";
 
@@ -228,17 +229,5 @@ async function exists(fs: FileSystem, url: URL): Promise<boolean> {
       return false;
     }
     throw err;
-  }
-}
-
-function isURL(possibleURL: string): boolean {
-  try {
-    new URL(possibleURL);
-    return true;
-  } catch (e) {
-    if (e.message.includes("Invalid URL")) {
-      return false;
-    }
-    throw e;
   }
 }
