@@ -6,12 +6,12 @@ const { test } = QUnit;
 const testContainerId = "test-container";
 
 QUnit.module("acceptance builder", function (hooks) {
-  function getTestContainer() {
+  function getTestDOM() {
     // @ts-ignore: we are actually in main thread, not worker.
     return document.getElementById(testContainerId);
   }
 
-  function clearTestContainer() {
+  function clearTestDOM() {
     // @ts-ignore: we are actually in main thread, not worker.
     let testContainer = document.getElementById(testContainerId);
     while (testContainer.firstChild) {
@@ -27,12 +27,12 @@ QUnit.module("acceptance builder", function (hooks) {
   }
 
   hooks.beforeEach(async () => {
-    clearTestContainer();
+    clearTestDOM();
     await setupScenario();
   });
 
   hooks.afterEach(async () => {
-    clearTestContainer();
+    clearTestDOM();
     await fetch("/teardown-fs", { method: "POST" });
   });
 
@@ -50,7 +50,7 @@ QUnit.module("acceptance builder", function (hooks) {
     let js = await (await fetch("/test-index.js")).text();
     eval(js);
 
-    let container = getTestContainer();
+    let container = getTestDOM();
     assert.equal(
       container.querySelector("h1").textContent,
       "Hello world",
