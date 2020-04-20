@@ -10,10 +10,18 @@ export const handleBuildRequest: Handler = async function (
   context: Context
 ) {
   let requestURL = new URL(req.url);
+  if (
+    !context.handleOrigin &&
+    (requestURL.origin !== worker.origin || context.testMode)
+  ) {
+    console.log(`ignore ${requestURL} based on origin`);
+    return new Response((await fetch(req)).body);
+  }
+
   let path = requestURL.pathname;
   let file = await openFile(
     context.fs,
-    url(worker.origin, context.webroot, path)
+    url(requestURL.origin, context.webroot, path)
   );
   if (file instanceof Response) {
     return file;
@@ -22,7 +30,7 @@ export const handleBuildRequest: Handler = async function (
     path = join(path, "index.html");
     file = await openFile(
       context.fs,
-      url(worker.origin, context.webroot, path)
+      url(requestURL.origin, context.webroot, path)
     );
     if (file instanceof Response) {
       return file;
