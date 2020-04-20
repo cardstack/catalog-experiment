@@ -1,125 +1,103 @@
-import { parse } from "@babel/core";
 import { FileDaemonClient, origin } from "./file-daemon-client";
-import { contentType, lookup } from "mime-types";
-import { FileDescriptor, FileSystem, FileSystemError } from "./filesystem";
-import { join } from "./path";
+import { FileSystem } from "./filesystem";
+import { handleTestRequest, testOrigin } from "./test-request-handler";
+import { handleBuildRequest } from "./build-request-handler";
+import { Handler } from "./request-handler";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 const fs = new FileSystem();
-const webroot = "/webroot";
 const websocketURL = "ws://localhost:3000";
-const client = new FileDaemonClient(origin, websocketURL, fs, webroot);
+let webroot: string;
 let isDisabled = false;
 
 console.log("service worker evaluated");
 
-(async () => {
-  await checkForAliveness();
-})();
+interface Options {
+  test?: true;
+}
 
-worker.addEventListener("install", () => {
-  console.log(`installing`);
+export function start(opts: Options = {}) {
+  let client: FileDaemonClient | undefined;
 
-  // force moving on to activation even if another service worker had control
-  worker.skipWaiting();
-});
+  if (opts.test) {
+    console.log("starting service worker in test mode");
+    (self as any).testMode = true;
+    webroot = "/";
 
-worker.addEventListener("activate", () => {
-  console.log(`activate`);
-
-  // takes over when there is *no* existing service worker
-  worker.clients.claim();
-});
-
-worker.addEventListener("fetch", (event: FetchEvent) => {
-  let url = new URL(event.request.url);
-  if (url.origin !== worker.origin || isDisabled) {
-    if (isDisabled) {
-      console.log(`service worker is disabled, ignoring ${event.request.url}`);
-    } else {
-      console.log(`ignore ${event.request.url} based on origin`);
-    }
-    event.respondWith(fetch(event.request));
-    return;
-  }
-
-  event.respondWith(
     (async () => {
-      await client.ready;
-      let url = new URL(event.request.url);
+      await checkForAliveness(testOrigin);
+    })();
+  } else {
+    console.log("starting service worker in normal mode");
+    webroot = "/webroot";
+    client = new FileDaemonClient(origin, websocketURL, fs, webroot);
 
-      let path = url.pathname;
-      path = join(webroot, path);
-      let file = await openFile(fs, path);
-      if (file instanceof Response) {
-        return file;
-      }
-      if (file.stat.type === "directory") {
-        path = join(path, "index.html");
-        file = await openFile(fs, path);
-        if (file instanceof Response) {
-          return file;
-        }
-      }
-      if (path.split(".").pop() === "js") {
-        return bundled(path, file);
+    (async () => {
+      await checkForAliveness(origin);
+    })();
+  }
+
+  worker.addEventListener("install", () => {
+    console.log(`installing`);
+
+    // force moving on to activation even if another service worker had control
+    worker.skipWaiting();
+  });
+
+  worker.addEventListener("activate", () => {
+    console.log(`activate`);
+
+    // takes over when there is *no* existing service worker
+    worker.clients.claim();
+  });
+
+  worker.addEventListener("fetch", (event: FetchEvent) => {
+    let url = new URL(event.request.url);
+
+    if (
+      url.origin !== worker.origin ||
+      isDisabled ||
+      url.pathname === "/__alive__"
+    ) {
+      if (isDisabled) {
+        console.log(
+          `service worker is disabled, ignoring ${event.request.url}`
+        );
       } else {
-        let response = new Response(file.getReadbleStream());
-        setContentHeaders(response, path, file);
-        return response;
+        console.log(`ignore ${event.request.url} based on origin`);
       }
-    })()
-  );
-});
-
-async function openFile(
-  fs: FileSystem,
-  path: string
-): Promise<FileDescriptor | Response> {
-  try {
-    return await fs.open(new URL(path, origin));
-  } catch (err) {
-    if (err instanceof FileSystemError && err.code === "NOT_FOUND") {
-      return new Response("Not found", { status: 404 });
+      event.respondWith(fetch(event.request));
+      return;
     }
-    throw err;
-  }
+
+    event.respondWith(
+      (async () => {
+        if (client) {
+          await client.ready;
+        }
+
+        let stack: Handler[] = [handleTestRequest, handleBuildRequest];
+        let response: Response | undefined;
+        let context = { fs, webroot };
+        for (let handler of stack) {
+          response = await handler(event.request, context);
+          if (response) {
+            return response;
+          }
+        }
+
+        return new Response("Not Found", { status: 404 });
+      })()
+    );
+  });
 }
 
-function setContentHeaders(
-  response: Response,
-  path: string,
-  file: FileDescriptor
-): void {
-  let mime = lookup(path) || "application/octet-stream";
-  response.headers.set(
-    "content-type",
-    contentType(mime) as Exclude<string, false>
-  );
-  response.headers.set("content-length", String(file.stat.size));
-}
-
-async function bundled(path: string, file: FileDescriptor): Promise<Response> {
-  let js = await file.readText();
-  if (!js) {
-    return new Response(`'${path}' is an empty file`, { status: 500 });
-  }
-  let result = await parse(js, {});
-  console.log(result);
-
-  let response = new Response(js);
-  response.headers.set("content-type", "application/javascript");
-  response.headers.set("content-length", String(js.length));
-
-  return response;
-}
-
-async function checkForAliveness() {
+async function checkForAliveness(alivenessOrigin: string) {
   while (true) {
     console.log("checking for file daemon aliveness");
     let status;
     try {
-      status = (await fetch(`${origin}/__alive__`)).status;
+      status = (await fetch(`${alivenessOrigin}/__alive__`)).status;
     } catch (err) {
       console.log(
         `Encountered error performing aliveness check (server is probably not running):`,

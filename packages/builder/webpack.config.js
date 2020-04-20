@@ -58,13 +58,16 @@ let dom = Object.assign({}, config, {
   entry: {
     main: "./src/main.ts",
     test: "./test/index.ts",
+    "main-test": "./test/main.ts",
   },
 });
 
 let worker = Object.assign({}, config, {
   target: "webworker",
   entry: {
-    "service-worker": "./src/service-worker.ts",
+    "service-worker": "./src/service-worker-entrypoint.ts",
+    "service-worker-test-entrypoint":
+      "./test/service-worker-test-entrypoint.ts",
   },
 });
 
