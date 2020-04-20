@@ -11,14 +11,19 @@ export const handleBuildRequest: Handler = async function (
 ) {
   let requestURL = new URL(req.url);
   let path = requestURL.pathname;
-  let url = new URL(join(context.webroot, path), worker.origin);
-  let file = await openFile(context.fs, url);
+  let file = await openFile(
+    context.fs,
+    url(worker.origin, context.webroot, path)
+  );
   if (file instanceof Response) {
     return file;
   }
   if (file.stat.type === "directory") {
     path = join(path, "index.html");
-    file = await openFile(context.fs, url);
+    file = await openFile(
+      context.fs,
+      url(worker.origin, context.webroot, path)
+    );
     if (file instanceof Response) {
       return file;
     }
@@ -31,6 +36,10 @@ export const handleBuildRequest: Handler = async function (
     return response;
   }
 };
+
+function url(origin: string, webroot: string, relativePath: string) {
+  return new URL(join(webroot, relativePath), origin);
+}
 
 async function openFile(
   fs: FileSystem,
