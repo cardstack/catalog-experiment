@@ -113,7 +113,7 @@ export class Builder {
 }
 
 function replace(dom: Node[], from: Element, to: Element) {
-  // the script tag is actually a root node (not a descendant of <html>
+  // if the script tag is actually a root node (i.e. not a descendant of <html>
   // element), we need to handle replacement a little diferently
   if (dom.includes(from)) {
     let index = dom.findIndex((i) => i === from);
