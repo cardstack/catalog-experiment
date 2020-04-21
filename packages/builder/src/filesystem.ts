@@ -65,7 +65,15 @@ export class FileSystem {
     if (!dir) {
       this.root.files.delete(name);
     } else {
-      let sourceDir = await this.openDir(dir);
+      let sourceDir: Directory;
+      try {
+        sourceDir = await this.openDir(dir);
+      } catch (err) {
+        if (err.code !== "NOT_FOUND") {
+          throw err;
+        }
+        return; // just ignore files that dont exist
+      }
       sourceDir.files.delete(name);
     }
   }
