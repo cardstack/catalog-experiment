@@ -1,9 +1,7 @@
 import { WatchInfo, FileInfo } from "../../file-daemon/interfaces";
 import { FileSystem, FileSystemError, FileDescriptor } from "./filesystem";
-import { join } from "./path";
-import columnify from "columnify";
+import { join, baseName, dirName } from "./path";
 import { REGTYPE } from "tarstream/constants";
-import moment from "moment";
 //@ts-ignore
 import { UnTar } from "tarstream";
 
@@ -124,7 +122,6 @@ export class FileDaemonClient {
   }
 
   private async startFullSync() {
-    console.log("starting full sync");
     let stream = (
       await fetch(`${this.fileServerURL}/`, {
         headers: {
@@ -154,10 +151,40 @@ export class FileDaemonClient {
       new URL(this.mountPath, origin)
     );
     await fs.remove(temp);
+    await this.renameEntrypoints();
+    console.log("completed full sync");
     this.doneSyncing();
+  }
 
-    console.log(`syncing complete, file system:`);
-    await this.displayListing();
+  private async renameEntrypoints() {
+    let entrypointsFile: FileDescriptor;
+    try {
+      entrypointsFile = await this.fs.open(
+        new URL(".entrypoints.json", origin)
+      );
+    } catch (err) {
+      if (err instanceof FileSystemError && err.code === "NOT_FOUND") {
+        return; // in this case there is no build to perform
+      }
+      throw err;
+    }
+
+    let entrypoints = JSON.parse(await entrypointsFile.readText()) as string[];
+    for (let entrypoint of entrypoints) {
+      let sourceURL = new URL(entrypoint, origin);
+      let destPath = join(
+        dirName(sourceURL.pathname) || "/",
+        `src-${baseName(sourceURL.pathname)}`
+      );
+      await this.fs.move(sourceURL, new URL(destPath, origin));
+    }
+    await entrypointsFile.write(
+      JSON.stringify(
+        entrypoints.map((path) =>
+          join(dirName(path) || "/", `src-${baseName(path)}`)
+        )
+      )
+    );
   }
 
   private async handleInfo(watchInfo: WatchInfo) {
@@ -191,7 +218,7 @@ export class FileDaemonClient {
     }
 
     console.log(`completed processing changes, file system:`);
-    await this.displayListing();
+    await this.fs.displayListing();
   }
 
   private mountedPath(path: string): string {
@@ -218,20 +245,5 @@ export class FileDaemonClient {
       })
     );
     return changed.filter(Boolean) as FileInfo[];
-  }
-
-  private async displayListing(): Promise<void> {
-    await this.ready;
-    let listing = (await this.fs.listAllOrigins(true)).map(({ url, stat }) => ({
-      type: stat.type,
-      size: stat.type === "directory" ? "-" : stat.size,
-      modified:
-        stat.type === "directory"
-          ? "-"
-          : moment(stat.mtime! * 1000).format("MMM D YYYY HH:mm"),
-      etag: stat.etag ?? "-",
-      url,
-    }));
-    console.log(columnify(listing));
   }
 }
