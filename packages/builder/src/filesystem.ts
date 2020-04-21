@@ -6,6 +6,8 @@ import {
   urlToPath,
   pathToURL,
 } from "./path";
+import columnify from "columnify";
+import moment from "moment";
 
 const textEncoder = new TextEncoder();
 const utf8 = new TextDecoder("utf8");
@@ -241,6 +243,19 @@ export class FileSystem {
         throw err;
       }
     }
+  }
+  async displayListing(): Promise<void> {
+    let listing = (await this.listAllOrigins(true)).map(({ url, stat }) => ({
+      type: stat.type,
+      size: stat.type === "directory" ? "-" : stat.size,
+      modified:
+        stat.type === "directory"
+          ? "-"
+          : moment(stat.mtime! * 1000).format("MMM D YYYY HH:mm"),
+      etag: stat.etag ?? "-",
+      url,
+    }));
+    console.log(columnify(listing));
   }
 }
 
