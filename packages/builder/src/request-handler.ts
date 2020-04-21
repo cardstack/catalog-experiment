@@ -8,6 +8,5 @@ export type Handler = (
 export interface Context {
   fs: FileSystem;
   webroot: string;
-  testMode?: boolean;
-  handleOrigin?: boolean;
+  origin: string;
 }

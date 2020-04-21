@@ -4,20 +4,16 @@ import { contentType, lookup } from "mime-types";
 import { FileSystem, FileSystemError, FileDescriptor } from "./filesystem";
 import { join } from "./path";
 
-const worker = (self as unknown) as ServiceWorkerGlobalScope;
 export const handleBuildRequest: Handler = async function (
   req: Request,
   context: Context
 ) {
   let requestURL = new URL(req.url);
-  if (
-    !context.handleOrigin &&
-    (requestURL.origin !== worker.origin || context.testMode)
-  ) {
-    console.log(`ignore ${requestURL} based on origin`);
+  if (requestURL.origin !== context.origin) {
     return new Response((await fetch(req)).body);
   }
 
+  console.log(`serving request ${requestURL} from filesystem`);
   let path = requestURL.pathname;
   let file = await openFile(
     context.fs,
@@ -81,6 +77,8 @@ async function bundled(path: string, file: FileDescriptor): Promise<Response> {
   if (!js) {
     return new Response(`'${path}' is an empty file`, { status: 500 });
   }
+
+  // just to prove that we can do this, but really this goes into the builder...
   let result = await parse(js, {});
   console.log(result);
 
