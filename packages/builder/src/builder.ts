@@ -76,6 +76,9 @@ export class Builder {
     );
     let builtEntrypoint = await this.fs.open(builtEntrypointURL, "file");
     await builtEntrypoint.write(render(dom));
+    builtEntrypoint.setEtag(
+      `${builtEntrypoint.stat.size}_${builtEntrypoint.stat.mtime}`
+    );
   }
 
   private async processJSEntryPoint(dom: Node[], el: Element, origin: string) {
