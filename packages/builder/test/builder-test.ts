@@ -32,10 +32,7 @@ QUnit.module("module builder", function (origHooks) {
       .matches(/src="\.\/index\.js"/, "file contents are correct");
     await assert
       .file("/index.html")
-      .matches(
-        /data-test-catalogjs-generated="true"/,
-        "file contents are correct"
-      );
+      .matches(/data-catalogjs-generated="true"/, "file contents are correct");
   });
 
   test("it does not change source files", async function (assert) {
@@ -65,7 +62,7 @@ QUnit.module("module builder", function (origHooks) {
     await assert
       .file("/src-index.html")
       .doesNotMatch(
-        /data-test-catalogjs-generated="true"/,
+        /data-catalogjs-generated="true"/,
         "file contents are correct"
       );
     await assert
@@ -84,7 +81,7 @@ QUnit.module("module builder", function (origHooks) {
     await assert
       .file("/index.html")
       .doesNotMatch(
-        /data-test-catalogjs-generated="true"/,
+        /data-catalogjs-generated="true"/,
         "file contents are correct"
       );
   });
@@ -99,10 +96,7 @@ QUnit.module("module builder", function (origHooks) {
     await builder.build(origin);
     await assert
       .file("/index.html")
-      .matches(
-        /data-test-catalogjs-generated="true"/,
-        "file contents are correct"
-      );
+      .matches(/data-catalogjs-generated="true"/, "file contents are correct");
   });
 
   test("can process scripts that originate from the same origin", async function (assert) {
@@ -115,10 +109,7 @@ QUnit.module("module builder", function (origHooks) {
     await builder.build(origin);
     await assert
       .file("/index.html")
-      .matches(
-        /data-test-catalogjs-generated="true"/,
-        "file contents are correct"
-      );
+      .matches(/data-catalogjs-generated="true"/, "file contents are correct");
   });
 
   test("can process scripts that live at the root of the DOM", async function (assert) {
@@ -133,9 +124,6 @@ QUnit.module("module builder", function (origHooks) {
     await builder.build(origin);
     await assert
       .file("/index.html")
-      .matches(
-        /data-test-catalogjs-generated="true"/,
-        "file contents are correct"
-      );
+      .matches(/data-catalogjs-generated="true"/, "file contents are correct");
   });
 });

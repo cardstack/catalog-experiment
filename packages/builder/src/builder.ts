@@ -93,7 +93,7 @@ export class Builder {
     let type = el.attribs.type;
     let scriptAttrs: { [key: string]: string } = {
       src: el.attribs.src,
-      "data-test-catalogjs-generated": "true",
+      "data-catalogjs-generated": "true",
     };
     if (type) {
       scriptAttrs.type = type;
