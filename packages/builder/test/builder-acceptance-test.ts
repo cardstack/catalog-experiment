@@ -2,9 +2,10 @@
 // it's initial test state
 
 import { Scenario } from "../src/test-request-handler";
+import { testOrigin } from "./origin";
+
 const { test } = QUnit;
 const testContainerId = "test-container";
-const testOrigin = "http://test";
 
 QUnit.module("acceptance builder", function (hooks) {
   function getTestDOM() {
@@ -24,11 +25,8 @@ QUnit.module("acceptance builder", function (hooks) {
     return fetch(new URL(path, origin).toString(), { mode: "no-cors" });
   }
 
-  async function setupScenario(
-    scenario: Scenario = {},
-    origin: string = testOrigin
-  ) {
-    await fetch(`/setup-fs?origin=${encodeURIComponent(origin)}`, {
+  async function setupScenario(scenario: Scenario = {}) {
+    await fetch(`/setup-fs`, {
       method: "POST",
       body: JSON.stringify(scenario),
     });

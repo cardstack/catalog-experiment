@@ -65,9 +65,7 @@ let dom = Object.assign({}, config, {
 let worker = Object.assign({}, config, {
   target: "webworker",
   entry: {
-    "service-worker": "./src/service-worker-entrypoint.ts",
-    "service-worker-test-entrypoint":
-      "./test/service-worker-test-entrypoint.ts",
+    "service-worker": "./src/service-worker.ts",
   },
 });
 
