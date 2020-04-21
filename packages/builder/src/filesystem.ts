@@ -6,6 +6,8 @@ import {
   urlToPath,
   pathToURL,
 } from "./path";
+import columnify from "columnify";
+import moment from "moment";
 
 const textEncoder = new TextEncoder();
 const utf8 = new TextDecoder("utf8");
@@ -65,7 +67,15 @@ export class FileSystem {
     if (!dir) {
       this.root.files.delete(name);
     } else {
-      let sourceDir = await this.openDir(dir);
+      let sourceDir: Directory;
+      try {
+        sourceDir = await this.openDir(dir);
+      } catch (err) {
+        if (err.code !== "NOT_FOUND") {
+          throw err;
+        }
+        return; // just ignore files that dont exist
+      }
       sourceDir.files.delete(name);
     }
   }
@@ -233,6 +243,19 @@ export class FileSystem {
         throw err;
       }
     }
+  }
+  async displayListing(): Promise<void> {
+    let listing = (await this.listAllOrigins(true)).map(({ url, stat }) => ({
+      type: stat.type,
+      size: stat.type === "directory" ? "-" : stat.size,
+      modified:
+        stat.type === "directory"
+          ? "-"
+          : moment(stat.mtime! * 1000).format("MMM D YYYY HH:mm"),
+      etag: stat.etag ?? "-",
+      url,
+    }));
+    console.log(columnify(listing));
   }
 }
 

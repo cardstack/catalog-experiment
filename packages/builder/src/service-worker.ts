@@ -3,14 +3,16 @@ import { FileSystem } from "./filesystem";
 import { handleTestRequest } from "./test-request-handler";
 import { handleBuildRequest } from "./build-request-handler";
 import { Handler } from "./request-handler";
+import { Builder } from "./builder";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 const fs = new FileSystem();
 const websocketURL = "ws://localhost:3000";
 const ourBackendEndpoint = "__alive__";
-let webroot: string;
+const webroot: string = "/";
 let isDisabled = false;
 let testMode: boolean;
+let finishedBuild: Promise<void>;
 
 console.log("service worker evaluated");
 
@@ -28,12 +30,19 @@ export function start(opts: Options = {}) {
   if (opts.test) {
     console.log("starting service worker in test mode");
     testMode = true;
-    webroot = "/";
   } else {
     console.log("starting service worker in normal mode");
-    webroot = "/webroot";
     testMode = false;
     client = new FileDaemonClient(origin, websocketURL, fs, webroot);
+
+    // TODO watch for file changes and build when fs changes
+    let builder = new Builder(fs);
+    finishedBuild = (async () => {
+      await client.ready;
+      await builder.build(origin);
+      console.log(`completed build, file system:`);
+      await fs.displayListing();
+    })();
   }
 
   worker.addEventListener("install", () => {
@@ -61,7 +70,9 @@ export function start(opts: Options = {}) {
     event.respondWith(
       (async () => {
         if (client) {
-          await client.ready;
+          // wait for at least the first build so that there is an index.html
+          // to render for the app.
+          await finishedBuild;
         }
 
         let stack: Handler[] = [handleTestRequest, handleBuildRequest];

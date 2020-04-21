@@ -1,5 +1,6 @@
 import { Handler, Context } from "./request-handler";
 import { isURL } from "./path";
+import { Builder } from "./builder";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 let testOrigins: string[] = [];
@@ -42,6 +43,8 @@ export const handleTestRequest: Handler = async function (
         : await fs.open(new URL(path, origin), "file");
       file.write(text);
     }
+    let builder = new Builder(fs);
+    await builder.build(origin);
     return new Response("OK", { status: 200 });
   } else if (
     path === "/teardown-fs" &&
