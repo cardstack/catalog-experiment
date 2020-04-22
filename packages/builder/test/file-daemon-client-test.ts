@@ -7,7 +7,8 @@ import {
   EventListener as FSEventListener,
 } from "../src/filesystem";
 import { testFileDaemonURL, testWebsocketURL } from "./origins";
-import { fileDaemonKey } from "../src/env";
+//@ts-ignore: webpack will set this macro
+let fileDaemonKey = FILE_DAEMON_KEY;
 
 const { skip } = QUnit;
 

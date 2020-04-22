@@ -2,4 +2,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 
 const esmRequire = require("esm")(module, { cjs: true });
-module.exports = esmRequire("./daemon").start();
+const testHandler = esmRequire("./test-support/test-request-handler");
+module.exports = esmRequire("./daemon").start(testHandler.makeTestHandler);
