@@ -4,6 +4,10 @@ import { parseDOM, DomUtils } from "htmlparser2";
 import { Node, Element } from "domhandler";
 import render from "dom-serializer";
 
+export interface EntrypointsMapping {
+  [srcFile: string]: string;
+}
+
 interface EntryPointCacheItem {
   etag: string;
   dom: Node[];
@@ -27,22 +31,22 @@ export class Builder {
       }
       throw err;
     }
-    let entrypoints = JSON.parse(await entrypointFile.readText());
-    for (let entrypointPath of entrypoints) {
-      if (!/^src-.+\.html$/.test(baseName(entrypointPath))) {
-        throw new Error(
-          `HTML entrypoint '${entrypointPath}' does not have expected 'src-' prefix`
-        );
-      }
-      await this.processHTMLEntryPoint(new URL(entrypointPath, origin));
+    let entrypoints = JSON.parse(
+      await entrypointFile.readText()
+    ) as EntrypointsMapping;
+    for (let [srcPath, destPath] of Object.entries(entrypoints)) {
+      await this.processHTMLEntryPoint(
+        new URL(srcPath, origin),
+        new URL(destPath, origin)
+      );
     }
   }
 
-  private async processHTMLEntryPoint(url: URL) {
+  private async processHTMLEntryPoint(srcUrl: URL, destURL: URL) {
     let entrypointInfo: EntryPointCacheItem;
-    let origin = url.origin;
-    let entrypointFile = await this.fs.open(url);
-    let key = url.toString();
+    let origin = srcUrl.origin;
+    let entrypointFile = await this.fs.open(srcUrl);
+    let key = srcUrl.toString();
 
     if (
       !this.entrypointCache.has(key) ||
@@ -67,14 +71,7 @@ export class Builder {
       }
     }
 
-    let builtEntrypointURL = new URL(
-      join(
-        dirName(url.pathname) ?? "/",
-        baseName(url.pathname).replace(/^src-/, "")
-      ),
-      origin
-    );
-    let builtEntrypoint = await this.fs.open(builtEntrypointURL, "file");
+    let builtEntrypoint = await this.fs.open(destURL, "file");
     await builtEntrypoint.write(render(dom));
     builtEntrypoint.setEtag(
       `${builtEntrypoint.stat.size}_${builtEntrypoint.stat.mtime}`

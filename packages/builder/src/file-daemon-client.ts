@@ -1,7 +1,9 @@
+import invert from "lodash/invert";
 import { WatchInfo, FileInfo } from "../../file-daemon/interfaces";
 import { FileSystem, FileSystemError, FileDescriptor } from "./filesystem";
 import { join, baseName, dirName } from "./path";
 import { REGTYPE } from "tarstream/constants";
+import { EntrypointsMapping } from "./builder";
 //@ts-ignore
 import { UnTar } from "tarstream";
 
@@ -160,7 +162,7 @@ export class FileDaemonClient {
 
   // Only used for fullsync when we are writing in a temp origin
   private async renameEntrypoints(tempOrigin: URL) {
-    let originalEntrypoints = await this.getEntrypoints(tempOrigin);
+    let originalEntrypoints = await this.getEntrypointsAsDestPaths(tempOrigin);
     if (!originalEntrypoints) {
       return;
     }
@@ -173,7 +175,7 @@ export class FileDaemonClient {
       );
       await this.fs.move(sourceURL, new URL(destPath, tempOrigin));
     }
-    await this.setEntrypointsFile(originalEntrypoints, tempOrigin);
+    await this.generateEntrypointsMappingFile(originalEntrypoints, tempOrigin);
   }
 
   private async handleInfo(watchInfo: WatchInfo) {
@@ -186,36 +188,31 @@ export class FileDaemonClient {
     let removals = changes.filter(({ etag }) => etag == null);
     let updates = changes.filter(({ etag }) => etag != null);
 
-    let entrypoints: string[] | undefined;
+    let entrypointsMapping: EntrypointsMapping | undefined;
     // make sure to first check and see if the entrypoint file itself is
     // changing, in which case we should deal with that first.
     if (updates.find((f) => f.name === entrypointsPath)) {
-      let entrypoints = (await (
+      let destEntrypoints = (await (
         await fetch(`${this.fileServerURL}${entrypointsPath}`)
       ).json()) as string[];
-      entrypoints = await this.setEntrypointsFile(entrypoints);
+      entrypointsMapping = await this.generateEntrypointsMappingFile(
+        destEntrypoints
+      );
       updates = updates.filter((f) => f.name !== entrypointsPath);
     }
 
-    if (!entrypoints) {
-      entrypoints = removals.find((f) => f.name === entrypointsPath)
-        ? undefined
-        : await this.getEntrypoints();
+    if (!entrypointsMapping) {
+      entrypointsMapping = removals.find((f) => f.name === entrypointsPath)
+        ? {}
+        : (await this.getEntrypointsAsMappings()) ?? {};
     }
-    let originalEntrypoints = entrypoints
-      ? entrypoints.map((path) =>
-          join(dirName(path) || "/", baseName(path).replace(/^src-/, ""))
-        )
-      : [];
+    let invertedEntrypointsMapping = invert(entrypointsMapping);
 
     for (let change of updates) {
       console.log(`updating ${change.name}`);
       let pathOverride: string | undefined;
-      if (originalEntrypoints.includes(change.name)) {
-        pathOverride = join(
-          dirName(change.name) || "/",
-          `src-${baseName(change.name)}`
-        );
+      if (invertedEntrypointsMapping[change.name]) {
+        pathOverride = invertedEntrypointsMapping[change.name];
         console.log(`updating ${change.name} (writing to ${pathOverride})`);
       } else {
         console.log(`updating ${change.name}`);
@@ -232,9 +229,27 @@ export class FileDaemonClient {
     await this.fs.displayListing();
   }
 
-  private async getEntrypoints(
+  private async getEntrypointsAsMappings(
+    thisOrigin = new URL(this.fileServerURL)
+  ): Promise<EntrypointsMapping | undefined> {
+    let entrypoints = await this._getEntrypointsObject(thisOrigin);
+    if (entrypoints) {
+      return entrypoints as EntrypointsMapping;
+    }
+  }
+
+  private async getEntrypointsAsDestPaths(
     thisOrigin = new URL(this.fileServerURL)
   ): Promise<string[] | undefined> {
+    let entrypoints = await this._getEntrypointsObject(thisOrigin);
+    if (entrypoints) {
+      return entrypoints as string[];
+    }
+  }
+
+  private async _getEntrypointsObject(
+    thisOrigin = new URL(this.fileServerURL)
+  ): Promise<EntrypointsMapping | string[] | undefined> {
     let entrypointsFile: FileDescriptor;
     try {
       entrypointsFile = await this.fs.open(
@@ -247,16 +262,20 @@ export class FileDaemonClient {
       throw err;
     }
 
-    return JSON.parse(await entrypointsFile.readText()) as string[];
+    return JSON.parse(await entrypointsFile.readText()) as
+      | string[]
+      | EntrypointsMapping;
   }
 
-  private async setEntrypointsFile(
+  private async generateEntrypointsMappingFile(
     originalEntrypoints: string[],
     thisOrigin = new URL(this.fileServerURL)
-  ): Promise<string[]> {
-    let entrypoints = originalEntrypoints.map((path) =>
-      join(dirName(path) || "/", `src-${baseName(path)}`)
-    );
+  ): Promise<EntrypointsMapping> {
+    let entrypoints: { [srcFile: string]: string } = {};
+    for (let destPath of originalEntrypoints) {
+      let srcPath = join(dirName(destPath) || "/", `src-${baseName(destPath)}`);
+      entrypoints[srcPath] = join(destPath);
+    }
     let entrypointsFile = await this.fs.open(
       new URL(this.mountedPath(entrypointsPath), thisOrigin),
       "file"

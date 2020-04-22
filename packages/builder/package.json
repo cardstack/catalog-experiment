@@ -34,9 +34,11 @@
     "test:headless": "yarn node-qunit-puppeteer http://localhost:8080"
   },
   "dependencies": {
+    "@types/lodash": "^4.14.150",
     "columnify": "^1.5.4",
     "dom-serializer": "^0.2.2",
     "htmlparser2": "^4.1.0",
+    "lodash": "^4.17.15",
     "moment": "^2.24.0"
   }
 }

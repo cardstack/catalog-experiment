@@ -43,7 +43,7 @@ QUnit.module("acceptance builder", function (hooks) {
 
   test("can process a single module that has no imports", async function (assert) {
     await setupScenario({
-      "entrypoints.json": `["src-index.html"]`,
+      "entrypoints.json": `{"src-index.html": "index.html"}`,
       "src-index.html": `
         <!DOCTYPE html>
         <script type="module" src="./index.js"></script>

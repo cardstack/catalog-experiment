@@ -71,7 +71,9 @@ QUnit.module("module file-daemon-client", function (origHooks) {
       await assert.file("src-index.html").exists();
       await assert.file("index.html").doesNotExist();
       await assert.file("src-index.html").matches(/src="\.\/index\.js"/);
-      await assert.file("entrypoints.json").matches(/"\/src-index.html"/);
+      await assert
+        .file("entrypoints.json")
+        .matches(/{"\/src-index.html":"\/index.html"}/);
     });
 
     test("can mount file daemon's files on a specific directory", async function (assert) {

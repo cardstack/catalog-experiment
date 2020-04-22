@@ -20,7 +20,7 @@ QUnit.module("module builder", function (origHooks) {
 
   test("can generate an index.html entrypoint from src-index.html", async function (assert) {
     await assert.setupFiles({
-      "entrypoints.json": `["src-index.html"]`,
+      "entrypoints.json": `{"src-index.html": "index.html"}`,
       "src-index.html": `<html><script type="module" src="./index.js"></script></html>`,
       "index.js": `alert("hello everyone");`,
     });
@@ -34,7 +34,7 @@ QUnit.module("module builder", function (origHooks) {
 
   test("it does not change source files", async function (assert) {
     await assert.setupFiles({
-      "entrypoints.json": `["src-index.html"]`,
+      "entrypoints.json": `{"src-index.html": "index.html"}`,
       "src-index.html": `<html> <script type="module" src="./index.js"></script> </html>`,
       "index.js": `alert("hello everyone");`,
     });
@@ -66,7 +66,7 @@ QUnit.module("module builder", function (origHooks) {
 
   test("doesn't touch scripts from different origins", async function (assert) {
     await assert.setupFiles({
-      "entrypoints.json": `["src-index.html"]`,
+      "entrypoints.json": `{"src-index.html": "index.html"}`,
       "src-index.html": `<html><script type="module" src="http://somewhere-else/index.js"></script></html>`,
       "index.js": `alert("hello everyone");`,
     });
@@ -79,7 +79,7 @@ QUnit.module("module builder", function (origHooks) {
 
   test("can process scripts that have a relative path", async function (assert) {
     await assert.setupFiles({
-      "entrypoints.json": `["src-index.html"]`,
+      "entrypoints.json": `{"src-index.html": "index.html"}`,
       "src-index.html": `<html><script type="module" src="./index.js"></script></html>`,
       "index.js": `alert("hello everyone");`,
     });
@@ -92,7 +92,7 @@ QUnit.module("module builder", function (origHooks) {
 
   test("can process scripts that originate from the same origin", async function (assert) {
     await assert.setupFiles({
-      "entrypoints.json": `["src-index.html"]`,
+      "entrypoints.json": `{"src-index.html": "index.html"}`,
       "src-index.html": `<html><script type="module" src="${origin}/index.js"></script></html>`,
       "index.js": `alert("hello everyone");`,
     });
@@ -105,7 +105,7 @@ QUnit.module("module builder", function (origHooks) {
 
   test("can process scripts that live at the root of the DOM", async function (assert) {
     await assert.setupFiles({
-      "entrypoints.json": `["src-index.html"]`,
+      "entrypoints.json": `{"src-index.html": "index.html"}`,
       "src-index.html": `
         <!DOCTYPE html>
         <script type="module" src="./index.js"></script>`,
