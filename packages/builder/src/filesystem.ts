@@ -14,6 +14,19 @@ const utf8 = new TextDecoder("utf8");
 
 export class FileSystem {
   private root = new Directory();
+  private listeners: EventListener[] = [];
+
+  addEventListener(fn: EventListener) {
+    this.listeners.push(fn);
+  }
+
+  removeEventListener(fn: EventListener) {
+    this.listeners = [...this.listeners.filter((l) => l !== fn)];
+  }
+
+  removeAllEventListeners() {
+    this.listeners = [];
+  }
 
   async move(sourceURL: URL, destURL: URL): Promise<void> {
     let sourcePath = urlToPath(sourceURL);
@@ -25,6 +38,7 @@ export class FileSystem {
       : this.root;
     let name = baseName(destPath);
     destParent.files.set(name, source);
+    this.dispatchEvent(destURL, "create");
     await this.remove(sourceURL);
   }
 
@@ -43,6 +57,7 @@ export class FileSystem {
     let name = baseName(destPath);
     let destItem = source instanceof File ? source.clone() : new Directory();
     destParent.files.set(name, destItem);
+    this.dispatchEvent(destURL, "create");
     if (source instanceof Directory) {
       for (let childName of [...source.files.keys()]) {
         await this.copy(
@@ -65,6 +80,8 @@ export class FileSystem {
     let name = baseName(path);
     let dir = dirName(path);
     if (!dir) {
+      // should we have a special event for clearing the entire file system?
+      // this only happens in tests...
       this.root.files.delete(name);
     } else {
       let sourceDir: Directory;
@@ -77,6 +94,7 @@ export class FileSystem {
         return; // just ignore files that dont exist
       }
       sourceDir.files.delete(name);
+      this.dispatchEvent(path, "remove");
     }
   }
 
@@ -101,14 +119,14 @@ export class FileSystem {
     if (startingPath === path && path !== "/") {
       results.push({
         url: pathToURL(path),
-        stat: directory.getDescriptor().stat,
+        stat: directory.stat,
       });
     }
     for (let name of [...directory.files.keys()].sort()) {
       let item = directory.files.get(name)!;
       results.push({
         url: pathToURL(join(path, name)),
-        stat: item.getDescriptor().stat,
+        stat: item.stat,
       });
       if (item instanceof Directory && recurse) {
         results.push(
@@ -124,7 +142,10 @@ export class FileSystem {
     createMode?: Options["createMode"]
   ): Promise<FileDescriptor> {
     let path = urlToPath(url);
-    return (await this._open(splitPath(path), { createMode })).getDescriptor();
+    return (await this._open(splitPath(path), { createMode })).getDescriptor(
+      url,
+      this.dispatchEvent.bind(this)
+    );
   }
 
   private async openDir(path: string, create = false): Promise<Directory> {
@@ -162,15 +183,20 @@ export class FileSystem {
     if (!parent.files.has(name)) {
       if (pathSegments.length > 0 && opts.createMode) {
         resource = new Directory();
+        // dont fire events for the interior dirs--it's really a pain keeping
+        // track of the interior dir path, and honestly the leaf node create
+        // events are probably more important
         parent.files.set(name, resource);
         return await this._open(pathSegments, opts, resource, initialPath);
       } else if (opts.createMode === "file") {
         resource = new File();
         parent.files.set(name, resource);
+        this.dispatchEvent(initialPath, "create");
         return resource;
       } else if (opts.createMode === "directory") {
         resource = new Directory();
         parent.files.set(name, resource);
+        this.dispatchEvent(initialPath, "create");
         return resource;
       } else {
         throw new FileSystemError(
@@ -243,6 +269,25 @@ export class FileSystem {
       }
     }
   }
+
+  private dispatchEvent(url: URL, type: EventType): void;
+  private dispatchEvent(path: string, type: EventType): void;
+  private dispatchEvent(urlOrPath: URL | string, type: EventType): void {
+    if (this.listeners.length === 0) {
+      return;
+    }
+    let url: URL;
+    if (typeof urlOrPath === "string") {
+      url = pathToURL(urlOrPath);
+    } else {
+      url = urlOrPath;
+    }
+
+    for (let listener of this.listeners) {
+      setTimeout(() => listener({ url, type }), 0);
+    }
+  }
+
   async displayListing(): Promise<void> {
     let listing = (await this.listAllOrigins(true)).map(({ url, stat }) => ({
       type: stat.type,
@@ -267,8 +312,20 @@ class File {
     this.mtime = Math.floor(Date.now() / 1000);
   }
 
-  getDescriptor(): FileDescriptor {
-    return new FileDescriptor(this);
+  get stat(): Stat {
+    return {
+      etag: this.etag,
+      mtime: this.mtime,
+      size: this.buffer ? this.buffer.length : 0,
+      type: "file",
+    };
+  }
+
+  getDescriptor(
+    url: URL,
+    dispatchEvent: FileSystem["dispatchEvent"]
+  ): FileDescriptor {
+    return new FileDescriptor(this, url, dispatchEvent);
   }
 
   clone(): File {
@@ -285,31 +342,28 @@ class Directory {
   etag?: string;
   readonly files: Files = new Map();
 
-  getDescriptor(): FileDescriptor {
-    return new FileDescriptor(this);
+  get stat(): Stat {
+    return { etag: this.etag, type: "directory" };
+  }
+
+  getDescriptor(url: URL): FileDescriptor {
+    return new FileDescriptor(this, url);
   }
 }
 
 export class FileDescriptor {
-  constructor(private resource: File | Directory) {}
+  constructor(
+    private resource: File | Directory,
+    readonly url: URL,
+    private readonly dispatchEvent?: FileSystem["dispatchEvent"]
+  ) {}
 
   setEtag(etag: string) {
     this.resource.etag = etag;
   }
 
   get stat(): Stat {
-    if (this.resource instanceof Directory) {
-      return {
-        etag: this.resource.etag,
-        type: "directory",
-      };
-    }
-    return {
-      etag: this.resource.etag,
-      mtime: this.resource.mtime,
-      size: this.resource.buffer ? this.resource.buffer.length : 0,
-      type: "file",
-    };
+    return this.resource.stat;
   }
 
   async write(buffer: Uint8Array): Promise<void>;
@@ -329,6 +383,7 @@ export class FileDescriptor {
       this.resource.buffer = await readStream(streamOrBuffer);
     }
     this.resource.mtime = Math.floor(Date.now() / 1000);
+    this.dispatchEvent!(this.url, "write"); // all descriptors created for files have this dispatcher
   }
 
   async read(): Promise<Uint8Array> {
@@ -407,3 +462,9 @@ type Files = Map<string, File | Directory>;
 interface Options {
   createMode?: "file" | "directory";
 }
+export interface Event {
+  url: URL;
+  type: EventType;
+}
+export type EventListener = (event: Event) => void;
+export type EventType = "create" | "write" | "remove";

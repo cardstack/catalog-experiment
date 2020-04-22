@@ -1,11 +1,10 @@
 import { join, resolve } from "path";
 import http from "http";
 import { parse as urlParse } from "url";
-import { parse as qsParse } from "qs";
 import httpProxy from "http-proxy";
-import { statSync, ensureFileSync, outputFileSync, removeSync } from "fs-extra";
+import { statSync } from "fs-extra";
 import walkSync from "walk-sync";
-import { createReadStream, existsSync, createWriteStream, mkdirSync } from "fs";
+import { createReadStream, existsSync } from "fs";
 import { Readable } from "stream";
 import { contentType, lookup } from "mime-types";
 import { Tar } from "tarstream";
@@ -15,13 +14,17 @@ import { DirectoryEntry } from "tarstream/types";
 import { unixTime } from "./utils";
 
 const builderServer = "http://localhost:8080";
+export type RequestHandler = (
+  req: http.IncomingMessage,
+  res: http.ServerResponse
+) => void;
 
 export default class FileHostingServer {
   constructor(
     private port: number,
     private directory: string,
-    private key?: string,
-    private corsEnabled = true
+    private corsEnabled = true,
+    private testHandler?: RequestHandler
   ) {}
 
   start() {
@@ -41,7 +44,9 @@ export default class FileHostingServer {
       }
 
       try {
-        let filePath = resolve(join(this.directory, decodeURIComponent(path)));
+        let filePath = resolve(
+          join(this.directory, urlParse(path).pathname || "")
+        );
         if (filePath.indexOf(this.directory) !== 0) {
           res.statusCode = 403;
           res.end();
@@ -56,35 +61,11 @@ export default class FileHostingServer {
           );
         }
 
-        let query = qsParse(urlParse(path).query || "");
-        if (req.method === "POST" && query.key === this.key) {
-          if (query.scenario) {
-            removeSync(this.directory);
-            mkdirSync(this.directory);
-            let body = "";
-            req.on("data", (chunk) => {
-              body += chunk.toString();
-            });
-            req.on("end", () => {
-              let scenario = JSON.parse(body);
-              for (let [path, contents] of Object.entries(scenario)) {
-                outputFileSync(join(this.directory, path), contents);
-              }
-              res.statusCode = 200;
-              res.end("ok");
-            });
-          } else if (query.reset) {
-            removeSync(this.directory);
-            mkdirSync(this.directory);
-            res.statusCode = 200;
-            res.end();
-          } else {
-            ensureFileSync(filePath);
-            req.pipe(createWriteStream(filePath));
-            res.statusCode = 200;
-            res.end();
+        if (this.testHandler) {
+          this.testHandler(req, res);
+          if (res.writableEnded) {
+            return;
           }
-          return;
         }
 
         if (

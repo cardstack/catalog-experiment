@@ -2,6 +2,7 @@ import yargs from "yargs";
 import { resolve } from "path";
 import FileWatcherServer from "./file-watcher-server";
 import FileHostingServer from "./file-hosting-server";
+import { HandlerMaker } from "./test-support/test-request-handler";
 
 interface CommandLineArgs {
   port: number;
@@ -15,7 +16,7 @@ function polyfill() {
   global = Object.assign(global, webStreams);
 }
 
-export function start() {
+export function start(makeTestHandler?: HandlerMaker) {
   polyfill();
 
   const argv = yargs.options({
@@ -48,10 +49,15 @@ export function start() {
 
   let rootDir = resolve(process.cwd(), serverArgs.directory);
   let watcher = new FileWatcherServer(serverArgs.websocketPort, rootDir);
+  let testRequestHandler =
+    makeTestHandler && serverArgs.key
+      ? makeTestHandler(rootDir, serverArgs.key)
+      : undefined;
   let hoster = new FileHostingServer(
     serverArgs.port,
     rootDir,
-    serverArgs.key || undefined
+    true,
+    testRequestHandler
   );
 
   hoster.start();
