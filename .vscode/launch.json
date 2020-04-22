@@ -8,10 +8,19 @@
       "type": "node",
       "request": "launch",
       "name": "Start File Daemon",
-      "cwd": "${workspaceRoot}/packages/app",
+      "cwd": "${workspaceRoot}/packages/builder/test/test-app",
       "env": {},
       "program": "${workspaceRoot}/packages/file-daemon/index.js",
-      "args": ["-d", "."]
+      "args": [
+        "-d",
+        ".",
+        "-p",
+        "4201",
+        "-w",
+        "3001",
+        "-k",
+        "mNN8Al9TrnfzZGFLArKZ8/IvmCS7s8Jv+5E3kc01e90="
+      ]
     },
     {
       "type": "chrome",

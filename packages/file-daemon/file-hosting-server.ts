@@ -1,9 +1,11 @@
 import { join, resolve } from "path";
 import http from "http";
+import { parse as urlParse } from "url";
+import { parse as qsParse } from "qs";
 import httpProxy from "http-proxy";
-import { statSync } from "fs-extra";
+import { statSync, ensureFileSync, outputFileSync, removeSync } from "fs-extra";
 import walkSync from "walk-sync";
-import { createReadStream, existsSync } from "fs";
+import { createReadStream, existsSync, createWriteStream, mkdirSync } from "fs";
 import { Readable } from "stream";
 import { contentType, lookup } from "mime-types";
 import { Tar } from "tarstream";
@@ -18,6 +20,7 @@ export default class FileHostingServer {
   constructor(
     private port: number,
     private directory: string,
+    private key?: string,
     private corsEnabled = true
   ) {}
 
@@ -28,7 +31,7 @@ export default class FileHostingServer {
     const server = http.createServer((req, res) => {
       let path = req.url!;
       console.log(
-        `Handling URL: ${path}, with accept header: ${req.headers.accept}`
+        `Handling ${req.method} ${path}, with accept header: ${req.headers.accept}`
       );
 
       if (path === "/__alive__") {
@@ -53,12 +56,48 @@ export default class FileHostingServer {
           );
         }
 
+        let query = qsParse(urlParse(path).query || "");
+        if (req.method === "POST" && query.key === this.key) {
+          if (query.scenario) {
+            removeSync(this.directory);
+            mkdirSync(this.directory);
+            let body = "";
+            req.on("data", (chunk) => {
+              body += chunk.toString();
+            });
+            req.on("end", () => {
+              let scenario = JSON.parse(body);
+              for (let [path, contents] of Object.entries(scenario)) {
+                outputFileSync(join(this.directory, path), contents);
+              }
+              res.statusCode = 200;
+              res.end("ok");
+            });
+          } else if (query.reset) {
+            removeSync(this.directory);
+            mkdirSync(this.directory);
+            res.statusCode = 200;
+            res.end();
+          } else {
+            ensureFileSync(filePath);
+            req.pipe(createWriteStream(filePath));
+            res.statusCode = 200;
+            res.end();
+          }
+          return;
+        }
+
         if (
           req.headers.accept &&
           req.headers.accept.split(",").includes("application/x-tar")
         ) {
           res.setHeader("content-type", "application/x-tar");
-          streamFileSystem(filePath).pipe(res);
+          if (existsSync(filePath)) {
+            streamFileSystem(filePath).pipe(res);
+          } else {
+            res.statusCode = 404;
+            res.end();
+          }
         } else {
           if (existsSync(filePath)) {
             let stat = statSync(filePath);

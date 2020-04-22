@@ -7,6 +7,7 @@ interface CommandLineArgs {
   port: number;
   websocketPort: number;
   directory: string;
+  key?: string;
 }
 
 function polyfill() {
@@ -36,12 +37,22 @@ export function start() {
       default: process.cwd(),
       description: "Set the directory to serve and watch for changes",
     },
+    key: {
+      alias: "k",
+      type: "string",
+      description:
+        "Specify a key to use when testing file daemon to permit modifications to the underlying file system",
+    },
   }).argv;
   const serverArgs = argv as CommandLineArgs;
 
   let rootDir = resolve(process.cwd(), serverArgs.directory);
   let watcher = new FileWatcherServer(serverArgs.websocketPort, rootDir);
-  let hoster = new FileHostingServer(serverArgs.port, rootDir, true);
+  let hoster = new FileHostingServer(
+    serverArgs.port,
+    rootDir,
+    serverArgs.key || undefined
+  );
 
   hoster.start();
   watcher.start();

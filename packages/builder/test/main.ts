@@ -1,4 +1,4 @@
-import { testOrigin } from "./origin";
+import { testOrigin } from "./origins";
 
 if (!navigator.serviceWorker.controller) {
   // first load

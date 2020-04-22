@@ -29,8 +29,9 @@
   },
   "scripts": {
     "start": "webpack-dev-server",
-    "test": "yarn start-server-and-test http-get://localhost:8080 test-headless",
-    "test-headless": "yarn node-qunit-puppeteer http://localhost:8080"
+    "start:test-file-daemon": "node ./bin/set-file-daemon-key.js && cd ./test/test-app && node ../../../file-daemon -d . -p 4201 -w 3001 -k `cat ../../.file-daemon-key`",
+    "test": "yarn start-server-and-test start:test-file-daemon http://localhost:4201/__alive__ start http-get://localhost:8080 test:headless",
+    "test:headless": "yarn node-qunit-puppeteer http://localhost:8080"
   },
   "dependencies": {
     "columnify": "^1.5.4",

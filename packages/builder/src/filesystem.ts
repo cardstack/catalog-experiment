@@ -230,8 +230,7 @@ export class FileSystem {
     let tempOrigin = "http://tmp";
     while (true) {
       tempURL = new URL(
-        `/${Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)}`,
-        tempOrigin
+        `${tempOrigin}${Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)}`
       );
 
       try {
