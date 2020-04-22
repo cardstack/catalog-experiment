@@ -38,7 +38,7 @@ export class FileSystem {
       : this.root;
     let name = baseName(destPath);
     destParent.files.set(name, source);
-    await this.dispatchEvent(destURL, "create");
+    this.dispatchEvent(destURL, "create");
     await this.remove(sourceURL);
   }
 
@@ -57,7 +57,7 @@ export class FileSystem {
     let name = baseName(destPath);
     let destItem = source instanceof File ? source.clone() : new Directory();
     destParent.files.set(name, destItem);
-    await this.dispatchEvent(destURL, "create");
+    this.dispatchEvent(destURL, "create");
     if (source instanceof Directory) {
       for (let childName of [...source.files.keys()]) {
         await this.copy(
@@ -94,7 +94,7 @@ export class FileSystem {
         return; // just ignore files that dont exist
       }
       sourceDir.files.delete(name);
-      await this.dispatchEvent(path, "remove");
+      this.dispatchEvent(path, "remove");
     }
   }
 
@@ -143,8 +143,8 @@ export class FileSystem {
   ): Promise<FileDescriptor> {
     let path = urlToPath(url);
     return (await this._open(splitPath(path), { createMode })).getDescriptor(
-      //TODO .bind(this) so we dont create nwe closures
-      async () => await this.dispatchEvent(url, "write")
+      url,
+      this.dispatchEvent.bind(this)
     );
   }
 
@@ -191,12 +191,12 @@ export class FileSystem {
       } else if (opts.createMode === "file") {
         resource = new File();
         parent.files.set(name, resource);
-        await this.dispatchEvent(initialPath, "create");
+        this.dispatchEvent(initialPath, "create");
         return resource;
       } else if (opts.createMode === "directory") {
         resource = new Directory();
         parent.files.set(name, resource);
-        await this.dispatchEvent(initialPath, "create");
+        this.dispatchEvent(initialPath, "create");
         return resource;
       } else {
         throw new FileSystemError(
@@ -270,12 +270,9 @@ export class FileSystem {
     }
   }
 
-  private async dispatchEvent(url: URL, type: EventType): Promise<void>;
-  private async dispatchEvent(path: string, type: EventType): Promise<void>;
-  private async dispatchEvent(
-    urlOrPath: URL | string,
-    type: EventType
-  ): Promise<void> {
+  private dispatchEvent(url: URL, type: EventType): void;
+  private dispatchEvent(path: string, type: EventType): void;
+  private dispatchEvent(urlOrPath: URL | string, type: EventType): void {
     if (this.listeners.length === 0) {
       return;
     }
@@ -286,13 +283,8 @@ export class FileSystem {
       url = urlOrPath;
     }
 
-    let event: Event = { url, type: type };
-    if (type !== "remove") {
-      let file = await this.open(url);
-      event.stat = file.stat;
-    }
     for (let listener of this.listeners) {
-      listener(event);
+      setTimeout(() => listener({ url, type }), 0);
     }
   }
 
@@ -329,8 +321,11 @@ class File {
     };
   }
 
-  getDescriptor(dispatchEvent: WriteEventDispatcher): FileDescriptor {
-    return new FileDescriptor(this, dispatchEvent);
+  getDescriptor(
+    url: URL,
+    dispatchEvent: FileSystem["dispatchEvent"]
+  ): FileDescriptor {
+    return new FileDescriptor(this, url, dispatchEvent);
   }
 
   clone(): File {
@@ -351,15 +346,16 @@ class Directory {
     return { etag: this.etag, type: "directory" };
   }
 
-  getDescriptor(): FileDescriptor {
-    return new FileDescriptor(this);
+  getDescriptor(url: URL): FileDescriptor {
+    return new FileDescriptor(this, url);
   }
 }
 
 export class FileDescriptor {
   constructor(
     private resource: File | Directory,
-    private readonly dispatchEvent?: WriteEventDispatcher
+    readonly url: URL,
+    private readonly dispatchEvent?: FileSystem["dispatchEvent"]
   ) {}
 
   setEtag(etag: string) {
@@ -387,7 +383,7 @@ export class FileDescriptor {
       this.resource.buffer = await readStream(streamOrBuffer);
     }
     this.resource.mtime = Math.floor(Date.now() / 1000);
-    await this.dispatchEvent!(); // all descriptors created for files have this dispatcher
+    this.dispatchEvent!(this.url, "write"); // all descriptors created for files have this dispatcher
   }
 
   async read(): Promise<Uint8Array> {
@@ -469,8 +465,6 @@ interface Options {
 export interface Event {
   url: URL;
   type: EventType;
-  stat?: Stat;
 }
 export type EventListener = (event: Event) => void;
 export type EventType = "create" | "write" | "remove";
-type WriteEventDispatcher = () => Promise<void>;
