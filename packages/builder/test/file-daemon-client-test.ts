@@ -1,6 +1,11 @@
 import { installFileAssertions, FileAssert } from "./file-assertions";
 import { FileDaemonClient } from "../src/file-daemon-client";
-import { FileSystem } from "../src/filesystem";
+import {
+  FileSystem,
+  Event as FSEvent,
+  EventType as FSEventType,
+  EventListener as FSEventListener,
+} from "../src/filesystem";
 import { testFileDaemonURL, testWebsocketURL } from "./origins";
 import { fileDaemonKey } from "../src/env";
 
@@ -8,6 +13,48 @@ const { skip } = QUnit;
 
 QUnit.module("module file-daemon-client", function (origHooks) {
   let { test } = installFileAssertions(origHooks);
+
+  function waitForListener(
+    path: string,
+    eventType: FSEventType,
+    timeoutMs: number = 2000
+  ): { listener: FSEventListener; promise: () => Promise<FSEvent> } {
+    let timeout = new Promise<void>((res) =>
+      setTimeout(() => res(), timeoutMs)
+    );
+    let change: (e: FSEvent) => void;
+    let fsUpdated = new Promise<FSEvent>((res) => (change = res));
+    let listener = (e: FSEvent) => {
+      if (
+        e.type === eventType &&
+        e.url.toString() === new URL(path, testFileDaemonURL).toString()
+      ) {
+        change(e);
+      }
+    };
+    let promise = async () => {
+      let event = await Promise.race([fsUpdated, timeout]);
+      if (!event) {
+        throw new Error(`timeout waiting for ${eventType} event of '${path}'`);
+      }
+      return event;
+    };
+
+    return { listener, promise };
+  }
+
+  async function withEventListener(
+    assert: FileAssert,
+    l: FSEventListener,
+    fn: () => Promise<void>
+  ) {
+    try {
+      assert.fs.addEventListener(l);
+      await fn();
+    } finally {
+      assert.fs.removeEventListener(l);
+    }
+  }
 
   function makeClient(fs: FileSystem, mountpoint = "/") {
     return new FileDaemonClient(
@@ -19,15 +66,16 @@ QUnit.module("module file-daemon-client", function (origHooks) {
   }
 
   async function setFile(path: string, contents: string) {
-    await fetch(
-      `${testFileDaemonURL}${path}?key=${encodeURIComponent(fileDaemonKey)}`,
-      {
-        method: "POST",
-        body: contents,
-      }
-    );
+    let url = new URL(path, testFileDaemonURL);
+    await fetch(`${url}?key=${encodeURIComponent(fileDaemonKey)}`, {
+      method: "POST",
+      body: contents,
+    });
   }
 
+  // it's important that this is called *before* the assert.setupFiles() is
+  // called, as this will initialize the underlying filesystem that is synced to
+  // our fs abstration.
   async function makeScenario(scenario: { [filePath: string]: string }) {
     await fetch(
       `${testFileDaemonURL}?scenario=true&key=${encodeURIComponent(
@@ -77,10 +125,13 @@ QUnit.module("module file-daemon-client", function (origHooks) {
     hooks.after(async () => resetFileSystem());
 
     hooks.beforeEach(async (assert) => {
-      await ((assert as unknown) as FileAssert).setupFiles(
-        {},
-        new URL(testFileDaemonURL)
-      );
+      let fileAssert = (assert as unknown) as FileAssert;
+      await fileAssert.setupFiles({}, new URL(testFileDaemonURL));
+    });
+
+    hooks.afterEach(async (assert) => {
+      let fileAssert = (assert as unknown) as FileAssert;
+      fileAssert.fs.removeAllEventListeners();
     });
 
     test("can perform a full sync", async function (assert) {
@@ -122,13 +173,12 @@ QUnit.module("module file-daemon-client", function (origHooks) {
 
     hooks.beforeEach(async (assert) => {
       let fileAssert = (assert as unknown) as FileAssert;
-      await fileAssert.setupFiles({}, new URL(testFileDaemonURL));
       await makeScenario({
         ".entrypoints.json": `["index.html"]`,
         "index.html": `
-            <!DOCTYPE html>
-            <script src="http://localhost:8080/main.js"></script>
-            <script type="module" src="./index.js"></script>
+        <!DOCTYPE html>
+        <script src="http://localhost:8080/main.js"></script>
+        <script type="module" src="./index.js"></script>
           `,
         "index.js": `
             import { helloWorld } from "./ui.js";
@@ -140,20 +190,36 @@ QUnit.module("module file-daemon-client", function (origHooks) {
               elt.textContent = "Hello world";
               return elt;
             }
-          `,
+            `,
         "blah/foo.txt": `blah`,
         "blah/bleep/blurp.txt": `hi guys`,
       });
+      await fileAssert.setupFiles({}, new URL(testFileDaemonURL));
       client = makeClient(fileAssert.fs);
       await client.ready;
     });
 
-    hooks.afterEach(async () => resetFileSystem());
-
-    skip("can handle an added file", async function (_assert) {
-      // TODO we need a file system motification mechanism to test this
-      await setFile("one/two/foo.txt", "bar");
+    hooks.afterEach(async (assert) => {
+      let fileAssert = (assert as unknown) as FileAssert;
+      fileAssert.fs.removeAllEventListeners();
+      resetFileSystem();
     });
+
+    test("can handle an added file", async function (assert) {
+      let { listener, promise: waitForChange } = waitForListener(
+        "one/two/foo.txt",
+        "write"
+      );
+      await withEventListener(assert, listener, async () => {
+        await setFile("one/two/foo.txt", "bar");
+        await waitForChange();
+
+        await assert
+          .file("one/two/foo.txt")
+          .matches(/bar/, "file contents are correct");
+      });
+    });
+
     skip("can handle an updated file", async function (_assert) {});
     skip("can handle a deleted file", async function (_assert) {});
     skip("can add an entrypoint", async function (_assert) {});

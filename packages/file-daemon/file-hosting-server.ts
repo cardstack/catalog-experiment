@@ -41,7 +41,9 @@ export default class FileHostingServer {
       }
 
       try {
-        let filePath = resolve(join(this.directory, decodeURIComponent(path)));
+        let filePath = resolve(
+          join(this.directory, urlParse(path).pathname || "")
+        );
         if (filePath.indexOf(this.directory) !== 0) {
           res.statusCode = 403;
           res.end();
