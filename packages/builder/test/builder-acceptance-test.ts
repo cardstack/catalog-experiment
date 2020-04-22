@@ -2,7 +2,7 @@
 // it's initial test state
 
 import { Scenario } from "../src/test-request-handler";
-import { testOrigin } from "./origin";
+import { testOrigin } from "./origins";
 
 const { test } = QUnit;
 const testContainerId = "test-container";

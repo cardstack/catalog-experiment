@@ -1,4 +1,6 @@
-const path = require("path");
+const { resolve, join } = require("path");
+const { readFileSync } = require("fs");
+const { DefinePlugin } = require("webpack");
 
 let config = {
   mode: "development",
@@ -9,11 +11,11 @@ let config = {
       "access-control-allow-headers":
         "Origin, X-Requested-With, Content-Type, Accept, Range",
     },
-    contentBase: path.resolve(__dirname, "test"),
+    contentBase: resolve(__dirname, "test"),
   },
   output: {
     filename: "[name].js",
-    path: path.resolve(__dirname, "assets"),
+    path: resolve(__dirname, "assets"),
   },
   resolve: {
     extensions: [".wasm", ".mjs", ".ts", ".js", ".json"],
@@ -22,6 +24,13 @@ let config = {
     // for @babel/core
     fs: "empty",
   },
+  plugins: [
+    new DefinePlugin({
+      FILE_DAEMON_KEY: JSON.stringify(
+        readFileSync(join(__dirname, ".file-daemon-key")).toString()
+      ),
+    }),
+  ],
   module: {
     rules: [
       {

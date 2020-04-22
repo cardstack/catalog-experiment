@@ -45,6 +45,29 @@ Conversely, if you want to use webpack to package up the file-daemon's js into a
    cd ./package/app && yarn start-pkg
    ```
 
+## Testing it
+
+From the command line you can run all the tests by executing the following from the project root:
+
+```sh
+yarn test
+```
+
+To run the tests from the browser:
+
+1. Change directories to the builder package: `cd packages/builder`
+2. Start the test file daemon:
+   ```sh
+   yarn start:test-file-daemon
+   ```
+3. Start the builder:
+   ```sh
+   yarn start
+   ```
+4. Open the URL `http://localhost:8080` in your browser
+
+Note that the tests leverage a service worker which still runs even when the test page is not open. If you run tests from the CLI, the service worker running in your browser may troll you. In which case you'll want to unregister the service worker in your browser so they don't interfere with one another.
+
 ## Explanation
 
 The builder package is the in-browser (mostly in-service-worker) toolset that gets loaded into your app. It builds itself with webpack.

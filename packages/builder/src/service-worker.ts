@@ -1,6 +1,7 @@
 import {
   FileDaemonClient,
-  origin as fileDaemonOrigin,
+  defaultOrigin,
+  defaultWebsocketURL,
 } from "./file-daemon-client";
 import { FileSystem } from "./filesystem";
 import { handleTestRequest } from "./test-request-handler";
@@ -10,11 +11,12 @@ import { Builder } from "./builder";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 const fs = new FileSystem();
-const websocketURL = "ws://localhost:3000";
 const ourBackendEndpoint = "__alive__";
 const webroot: string = "/";
 
 let origin: string;
+let websocketURL: string;
+let fileDaemonURL: string;
 let isDisabled = false;
 let finishedBuild: Promise<void>;
 let client: FileDaemonClient | undefined;
@@ -23,21 +25,28 @@ console.log(`service worker evaluated`);
 
 worker.addEventListener("install", () => {
   console.log(`installing`);
-  origin =
-    new URL(worker.location.toString()).searchParams.get("origin") ||
-    fileDaemonOrigin;
+  let workerURL = new URL(worker.location.toString());
+  origin = workerURL.searchParams.get("origin") || defaultOrigin;
+  websocketURL =
+    workerURL.searchParams.get("websocketURL") || defaultWebsocketURL;
+  fileDaemonURL = workerURL.searchParams.get("fileDaemonURL") || defaultOrigin;
+
   // force moving on to activation even if another service worker had control
   worker.skipWaiting();
 });
 
 worker.addEventListener("activate", () => {
-  console.log(`service worker activated using builder origin: ${origin}`);
+  console.log(
+    `service worker activated using builder origin: ${origin}, file daemon URL: ${fileDaemonURL}, websocket URL: ${websocketURL}`
+  );
 
   // takes over when there is *no* existing service worker
   worker.clients.claim();
 
-  if (origin === fileDaemonOrigin) {
-    client = new FileDaemonClient(origin, websocketURL, fs, webroot);
+  // when testing these 2 values are usually different, and in that case we
+  // don't want a file daemon client
+  if (origin === fileDaemonURL) {
+    client = new FileDaemonClient(fileDaemonURL, websocketURL, fs, webroot);
 
     // TODO watch for file changes and build when fs changes
     let builder = new Builder(fs);

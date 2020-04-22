@@ -5,7 +5,8 @@ import { REGTYPE } from "tarstream/constants";
 //@ts-ignore
 import { UnTar } from "tarstream";
 
-export const origin = "http://localhost:4200";
+export const defaultOrigin = "http://localhost:4200";
+export const defaultWebsocketURL = "ws://localhost:3000";
 const entrypointsPath = "/.entrypoints.json";
 
 export class FileDaemonClient {
@@ -150,7 +151,7 @@ export class FileDaemonClient {
     await this.renameEntrypoints(temp);
     await fs.move(
       new URL(this.mountPath, temp),
-      new URL(this.mountPath, origin)
+      new URL(this.mountPath, this.fileServerURL)
     );
     await fs.remove(temp);
     console.log("completed full sync");
@@ -165,7 +166,7 @@ export class FileDaemonClient {
     }
 
     for (let entrypoint of originalEntrypoints) {
-      let sourceURL = new URL(entrypoint, tempOrigin);
+      let sourceURL = new URL(this.mountedPath(entrypoint), tempOrigin);
       let destPath = join(
         dirName(sourceURL.pathname) || "/",
         `src-${baseName(sourceURL.pathname)}`
@@ -224,7 +225,7 @@ export class FileDaemonClient {
 
     for (let { name } of removals) {
       console.log(`removing ${name}`);
-      await this.fs.remove(new URL(this.mountedPath(name), origin));
+      await this.fs.remove(new URL(this.mountedPath(name), this.fileServerURL));
     }
 
     console.log(`completed processing changes, file system:`);
@@ -232,11 +233,13 @@ export class FileDaemonClient {
   }
 
   private async getEntrypoints(
-    _origin = new URL(origin)
+    thisOrigin = new URL(this.fileServerURL)
   ): Promise<string[] | undefined> {
     let entrypointsFile: FileDescriptor;
     try {
-      entrypointsFile = await this.fs.open(new URL(entrypointsPath, _origin));
+      entrypointsFile = await this.fs.open(
+        new URL(this.mountedPath(entrypointsPath), thisOrigin)
+      );
     } catch (err) {
       if (err instanceof FileSystemError && err.code === "NOT_FOUND") {
         return; // in this case there is no build to perform
@@ -249,13 +252,13 @@ export class FileDaemonClient {
 
   private async setEntrypointsFile(
     originalEntrypoints: string[],
-    _origin = new URL(origin)
+    thisOrigin = new URL(this.fileServerURL)
   ): Promise<string[]> {
     let entrypoints = originalEntrypoints.map((path) =>
       join(dirName(path) || "/", `src-${baseName(path)}`)
     );
     let entrypointsFile = await this.fs.open(
-      new URL(entrypointsPath, _origin),
+      new URL(this.mountedPath(entrypointsPath), thisOrigin),
       "file"
     );
     await entrypointsFile.write(JSON.stringify(entrypoints));
@@ -272,7 +275,7 @@ export class FileDaemonClient {
       throw new Error(`Couldn't fetch ${path} from file server`);
     }
     let file = await this.fs.open(
-      new URL(this.mountedPath(pathOverride ?? path), origin),
+      new URL(this.mountedPath(pathOverride ?? path), this.fileServerURL),
       "file"
     );
     file.setEtag(etag);
@@ -289,7 +292,7 @@ export class FileDaemonClient {
         let { name, etag } = change;
         let currentFile: FileDescriptor;
         try {
-          currentFile = await this.fs.open(new URL(name, origin));
+          currentFile = await this.fs.open(new URL(name, this.fileServerURL));
         } catch (err) {
           if (err instanceof FileSystemError && err.code === "NOT_FOUND") {
             return change;
