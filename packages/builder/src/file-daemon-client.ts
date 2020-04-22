@@ -7,7 +7,7 @@ import { UnTar } from "tarstream";
 
 export const defaultOrigin = "http://localhost:4200";
 export const defaultWebsocketURL = "ws://localhost:3000";
-const entrypointsPath = "/.entrypoints.json";
+const entrypointsPath = "/entrypoints.json";
 
 export class FileDaemonClient {
   ready: Promise<void>;

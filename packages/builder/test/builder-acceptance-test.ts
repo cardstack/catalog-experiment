@@ -43,6 +43,11 @@ QUnit.module("acceptance builder", function (hooks) {
 
   test("can process a single module that has no imports", async function (assert) {
     await setupScenario({
+      "entrypoints.json": `["src-index.html"]`,
+      "src-index.html": `
+        <!DOCTYPE html>
+        <script type="module" src="./index.js"></script>
+      `,
       "index.js": `
         (function() {
           let container = document.getElementById('test-container');
@@ -52,7 +57,7 @@ QUnit.module("acceptance builder", function (hooks) {
         })();
       `,
     });
-    let js = await (await testFetch("/index.js")).text();
+    let js = await (await testFetch("/built-index.js")).text();
     eval(js);
 
     let container = getTestDOM();

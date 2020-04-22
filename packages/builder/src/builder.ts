@@ -17,11 +17,11 @@ export class Builder {
   async build(origin: string): Promise<void> {
     let entrypointFile: FileDescriptor;
     try {
-      entrypointFile = await this.fs.open(new URL(".entrypoints.json", origin));
+      entrypointFile = await this.fs.open(new URL("entrypoints.json", origin));
     } catch (err) {
       if (err instanceof FileSystemError && err.code === "NOT_FOUND") {
         console.warn(
-          `The origin ${origin} has no '.entrypoints.json' file, skipping build for this origin.`
+          `The origin ${origin} has no 'entrypoints.json' file, skipping build for this origin.`
         );
         return;
       }
@@ -87,21 +87,20 @@ export class Builder {
       return;
     }
 
-    // This is the fs URL for loading the contents of the JS:
-    // let jsURL = new URL(el.attribs.src, origin);
+    let jsURL = new URL(el.attribs.src, origin);
+    let builtJsURL = new URL(
+      join(dirName(jsURL.pathname) || "/", `built-${baseName(jsURL.pathname)}`),
+      origin
+    );
+
+    // Justt performing an identity transform of the JS entry points for now
+    await this.fs.copy(jsURL, builtJsURL);
 
     let type = el.attribs.type;
-    let scriptAttrs: { [key: string]: string } = {
-      src: el.attribs.src,
-      "data-catalogjs-generated": "true",
-    };
+    let scriptAttrs: { [key: string]: string } = { src: builtJsURL.pathname };
     if (type) {
       scriptAttrs.type = type;
     }
-
-    // Just replacing the script tag with itself for now (and a little stamp so
-    // we now it's coming from the build). Eventually we will write out the
-    // bundle paths here
     replace(dom, el, new Element("script", scriptAttrs));
   }
 
