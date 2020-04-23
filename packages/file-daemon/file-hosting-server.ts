@@ -17,7 +17,7 @@ const builderServer = "http://localhost:8080";
 export type RequestHandler = (
   req: http.IncomingMessage,
   res: http.ServerResponse
-) => void;
+) => boolean;
 
 export default class FileHostingServer {
   constructor(
@@ -56,14 +56,18 @@ export default class FileHostingServer {
         if (this.corsEnabled) {
           res.setHeader("access-control-allow-origin", "*");
           res.setHeader(
+            "access-control-allow-methods",
+            "GET, POST, OPTIONS, DELETE"
+          );
+          res.setHeader(
             "access-control-allow-headers",
             "Origin, X-Requested-With, Content-Type, Accept, Range"
           );
         }
 
         if (this.testHandler) {
-          this.testHandler(req, res);
-          if (res.writableEnded) {
+          let handled = this.testHandler(req, res);
+          if (handled) {
             return;
           }
         }
@@ -143,6 +147,11 @@ function streamFileSystem(path: string): Readable {
 function serveFile(res: http.ServerResponse, path: string) {
   let mime = lookup(path) || "application/octet-stream";
   res.setHeader("content-length", statSync(path).size);
+  res.setHeader("content-length", statSync(path).size);
+  res.setHeader(
+    "etag",
+    `${statSync(path).size}_${unixTime(statSync(path).mtime.getTime())}`
+  );
   res.setHeader("content-type", contentType(mime) as Exclude<string, false>);
   createReadStream(path).pipe(res);
 }

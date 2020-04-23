@@ -1,4 +1,5 @@
 import invert from "lodash/invert";
+import difference from "lodash/difference";
 import { WatchInfo, FileInfo } from "../../file-daemon/interfaces";
 import { FileSystem, FileSystemError, FileDescriptor } from "./filesystem";
 import { join, baseName, dirName } from "./path";
@@ -9,11 +10,12 @@ import { UnTar } from "tarstream";
 
 export const defaultOrigin = "http://localhost:4200";
 export const defaultWebsocketURL = "ws://localhost:3000";
-const entrypointsPath = "/entrypoints.json";
+export const entrypointsPath = "/entrypoints.json";
 
 export class FileDaemonClient {
   ready: Promise<void>;
 
+  private closeRequested = false;
   private socket: WebSocket | undefined;
   private socketClosed: Promise<void> | undefined;
   private backoffInterval = 0;
@@ -21,6 +23,7 @@ export class FileDaemonClient {
 
   private queue: WatchInfo[] = [];
   private resolveQueuePromise: undefined | (() => void);
+  private running: Promise<void>;
 
   constructor(
     private fileServerURL: string,
@@ -29,11 +32,23 @@ export class FileDaemonClient {
     private mountPath: string
   ) {
     this.ready = new Promise((res) => (this.doneSyncing = res));
-    this.run();
+    this.running = this.run();
+  }
+
+  async close() {
+    this.closeRequested = true;
+    if (this.socket) {
+      this.socket.close();
+    }
+    await this.socketClosed;
+    await this.ready;
+    await this.running;
+    this.socket = undefined;
+    console.log("file daemon client performed user-requested close");
   }
 
   private async run() {
-    while (true) {
+    while (true && !this.closeRequested) {
       try {
         this.tryConnect();
 
@@ -46,7 +61,9 @@ export class FileDaemonClient {
           }
         }
 
-        await this.backoff();
+        if (!this.closeRequested) {
+          await this.backoff();
+        }
       } catch (err) {
         console.error(`handled unexpected error in FileDaemonClient`, err);
         if (this.socket) {
@@ -189,9 +206,24 @@ export class FileDaemonClient {
     let updates = changes.filter(({ etag }) => etag != null);
 
     let entrypointsMapping: EntrypointsMapping | undefined;
+    let entrypointsChanged = false;
+    let previousEntrypoints: EntrypointsMapping | undefined;
+    try {
+      previousEntrypoints = JSON.parse(
+        await (
+          await this.fs.open(new URL(entrypointsPath, this.fileServerURL))
+        ).readText()
+      ) as EntrypointsMapping;
+    } catch (err) {
+      if (err.code !== "NOT_FOUND") {
+        throw err;
+      }
+    }
+
     // make sure to first check and see if the entrypoint file itself is
     // changing, in which case we should deal with that first.
     if (updates.find((f) => f.name === entrypointsPath)) {
+      entrypointsChanged = true;
       let destEntrypoints = (await (
         await fetch(`${this.fileServerURL}${entrypointsPath}`)
       ).json()) as string[];
@@ -209,7 +241,6 @@ export class FileDaemonClient {
     let invertedEntrypointsMapping = invert(entrypointsMapping);
 
     for (let change of updates) {
-      console.log(`updating ${change.name}`);
       let pathOverride: string | undefined;
       if (invertedEntrypointsMapping[change.name]) {
         pathOverride = invertedEntrypointsMapping[change.name];
@@ -217,7 +248,28 @@ export class FileDaemonClient {
       } else {
         console.log(`updating ${change.name}`);
       }
-      await this.updateFile(change.name, change.etag!, pathOverride);
+      await this.updateFile(
+        change.name,
+        pathOverride,
+        change.etag || undefined
+      );
+    }
+
+    if (entrypointsChanged) {
+      for (let [destPath, sourcePath] of Object.entries(
+        invertedEntrypointsMapping
+      )) {
+        console.log(`updating ${destPath} (writing to ${sourcePath})`);
+        await this.updateFile(destPath, sourcePath);
+      }
+      for (let removedSrcPath of difference(
+        Object.keys(previousEntrypoints || []),
+        Object.keys(entrypointsMapping)
+      )) {
+        await this.fs.remove(new URL(removedSrcPath, this.fileServerURL));
+        await this.updateFile(previousEntrypoints![removedSrcPath]);
+        console.log(`updating ${previousEntrypoints![removedSrcPath]}`);
+      }
     }
 
     for (let { name } of removals) {
@@ -287,9 +339,12 @@ export class FileDaemonClient {
     return entrypoints;
   }
 
-  private async updateFile(path: string, etag: string, pathOverride?: string) {
-    let stream = (await fetch(`${this.fileServerURL}${path}`))
-      .body as ReadableStream<Uint8Array>;
+  private async updateFile(path: string, pathOverride?: string, etag?: string) {
+    let res = await fetch(`${this.fileServerURL}${path}`);
+    if (!etag) {
+      etag = res.headers.get("etag") || undefined;
+    }
+    let stream = res.body as ReadableStream<Uint8Array>;
     if (!stream) {
       throw new Error(`Couldn't fetch ${path} from file server`);
     }
@@ -297,7 +352,9 @@ export class FileDaemonClient {
       new URL(this.mountedPath(pathOverride ?? path), this.fileServerURL),
       "file"
     );
-    file.setEtag(etag);
+    if (etag) {
+      file.setEtag(etag);
+    }
     await file.write(stream);
   }
 
