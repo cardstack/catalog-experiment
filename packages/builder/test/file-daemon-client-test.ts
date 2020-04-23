@@ -11,10 +11,6 @@ import {
   withListener,
 } from "./file-daemon-helpers";
 
-async function sleep(ms: number) {
-  await new Promise((res) => setTimeout(res, ms));
-}
-
 let scenario = Object.freeze({
   "entrypoints.json": `["index.html"]`,
   "index.html": `
