@@ -8,7 +8,7 @@ import { createWriteStream, mkdirSync } from "fs";
 export type HandlerMaker = (
   directory: string,
   key: string
-) => (request: http.IncomingMessage, response: http.ServerResponse) => void;
+) => (request: http.IncomingMessage, response: http.ServerResponse) => boolean;
 
 export const makeTestHandler: HandlerMaker = function (
   directory: string,
@@ -34,17 +34,26 @@ export const makeTestHandler: HandlerMaker = function (
           res.statusCode = 200;
           res.end("ok");
         });
+        return true;
       } else if (query.reset) {
         removeSync(directory);
         mkdirSync(directory);
         res.statusCode = 200;
         res.end();
+        return true;
       } else {
         ensureFileSync(filePath);
         req.pipe(createWriteStream(filePath));
         res.statusCode = 200;
         res.end();
+        return true;
       }
+    } else if (req.method === "DELETE" && query.key === key) {
+      removeSync(filePath);
+      res.statusCode = 204;
+      res.end();
+      return true;
     }
+    return false;
   };
 };

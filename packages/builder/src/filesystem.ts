@@ -14,18 +14,26 @@ const utf8 = new TextDecoder("utf8");
 
 export class FileSystem {
   private root = new Directory();
-  private listeners: EventListener[] = [];
+  private listeners: Map<string, EventListener[]> = new Map();
 
-  addEventListener(fn: EventListener) {
-    this.listeners.push(fn);
+  addEventListener(origin: string, fn: EventListener) {
+    if (this.listeners.has(origin)) {
+      this.listeners.get(origin)?.push(fn);
+    } else {
+      this.listeners.set(origin, [fn]);
+    }
   }
 
-  removeEventListener(fn: EventListener) {
-    this.listeners = [...this.listeners.filter((l) => l !== fn)];
+  removeEventListener(origin: string, fn: EventListener) {
+    if (this.listeners.has(origin)) {
+      this.listeners.set(origin, [
+        ...this.listeners.get(origin)!.filter((l) => l !== fn),
+      ]);
+    }
   }
 
   removeAllEventListeners() {
-    this.listeners = [];
+    this.listeners = new Map();
   }
 
   async move(sourceURL: URL, destURL: URL): Promise<void> {
@@ -273,17 +281,18 @@ export class FileSystem {
   private dispatchEvent(url: URL, type: EventType): void;
   private dispatchEvent(path: string, type: EventType): void;
   private dispatchEvent(urlOrPath: URL | string, type: EventType): void {
-    if (this.listeners.length === 0) {
-      return;
-    }
     let url: URL;
     if (typeof urlOrPath === "string") {
       url = pathToURL(urlOrPath);
     } else {
       url = urlOrPath;
     }
+    let listeners = this.listeners.get(url.origin);
+    if (!listeners || listeners.length === 0) {
+      return;
+    }
 
-    for (let listener of this.listeners) {
+    for (let listener of listeners) {
       setTimeout(() => listener({ url, type }), 0);
     }
   }

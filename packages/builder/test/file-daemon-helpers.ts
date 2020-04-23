@@ -1,5 +1,4 @@
 import { FileDaemonClient } from "../src/file-daemon-client";
-import { FileAssert } from "./file-assertions";
 import {
   FileSystem,
   Event as FSEvent,
@@ -10,11 +9,20 @@ import { testFileDaemonURL, testWebsocketURL } from "./origins";
 //@ts-ignore: webpack will set this macro
 let fileDaemonKey = FILE_DAEMON_KEY;
 
-export function waitForListener(
+export async function waitFor(
+  fs: FileSystem,
+  path: string,
+  eventType: FSEventType
+): Promise<void> {
+  let { listener, wait } = makeListener(path, eventType);
+  await withListener(fs, listener, async () => await wait());
+}
+
+export function makeListener(
   path: string,
   eventType: FSEventType,
-  timeoutMs: number = 2000
-): { listener: FSEventListener; promise: () => Promise<FSEvent> } {
+  timeoutMs: number = 5000
+): { listener: FSEventListener; wait: () => Promise<FSEvent> } {
   let timeout = new Promise<void>((res) => setTimeout(() => res(), timeoutMs));
   let change: (e: FSEvent) => void;
   let fsUpdated = new Promise<FSEvent>((res) => (change = res));
@@ -26,7 +34,7 @@ export function waitForListener(
       change(e);
     }
   };
-  let promise = async () => {
+  let wait = async () => {
     let event = await Promise.race([fsUpdated, timeout]);
     if (!event) {
       throw new Error(`timeout waiting for ${eventType} event of '${path}'`);
@@ -34,19 +42,19 @@ export function waitForListener(
     return event;
   };
 
-  return { listener, promise };
+  return { listener, wait };
 }
 
-export async function withEventListener(
-  assert: FileAssert,
+export async function withListener(
+  fs: FileSystem,
   l: FSEventListener,
-  fn: () => Promise<void>
+  fn: () => Promise<unknown>
 ) {
   try {
-    assert.fs.addEventListener(l);
+    fs.addEventListener(testFileDaemonURL, l);
     await fn();
   } finally {
-    assert.fs.removeEventListener(l);
+    fs.removeEventListener(testFileDaemonURL, l);
   }
 }
 
@@ -67,9 +75,13 @@ export async function setFile(path: string, contents: string) {
   });
 }
 
-// it's important that this is called *before* the assert.setupFiles() is
-// called, as this will initialize the underlying filesystem that is synced to
-// our fs abstration.
+export async function removeFile(path: string) {
+  let url = new URL(path, testFileDaemonURL);
+  await fetch(`${url}?key=${encodeURIComponent(fileDaemonKey)}`, {
+    method: "DELETE",
+  });
+}
+
 export async function setupScenario(scenario: { [filePath: string]: string }) {
   await fetch(
     `${testFileDaemonURL}?scenario=true&key=${encodeURIComponent(
