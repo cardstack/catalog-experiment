@@ -17,16 +17,16 @@ const DIRECTORY_POLL = 500;
 export default class Watcher {
   nextWatch?: NodeJS.Timeout;
   watchers = new Map<WebSocket, boolean>();
-  previousDirectoryMap: DirectoryMap;
+  previousDirectoryMap?: DirectoryMap;
   notifyPromise?: Promise<void>;
 
-  constructor(private directory: string) {
-    this.previousDirectoryMap = this.buildDirectoryMap();
-  }
+  constructor(private directory: string) {}
 
-  async add(sock: WebSocket): Promise<void> {
+  add(sock: WebSocket) {
     this.watchers.set(sock, true);
     if (!this.nextWatch) {
+      console.log(`First watcher added: starting watch`);
+      this.previousDirectoryMap = this.buildDirectoryMap();
       this.scheduleNextWatch();
     }
   }
@@ -34,6 +34,7 @@ export default class Watcher {
   remove(sock: WebSocket) {
     this.watchers.delete(sock);
     if (this.watchers.size === 0 && this.nextWatch != null) {
+      console.log(`Last watcher removed: stopping watch`);
       clearTimeout(this.nextWatch);
       this.nextWatch = undefined;
     }
@@ -58,15 +59,20 @@ export default class Watcher {
     }
 
     let current = this.buildDirectoryMap();
-    let info = this.diffDirectories(this.previousDirectoryMap, current);
-    if (info.files.length) {
-      console.log(`files modified: ${JSON.stringify(info.files, null, 2)}`);
-      this.notifyPromise = Promise.resolve(this.notifyPromise)
-        .then(() => this.notify(info))
-        .catch((e) => {
-          console.error(`Encountered error sending notification to socket`, e);
-          throw e;
-        });
+    if (this.previousDirectoryMap) {
+      let info = this.diffDirectories(this.previousDirectoryMap, current);
+      if (info.files.length) {
+        console.log(`files modified: ${JSON.stringify(info.files, null, 2)}`);
+        this.notifyPromise = Promise.resolve(this.notifyPromise)
+          .then(() => this.notify(info))
+          .catch((e) => {
+            console.error(
+              `Encountered error sending notification to socket`,
+              e
+            );
+            throw e;
+          });
+      }
     }
 
     this.previousDirectoryMap = current;

@@ -51,7 +51,6 @@ QUnit.module("module file-daemon-client", function (origHooks) {
 
       client = makeClient(fileAssert.fs);
       await client.ready;
-      await sleep(750); // wait for next tick of the file-daemon's poll (500ms) to flush the scenario updates.
     });
 
     origHooks.afterEach(async (assert) => {
@@ -92,7 +91,6 @@ QUnit.module("module file-daemon-client", function (origHooks) {
 
       client = makeClient(fileAssert.fs, "/mount");
       await client.ready;
-      await sleep(750); // wait for next tick of the file-daemon's poll (500ms) to flush the scenario updates.
     });
 
     origHooks.afterEach(async (assert) => {
@@ -121,13 +119,6 @@ QUnit.module("module file-daemon-client", function (origHooks) {
 
       client = makeClient(fileAssert.fs);
       await client.ready;
-      // when the a single client connects the file daemon server will flush all
-      // the changes since the last time a watcher was connected (because it's
-      // does no work wheen no one is watching for changes). this means that the
-      // entire scenario creation will be flushed when we first connect. this is
-      // not interesting to us, as it's not part of our test, so we ignore the
-      // first set of notifications that are flushed to the new watcher.
-      await sleep(750); // wait for next tick of the file-daemon's poll (500ms) to flush the scenario updates.
     });
 
     origHooks.afterEach(async (assert) => {
