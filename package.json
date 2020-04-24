@@ -12,7 +12,8 @@
     "build": "tsc",
     "test": "cd packages/builder && yarn test",
     "builder": "cd packages/builder && yarn start",
-    "serve": "cd packages/app && yarn start"
+    "serve": "cd packages/app && yarn start",
+    "test-server": "cd packages/builder && yarn start:test-file-daemon"
   },
   "resolutions": {
     "minimist": "^1.2.5"
