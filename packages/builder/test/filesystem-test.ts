@@ -517,9 +517,7 @@ QUnit.module("module filesystem", function (origHooks) {
         "http://origin-c/bleep/a.txt": "a",
       });
 
-      let listing = (await assert.fs.listAllOrigins()).map((fd) =>
-        fd.url.toString()
-      );
+      let listing = (await assert.fs.listAllOrigins()).map((fd) => fd.url.href);
       assert.deepEqual(
         listing,
         ["http://origin-a/", "http://origin-b/", "http://origin-c/"],
@@ -538,8 +536,8 @@ QUnit.module("module filesystem", function (origHooks) {
         "http://origin-c/bleep/a.txt": "a",
       });
 
-      let listing = (await assert.fs.listAllOrigins(true)).map((fd) =>
-        fd.url.toString()
+      let listing = (await assert.fs.listAllOrigins(true)).map(
+        (fd) => fd.url.href
       );
       assert.deepEqual(
         listing,

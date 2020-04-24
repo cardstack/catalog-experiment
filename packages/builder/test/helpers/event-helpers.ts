@@ -18,7 +18,7 @@ export function makeListener(
     if (
       path &&
       e.type === eventType &&
-      e.url.toString() === new URL(path, origin).toString()
+      e.url.href === new URL(path, origin).href
     ) {
       change(e);
     } else if (!path && e.type === eventType) {

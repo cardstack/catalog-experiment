@@ -51,7 +51,7 @@ export class FileSystem {
   }
 
   async copy(sourceURL: URL, destURL: URL): Promise<void> {
-    if (sourceURL.toString() === destURL.toString()) {
+    if (sourceURL.href === destURL.href) {
       return; // nothing to do
     }
     let sourcePath = urlToPath(sourceURL);
