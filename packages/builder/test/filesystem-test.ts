@@ -445,12 +445,8 @@ QUnit.module("module filesystem", function (origHooks) {
         assert.equal(directory.stat().size, undefined, "stat value is correct");
       });
 
-      test("can not get mtime from stat of directory", async function (assert) {
-        assert.equal(
-          directory.stat().mtime,
-          undefined,
-          "stat value is correct"
-        );
+      test("can get mtime from stat of directory", async function (assert) {
+        assert.ok(directory.stat().mtime, "mtime exists");
       });
     });
   });
