@@ -333,9 +333,8 @@ export class FileDaemonClient {
       "file"
     );
     await entrypointsFile.write(JSON.stringify(entrypoints));
-    entrypointsFile.setEtag(
-      `${entrypointsFile.stat.size}_${entrypointsFile.stat.mtime}`
-    );
+    let stat = entrypointsFile.stat();
+    entrypointsFile.setEtag(`${stat.size}_${stat.mtime}`);
     return entrypoints;
   }
 
@@ -375,7 +374,7 @@ export class FileDaemonClient {
           }
           throw err;
         }
-        if (currentFile.stat.etag !== etag) {
+        if (currentFile.stat().etag !== etag) {
           return change;
         }
         return false;

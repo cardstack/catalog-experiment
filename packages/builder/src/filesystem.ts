@@ -127,14 +127,14 @@ export class FileSystem {
     if (startingPath === path && path !== "/") {
       results.push({
         url: pathToURL(path),
-        stat: directory.stat,
+        stat: directory.stat(),
       });
     }
     for (let name of [...directory.files.keys()].sort()) {
       let item = directory.files.get(name)!;
       results.push({
         url: pathToURL(join(path, name)),
-        stat: item.stat,
+        stat: item.stat(),
       });
       if (item instanceof Directory && recurse) {
         results.push(
@@ -304,7 +304,7 @@ export class FileSystem {
       modified:
         stat.type === "directory"
           ? "-"
-          : moment(stat.mtime! * 1000).format("MMM D YYYY HH:mm"),
+          : moment(stat.mtime).format("MMM D YYYY HH:mm"),
       etag: stat.etag ?? "-",
       url,
     }));
@@ -318,10 +318,10 @@ class File {
   mtime: number;
 
   constructor() {
-    this.mtime = Math.floor(Date.now() / 1000);
+    this.mtime = Date.now();
   }
 
-  get stat(): Stat {
+  stat(): Stat {
     return {
       etag: this.etag,
       mtime: this.mtime,
@@ -349,10 +349,15 @@ class File {
 
 class Directory {
   etag?: string;
+  mtime: number;
   readonly files: Files = new Map();
 
-  get stat(): Stat {
-    return { etag: this.etag, type: "directory" };
+  constructor() {
+    this.mtime = Date.now();
+  }
+
+  stat(): Stat {
+    return { etag: this.etag, mtime: this.mtime, type: "directory" };
   }
 
   getDescriptor(url: URL): FileDescriptor {
@@ -371,8 +376,8 @@ export class FileDescriptor {
     this.resource.etag = etag;
   }
 
-  get stat(): Stat {
-    return this.resource.stat;
+  stat(): Stat {
+    return this.resource.stat();
   }
 
   async write(buffer: Uint8Array): Promise<void>;
