@@ -6,7 +6,13 @@ import render from "dom-serializer";
 import { parse } from "@babel/core";
 import { File } from "@babel/types";
 import { describeImports } from "./describe-imports";
-import { OutputTypes, BuilderNode, MaybeNode, FileNode } from "./builder-nodes";
+import {
+  OutputTypes,
+  BuilderNode,
+  MaybeNode,
+  FileNode,
+  WriteFileNode,
+} from "./builder-nodes";
 
 export interface EntrypointsMapping {
   [srcFile: string]: string;
@@ -79,16 +85,24 @@ export class Builder<Input> {
   }
 
   async evalNode(node: BuilderNode): Promise<unknown> {
-    if (FileNode.isFileNode(node)) {
-      let fd = await this.fs.open(node.url);
-      return await fd.readText();
-    }
     let deps = node.deps();
     let result: MaybeNode<unknown>;
     if (typeof deps === "object" && deps != null) {
-      result = await node.run(await this.evalNodes(deps));
+      let inputs = await this.evalNodes(deps);
+      if (WriteFileNode.isWriteFileNode(node)) {
+        let fd = await this.fs.open(node.url, "file");
+        await fd.write(Object.values(inputs)[0]);
+        result = { value: undefined };
+      } else {
+        result = await node.run(inputs);
+      }
     } else {
-      result = await (node as BuilderNode<unknown, void>).run();
+      if (FileNode.isFileNode(node)) {
+        let fd = await this.fs.open(node.url);
+        result = { value: await fd.readText() };
+      } else {
+        result = await (node as BuilderNode<unknown, void>).run();
+      }
     }
     if ("node" in result) {
       return this.evalNode(result.node);

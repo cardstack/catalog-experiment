@@ -89,7 +89,25 @@ export class FileNode implements BuilderNode<string> {
   }
 }
 
-export class HTMLParseNode implements BuilderNode<dom.Node[]> {
+export class WriteFileNode implements BuilderNode<void> {
+  isWriteFileNode = true;
+
+  static isWriteFileNode(node: BuilderNode): node is WriteFileNode {
+    return "isWriteFileNode" in node;
+  }
+
+  constructor(private source: BuilderNode<string>, public url: URL) {}
+
+  deps() {
+    return { source: this.source };
+  }
+
+  async run(_args: { source: string }): Promise<Value<void>> {
+    throw new Error(`bug: this isn't supposed to actually run`);
+  }
+}
+
+export class HTMLParseNode implements BuilderNode {
   constructor(private source: BuilderNode<string>) {}
 
   deps() {
@@ -101,7 +119,7 @@ export class HTMLParseNode implements BuilderNode<dom.Node[]> {
   }
 }
 
-export class HTMLEntrypointNode implements BuilderNode<string> {
+export class HTMLEntrypointNode implements BuilderNode {
   constructor(private src: URL, private dest: URL) {}
 
   deps() {
@@ -114,12 +132,17 @@ export class HTMLEntrypointNode implements BuilderNode<string> {
     parsedHTML,
   }: {
     parsedHTML: OutputType<HTMLParseNode>;
-  }): Promise<NextNode<string>> {
-    return { node: new ReplaceScriptsNode(parsedHTML, this.dest) };
+  }): Promise<NextNode<void>> {
+    return {
+      node: new WriteFileNode(
+        new ReplaceScriptsNode(parsedHTML, this.dest),
+        this.dest
+      ),
+    };
   }
 }
 
-export class ReplaceScriptsNode implements BuilderNode<string> {
+export class ReplaceScriptsNode implements BuilderNode {
   constructor(
     private parsedHTML: OutputType<HTMLParseNode>,
     private dest: URL
@@ -173,7 +196,7 @@ export class ReplaceScriptsNode implements BuilderNode<string> {
   }
 }
 
-export class JSEntrypointNode implements BuilderNode<URL> {
+export class JSEntrypointNode implements BuilderNode {
   constructor(private url: URL) {}
   deps() {}
   async run() {

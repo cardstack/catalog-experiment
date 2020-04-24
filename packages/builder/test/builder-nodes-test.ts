@@ -33,12 +33,14 @@ QUnit.module("builder nodes", function (origHooks) {
     });
     let node = new HTMLEntrypointNode(
       new URL(`${origin}/src/index.html`),
-      new URL("http://test/index.html")
+      new URL(`${origin}/index.html`)
     );
     let builder = new Builder(assert.fs, { test: node });
-    let result = await builder.build();
-    assert.deepEqual(result, {
-      test: `<html><script type="module" src="http://unimplemented/index.js"></script></html>`,
-    });
+    await builder.build();
+    assert
+      .file("/index.html")
+      .matches(
+        `<html><script type="module" src="http://unimplemented/index.js"></script></html>`
+      );
   });
 });
