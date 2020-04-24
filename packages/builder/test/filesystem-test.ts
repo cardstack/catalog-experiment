@@ -1,4 +1,13 @@
-import { installFileAssertions, FileAssert, origin } from "./file-assertions";
+import {
+  installFileAssertions,
+  FileAssert,
+  origin,
+} from "./helpers/file-assertions";
+import {
+  makeListener,
+  withListener,
+  withListeners,
+} from "./helpers/event-helpers";
 import { FileDescriptor } from "../src/filesystem";
 
 function url(path: string, base = origin): URL {
@@ -7,6 +16,166 @@ function url(path: string, base = origin): URL {
 
 QUnit.module("module filesystem", function (origHooks) {
   let { test } = installFileAssertions(origHooks);
+
+  QUnit.module("events", function () {
+    origHooks.beforeEach(async (assert) => {
+      let fileAssert = (assert as unknown) as FileAssert;
+      await fileAssert.setupFiles();
+      fileAssert.fs.removeAllEventListeners();
+    });
+
+    origHooks.afterEach((assert) => {
+      let fileAssert = (assert as unknown) as FileAssert;
+      fileAssert.fs.removeAllEventListeners();
+    });
+
+    test("triggers a 'create' event when a new file is opened", async function (assert) {
+      let { listener, wait } = makeListener(origin);
+      await withListener(assert.fs, origin, listener, async () => {
+        await assert.fs.open(url("test"), "file");
+        let e = await wait();
+        assert.equal(e.url.href, `${origin}/test`, "the event url is correct");
+        assert.equal(e.type, "create", "the event type is correct");
+      });
+    });
+
+    test("triggers a 'create' event when a new directory is opened", async function (assert) {
+      let { listener, wait } = makeListener(origin);
+      await withListener(assert.fs, origin, listener, async () => {
+        await assert.fs.open(url("test"), "directory");
+        let e = await wait();
+        assert.equal(e.url.href, `${origin}/test`, "the event url is correct");
+        assert.equal(e.type, "create", "the event type is correct");
+      });
+    });
+
+    test("triggers a 'create' event for destination of move", async function (assert) {
+      await assert.fs.open(url("src"), "file");
+      let { listener, wait } = makeListener(origin, "create");
+      await withListener(assert.fs, origin, listener, async () => {
+        await assert.fs.move(url("src"), url("dest"));
+        let e = await wait();
+        assert.equal(e.url.href, `${origin}/dest`, "the event url is correct");
+        assert.equal(e.type, "create", "the event type is correct");
+      });
+    });
+
+    test("triggers a 'remove' event for source of move", async function (assert) {
+      await assert.fs.open(url("src"), "file");
+      let { listener, wait } = makeListener(origin, "remove");
+      await withListener(assert.fs, origin, listener, async () => {
+        await assert.fs.move(url("src"), url("dest"));
+        let e = await wait();
+        assert.equal(e.url.href, `${origin}/src`, "the event url is correct");
+        assert.equal(e.type, "remove", "the event type is correct");
+      });
+    });
+
+    test("triggers a 'create' event for destination of copy", async function (assert) {
+      await assert.fs.open(url("src"), "file");
+      let { listener, wait } = makeListener(origin);
+      await withListener(assert.fs, origin, listener, async () => {
+        await assert.fs.copy(url("src"), url("dest"));
+        let e = await wait();
+        assert.equal(e.url.href, `${origin}/dest`, "the event url is correct");
+        assert.equal(e.type, "create", "the event type is correct");
+      });
+    });
+
+    test("triggers a 'remove' event when a resource is deleted", async function (assert) {
+      await assert.fs.open(url("test"), "file");
+      let { listener, wait } = makeListener(origin);
+      await withListener(assert.fs, origin, listener, async () => {
+        await assert.fs.remove(url("test"));
+        let e = await wait();
+        assert.equal(e.url.href, `${origin}/test`, "the event url is correct");
+        assert.equal(e.type, "remove", "the event type is correct");
+      });
+    });
+
+    test("triggers a 'write' event when a file is written to", async function (assert) {
+      let file = await assert.fs.open(url("test"), "file");
+      let { listener, wait } = makeListener(origin);
+      await withListener(assert.fs, origin, listener, async () => {
+        await file.write("blah");
+        let e = await wait();
+        assert.equal(e.url.href, `${origin}/test`, "the event url is correct");
+        assert.equal(e.type, "write", "the event type is correct");
+      });
+    });
+
+    test("does not receive events from origins that listener is not listening to", async function (assert) {
+      let { listener, wait } = makeListener(origin);
+      await withListener(assert.fs, origin, listener, async () => {
+        await assert.fs.open(url("test", "http://somewhere-else"), "file");
+        try {
+          await wait();
+          throw new Error(`should not receive event`);
+        } catch (err) {
+          assert.ok(
+            /timeout/.test(err.message),
+            "timeout is received waiting for event"
+          );
+        }
+      });
+    });
+
+    test("can remove an event listener", async function (assert) {
+      let { listener, wait } = makeListener(origin);
+      await withListener(assert.fs, origin, listener, async () => {
+        assert.fs.removeEventListener(origin, listener);
+        await assert.fs.open(url("test"), "file");
+        try {
+          await wait();
+          throw new Error(`should not receive event`);
+        } catch (err) {
+          assert.ok(
+            /timeout/.test(err.message),
+            "timeout is received waiting for event"
+          );
+        }
+      });
+    });
+
+    test("can remove all event listeners", async function (assert) {
+      let { listener: createListener, wait: waitForCreate } = makeListener(
+        origin,
+        "create"
+      );
+      let { listener: removeListener, wait: waitForRemove } = makeListener(
+        origin,
+        "remove"
+      );
+      await withListeners(
+        assert.fs,
+        origin,
+        [createListener, removeListener],
+        async () => {
+          assert.fs.removeAllEventListeners();
+          await assert.fs.open(url("test"), "file");
+          try {
+            await waitForCreate();
+            throw new Error(`should not receive event`);
+          } catch (err) {
+            assert.ok(
+              /timeout/.test(err.message),
+              "timeout is received waiting for event"
+            );
+          }
+          await assert.fs.remove(url("test"));
+          try {
+            await waitForRemove();
+            throw new Error(`should not receive event`);
+          } catch (err) {
+            assert.ok(
+              /timeout/.test(err.message),
+              "timeout is received waiting for event"
+            );
+          }
+        }
+      );
+    });
+  });
 
   QUnit.module("open", function () {
     test("can get an existing file when create mode is not specified", async function (assert) {
@@ -581,7 +750,7 @@ QUnit.module("module filesystem", function (origHooks) {
     });
   });
 
-  test("can get a temp directory", async function (assert) {
+  test("can get a temp origin", async function (assert) {
     await assert.setupFiles();
     let tempURL = await assert.fs.tempURL();
     assert.ok(

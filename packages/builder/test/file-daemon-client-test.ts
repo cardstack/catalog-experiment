@@ -1,15 +1,14 @@
-import { installFileAssertions, FileAssert } from "./file-assertions";
+import { installFileAssertions, FileAssert } from "./helpers/file-assertions";
 import { FileDaemonClient } from "../src/file-daemon-client";
-import { testFileDaemonURL } from "./origins";
+import { testFileDaemonURL as origin } from "./origins";
 import {
   makeClient,
   setupScenario,
   setFile,
   removeFile,
   resetFileSystem,
-  makeListener,
-  withListener,
-} from "./file-daemon-helpers";
+} from "./helpers/file-daemon-helpers";
+import { makeListener, withListener } from "./helpers/event-helpers";
 
 let scenario = Object.freeze({
   "entrypoints.json": `["index.html"]`,
@@ -43,7 +42,7 @@ QUnit.module("module file-daemon-client", function (origHooks) {
       await setupScenario(scenario);
 
       let fileAssert = (assert as unknown) as FileAssert;
-      await fileAssert.setupFiles({}, new URL(testFileDaemonURL));
+      await fileAssert.setupFiles({}, new URL(origin));
 
       client = makeClient(fileAssert.fs);
       await client.ready;
@@ -83,7 +82,7 @@ QUnit.module("module file-daemon-client", function (origHooks) {
       await setupScenario(scenario);
 
       let fileAssert = (assert as unknown) as FileAssert;
-      await fileAssert.setupFiles({}, new URL(testFileDaemonURL));
+      await fileAssert.setupFiles({}, new URL(origin));
 
       client = makeClient(fileAssert.fs, "/mount");
       await client.ready;
@@ -111,7 +110,7 @@ QUnit.module("module file-daemon-client", function (origHooks) {
     origHooks.beforeEach(async (assert) => {
       let fileAssert = (assert as unknown) as FileAssert;
       await setupScenario(scenario);
-      await fileAssert.setupFiles({}, new URL(testFileDaemonURL));
+      await fileAssert.setupFiles({}, new URL(origin));
 
       client = makeClient(fileAssert.fs);
       await client.ready;
@@ -125,8 +124,8 @@ QUnit.module("module file-daemon-client", function (origHooks) {
     });
 
     test("can handle an added file", async function (assert) {
-      let { listener, wait } = makeListener("one/two/foo.txt", "write");
-      await withListener(assert.fs, listener, async () => {
+      let { listener, wait } = makeListener(origin, "write", "one/two/foo.txt");
+      await withListener(assert.fs, origin, listener, async () => {
         await setFile("one/two/foo.txt", "bar");
         await wait();
 
@@ -137,8 +136,12 @@ QUnit.module("module file-daemon-client", function (origHooks) {
     });
 
     test("can handle an updated file", async function (assert) {
-      let { listener, wait } = makeListener("blah/bleep/blurp.txt", "write");
-      await withListener(assert.fs, listener, async () => {
+      let { listener, wait } = makeListener(
+        origin,
+        "write",
+        "blah/bleep/blurp.txt"
+      );
+      await withListener(assert.fs, origin, listener, async () => {
         await setFile("blah/bleep/blurp.txt", "bye guys");
         await wait();
 
@@ -149,8 +152,12 @@ QUnit.module("module file-daemon-client", function (origHooks) {
     });
 
     test("can handle a deleted file", async function (assert) {
-      let { listener, wait } = makeListener("blah/bleep/blurp.txt", "remove");
-      await withListener(assert.fs, listener, async () => {
+      let { listener, wait } = makeListener(
+        origin,
+        "remove",
+        "blah/bleep/blurp.txt"
+      );
+      await withListener(assert.fs, origin, listener, async () => {
         await removeFile("blah/bleep/blurp.txt");
         await wait();
 
@@ -159,15 +166,15 @@ QUnit.module("module file-daemon-client", function (origHooks) {
     });
 
     test("can add an entrypoint", async function (assert) {
-      let { listener, wait } = makeListener("new.html", "write");
-      await withListener(assert.fs, listener, async () => {
+      let { listener, wait } = makeListener(origin, "write", "new.html");
+      await withListener(assert.fs, origin, listener, async () => {
         await setFile("new.html", "<body>hi</body>");
         await wait();
         await assert.file("src-new.html").doesNotExist();
       });
 
-      ({ listener, wait } = makeListener("src-new.html", "write"));
-      await withListener(assert.fs, listener, async () => {
+      ({ listener, wait } = makeListener(origin, "write", "src-new.html"));
+      await withListener(assert.fs, origin, listener, async () => {
         await setFile("entrypoints.json", `["index.html", "new.html"]`);
         await wait();
         await assert.file("src-new.html").exists();
@@ -182,8 +189,8 @@ QUnit.module("module file-daemon-client", function (origHooks) {
     });
 
     test("can update an entrypoint", async function (assert) {
-      let { listener, wait } = makeListener("src-index.html", "write");
-      await withListener(assert.fs, listener, async () => {
+      let { listener, wait } = makeListener(origin, "write", "src-index.html");
+      await withListener(assert.fs, origin, listener, async () => {
         await setFile("index.html", "<body>updated</body>");
         await wait();
         await assert.file("src-index.html").matches(/updated/);
@@ -193,8 +200,8 @@ QUnit.module("module file-daemon-client", function (origHooks) {
     test("can delete an entrypoint", async function (assert) {
       await assert.file("index.html").doesNotExist();
 
-      let { listener, wait } = makeListener("index.html", "write");
-      await withListener(assert.fs, listener, async () => {
+      let { listener, wait } = makeListener(origin, "write", "index.html");
+      await withListener(assert.fs, origin, listener, async () => {
         await setFile("entrypoints.json", `[]`);
         await wait();
         await assert.file("src-index.html").doesNotExist();

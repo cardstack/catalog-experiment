@@ -1,4 +1,4 @@
-import { installFileAssertions, origin } from "./file-assertions";
+import { installFileAssertions, origin } from "./helpers/file-assertions";
 import { Builder } from "../src/builder";
 import { FileSystem } from "../src/filesystem";
 
