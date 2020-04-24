@@ -85,3 +85,34 @@ export function maybeURL(
     throw e;
   }
 }
+
+export function relativeURL(url: URL, relativeTo: URL): string | undefined {
+  debugger;
+  if (url.origin !== relativeTo.origin) {
+    return undefined;
+  }
+  let ourParts = url.pathname.split("/");
+  let theirParts = relativeTo.pathname.split("/");
+
+  // element zero for both is "/" because they always start with a slash check
+  // element 1, if those differ, our nears common ancestor is the root of the
+  // origin.
+  if (ourParts[1] !== theirParts[1]) {
+    return url.pathname;
+  }
+
+  while (
+    ourParts[0] === theirParts[0] &&
+    ourParts.length > 0 &&
+    theirParts.length > 0
+  ) {
+    ourParts.shift();
+    theirParts.shift();
+  }
+  if (theirParts.length > 1) {
+    theirParts.shift();
+    return [...theirParts.map(() => ".."), ...ourParts].join("/");
+  } else {
+    return [".", ...ourParts].join("/");
+  }
+}
