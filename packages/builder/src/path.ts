@@ -116,3 +116,12 @@ export function relativeURL(url: URL, relativeTo: URL): string | undefined {
     return [".", ...ourParts].join("/");
   }
 }
+
+export function maybeRelativeURL(url: URL, relativeTo: URL): string {
+  let rel = relativeURL(url, relativeTo);
+  if (rel) {
+    return rel;
+  } else {
+    return url.href;
+  }
+}

@@ -24,8 +24,8 @@ QUnit.module("module builder", function (origHooks) {
       "src-index.html": `<html><script type="module" src="./index.js"></script></html>`,
       "index.js": `alert("hello everyone");`,
     });
-    let builder = new Builder(assert.fs);
-    await builder.build(origin);
+    let builder = Builder.forProject(assert.fs, origin);
+    await builder.build();
     await assert.file("index.html").exists();
     await assert
       .file("/index.html")
@@ -39,8 +39,8 @@ QUnit.module("module builder", function (origHooks) {
       "index.js": `alert("hello everyone");`,
     });
     let originalEtags = await etags(assert.fs, origin);
-    let builder = new Builder(assert.fs);
-    await builder.build(origin);
+    let builder = Builder.forProject(assert.fs, origin);
+    await builder.build();
 
     let finalEtags = await etags(assert.fs, origin);
     await assert.equal(
@@ -70,8 +70,8 @@ QUnit.module("module builder", function (origHooks) {
       "src-index.html": `<html><script type="module" src="http://somewhere-else/index.js"></script></html>`,
       "index.js": `alert("hello everyone");`,
     });
-    let builder = new Builder(assert.fs);
-    await builder.build(origin);
+    let builder = Builder.forProject(assert.fs, origin);
+    await builder.build();
     await assert
       .file("/index.html")
       .doesNotMatch(/src=\"\/built-index.js\"/, "file contents are correct");
@@ -83,8 +83,8 @@ QUnit.module("module builder", function (origHooks) {
       "src-index.html": `<html><script type="module" src="./index.js"></script></html>`,
       "index.js": `alert("hello everyone");`,
     });
-    let builder = new Builder(assert.fs);
-    await builder.build(origin);
+    let builder = Builder.forProject(assert.fs, origin);
+    await builder.build();
     await assert
       .file("/index.html")
       .matches(/src=\"\/built-index.js\"/, "file contents are correct");
@@ -96,8 +96,8 @@ QUnit.module("module builder", function (origHooks) {
       "src-index.html": `<html><script type="module" src="${origin}/index.js"></script></html>`,
       "index.js": `alert("hello everyone");`,
     });
-    let builder = new Builder(assert.fs);
-    await builder.build(origin);
+    let builder = Builder.forProject(assert.fs, origin);
+    await builder.build();
     await assert
       .file("/index.html")
       .matches(/src=\"\/built-index.js\"/, "file contents are correct");
@@ -111,8 +111,8 @@ QUnit.module("module builder", function (origHooks) {
         <script type="module" src="./index.js"></script>`,
       "index.js": `alert("hello everyone");`,
     });
-    let builder = new Builder(assert.fs);
-    await builder.build(origin);
+    let builder = Builder.forProject(assert.fs, origin);
+    await builder.build();
     await assert
       .file("/index.html")
       .matches(/src=\"\/built-index.js\"/, "file contents are correct");
@@ -130,8 +130,8 @@ QUnit.module("module builder", function (origHooks) {
       `,
       "ui.js": `export const message = "Hello world";`,
     });
-    let builder = new Builder(assert.fs);
-    await builder.build(origin);
+    let builder = Builder.forProject(assert.fs, origin);
+    await builder.build();
     await assert.file("/built-index.js").matches(/Hello world/);
     await assert.file("/built-index.js").doesNotMatch(/import/);
   });

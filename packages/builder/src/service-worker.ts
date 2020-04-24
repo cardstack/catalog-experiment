@@ -49,10 +49,10 @@ worker.addEventListener("activate", () => {
     client = new FileDaemonClient(fileDaemonURL, websocketURL, fs, webroot);
 
     // TODO watch for file changes and build when fs changes
-    let builder = new Builder(fs);
+    let builder = Builder.forProject(fs, origin);
     finishedBuild = (async () => {
       await client.ready;
-      await builder.build(origin);
+      await builder.build();
       console.log(`completed build, file system:`);
       await fs.displayListing();
     })();

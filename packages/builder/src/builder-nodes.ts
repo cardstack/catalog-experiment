@@ -2,7 +2,7 @@ import { DomUtils, parseDOM } from "htmlparser2";
 import * as dom from "domhandler";
 import { Memoize } from "typescript-memoize";
 import render from "dom-serializer";
-import { maybeURL } from "./path";
+import { maybeURL, dirName, baseName, join, maybeRelativeURL } from "./path";
 
 export type OutputType<T> = T extends BuilderNode<infer Output>
   ? Output
@@ -42,38 +42,52 @@ export class JSONParseNode
   }
 }
 
-// export class EntrypointsNode extends BuilderNode {
-//   constructor(private root: URL) {
-//     super({
-//       json: new JSONParseNode(new FileNode(new URL("entrypoints.json", root))),
-//     });
-//   }
+export class EntrypointsJSONNode implements BuilderNode {
+  constructor(private root: URL) {}
 
-//   private assertValid(json: any): asserts json is { [src: string]: string } {
-//     if (!json || typeof json !== "object") {
-//       throw new Error(`invalid entrypoints.json in ${this.root.href}`);
-//     }
-//     if (!Object.values(json).every((k) => typeof k === "string")) {
-//       throw new Error(`invalid entrypoints.json in ${this.root.href}`);
-//     }
-//   }
+  deps() {
+    return {
+      json: new JSONParseNode(
+        new FileNode(new URL("entrypoints.json", this.root))
+      ),
+    };
+  }
 
-//   async run({ json }) {
-//     this.assertValid(json);
-//     let htmlEntrypoints = [];
-//     for (let [src, dest] of Object.entries(json)) {
-//       htmlEntrypoints.push(
-//         new HTMLEntrypointNode(
-//           new URL(src, this.root),
-//           new URL(dest, this.root)
-//         )
-//       );
-//     }
-//     return htmlEntrypoints;
-//   }
-// }
+  private assertValid(json: any): asserts json is { [src: string]: string } {
+    if (!json || typeof json !== "object") {
+      throw new Error(`invalid entrypoints.json in ${this.root.href}`);
+    }
+    if (!Object.values(json).every((k) => typeof k === "string")) {
+      throw new Error(`invalid entrypoints.json in ${this.root.href}`);
+    }
+  }
 
-export class FileNode implements BuilderNode<string> {
+  async run({ json }: { json: any }): Promise<NextNode<void[]>> {
+    this.assertValid(json);
+    let htmlEntrypoints = [];
+    for (let [src, dest] of Object.entries(json)) {
+      htmlEntrypoints.push(
+        new HTMLEntrypointNode(
+          new URL(src, this.root),
+          new URL(dest, this.root)
+        )
+      );
+    }
+    return { node: new AllNode(htmlEntrypoints) };
+  }
+}
+
+export class AllNode<T> implements BuilderNode {
+  constructor(private nodes: BuilderNode<T>[]) {}
+  deps() {
+    return this.nodes;
+  }
+  async run(results: { [key: string]: T }): Promise<Value<T[]>> {
+    return { value: Object.values(results) };
+  }
+}
+
+export class FileNode implements BuilderNode {
   isFileNode = true;
 
   static isFileNode(node: BuilderNode): node is FileNode {
@@ -189,7 +203,7 @@ export class ReplaceScriptsNode implements BuilderNode {
   async run(jsURLs: { [key: string]: URL }): Promise<Value<string>> {
     for (let [key, { element }] of this.jsEntrypoints) {
       let scriptAttrs = Object.assign({}, element.attribs);
-      scriptAttrs.src = jsURLs[key].href;
+      scriptAttrs.src = maybeRelativeURL(jsURLs[key], this.dest);
       this.replace(element, new dom.Element("script", scriptAttrs));
     }
     return { value: render(this.parsedHTML) };
@@ -198,12 +212,26 @@ export class ReplaceScriptsNode implements BuilderNode {
 
 export class JSEntrypointNode implements BuilderNode {
   constructor(private url: URL) {}
-  deps() {}
+
+  @Memoize()
+  get outputURL() {
+    let outputURL = new URL(this.url.href);
+    outputURL.pathname = join(
+      dirName(this.url.pathname) || "/",
+      `built-${baseName(this.url.pathname)}`
+    );
+    return outputURL;
+  }
+
+  deps() {
+    return {
+      copied: new WriteFileNode(new FileNode(this.url), this.outputURL),
+    };
+  }
+
   async run() {
     return {
-      value: new URL(
-        this.url.href.replace(this.url.origin, "http://unimplemented")
-      ),
+      value: this.outputURL,
     };
   }
 }

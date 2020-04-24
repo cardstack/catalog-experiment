@@ -5,6 +5,7 @@ import {
   ConstantNode,
   HTMLEntrypointNode,
   FileNode,
+  EntrypointsJSONNode,
 } from "../src/builder-nodes";
 
 QUnit.module("builder nodes", function (origHooks) {
@@ -30,6 +31,7 @@ QUnit.module("builder nodes", function (origHooks) {
   test("html entrypoint node", async function (assert) {
     await assert.setupFiles({
       "/src/index.html": `<html><script type="module" src="/index.js"></script></html>`,
+      "/index.js": "",
     });
     let node = new HTMLEntrypointNode(
       new URL(`${origin}/src/index.html`),
@@ -40,7 +42,26 @@ QUnit.module("builder nodes", function (origHooks) {
     assert
       .file("/index.html")
       .matches(
-        `<html><script type="module" src="http://unimplemented/index.js"></script></html>`
+        `<html><script type="module" src="/built-index.js"></script></html>`
+      );
+    assert.file("/built-index.js").exists();
+  });
+
+  test("entrypointsJSON node", async function (assert) {
+    await assert.setupFiles({
+      "/entrypoints.json": JSON.stringify({
+        "/src/index.html": "/index.html",
+      }),
+      "/src/index.html": `<html><script type="module" src="/index.js"></script></html>`,
+      "/index.js": "",
+    });
+    let node = new EntrypointsJSONNode(new URL(origin));
+    let builder = new Builder(assert.fs, { test: node });
+    await builder.build();
+    assert
+      .file("/index.html")
+      .matches(
+        `<html><script type="module" src="/built-index.js"></script></html>`
       );
   });
 });
