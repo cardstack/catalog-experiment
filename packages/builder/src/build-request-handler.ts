@@ -1,4 +1,3 @@
-import { parse } from "@babel/core";
 import { Handler, Context } from "./request-handler";
 import { contentType, lookup } from "mime-types";
 import { FileSystem, FileSystemError, FileDescriptor } from "./filesystem";
@@ -32,13 +31,9 @@ export const handleBuildRequest: Handler = async function (
       return file;
     }
   }
-  if (path.split(".").pop() === "js") {
-    return bundled(path, file);
-  } else {
-    let response = new Response(file.getReadbleStream());
-    setContentHeaders(response, path, file);
-    return response;
-  }
+  let response = new Response(file.getReadbleStream());
+  setContentHeaders(response, path, file);
+  return response;
 };
 
 function url(origin: string, webroot: string, relativePath: string) {
@@ -70,21 +65,4 @@ function setContentHeaders(
     contentType(mime) as Exclude<string, false>
   );
   response.headers.set("content-length", String(file.stat.size));
-}
-
-async function bundled(path: string, file: FileDescriptor): Promise<Response> {
-  let js = await file.readText();
-  if (!js) {
-    return new Response(`'${path}' is an empty file`, { status: 500 });
-  }
-
-  // just to prove that we can do this, but really this goes into the builder...
-  let result = await parse(js, {});
-  console.log(result);
-
-  let response = new Response(js);
-  response.headers.set("content-type", "application/javascript");
-  response.headers.set("content-length", String(js.length));
-
-  return response;
 }

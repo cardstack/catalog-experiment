@@ -3,7 +3,7 @@ import { Builder } from "../src/builder";
 import { FileSystem } from "../src/filesystem";
 
 QUnit.module("module builder", function (origHooks) {
-  let { test } = installFileAssertions(origHooks);
+  let { test, only } = installFileAssertions(origHooks);
 
   async function etags(
     fs: FileSystem,
@@ -116,5 +116,23 @@ QUnit.module("module builder", function (origHooks) {
     await assert
       .file("/index.html")
       .matches(/src=\"\/built-index.js\"/, "file contents are correct");
+  });
+
+  test("modules within the app get bundled together", async function (assert) {
+    await assert.setupFiles({
+      "entrypoints.json": `{"src-index.html": "index.html"}`,
+      "src-index.html": `
+        <!DOCTYPE html>
+        <script type="module" src="./index.js"></script>`,
+      "index.js": `
+        import { message } from './ui.js';
+        console.log(message);
+      `,
+      "ui.js": `export const message = "Hello world";`,
+    });
+    let builder = new Builder(assert.fs);
+    await builder.build(origin);
+    await assert.file("/built-index.js").matches(/Hello world/);
+    await assert.file("/built-index.js").doesNotMatch(/import/);
   });
 });

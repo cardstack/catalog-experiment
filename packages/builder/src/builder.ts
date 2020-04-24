@@ -1,8 +1,12 @@
 import { FileSystem, FileDescriptor, FileSystemError } from "./filesystem";
-import { join, baseName, dirName, isURL } from "./path";
+import { join, baseName, dirName, maybeURL } from "./path";
 import { parseDOM, DomUtils } from "htmlparser2";
 import { Node, Element } from "domhandler";
 import render from "dom-serializer";
+import { parse } from "@babel/core";
+import { File } from "@babel/types";
+import { describeImports } from "./describe-imports";
+import { OutputTypes, BuilderNode, MaybeNode } from "./builder-nodes";
 
 export interface EntrypointsMapping {
   [srcFile: string]: string;
@@ -13,19 +17,30 @@ interface EntryPointCacheItem {
   dom: Node[];
 }
 
-export class Builder {
-  private entrypointCache: Map<string, EntryPointCacheItem> = new Map();
+interface ResolvedModule {
+  url: URL;
+  imports: Map<string, ResolvedModule>;
+}
 
-  constructor(private fs: FileSystem) {}
+interface AssignedModule extends ResolvedModule {
+  bundle: URL;
+}
 
-  async build(origin: string): Promise<void> {
+class EntrypointsNode {
+  identity = `entrypoints:${this.root.href}`;
+
+  constructor(private context: BuildContext, private root: URL) {}
+
+  async *run() {
     let entrypointFile: FileDescriptor;
     try {
-      entrypointFile = await this.fs.open(new URL("entrypoints.json", origin));
+      entrypointFile = await this.context.openFile(
+        new URL("entrypoints.json", this.root)
+      );
     } catch (err) {
       if (err instanceof FileSystemError && err.code === "NOT_FOUND") {
         console.warn(
-          `The origin ${origin} has no 'entrypoints.json' file, skipping build for this origin.`
+          `The origin ${this.root} has no 'entrypoints.json' file, skipping build for this origin.`
         );
         return;
       }
@@ -34,17 +49,54 @@ export class Builder {
     let entrypoints = JSON.parse(
       await entrypointFile.readText()
     ) as EntrypointsMapping;
-    for (let [srcPath, destPath] of Object.entries(entrypoints)) {
-      await this.processHTMLEntryPoint(
-        new URL(srcPath, origin),
-        new URL(destPath, origin)
-      );
-    }
+    let htmlNodes = Object.entries(entrypoints).map(
+      ([src, dest]) =>
+        new BuiltHTMLNode(
+          this.context,
+          new URL(src, this.root),
+          new URL(dest, this.root)
+        )
+    );
+    yield htmlNodes;
+  }
+}
+
+export class Builder<Input> {
+  constructor(private fs: FileSystem, private roots: Input) {}
+
+  async build(): Promise<OutputTypes<Input>> {
+    return await this.evalNodes(this.roots);
   }
 
+  async evalNodes<LocalInput>(
+    nodes: LocalInput
+  ): Promise<OutputTypes<LocalInput>> {
+    let results = {} as OutputTypes<LocalInput>;
+    for (let [name, node] of Object.entries(nodes)) {
+      (results as any)[name] = await this.evalNode(node);
+    }
+    return results;
+  }
+
+  async evalNode(node: BuilderNode): Promise<unknown> {
+    let deps = node.deps();
+    let result: MaybeNode<unknown>;
+    if (typeof deps === "object" && deps != null) {
+      result = await node.run(await this.evalNodes(deps));
+    } else {
+      result = await (node as BuilderNode<unknown, void>).run();
+    }
+    if ("node" in result) {
+      return this.evalNode(result.node);
+    } else {
+      return result.value;
+    }
+  }
+}
+
+class Other {
   private async processHTMLEntryPoint(srcUrl: URL, destURL: URL) {
     let entrypointInfo: EntryPointCacheItem;
-    let origin = srcUrl.origin;
     let entrypointFile = await this.fs.open(srcUrl);
     let key = srcUrl.toString();
 
@@ -63,11 +115,11 @@ export class Builder {
 
     let { dom } = entrypointInfo;
     for (let el of DomUtils.findAll((el) => el.tagName === "script", dom)) {
-      await this.processJSEntryPoint(dom, el, origin);
+      await this.processJSEntryPoint(dom, el, destURL);
     }
     for (let el of DomUtils.findAll((el) => el.tagName === "link", dom)) {
       if (el.attribs.rel === "stylesheet") {
-        await this.processCSSEntryPoint(dom, el, origin);
+        await this.processCSSEntryPoint(dom, el, destURL);
       }
     }
 
@@ -78,19 +130,23 @@ export class Builder {
     );
   }
 
-  private async processJSEntryPoint(dom: Node[], el: Element, origin: string) {
+  private async processJSEntryPoint(dom: Node[], el: Element, url: URL) {
     // dont handle scripts that have a different origin than our doc
-    if (isURL(el.attribs.src) && new URL(el.attribs.src).origin !== origin) {
+    let jsURL = maybeURL(el.attribs.src, url);
+    if (!jsURL || jsURL.origin !== url.origin) {
       return;
     }
 
-    let jsURL = new URL(el.attribs.src, origin);
-    let builtJsURL = new URL(
-      join(dirName(jsURL.pathname) || "/", `built-${baseName(jsURL.pathname)}`),
-      origin
+    let builtJsURL = new URL(jsURL.href);
+    builtJsURL.pathname = join(
+      dirName(jsURL.pathname) || "/",
+      `built-${baseName(jsURL.pathname)}`
     );
 
-    // Justt performing an identity transform of the JS entry points for now
+    let deps = (
+      await this.assignBundles([await this.resolveDependencies(jsURL)])
+    )[0];
+
     await this.fs.copy(jsURL, builtJsURL);
 
     let type = el.attribs.type;
@@ -101,11 +157,57 @@ export class Builder {
     replace(dom, el, new Element("script", scriptAttrs));
   }
 
-  private async processCSSEntryPoint(
-    _dom: Node[],
-    _el: Element,
-    _origin: string
-  ) {}
+  private async processCSSEntryPoint(_dom: Node[], _el: Element, _url: URL) {}
+
+  private async resolveDependencies(moduleURL: URL): Promise<ResolvedModule> {
+    let parsed = await this.parseJS(moduleURL);
+    let imports = new Map() as Map<string, ResolvedModule>;
+    await Promise.all(
+      describeImports(parsed).map(async (desc) => {
+        let depURL = await this.resolve(desc.specifier, moduleURL);
+        imports.set(desc.specifier, await this.resolveDependencies(depURL));
+      })
+    );
+    return {
+      imports,
+      url: moduleURL,
+    };
+  }
+
+  private async assignBundles(
+    entryModules: ResolvedModule[]
+  ): Promise<AssignedModule[]> {
+    for (let m of entryModules) {
+      (m as AssignedModule).bundle = new URL(`/dist/0.js`, m.url.origin);
+      for (let n of m.imports.values()) {
+        await this.assignBundles([n]);
+      }
+    }
+    return entryModules as AssignedModule[];
+  }
+
+  private async resolve(specifier: string, source: URL): Promise<URL> {
+    return new URL(specifier, source);
+  }
+
+  private async parseJS(jsURL: URL): Promise<File> {
+    let fd = await this.fs.open(jsURL);
+    let stat = fd.stat;
+    let cached = this.parseCache.get(jsURL.href);
+    if (cached && cached.etag === stat.etag && cached.mtime === stat.mtime) {
+      return cached.parsed;
+    }
+    let parsed = parse(await fd.readText(), {});
+    if (!parsed || parsed.type !== "File") {
+      throw new Error(`unexpected result from babel parse: ${parsed?.type}`);
+    }
+    this.parseCache.set(jsURL.href, {
+      etag: stat.etag,
+      mtime: stat.mtime,
+      parsed,
+    });
+    return parsed;
+  }
 }
 
 function replace(dom: Node[], from: Element, to: Element) {

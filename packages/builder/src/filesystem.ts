@@ -462,7 +462,7 @@ interface ListingEntry {
 }
 interface Stat {
   etag?: string;
-  mtime?: number;
+  mtime: number;
   size?: number;
   type: "directory" | "file";
 }

@@ -7,6 +7,9 @@ import { testOrigin } from "./origins";
 const { test } = QUnit;
 const testContainerId = "test-container";
 
+// @ts-ignore: we are actually in main thread, not worker.
+const win: any = window;
+
 QUnit.module("acceptance builder", function (hooks) {
   function getTestDOM() {
     // @ts-ignore: we are actually in main thread, not worker.
@@ -22,7 +25,7 @@ QUnit.module("acceptance builder", function (hooks) {
   }
 
   async function testFetch(path: string, origin: string = testOrigin) {
-    return fetch(new URL(path, origin).toString(), { mode: "no-cors" });
+    return fetch(new URL(path, origin).href, { mode: "no-cors" });
   }
 
   async function setupScenario(scenario: Scenario = {}) {
@@ -32,11 +35,26 @@ QUnit.module("acceptance builder", function (hooks) {
     });
   }
 
+  async function runModule(url: string) {
+    let s = win.document.createElement("script");
+    s.type = "module";
+    s.src = new URL(url, testOrigin).href;
+    let p = new Promise((resolve, reject) => {
+      s.addEventListener("load", resolve);
+      s.addEventListener("error", reject);
+    });
+    win.document.body.appendChild(s);
+    await p;
+    win.document.body.removeChild(s);
+  }
+
   hooks.beforeEach(async () => {
+    win.testContext = {};
     clearTestDOM();
   });
 
   hooks.afterEach(async () => {
+    delete win.testContext;
     clearTestDOM();
     await fetch("/teardown-fs", { method: "POST" });
   });
@@ -66,5 +84,22 @@ QUnit.module("acceptance builder", function (hooks) {
       "Hello world",
       "the javascript executed successfully"
     );
+  });
+
+  test("a module with a dependency within the app runs correctly", async function (assert) {
+    await setupScenario({
+      "entrypoints.json": `{"src-index.html": "index.html"}`,
+      "src-index.html": `
+        <!DOCTYPE html>
+        <script type="module" src="./index.js"></script>`,
+      "index.js": `
+        import { message } from './ui.js';
+        window.testContext.message = message;
+      `,
+      "ui.js": `export const message = "Hello world";`,
+    });
+
+    await runModule("/built-index.js");
+    assert.equal(win.testContext.message, "Hello world");
   });
 });

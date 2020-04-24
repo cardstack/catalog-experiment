@@ -71,3 +71,17 @@ export function isURL(possibleURL: string): boolean {
     throw e;
   }
 }
+
+export function maybeURL(
+  possibleURL: string,
+  relativeTo?: string | URL | undefined
+): URL | undefined {
+  try {
+    return new URL(possibleURL, relativeTo);
+  } catch (e) {
+    if (e.message.includes("Invalid URL")) {
+      return undefined;
+    }
+    throw e;
+  }
+}
