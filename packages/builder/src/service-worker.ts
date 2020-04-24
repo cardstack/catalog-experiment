@@ -25,7 +25,7 @@ console.log(`service worker evaluated`);
 
 worker.addEventListener("install", () => {
   console.log(`installing`);
-  let workerURL = new URL(worker.location.toString());
+  let workerURL = new URL(worker.location.href);
   origin = workerURL.searchParams.get("origin") || defaultOrigin;
   websocketURL =
     workerURL.searchParams.get("websocketURL") || defaultWebsocketURL;

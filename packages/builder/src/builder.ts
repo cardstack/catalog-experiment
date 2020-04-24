@@ -46,7 +46,7 @@ export class Builder {
     let entrypointInfo: EntryPointCacheItem;
     let origin = srcUrl.origin;
     let entrypointFile = await this.fs.open(srcUrl);
-    let key = srcUrl.toString();
+    let key = srcUrl.href;
 
     if (
       !this.entrypointCache.has(key) ||
