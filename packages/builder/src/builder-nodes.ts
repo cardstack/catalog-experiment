@@ -74,12 +74,18 @@ export class JSONParseNode
 // }
 
 export class FileNode implements BuilderNode<string> {
+  isFileNode = true;
+
+  static isFileNode(node: BuilderNode): node is FileNode {
+    return "isFileNode" in node;
+  }
+
   constructor(public url: URL) {}
 
   deps() {}
 
   async run(): Promise<Value<string>> {
-    throw new Error(`unimplemented`);
+    throw new Error(`bug: this isn't supposed to actually run`);
   }
 }
 
@@ -96,11 +102,11 @@ export class HTMLParseNode implements BuilderNode<dom.Node[]> {
 }
 
 export class HTMLEntrypointNode implements BuilderNode<string> {
-  constructor(private tempSourceHack: string, private dest: URL) {}
+  constructor(private src: URL, private dest: URL) {}
 
   deps() {
     return {
-      parsedHTML: new HTMLParseNode(new ConstantNode(this.tempSourceHack)),
+      parsedHTML: new HTMLParseNode(new FileNode(this.src)),
     };
   }
 
