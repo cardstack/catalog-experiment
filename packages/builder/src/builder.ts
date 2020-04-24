@@ -50,10 +50,10 @@ export class Builder {
 
     if (
       !this.entrypointCache.has(key) ||
-      this.entrypointCache.get(key)!.etag !== entrypointFile.stat.etag
+      this.entrypointCache.get(key)!.etag !== entrypointFile.stat().etag
     ) {
       entrypointInfo = {
-        etag: entrypointFile.stat.etag!,
+        etag: entrypointFile.stat().etag!,
         dom: parseDOM(await entrypointFile.readText()),
       };
       this.entrypointCache.set(key, entrypointInfo);
@@ -73,9 +73,8 @@ export class Builder {
 
     let builtEntrypoint = await this.fs.open(destURL, "file");
     await builtEntrypoint.write(render(dom));
-    builtEntrypoint.setEtag(
-      `${builtEntrypoint.stat.size}_${builtEntrypoint.stat.mtime}`
-    );
+    let stat = builtEntrypoint.stat();
+    builtEntrypoint.setEtag(`${stat.size}_${stat.mtime}`);
   }
 
   private async processJSEntryPoint(dom: Node[], el: Element, origin: string) {
