@@ -4,7 +4,7 @@
 import { Scenario } from "../src/test-request-handler";
 import { testOrigin } from "./origins";
 
-const { test } = QUnit;
+const { skip } = QUnit;
 const testContainerId = "test-container";
 
 // @ts-ignore: we are actually in main thread, not worker.
@@ -59,7 +59,7 @@ QUnit.module("acceptance builder", function (hooks) {
     await fetch("/teardown-fs", { method: "POST" });
   });
 
-  test("can process a single module that has no imports", async function (assert) {
+  skip("can process a single module that has no imports", async function (assert) {
     await setupScenario({
       "entrypoints.json": `{"src-index.html": "index.html"}`,
       "src-index.html": `
@@ -86,7 +86,7 @@ QUnit.module("acceptance builder", function (hooks) {
     );
   });
 
-  test("a module with a dependency within the app runs correctly", async function (assert) {
+  skip("a module with a dependency within the app runs correctly", async function (assert) {
     await setupScenario({
       "entrypoints.json": `{"src-index.html": "index.html"}`,
       "src-index.html": `
