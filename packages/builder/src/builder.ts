@@ -68,7 +68,6 @@ export class Builder<Input> {
   }
 
   async build(): Promise<OutputTypes<Input>> {
-    debugger;
     let context = new CurrentContext(this.recentlyChangedFiles);
     this.recentlyChangedFiles = new Set();
     let result = await this.evalNodes(this.roots, context);
@@ -105,7 +104,6 @@ export class Builder<Input> {
       // node instance instead of the one we were given
       node = state.node;
       state = undefined;
-      debugger;
     }
 
     let result;
@@ -319,7 +317,6 @@ function assertAllComplete(
 ): asserts nodeStates is Map<CacheKey, CompleteState> {
   for (let state of nodeStates.values()) {
     if (state.name !== "complete") {
-      debugger;
       throw new Error(
         `bug: found a node that was not in state "complete" at the end of the build: ${state.node.cacheKey}`
       );
