@@ -8,7 +8,12 @@ import {
   FileNode,
   WriteFileNode,
   EntrypointsJSONNode,
+  MaybeNode,
 } from "./builder-nodes";
+
+type BoolForEach<T> = {
+  [P in keyof T]: boolean;
+};
 
 // nodes are allowed to use any type as their cacheKey, we use this alias to
 // make our own types more readable
@@ -34,7 +39,9 @@ interface EvaluatingState {
   name: "evaluating";
   node: BuilderNode;
   deps: Map<string, CacheKey>;
-  output: Promise<{ node: CacheKey } | { value: unknown }>;
+  output: Promise<
+    { node: CacheKey; changed: boolean } | { value: unknown; changed: boolean }
+  >;
 }
 
 class CurrentContext {
@@ -59,21 +66,30 @@ export class Builder<Input> {
 
   async build(): Promise<OutputTypes<Input>> {
     let context = new CurrentContext();
-    return await this.evalNodes(this.roots, context);
+    return (await this.evalNodes(this.roots, context)).values;
   }
 
   async evalNodes<LocalInput>(
     nodes: LocalInput,
     context: CurrentContext
-  ): Promise<OutputTypes<LocalInput>> {
-    let results = {} as OutputTypes<LocalInput>;
+  ): Promise<{
+    values: OutputTypes<LocalInput>;
+    changes: BoolForEach<LocalInput>;
+  }> {
+    let values = {} as OutputTypes<LocalInput>;
+    let changes = {} as BoolForEach<LocalInput>;
     for (let [name, node] of Object.entries(nodes)) {
-      (results as any)[name] = await this.evalNode(node, context);
+      let { value, changed } = await this.evalNode(node, context);
+      (values as any)[name] = value;
+      (changes as any)[name] = changed;
     }
-    return results;
+    return { values, changes };
   }
 
-  async evalNode(node: BuilderNode, context: CurrentContext): Promise<unknown> {
+  async evalNode(
+    node: BuilderNode,
+    context: CurrentContext
+  ): Promise<{ value: unknown; changed: boolean }> {
     let state = context.nodeStates.get(node.cacheKey);
 
     if (!state) {
@@ -87,7 +103,7 @@ export class Builder<Input> {
     if ("node" in result) {
       return this.evalNode(result.node, context);
     } else {
-      return result.value;
+      return result;
     }
   }
 
@@ -109,31 +125,73 @@ export class Builder<Input> {
         name: "evaluating",
         node,
         deps: depsCacheKeys,
-        output: (async () => {
-          let inputs = await this.evalNodes(deps, context);
-          if (WriteFileNode.isWriteFileNode(node)) {
-            let fd = await this.fs.open(node.url, "file");
-            await fd.write(Object.values(inputs)[0]);
-            return { value: undefined };
-          } else {
-            return await node.run(inputs);
-          }
-        })(),
+        output: this.handleUnchanged(
+          node,
+          this.runNodeWithDeps(node, deps, context)
+        ),
       };
     } else {
       return {
         name: "evaluating",
         node,
         deps: new Map(),
-        output: (async () => {
-          if (FileNode.isFileNode(node)) {
-            let fd = await this.fs.open(node.url);
-            return { value: await fd.readText() };
-          } else {
-            return await (node as BuilderNode<unknown, void>).run();
-          }
-        })(),
+        output: this.handleUnchanged(
+          node,
+          this.runNodeWithoutDeps(node, context)
+        ),
       };
+    }
+  }
+
+  async runNodeWithDeps(
+    node: BuilderNode,
+    deps: object,
+    context: CurrentContext
+  ) {
+    let inputs = await this.evalNodes(deps, context);
+    if (WriteFileNode.isWriteFileNode(node)) {
+      let fd = await this.fs.open(node.url, "file");
+      await fd.write(Object.values(inputs.values)[0]);
+      return { value: undefined };
+    } else {
+      return await node.run(inputs.values);
+    }
+  }
+
+  async runNodeWithoutDeps(node: BuilderNode, context: CurrentContext) {
+    if (FileNode.isFileNode(node)) {
+      let fd = await this.fs.open(node.url);
+      return { value: await fd.readText() };
+    } else {
+      return await (node as BuilderNode<unknown, void>).run();
+    }
+  }
+
+  async handleUnchanged(
+    node: BuilderNode,
+    p: Promise<MaybeNode<unknown>>
+  ): Promise<
+    | { value: unknown; changed: boolean }
+    | { node: BuilderNode; changed: boolean }
+  > {
+    let result = await p;
+    if ("unchanged" in result) {
+      let previous = this.nodeStates.get(node.cacheKey);
+      if (!previous) {
+        throw new Error(
+          `Node ${node.cacheKey} returned { unchanged: true } from its first run()`
+        );
+      }
+      if ("node" in previous.output) {
+        return { node: previous.output.node, changed: false };
+      } else {
+        return { value: previous.output.value, changed: false };
+      }
+    }
+    if ("node" in result) {
+      return { node: result.node, changed: true };
+    } else {
+      return { value: result.value, changed: true };
     }
   }
 }
