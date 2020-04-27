@@ -22,10 +22,16 @@ QUnit.module("builder nodes", function (origHooks) {
     await assert.setupFiles({
       "/example.txt": `Hello world`,
     });
-    let node = new FileNode(new URL(`${origin}/example.txt`));
+    let url = new URL(`${origin}/example.txt`);
+    let node = new FileNode(url);
     let builder = new Builder(assert.fs, { test: node });
     let result = await builder.build();
     assert.deepEqual(result, { test: `Hello world` });
+    let fd = await assert.fs.open(url);
+    await fd.write(`I am updated`);
+    await assert.fs.eventsFlushed();
+    result = await builder.build();
+    assert.deepEqual(result, { test: "I am updated" });
   });
 
   test("html entrypoint node", async function (assert) {

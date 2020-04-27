@@ -1,6 +1,8 @@
-import { FileSystem } from "./filesystem";
+import { FileSystem, Event } from "./filesystem";
 import { parse } from "@babel/core";
 import { File } from "@babel/types";
+import bind from "bind-decorator";
+
 import { describeImports } from "./describe-imports";
 import {
   OutputTypes,
@@ -45,11 +47,13 @@ interface CompleteState {
 
 class CurrentContext {
   nodeStates: Map<string, CurrentState> = new Map();
-  fileChanges: Set<string> = new Set();
+  constructor(public changedFiles: Set<string>) {}
 }
 
 export class Builder<Input> {
   nodeStates: Map<CacheKey, CompleteState> = new Map();
+  watchedOrigins: Set<string> = new Set();
+  recentlyChangedFiles: Set<string> = new Set();
 
   constructor(private fs: FileSystem, private roots: Input) {}
 
@@ -64,7 +68,9 @@ export class Builder<Input> {
   }
 
   async build(): Promise<OutputTypes<Input>> {
-    let context = new CurrentContext();
+    debugger;
+    let context = new CurrentContext(this.recentlyChangedFiles);
+    this.recentlyChangedFiles = new Set();
     let result = await this.evalNodes(this.roots, context);
     assertAllComplete(context.nodeStates);
     this.nodeStates = context.nodeStates;
@@ -184,10 +190,15 @@ export class Builder<Input> {
   ): Promise<InternalResult> {
     let previous = this.nodeStates.get(node.cacheKey);
     if (previous) {
-      return makeInternalResult(previous.output, false);
+      if (
+        !FileNode.isFileNode(node) ||
+        !context.changedFiles.has(node.url.href)
+      ) {
+        return makeInternalResult(previous.output, false);
+      }
     }
-
     if (FileNode.isFileNode(node)) {
+      this.ensureWatching(node.url);
       let fd = await this.fs.open(node.url);
       return { value: await fd.readText(), changed: true };
     } else {
@@ -196,6 +207,18 @@ export class Builder<Input> {
         await (node as BuilderNode<unknown, void>).run()
       );
     }
+  }
+
+  private ensureWatching(url: URL) {
+    if (!this.watchedOrigins.has(url.origin)) {
+      this.fs.addEventListener(url.origin, this.fileDidChange);
+      this.watchedOrigins.add(url.origin);
+    }
+  }
+
+  @bind
+  private fileDidChange(event: Event) {
+    this.recentlyChangedFiles.add(event.url.href);
   }
 
   handleUnchanged(
