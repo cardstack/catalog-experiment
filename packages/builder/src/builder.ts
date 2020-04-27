@@ -8,7 +8,7 @@ import {
   FileNode,
   WriteFileNode,
   EntrypointsJSONNode,
-  MaybeNode,
+  NodeOutput,
 } from "./builder-nodes";
 
 type BoolForEach<T> = {
@@ -17,17 +17,17 @@ type BoolForEach<T> = {
 
 // nodes are allowed to use any type as their cacheKey, we use this alias to
 // make our own types more readable
-type CacheKey = any;
+type CacheKey = unknown;
 
 interface CompleteState {
   node: BuilderNode;
-
-  // from name to node cacheKey
-  deps: Map<string, CacheKey>;
-
-  // the cacheKey of the node we output, or the actual value we output
-  output: { node: CacheKey } | { value: unknown };
+  deps: { [name: string]: BuilderNode };
+  output: { node: BuilderNode } | { value: unknown };
 }
+
+type InternalNodeOutput =
+  | { node: BuilderNode; changed: boolean }
+  | { value: unknown; changed: boolean };
 
 type CurrentState = InitialState | EvaluatingState;
 
@@ -38,10 +38,8 @@ interface InitialState {
 interface EvaluatingState {
   name: "evaluating";
   node: BuilderNode;
-  deps: Map<string, CacheKey>;
-  output: Promise<
-    { node: CacheKey; changed: boolean } | { value: unknown; changed: boolean }
-  >;
+  deps: { [name: string]: BuilderNode } | null;
+  output: Promise<InternalNodeOutput>;
 }
 
 class CurrentContext {
@@ -50,7 +48,7 @@ class CurrentContext {
 }
 
 export class Builder<Input> {
-  nodeStates: Map<string, CompleteState> = new Map();
+  nodeStates: Map<CacheKey, CompleteState> = new Map();
 
   constructor(private fs: FileSystem, private roots: Input) {}
 
@@ -112,10 +110,8 @@ export class Builder<Input> {
     context: CurrentContext
   ): EvaluatingState {
     let deps = node.deps();
-    let depsCacheKeys = new Map();
-    if (typeof deps === "object" && deps != null) {
-      for (let [name, depNode] of Object.entries(deps)) {
-        depsCacheKeys.set(name, depNode.cacheKey);
+    if (hasDeps(deps)) {
+      for (let depNode of Object.values(deps)) {
         context.nodeStates.set(depNode.cacheKey, {
           name: "initial",
           node: depNode,
@@ -124,21 +120,15 @@ export class Builder<Input> {
       return {
         name: "evaluating",
         node,
-        deps: depsCacheKeys,
-        output: this.handleUnchanged(
-          node,
-          this.runNodeWithDeps(node, deps, context)
-        ),
+        deps,
+        output: this.runNodeWithDeps(node, deps, context),
       };
     } else {
       return {
         name: "evaluating",
         node,
-        deps: new Map(),
-        output: this.handleUnchanged(
-          node,
-          this.runNodeWithoutDeps(node, context)
-        ),
+        deps: null,
+        output: this.runNodeWithoutDeps(node, context),
       };
     }
   }
@@ -147,34 +137,49 @@ export class Builder<Input> {
     node: BuilderNode,
     deps: object,
     context: CurrentContext
-  ) {
+  ): Promise<InternalNodeOutput> {
     let inputs = await this.evalNodes(deps, context);
+    if (Object.values(inputs.changes).every((didChange) => !didChange)) {
+      let previous = this.nodeStates.get(node.cacheKey);
+      if (previous) {
+        // we have a previous answer, and all our inputs are unchanged, so
+        // nothing to run
+        if ("node" in previous.output) {
+          return { node: previous.output.node, changed: false };
+        } else {
+          return { value: previous.output.value, changed: false };
+        }
+      }
+    }
+
     if (WriteFileNode.isWriteFileNode(node)) {
       let fd = await this.fs.open(node.url, "file");
       await fd.write(Object.values(inputs.values)[0]);
-      return { value: undefined };
+      return { value: undefined, changed: true };
     } else {
-      return await node.run(inputs.values);
+      return this.handleUnchanged(node, await node.run(inputs.values));
     }
   }
 
-  async runNodeWithoutDeps(node: BuilderNode, context: CurrentContext) {
+  async runNodeWithoutDeps(
+    node: BuilderNode,
+    context: CurrentContext
+  ): Promise<InternalNodeOutput> {
     if (FileNode.isFileNode(node)) {
       let fd = await this.fs.open(node.url);
-      return { value: await fd.readText() };
+      return { value: await fd.readText(), changed: true };
     } else {
-      return await (node as BuilderNode<unknown, void>).run();
+      return this.handleUnchanged(
+        node,
+        await (node as BuilderNode<unknown, void>).run()
+      );
     }
   }
 
-  async handleUnchanged(
+  handleUnchanged(
     node: BuilderNode,
-    p: Promise<MaybeNode<unknown>>
-  ): Promise<
-    | { value: unknown; changed: boolean }
-    | { node: BuilderNode; changed: boolean }
-  > {
-    let result = await p;
+    result: NodeOutput<unknown>
+  ): InternalNodeOutput {
     if ("unchanged" in result) {
       let previous = this.nodeStates.get(node.cacheKey);
       if (!previous) {
@@ -255,4 +260,8 @@ class Other {
     });
     return parsed;
   }
+}
+
+function hasDeps(deps: unknown): deps is { [key: string]: BuilderNode } {
+  return typeof deps === "object" && deps != null;
 }

@@ -15,12 +15,12 @@ export type OutputTypes<T> = {
 export type Value<T> = { value: T };
 export type NextNode<T> = { node: BuilderNode<T> };
 export type Unchanged = { unchanged: true };
-export type MaybeNode<T> = Value<T> | NextNode<T> | Unchanged;
+export type NodeOutput<T> = Value<T> | NextNode<T> | Unchanged;
 
 export interface BuilderNode<Output = unknown, Input = unknown> {
   readonly cacheKey: any;
   deps(): Input;
-  run(input: OutputTypes<Input>): Promise<MaybeNode<Output>>;
+  run(input: OutputTypes<Input>): Promise<NodeOutput<Output>>;
 }
 
 export class ConstantNode<T> implements BuilderNode<T, void> {
@@ -32,7 +32,7 @@ export class ConstantNode<T> implements BuilderNode<T, void> {
     this.cacheKey = `constant:${JSON.stringify(this.value)}`;
   }
   deps() {}
-  async run(): Promise<MaybeNode<T>> {
+  async run(): Promise<NodeOutput<T>> {
     if (this.firstRun) {
       this.firstRun = false;
       return { value: this.value };
