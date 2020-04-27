@@ -19,17 +19,11 @@ type BoolForEach<T> = {
 // make our own types more readable
 type CacheKey = unknown;
 
-interface CompleteState {
-  node: BuilderNode;
-  deps: { [name: string]: BuilderNode };
-  output: { node: BuilderNode } | { value: unknown };
-}
-
 type InternalResult =
   | { node: BuilderNode; changed: boolean }
   | { value: unknown; changed: boolean };
 
-type CurrentState = InitialState | EvaluatingState;
+type CurrentState = InitialState | EvaluatingState | CompleteState;
 
 interface InitialState {
   name: "initial";
@@ -40,6 +34,13 @@ interface EvaluatingState {
   node: BuilderNode;
   deps: { [name: string]: BuilderNode } | null;
   output: Promise<InternalResult>;
+}
+
+interface CompleteState {
+  name: "complete";
+  node: BuilderNode;
+  deps: { [name: string]: BuilderNode } | null;
+  output: InternalResult;
 }
 
 class CurrentContext {
@@ -64,7 +65,10 @@ export class Builder<Input> {
 
   async build(): Promise<OutputTypes<Input>> {
     let context = new CurrentContext();
-    return (await this.evalNodes(this.roots, context)).values;
+    let result = await this.evalNodes(this.roots, context);
+    assertAllComplete(context.nodeStates);
+    this.nodeStates = context.nodeStates;
+    return result.values;
   }
 
   async evalNodes<LocalInput>(
@@ -90,13 +94,27 @@ export class Builder<Input> {
   ): Promise<{ value: unknown; changed: boolean }> {
     let state = context.nodeStates.get(node.cacheKey);
 
-    if (!state) {
-      state = this.startEvaluating(node, context);
-    } else if (state.name === "initial") {
-      state = this.startEvaluating(state.node, context);
+    if (state && state.name === "initial") {
+      // somebody already created an initial state for this cacheKey, use that
+      // node instance instead of the one we were given
+      node = state.node;
+      state = undefined;
+      debugger;
     }
 
-    let result = await state.output;
+    let result;
+    if (state) {
+      result = await state.output;
+    } else {
+      state = this.startEvaluating(node, context);
+      result = await state.output;
+      context.nodeStates.set(node.cacheKey, {
+        name: "complete",
+        node,
+        deps: state.deps,
+        output: result,
+      });
+    }
 
     if ("node" in result) {
       return this.evalNode(result.node, context);
@@ -110,6 +128,7 @@ export class Builder<Input> {
     context: CurrentContext
   ): EvaluatingState {
     let deps = node.deps();
+    let state: EvaluatingState;
     if (hasDeps(deps)) {
       for (let depNode of Object.values(deps)) {
         context.nodeStates.set(depNode.cacheKey, {
@@ -117,20 +136,22 @@ export class Builder<Input> {
           node: depNode,
         });
       }
-      return {
+      state = {
         name: "evaluating",
         node,
         deps,
         output: this.runNodeWithDeps(node, deps, context),
       };
     } else {
-      return {
+      state = {
         name: "evaluating",
         node,
         deps: null,
         output: this.runNodeWithoutDeps(node, context),
       };
     }
+    context.nodeStates.set(node.cacheKey, state);
+    return state;
   }
 
   async runNodeWithDeps(
@@ -267,5 +288,18 @@ function makeInternalResult(
     return { node: input.node, changed };
   } else {
     return { value: input.value, changed };
+  }
+}
+
+function assertAllComplete(
+  nodeStates: Map<CacheKey, CurrentState>
+): asserts nodeStates is Map<CacheKey, CompleteState> {
+  for (let state of nodeStates.values()) {
+    if (state.name !== "complete") {
+      debugger;
+      throw new Error(
+        `bug: found a node that was not in state "complete" at the end of the build: ${state.node.cacheKey}`
+      );
+    }
   }
 }
