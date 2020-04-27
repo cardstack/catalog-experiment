@@ -25,7 +25,7 @@ interface CompleteState {
   output: { node: BuilderNode } | { value: unknown };
 }
 
-type InternalNodeOutput =
+type InternalResult =
   | { node: BuilderNode; changed: boolean }
   | { value: unknown; changed: boolean };
 
@@ -39,7 +39,7 @@ interface EvaluatingState {
   name: "evaluating";
   node: BuilderNode;
   deps: { [name: string]: BuilderNode } | null;
-  output: Promise<InternalNodeOutput>;
+  output: Promise<InternalResult>;
 }
 
 class CurrentContext {
@@ -137,18 +137,14 @@ export class Builder<Input> {
     node: BuilderNode,
     deps: object,
     context: CurrentContext
-  ): Promise<InternalNodeOutput> {
+  ): Promise<InternalResult> {
     let inputs = await this.evalNodes(deps, context);
     if (Object.values(inputs.changes).every((didChange) => !didChange)) {
       let previous = this.nodeStates.get(node.cacheKey);
       if (previous) {
         // we have a previous answer, and all our inputs are unchanged, so
         // nothing to run
-        if ("node" in previous.output) {
-          return { node: previous.output.node, changed: false };
-        } else {
-          return { value: previous.output.value, changed: false };
-        }
+        return makeInternalResult(previous.output, false);
       }
     }
 
@@ -164,7 +160,12 @@ export class Builder<Input> {
   async runNodeWithoutDeps(
     node: BuilderNode,
     context: CurrentContext
-  ): Promise<InternalNodeOutput> {
+  ): Promise<InternalResult> {
+    let previous = this.nodeStates.get(node.cacheKey);
+    if (previous) {
+      return makeInternalResult(previous.output, false);
+    }
+
     if (FileNode.isFileNode(node)) {
       let fd = await this.fs.open(node.url);
       return { value: await fd.readText(), changed: true };
@@ -179,7 +180,7 @@ export class Builder<Input> {
   handleUnchanged(
     node: BuilderNode,
     result: NodeOutput<unknown>
-  ): InternalNodeOutput {
+  ): InternalResult {
     if ("unchanged" in result) {
       let previous = this.nodeStates.get(node.cacheKey);
       if (!previous) {
@@ -187,17 +188,9 @@ export class Builder<Input> {
           `Node ${node.cacheKey} returned { unchanged: true } from its first run()`
         );
       }
-      if ("node" in previous.output) {
-        return { node: previous.output.node, changed: false };
-      } else {
-        return { value: previous.output.value, changed: false };
-      }
+      return makeInternalResult(previous.output, false);
     }
-    if ("node" in result) {
-      return { node: result.node, changed: true };
-    } else {
-      return { value: result.value, changed: true };
-    }
+    return makeInternalResult(result, true);
   }
 }
 
@@ -264,4 +257,15 @@ class Other {
 
 function hasDeps(deps: unknown): deps is { [key: string]: BuilderNode } {
   return typeof deps === "object" && deps != null;
+}
+
+function makeInternalResult(
+  input: { value: unknown } | { node: BuilderNode },
+  changed: boolean
+): InternalResult {
+  if ("node" in input) {
+    return { node: input.node, changed };
+  } else {
+    return { value: input.value, changed };
+  }
 }
