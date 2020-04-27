@@ -5,13 +5,46 @@ import { describeImports } from "./describe-imports";
 import {
   OutputTypes,
   BuilderNode,
-  MaybeNode,
   FileNode,
   WriteFileNode,
   EntrypointsJSONNode,
 } from "./builder-nodes";
 
+// nodes are allowed to use any type as their cacheKey, we use this alias to
+// make our own types more readable
+type CacheKey = any;
+
+interface CompleteState {
+  node: BuilderNode;
+
+  // from name to node cacheKey
+  deps: Map<string, CacheKey>;
+
+  // the cacheKey of the node we output, or the actual value we output
+  output: { node: CacheKey } | { value: unknown };
+}
+
+type CurrentState = InitialState | EvaluatingState;
+
+interface InitialState {
+  name: "initial";
+  node: BuilderNode;
+}
+interface EvaluatingState {
+  name: "evaluating";
+  node: BuilderNode;
+  deps: Map<string, CacheKey>;
+  output: Promise<{ node: CacheKey } | { value: unknown }>;
+}
+
+class CurrentContext {
+  nodeStates: Map<string, CurrentState> = new Map();
+  fileChanges: Set<string> = new Set();
+}
+
 export class Builder<Input> {
+  nodeStates: Map<string, CompleteState> = new Map();
+
   constructor(private fs: FileSystem, private roots: Input) {}
 
   static forProject(fs: FileSystem, root: URL | string) {
@@ -25,43 +58,82 @@ export class Builder<Input> {
   }
 
   async build(): Promise<OutputTypes<Input>> {
-    return await this.evalNodes(this.roots);
+    let context = new CurrentContext();
+    return await this.evalNodes(this.roots, context);
   }
 
   async evalNodes<LocalInput>(
-    nodes: LocalInput
+    nodes: LocalInput,
+    context: CurrentContext
   ): Promise<OutputTypes<LocalInput>> {
     let results = {} as OutputTypes<LocalInput>;
     for (let [name, node] of Object.entries(nodes)) {
-      (results as any)[name] = await this.evalNode(node);
+      (results as any)[name] = await this.evalNode(node, context);
     }
     return results;
   }
 
-  async evalNode(node: BuilderNode): Promise<unknown> {
-    let deps = node.deps();
-    let result: MaybeNode<unknown>;
-    if (typeof deps === "object" && deps != null) {
-      let inputs = await this.evalNodes(deps);
-      if (WriteFileNode.isWriteFileNode(node)) {
-        let fd = await this.fs.open(node.url, "file");
-        await fd.write(Object.values(inputs)[0]);
-        result = { value: undefined };
-      } else {
-        result = await node.run(inputs);
-      }
-    } else {
-      if (FileNode.isFileNode(node)) {
-        let fd = await this.fs.open(node.url);
-        result = { value: await fd.readText() };
-      } else {
-        result = await (node as BuilderNode<unknown, void>).run();
-      }
+  async evalNode(node: BuilderNode, context: CurrentContext): Promise<unknown> {
+    let state = context.nodeStates.get(node.cacheKey);
+
+    if (!state) {
+      state = this.startEvaluating(node, context);
+    } else if (state.name === "initial") {
+      state = this.startEvaluating(state.node, context);
     }
+
+    let result = await state.output;
+
     if ("node" in result) {
-      return this.evalNode(result.node);
+      return this.evalNode(result.node, context);
     } else {
       return result.value;
+    }
+  }
+
+  private startEvaluating(
+    node: BuilderNode,
+    context: CurrentContext
+  ): EvaluatingState {
+    let deps = node.deps();
+    let depsCacheKeys = new Map();
+    if (typeof deps === "object" && deps != null) {
+      for (let [name, depNode] of Object.entries(deps)) {
+        depsCacheKeys.set(name, depNode.cacheKey);
+        context.nodeStates.set(depNode.cacheKey, {
+          name: "initial",
+          node: depNode,
+        });
+      }
+      return {
+        name: "evaluating",
+        node,
+        deps: depsCacheKeys,
+        output: (async () => {
+          let inputs = await this.evalNodes(deps, context);
+          if (WriteFileNode.isWriteFileNode(node)) {
+            let fd = await this.fs.open(node.url, "file");
+            await fd.write(Object.values(inputs)[0]);
+            return { value: undefined };
+          } else {
+            return await node.run(inputs);
+          }
+        })(),
+      };
+    } else {
+      return {
+        name: "evaluating",
+        node,
+        deps: new Map(),
+        output: (async () => {
+          if (FileNode.isFileNode(node)) {
+            let fd = await this.fs.open(node.url);
+            return { value: await fd.readText() };
+          } else {
+            return await (node as BuilderNode<unknown, void>).run();
+          }
+        })(),
+      };
     }
   }
 }

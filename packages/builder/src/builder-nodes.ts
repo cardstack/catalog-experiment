@@ -17,12 +17,16 @@ export type NextNode<T> = { node: BuilderNode<T> };
 export type MaybeNode<T> = Value<T> | NextNode<T>;
 
 export interface BuilderNode<Output = unknown, Input = unknown> {
+  readonly cacheKey: any;
   deps(): Input;
   run(input: OutputTypes<Input>): Promise<MaybeNode<Output>>;
 }
 
 export class ConstantNode<T> implements BuilderNode<T, void> {
-  constructor(private value: T) {}
+  cacheKey: string;
+  constructor(private value: T) {
+    this.cacheKey = `constant:${JSON.stringify(this.value)}`;
+  }
   deps() {}
   async run() {
     return { value: this.value };
@@ -31,7 +35,11 @@ export class ConstantNode<T> implements BuilderNode<T, void> {
 
 export class JSONParseNode
   implements BuilderNode<any, { input: BuilderNode<string> }> {
-  constructor(private input: BuilderNode<string>) {}
+  constructor(private input: BuilderNode<string>) {
+    this.cacheKey = this;
+  }
+
+  cacheKey: JSONParseNode;
 
   deps() {
     return { input: this.input };
@@ -43,7 +51,11 @@ export class JSONParseNode
 }
 
 export class EntrypointsJSONNode implements BuilderNode {
-  constructor(private root: URL) {}
+  cacheKey: string;
+
+  constructor(private root: URL) {
+    this.cacheKey = `entrypoints-json:${this.root.href}`;
+  }
 
   deps() {
     return {
@@ -78,7 +90,11 @@ export class EntrypointsJSONNode implements BuilderNode {
 }
 
 export class AllNode<T> implements BuilderNode {
-  constructor(private nodes: BuilderNode<T>[]) {}
+  cacheKey: AllNode<T>;
+
+  constructor(private nodes: BuilderNode<T>[]) {
+    this.cacheKey = this;
+  }
   deps() {
     return this.nodes;
   }
@@ -89,12 +105,15 @@ export class AllNode<T> implements BuilderNode {
 
 export class FileNode implements BuilderNode {
   isFileNode = true;
+  cacheKey: string;
 
   static isFileNode(node: BuilderNode): node is FileNode {
     return "isFileNode" in node;
   }
 
-  constructor(public url: URL) {}
+  constructor(public url: URL) {
+    this.cacheKey = `file:${this.url.href}`;
+  }
 
   deps() {}
 
@@ -105,12 +124,15 @@ export class FileNode implements BuilderNode {
 
 export class WriteFileNode implements BuilderNode<void> {
   isWriteFileNode = true;
+  cacheKey: string;
 
   static isWriteFileNode(node: BuilderNode): node is WriteFileNode {
     return "isWriteFileNode" in node;
   }
 
-  constructor(private source: BuilderNode<string>, public url: URL) {}
+  constructor(private source: BuilderNode<string>, public url: URL) {
+    this.cacheKey = `write-file:${this.url.href}`;
+  }
 
   deps() {
     return { source: this.source };
@@ -122,7 +144,11 @@ export class WriteFileNode implements BuilderNode<void> {
 }
 
 export class HTMLParseNode implements BuilderNode {
-  constructor(private source: BuilderNode<string>) {}
+  cacheKey: HTMLParseNode;
+
+  constructor(private source: BuilderNode<string>) {
+    this.cacheKey = this;
+  }
 
   deps() {
     return { source: this.source };
@@ -134,7 +160,11 @@ export class HTMLParseNode implements BuilderNode {
 }
 
 export class HTMLEntrypointNode implements BuilderNode {
-  constructor(private src: URL, private dest: URL) {}
+  cacheKey: string;
+
+  constructor(private src: URL, private dest: URL) {
+    this.cacheKey = `html-entrypoint:${this.dest.href}`;
+  }
 
   deps() {
     return {
@@ -157,10 +187,14 @@ export class HTMLEntrypointNode implements BuilderNode {
 }
 
 export class ReplaceScriptsNode implements BuilderNode {
+  cacheKey: string;
+
   constructor(
     private parsedHTML: OutputType<HTMLParseNode>,
     private dest: URL
-  ) {}
+  ) {
+    this.cacheKey = `replace-scripts:${this.dest.href}`;
+  }
 
   private replace(from: dom.Element, to: dom.Element) {
     // if the script tag is actually a root node (i.e. not a descendant of <html>
@@ -211,7 +245,11 @@ export class ReplaceScriptsNode implements BuilderNode {
 }
 
 export class JSEntrypointNode implements BuilderNode {
-  constructor(private url: URL) {}
+  cacheKey: string;
+
+  constructor(private url: URL) {
+    this.cacheKey = `js-entrypoint:${this.url.href}`;
+  }
 
   @Memoize()
   get outputURL() {
