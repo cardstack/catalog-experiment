@@ -87,7 +87,6 @@ export function maybeURL(
 }
 
 export function relativeURL(url: URL, relativeTo: URL): string | undefined {
-  debugger;
   if (url.origin !== relativeTo.origin) {
     return undefined;
   }
