@@ -2,7 +2,11 @@ import { DomUtils, parseDOM } from "htmlparser2";
 import * as dom from "domhandler";
 import { Memoize } from "typescript-memoize";
 import render from "dom-serializer";
+import { parse } from "@babel/core";
+import { File } from "@babel/types";
+
 import { maybeURL, dirName, baseName, join, maybeRelativeURL } from "./path";
+import { describeImports } from "./describe-imports";
 
 export type OutputType<T> = T extends BuilderNode<infer Output>
   ? Output
@@ -83,7 +87,7 @@ export class EntrypointsJSONNode implements BuilderNode {
     }
   }
 
-  async run({ json }: { json: any }): Promise<NextNode<void[]>> {
+  async run({ json }: { json: any }): Promise<NextNode<HTMLEntrypoint[]>> {
     this.assertValid(json);
     let htmlEntrypoints = [];
     for (let [src, dest] of Object.entries(json)) {
@@ -168,6 +172,138 @@ export class HTMLParseNode implements BuilderNode {
   }
 }
 
+class AllJSEntrypoints implements BuilderNode {
+  cacheKey = this;
+
+  constructor(private projectRoots: URL[]) {}
+
+  deps() {
+    let entrypoints: { [href: string]: EntrypointsJSONNode } = {};
+    for (let root of this.projectRoots) {
+      entrypoints[root.href] = new EntrypointsJSONNode(root);
+    }
+    return entrypoints;
+  }
+
+  async run(projects: {
+    [href: string]: HTMLEntrypoint[];
+  }): Promise<Value<Set<string>>> {
+    let jsEntrypoints: Set<string> = new Set();
+    for (let project of Object.values(projects)) {
+      for (let entrypoint of project) {
+        for (let js of entrypoint.jsEntrypoints.keys()) {
+          jsEntrypoints.add(js);
+        }
+      }
+    }
+    return { value: jsEntrypoints };
+  }
+}
+
+interface ModuleResolution {
+  url: URL;
+  imports: { [specifier: string]: ModuleResolution };
+}
+
+class Resolver {
+  async resolve(specifier: string, source: URL): Promise<URL> {
+    return new URL(specifier, source);
+  }
+}
+
+class ModuleResolutionNode implements BuilderNode {
+  cacheKey: string;
+  constructor(private url: URL, private resolver: Resolver) {
+    this.cacheKey = `module-resolution-node:${url.href}`;
+  }
+  deps() {
+    return { parsed: new JSParseNode(new FileNode(this.url)) };
+  }
+  async run({ parsed }: { parsed: File }): Promise<NextNode<ModuleResolution>> {
+    let imports = {} as { [specifier: string]: ModuleResolutionNode };
+    await Promise.all(
+      describeImports(parsed).map(async (desc) => {
+        let depURL = await this.resolver.resolve(desc.specifier, this.url);
+        imports[desc.specifier] = new ModuleResolutionNode(
+          depURL,
+          this.resolver
+        );
+      })
+    );
+    return { node: new FinishResolutionNode(this.url, imports) };
+  }
+}
+
+class FinishResolutionNode implements BuilderNode {
+  cacheKey: FinishResolutionNode;
+  constructor(
+    private url: URL,
+    private imports: { [specifier: string]: ModuleResolutionNode }
+  ) {
+    this.cacheKey = this;
+  }
+  deps() {
+    return this.imports;
+  }
+  async run(imports: {
+    [specifier: string]: ModuleResolution;
+  }): Promise<Value<ModuleResolution>> {
+    return {
+      value: {
+        url: this.url,
+        imports,
+      },
+    };
+  }
+}
+
+class HTMLEntrypoint {
+  constructor(private parsedHTML: dom.Node[], private dest: URL) {}
+
+  @Memoize()
+  get jsEntrypoints() {
+    let jsEntrypoints: Map<
+      string,
+      { element: dom.Element; url: URL }
+    > = new Map();
+    let scripts = DomUtils.findAll(
+      (el) => el.tagName === "script",
+      this.parsedHTML
+    );
+    for (let element of scripts) {
+      let url = maybeURL(element.attribs.src, this.dest);
+      if (url && url.origin === this.dest.origin) {
+        jsEntrypoints.set(url.href, { url, element });
+      }
+    }
+    return jsEntrypoints;
+  }
+
+  private replace(from: dom.Element, to: dom.Element) {
+    // if the script tag is actually a root node (i.e. not a descendant of <html>
+    // element), we need to handle replacement a little diferently
+    if (this.parsedHTML.includes(from)) {
+      let index = this.parsedHTML.findIndex((i) => i === from);
+      this.parsedHTML[index] = to;
+    } else {
+      DomUtils.replaceElement(from, to);
+    }
+  }
+
+  render(assignments: BundleAssignments): string {
+    for (let { element, url } of this.jsEntrypoints.values()) {
+      let scriptAttrs = Object.assign({}, element.attribs);
+      scriptAttrs.src = maybeRelativeURL(assignments.bundleFor(url), this.dest);
+      this.replace(element, new dom.Element("script", scriptAttrs));
+    }
+    return render(this.parsedHTML);
+  }
+}
+
+interface BundleAssignments {
+  bundleFor(jsModule: URL): URL;
+}
+
 export class HTMLEntrypointNode implements BuilderNode {
   cacheKey: string;
 
@@ -185,12 +321,9 @@ export class HTMLEntrypointNode implements BuilderNode {
     parsedHTML,
   }: {
     parsedHTML: OutputType<HTMLParseNode>;
-  }): Promise<NextNode<void>> {
+  }): Promise<Value<HTMLEntrypoint>> {
     return {
-      node: new WriteFileNode(
-        new ReplaceScriptsNode(parsedHTML, this.dest),
-        this.dest
-      ),
+      value: new HTMLEntrypoint(parsedHTML, this.dest),
     };
   }
 }
