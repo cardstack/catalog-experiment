@@ -1,17 +1,8 @@
 import { FileSystem, Event } from "./filesystem";
-import { parse } from "@babel/core";
-import { File } from "@babel/types";
 import bind from "bind-decorator";
-
-import { describeImports } from "./describe-imports";
-import {
-  OutputTypes,
-  BuilderNode,
-  FileNode,
-  WriteFileNode,
-  EntrypointsJSONNode,
-  NodeOutput,
-} from "./builder-nodes";
+import { OutputTypes, BuilderNode, NodeOutput } from "./nodes/common";
+import { FileNode, WriteFileNode } from "./nodes/file";
+import { MakeBundledModulesNode } from "./nodes/bundle";
 
 type BoolForEach<T> = {
   [P in keyof T]: boolean;
@@ -57,14 +48,17 @@ export class Builder<Input> {
 
   constructor(private fs: FileSystem, private roots: Input) {}
 
-  static forProject(fs: FileSystem, root: URL | string) {
-    let url: URL;
-    if (typeof root === "string") {
-      url = new URL(root);
+  static forProjects(fs: FileSystem, roots: URL[] | string[]) {
+    let urls: URL[];
+    if (
+      roots.length > 0 &&
+      (roots as any[]).every((r) => typeof r === "string")
+    ) {
+      urls = (roots as string[]).map((r) => new URL(r));
     } else {
-      url = root;
+      urls = roots as URL[];
     }
-    return new Builder(fs, [new EntrypointsJSONNode(url)]);
+    return new Builder(fs, [new MakeBundledModulesNode(urls)]);
   }
 
   async build(): Promise<OutputTypes<Input>> {
@@ -233,67 +227,6 @@ export class Builder<Input> {
       return makeInternalResult(previous.output, false);
     }
     return makeInternalResult(result, true);
-  }
-}
-
-interface ResolvedModule {
-  url: URL;
-  imports: Map<string, ResolvedModule>;
-}
-
-interface AssignedModule extends ResolvedModule {
-  bundle: URL;
-}
-
-class Other {
-  private async resolveDependencies(moduleURL: URL): Promise<ResolvedModule> {
-    let parsed = await this.parseJS(moduleURL);
-    let imports = new Map() as Map<string, ResolvedModule>;
-    await Promise.all(
-      describeImports(parsed).map(async (desc) => {
-        let depURL = await this.resolve(desc.specifier, moduleURL);
-        imports.set(desc.specifier, await this.resolveDependencies(depURL));
-      })
-    );
-    return {
-      imports,
-      url: moduleURL,
-    };
-  }
-
-  private async assignBundles(
-    entryModules: ResolvedModule[]
-  ): Promise<AssignedModule[]> {
-    for (let m of entryModules) {
-      (m as AssignedModule).bundle = new URL(`/dist/0.js`, m.url.origin);
-      for (let n of m.imports.values()) {
-        await this.assignBundles([n]);
-      }
-    }
-    return entryModules as AssignedModule[];
-  }
-
-  private async resolve(specifier: string, source: URL): Promise<URL> {
-    return new URL(specifier, source);
-  }
-
-  private async parseJS(jsURL: URL): Promise<File> {
-    let fd = await this.fs.open(jsURL);
-    let stat = fd.stat;
-    let cached = this.parseCache.get(jsURL.href);
-    if (cached && cached.etag === stat.etag && cached.mtime === stat.mtime) {
-      return cached.parsed;
-    }
-    let parsed = parse(await fd.readText(), {});
-    if (!parsed || parsed.type !== "File") {
-      throw new Error(`unexpected result from babel parse: ${parsed?.type}`);
-    }
-    this.parseCache.set(jsURL.href, {
-      etag: stat.etag,
-      mtime: stat.mtime,
-      parsed,
-    });
-    return parsed;
   }
 }
 

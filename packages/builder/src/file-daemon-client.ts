@@ -4,7 +4,7 @@ import { WatchInfo, FileInfo } from "../../file-daemon/interfaces";
 import { FileSystem, FileSystemError, FileDescriptor } from "./filesystem";
 import { join, baseName, dirName } from "./path";
 import { REGTYPE } from "tarstream/constants";
-import { EntrypointsMapping } from "./builder";
+import { EntrypointsMapping } from "./nodes/html";
 //@ts-ignore
 import { UnTar } from "tarstream";
 

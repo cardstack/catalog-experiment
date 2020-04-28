@@ -1,12 +1,8 @@
 import { installFileAssertions, origin } from "./file-assertions";
 import { Builder } from "../src/builder";
-import {
-  JSONParseNode,
-  ConstantNode,
-  HTMLEntrypointNode,
-  FileNode,
-  EntrypointsJSONNode,
-} from "../src/builder-nodes";
+import { JSONParseNode, ConstantNode } from "../src/nodes/common";
+import { FileNode } from "../src/nodes/file";
+import { EntrypointsJSONNode, HTMLEntrypointNode } from "../src/nodes/html";
 
 QUnit.module("builder nodes", function (origHooks) {
   let { test } = installFileAssertions(origHooks);

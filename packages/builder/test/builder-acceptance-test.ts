@@ -75,7 +75,7 @@ QUnit.module("acceptance builder", function (hooks) {
         })();
       `,
     });
-    let js = await (await testFetch("/built-index.js")).text();
+    let js = await (await testFetch("/dist/0.js")).text();
     eval(js);
 
     let container = getTestDOM();
@@ -99,7 +99,7 @@ QUnit.module("acceptance builder", function (hooks) {
       "ui.js": `export const message = "Hello world";`,
     });
 
-    await runModule("/built-index.js");
+    await runModule("/dist/0.js");
     assert.equal(win.testContext.message, "Hello world");
   });
 });
