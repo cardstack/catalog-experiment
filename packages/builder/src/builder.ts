@@ -151,7 +151,7 @@ export class Builder<Input> {
         name: "evaluating",
         node,
         deps: deduplicatedDeps,
-        output: this.runNodeWithDeps(node, deps, context),
+        output: this.runNodeWithDeps(node, deduplicatedDeps, context),
       };
     } else {
       state = {
