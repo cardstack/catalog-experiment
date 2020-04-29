@@ -7,7 +7,7 @@ import {
   debugName,
 } from "./nodes/common";
 import { FileNode, WriteFileNode } from "./nodes/file";
-import { MakeBundledModulesNode } from "./nodes/bundle";
+import { MakeBundledModulesNode } from "./nodes/make";
 
 type BoolForEach<T> = {
   [P in keyof T]: boolean;

@@ -89,16 +89,3 @@ export class AllNode<T> implements BuilderNode {
     return { value: Object.values(results) };
   }
 }
-
-export interface BundleAssignmentMapping {
-  [jsModuleHref: string]: URL;
-}
-
-// Does this class really buy us anything?
-export class BundleAssignments {
-  constructor(private bundleMapping: BundleAssignmentMapping) {}
-
-  bundleFor(jsModule: URL): URL {
-    return this.bundleMapping[jsModule.href];
-  }
-}

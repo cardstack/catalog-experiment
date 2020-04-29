@@ -2,8 +2,9 @@ import { BuilderNode, Value, NextNode, AllNode } from "./common";
 import { EntrypointsJSONNode, HTMLEntrypoint } from "./html";
 import { FileNode } from "./file";
 import { JSParseNode } from "./js";
-import { describeImports } from "../describe-imports";
+import { describeImports, ImportDescription } from "../describe-imports";
 import { File } from "@babel/types";
+import mapValues from "lodash/mapValues";
 
 export class ModuleResolutionsNode implements BuilderNode {
   cacheKey = this;
@@ -39,35 +40,48 @@ export class ModuleResolutionsNode implements BuilderNode {
 
 export interface ModuleResolution {
   url: URL;
-  imports: { [specifier: string]: ModuleResolution };
+  parsed: File;
+  imports: {
+    [specifier: string]: {
+      desc: ImportDescription;
+      resolution: ModuleResolution;
+    };
+  };
 }
 
-class Resolver {
+interface SpecifierNodes {
+  [specifier: string]: {
+    desc: ImportDescription;
+    resolution: ModuleResolutionNode;
+  };
+}
+
+export class Resolver {
   async resolve(specifier: string, source: URL): Promise<URL> {
     return new URL(specifier, source);
   }
 }
 
-class ModuleResolutionNode implements BuilderNode {
+export class ModuleResolutionNode implements BuilderNode {
   cacheKey: string;
   constructor(private url: URL, private resolver: Resolver) {
-    this.cacheKey = `module-resolution-node:${url.href}`;
+    this.cacheKey = `module-resolution:${url.href}`;
   }
   deps() {
     return { parsed: new JSParseNode(new FileNode(this.url)) };
   }
   async run({ parsed }: { parsed: File }): Promise<NextNode<ModuleResolution>> {
-    let imports = {} as { [specifier: string]: ModuleResolutionNode };
+    let imports: SpecifierNodes = {};
     await Promise.all(
       describeImports(parsed).map(async (desc) => {
         let depURL = await this.resolver.resolve(desc.specifier, this.url);
-        imports[desc.specifier] = new ModuleResolutionNode(
-          depURL,
-          this.resolver
-        );
+        imports[desc.specifier] = {
+          desc,
+          resolution: new ModuleResolutionNode(depURL, this.resolver),
+        };
       })
     );
-    return { node: new FinishResolutionNode(this.url, imports) };
+    return { node: new FinishResolutionNode(this.url, imports, parsed) };
   }
 }
 
@@ -75,20 +89,25 @@ class FinishResolutionNode implements BuilderNode {
   cacheKey: FinishResolutionNode;
   constructor(
     private url: URL,
-    private imports: { [specifier: string]: ModuleResolutionNode }
+    private imports: SpecifierNodes,
+    private parsed: File
   ) {
     this.cacheKey = this;
   }
   deps() {
-    return this.imports;
+    return mapValues(this.imports, ({ resolution }) => resolution);
   }
-  async run(imports: {
+  async run(resolutions: {
     [specifier: string]: ModuleResolution;
   }): Promise<Value<ModuleResolution>> {
     return {
       value: {
         url: this.url,
-        imports,
+        parsed: this.parsed,
+        imports: mapValues(this.imports, ({ desc }, specifier) => ({
+          desc,
+          resolution: resolutions[specifier],
+        })),
       },
     };
   }

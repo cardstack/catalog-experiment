@@ -1,50 +1,6 @@
-import {
-  BuilderNode,
-  Value,
-  NextNode,
-  AllNode,
-  ConstantNode,
-  BundleAssignments,
-  BundleAssignmentMapping,
-} from "./common";
-import { EntrypointsJSONNode, HTMLEntrypoint } from "./html";
-import { WriteFileNode } from "./file";
+import { BuilderNode, Value } from "./common";
 import { ModuleResolutionsNode, ModuleResolution } from "./resolution";
-import uniqBy from "lodash/uniqBy";
-
-export class MakeBundledModulesNode implements BuilderNode {
-  cacheKey = this;
-  constructor(private projectRoots: URL[]) {}
-
-  deps() {
-    let htmlEntrypoints = new AllNode(
-      this.projectRoots.map((root) => new EntrypointsJSONNode(root))
-    );
-    return {
-      htmlEntrypoints,
-      bundleAssignments: new BundleAssignmentsNode(this.projectRoots),
-    };
-  }
-
-  async run({
-    htmlEntrypoints,
-    bundleAssignments,
-  }: {
-    htmlEntrypoints: HTMLEntrypoint[];
-    bundleAssignments: BundleAssignments;
-  }): Promise<NextNode<void[]>> {
-    let writeNodes = uniqBy(htmlEntrypoints.flat(), "destURL").map(
-      (htmlEntrypoint) =>
-        new WriteFileNode(
-          new ConstantNode(htmlEntrypoint.render(bundleAssignments)),
-          htmlEntrypoint.destURL
-        )
-    );
-
-    // TODO need to write bundle files too
-    return { node: new AllNode(writeNodes) };
-  }
-}
+import { combineModules } from "../combine-modules";
 
 export class BundleAssignmentsNode implements BuilderNode {
   cacheKey = this;
@@ -55,31 +11,75 @@ export class BundleAssignmentsNode implements BuilderNode {
     return { resolutions: new ModuleResolutionsNode(this.projectRoots) };
   }
 
-  private makeBundleMapping(
-    resolutions: ModuleResolution[],
-    bundleAssignments: BundleAssignmentMapping = {}
-  ): BundleAssignmentMapping {
-    for (let module of resolutions) {
-      // This just trivially makes a single bundle of all your modules for now,
-      // eventually we'll expand this to bundle in a much more sophisticated manner
-      bundleAssignments[module.url.href] = new URL(
-        `/dist/0.js`,
-        module.url.origin
-      );
-      for (let n of Object.values(module.imports)) {
-        this.makeBundleMapping([n], bundleAssignments);
-      }
-    }
-    return bundleAssignments;
-  }
-
   async run({
     resolutions,
   }: {
     resolutions: ModuleResolution[];
   }): Promise<Value<BundleAssignments>> {
     return {
-      value: new BundleAssignments(this.makeBundleMapping(resolutions)),
+      value: new BundleAssignments(resolutions),
     };
+  }
+}
+
+export class BundleNode {
+  cacheKey: BundleNode;
+  constructor(private bundle: Bundle, private assignments: BundleAssignments) {
+    this.cacheKey = this;
+  }
+
+  deps() {
+    // right now BundleNode is entirely volatile and gets constructed with all
+    // the info it needs, so it has no deps. But this means we aren't saving any
+    // of its work in between rebuilds. We plan to make it cache better, which
+    // justifies keeping BundleNode as a separate node.
+    return null;
+  }
+
+  async run(): Promise<Value<string>> {
+    return {
+      value: combineModules(this.bundle, this.assignments),
+    };
+  }
+}
+
+export interface Bundle {
+  url: URL;
+  exposedModules: ModuleResolution[];
+}
+
+export class BundleAssignments {
+  // keys are js module hrefs
+  private modules: Map<string, Bundle> = new Map();
+  bundles: Bundle[] = [];
+
+  constructor(rootResolutions: ModuleResolution[]) {
+    if (rootResolutions.length === 0) {
+      throw new Error(`need at least one rootResolution`);
+    }
+    let bundle = {
+      url: new URL(`/dist/0.js`, rootResolutions[0].url.origin),
+      exposedModules: rootResolutions,
+    };
+    this.traverse(rootResolutions, bundle);
+    this.bundles.push(bundle);
+  }
+
+  private traverse(resolutions: ModuleResolution[], parentBundle: Bundle) {
+    for (let module of resolutions) {
+      this.modules.set(module.url.href, parentBundle);
+      this.traverse(
+        Object.values(module.imports).map(({ resolution }) => resolution),
+        parentBundle
+      );
+    }
+  }
+
+  bundleFor(jsModule: URL): Bundle {
+    let bundle = this.modules.get(jsModule.href);
+    if (!bundle) {
+      throw new Error(`unknown js modules ${jsModule.href}`);
+    }
+    return bundle;
   }
 }
