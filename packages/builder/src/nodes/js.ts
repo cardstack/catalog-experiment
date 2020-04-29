@@ -1,7 +1,8 @@
 import { BuilderNode, Value } from "./common";
 import { WriteFileNode, FileNode } from "./file";
 import { dirName, baseName, join } from "../path";
-import { parse, ParseResult } from "@babel/core";
+import { parse } from "@babel/core";
+import { File } from "@babel/types";
 import { Memoize } from "typescript-memoize";
 
 export class JSParseNode implements BuilderNode {
@@ -13,7 +14,7 @@ export class JSParseNode implements BuilderNode {
     return { source: this.source };
   }
 
-  async run({ source }: { source: string }): Promise<Value<ParseResult>> {
+  async run({ source }: { source: string }): Promise<Value<File>> {
     let parsed = parse(source);
     if (!parsed || parsed.type !== "File") {
       throw new Error(`unexpected result from babel parse: ${parsed?.type}`);
