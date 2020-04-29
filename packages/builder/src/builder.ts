@@ -1,6 +1,11 @@
 import { FileSystem, Event } from "./filesystem";
 import bind from "bind-decorator";
-import { OutputTypes, BuilderNode, NodeOutput } from "./nodes/common";
+import {
+  OutputTypes,
+  BuilderNode,
+  NodeOutput,
+  debugName,
+} from "./nodes/common";
 import { FileNode, WriteFileNode } from "./nodes/file";
 import { MakeBundledModulesNode } from "./nodes/bundle";
 
@@ -67,6 +72,7 @@ export class Builder<Input> {
     let result = await this.evalNodes(this.roots, context);
     assertAllComplete(context.nodeStates);
     this.nodeStates = context.nodeStates;
+    console.log(describeNodes(this.nodeStates));
     return result.values;
   }
 
@@ -128,16 +134,23 @@ export class Builder<Input> {
     let deps = node.deps();
     let state: EvaluatingState;
     if (hasDeps(deps)) {
-      for (let depNode of Object.values(deps)) {
-        context.nodeStates.set(depNode.cacheKey, {
-          name: "initial",
-          node: depNode,
-        });
+      let deduplicatedDeps: typeof deps = {};
+      for (let [key, depNode] of Object.entries(deps)) {
+        let existing = context.nodeStates.get(depNode.cacheKey);
+        if (existing) {
+          deduplicatedDeps[key] = existing.node;
+        } else {
+          context.nodeStates.set(depNode.cacheKey, {
+            name: "initial",
+            node: depNode,
+          });
+          deduplicatedDeps[key] = depNode;
+        }
       }
       state = {
         name: "evaluating",
         node,
-        deps,
+        deps: deduplicatedDeps,
         output: this.runNodeWithDeps(node, deps, context),
       };
     } else {
@@ -255,4 +268,28 @@ function assertAllComplete(
       );
     }
   }
+}
+
+function dotSafeName(node: BuilderNode): string {
+  return debugName(node).replace(/"/g, '\\"');
+}
+
+function describeNodes(nodeStates: Map<CacheKey, CompleteState>) {
+  let output = ["digraph {"];
+  for (let state of nodeStates.values()) {
+    let name = dotSafeName(state.node);
+    output.push(`"${name}"`);
+    if (state.deps) {
+      for (let dep of Object.values(state.deps)) {
+        output.push(`"${name}" -> "${dotSafeName(dep)}"`);
+      }
+    }
+    if ("node" in state.output) {
+      output.push(
+        `"${name}" -> "${dotSafeName(state.output.node)}" [color="blue"]`
+      );
+    }
+  }
+  output.push("}");
+  return output.join("\n");
 }

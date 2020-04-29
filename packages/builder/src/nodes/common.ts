@@ -17,13 +17,36 @@ export interface BuilderNode<Output = unknown, Input = unknown> {
   run(input: OutputTypes<Input>): Promise<NodeOutput<Output>>;
 }
 
+const debugNames: WeakMap<BuilderNode, string> = new WeakMap();
+let debugNameCounter = 0;
+
+export function debugName(node: BuilderNode): string {
+  const maxCacheKeyLen = 60;
+  let cacheKey = node.cacheKey;
+  if (typeof cacheKey === "string") {
+    if (cacheKey.length > maxCacheKeyLen) {
+      return `${cacheKey.slice(0, maxCacheKeyLen)}...`;
+    } else {
+      return cacheKey;
+    }
+  }
+  let name = debugNames.get(node);
+  if (!name) {
+    name = `${node.constructor.name}:${debugNameCounter++}`;
+    debugNames.set(node, name);
+  }
+  return name;
+}
+
 export class ConstantNode<T> implements BuilderNode<T, void> {
   cacheKey: string;
 
   private firstRun = true;
 
   constructor(private value: T) {
-    this.cacheKey = `constant:${JSON.stringify(this.value)}`;
+    this.cacheKey = `constant:${
+      typeof this.value === "string" ? this.value : JSON.stringify(this.value)
+    }`;
   }
   deps() {}
   async run(): Promise<NodeOutput<T>> {
