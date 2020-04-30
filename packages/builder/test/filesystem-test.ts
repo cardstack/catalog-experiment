@@ -11,7 +11,7 @@ import {
 } from "./helpers/event-helpers";
 import { FileDescriptor } from "../src/filesystem";
 
-QUnit.module("module filesystem", function (origHooks) {
+QUnit.module("filesystem", function (origHooks) {
   let { test } = installFileAssertions(origHooks);
 
   QUnit.module("events", function () {

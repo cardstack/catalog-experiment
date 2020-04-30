@@ -32,7 +32,7 @@ let scenario = Object.freeze({
   "blah/bleep/blurp.txt": `hi guys`,
 });
 
-QUnit.module("module file-daemon-client", function (origHooks) {
+QUnit.module("file-daemon-client", function (origHooks) {
   let { test } = installFileAssertions(origHooks);
 
   QUnit.module("readonly tests", function (origHooks) {
