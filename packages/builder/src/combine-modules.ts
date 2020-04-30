@@ -1,9 +1,55 @@
+import { parse } from "@babel/core";
+import generate from "@babel/generator";
+import { Statement } from "@babel/types";
 import { Bundle, BundleAssignments } from "./nodes/bundle";
+import { ModuleResolution } from "./nodes/resolution";
 
 export function combineModules(
   bundle: Bundle,
-  assignments: BundleAssignments
-): string {}
+  _assignments: BundleAssignments
+): string {
+  let bundleAst = parse("");
+  if (bundleAst?.type !== "File") {
+    throw new Error(`Empty bundle AST is not a 'File' type`);
+  }
+  let bundleBody = bundleAst.program.body;
+  for (let module of bundle.exposedModules) {
+    appendToBundle(bundleBody, module);
+  }
+
+  // TODO perhaps we want to save the source code in the ModuleResolutions so we
+  // can generate source maps...
+  let { code } = generate(bundleAst);
+  return code;
+}
+
+function appendToBundle(bundleBody: Statement[], module: ModuleResolution) {
+  for (let { desc, resolution } of Object.values(module.imports)) {
+    appendToBundle(bundleBody, resolution);
+  }
+  adjustModule(module);
+  bundleBody.push(...module.parsed.program.body);
+}
+
+function adjustModule(module: ModuleResolution) {
+  let body = module.parsed.program.body;
+
+  module.parsed.program.body = body
+    .map((statement) => {
+      switch (statement.type) {
+        // case 'ExportDefaultDeclaration':
+        // case 'ExportDefaultDeclaration':
+        case "ExportNamedDeclaration":
+          statement = statement.declaration; // TODO need to guard against collisions
+          break;
+      }
+      return statement;
+    })
+    .filter(
+      // This is just a silly baby step to the final goal
+      (s) => s.type !== "ImportDeclaration"
+    );
+}
 
 /*
 

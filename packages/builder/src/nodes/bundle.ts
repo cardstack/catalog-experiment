@@ -48,11 +48,12 @@ export interface Bundle {
   exposedModules: ModuleResolution[];
 }
 
-export interface AssignmentStrategies {
-  [bundleURL: string]: (
-    moduleResolution: ModuleResolution,
-    existingAssignments: BundleAssignments
-  ) => boolean;
+// This is how we assign various sub-graphs of the module resolution graph to
+// different bundles
+export interface AssignmentConfig {
+  [bundleHref: string]: {
+    exposedModuleURLs: URL[];
+  };
 }
 
 export class BundleAssignments {
@@ -62,48 +63,50 @@ export class BundleAssignments {
 
   constructor(
     rootResolutions: ModuleResolution[],
-    private strategies: AssignmentStrategies = { "/dist/0.js": () => true }
+    private config: AssignmentConfig = {}
   ) {
     if (rootResolutions.length === 0) {
       throw new Error(`need at least one rootResolution`);
     }
-    for (let [bundlePath, strategy] of Object.entries(strategies)) {
-      let rootResolutionsForBundle = rootResolutions.filter((r) =>
-        strategy(r, this)
-      );
-      if (rootResolutionsForBundle.length === 0) {
-        continue;
-      }
-
-      let bundle = {
-        url: new URL(bundlePath, rootResolutionsForBundle[0].url.origin),
-        exposedModules: rootResolutionsForBundle,
+    if (Object.keys(config).length === 0) {
+      this.config[new URL("/dist/0.js", rootResolutions[0].url.origin).href] = {
+        exposedModuleURLs: rootResolutions.map((r) => r.url),
       };
-
-      this.bundles.push(bundle);
     }
+
     this.traverse(rootResolutions);
   }
 
-  private traverse(resolutions: ModuleResolution[]) {
-    for (let module of resolutions) {
-      let parentBundle: Bundle | undefined;
-      for (let [bundlePath, strategy] of Object.entries(this.strategies)) {
-        if (strategy(module, this)) {
-          parentBundle = this.bundles.find(
-            (b) => b.url.pathname === bundlePath
-          )!;
-          break;
+  private discoverExposedModule(module: ModuleResolution): Bundle | undefined {
+    for (let [bundleHref, { exposedModuleURLs }] of Object.entries(
+      this.config
+    )) {
+      if (exposedModuleURLs.map((u) => u.href).includes(module.url.href)) {
+        let bundle = this.bundles.find((b) => b.url.href === bundleHref);
+        if (!bundle) {
+          bundle = {
+            url: new URL(bundleHref),
+            exposedModules: [module],
+          };
+          this.bundles.push(bundle);
         }
+        return bundle;
       }
+    }
+  }
+
+  private traverse(resolutions: ModuleResolution[], parentBundle?: Bundle) {
+    for (let module of resolutions) {
+      parentBundle = this.discoverExposedModule(module) ?? parentBundle;
       if (!parentBundle) {
         throw new Error(
-          `the module ${module.url.href} did not match any bundle assignment strategies`
+          `cannot determine parent bundle for module ${module.url.href}`
         );
       }
       this.modules.set(module.url.href, parentBundle);
       this.traverse(
-        Object.values(module.imports).map(({ resolution }) => resolution)
+        Object.values(module.imports).map(({ resolution }) => resolution),
+        parentBundle
       );
     }
   }

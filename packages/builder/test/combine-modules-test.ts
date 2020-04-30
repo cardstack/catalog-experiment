@@ -4,14 +4,15 @@ import { Resolver, ModuleResolution } from "../src/nodes/resolution";
 import {
   BundleAssignments,
   Bundle,
-  AssignmentStrategies,
+  AssignmentConfig,
 } from "../src/nodes/bundle";
 import { describeImports } from "../src/describe-module";
 import { parse } from "@babel/core";
 import { url } from "./helpers/file-assertions";
 import { FileSystem } from "../src/filesystem";
 
-let resolver = new Resolver();
+let resolver = new Resolver(); // TODO need to resolve modules without '.js' extension
+
 QUnit.module("combine modules", function (origHooks) {
   let { test } = installFileAssertions(origHooks);
 
@@ -46,15 +47,15 @@ QUnit.module("combine modules", function (origHooks) {
   async function makeBundleAssignments(
     fs: FileSystem,
     entrypoints: URL[],
-    strategies?: AssignmentStrategies
+    config?: AssignmentConfig
   ): Promise<BundleAssignments> {
     let resolutions = await Promise.all(
       entrypoints.map((e) => makeModuleResolutions(fs, e))
     );
-    return new BundleAssignments(resolutions, strategies);
+    return new BundleAssignments(resolutions, config);
   }
 
-  test("it can concatenate modules", async function (assert) {
+  test("it can combine modules", async function (assert) {
     await assert.setupFiles({
       "index.js": `
         import { a } from './a.js';
@@ -74,10 +75,8 @@ QUnit.module("combine modules", function (origHooks) {
     assert.equal(
       combined,
       `
-export const a = 'a';
-export const b = 'b';
-import { a } from './a';
-import { b } from './b';
+const a = 'a';
+const b = 'b';
 console.log(a + b);
     `.trim()
     );
