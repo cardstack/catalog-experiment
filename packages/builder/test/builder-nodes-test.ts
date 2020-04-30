@@ -1,4 +1,4 @@
-import { installFileAssertions, origin } from "./file-assertions";
+import { installFileAssertions, origin } from "./helpers/file-assertions";
 import { Builder } from "../src/builder";
 import { JSONParseNode, ConstantNode } from "../src/nodes/common";
 import { FileNode } from "../src/nodes/file";

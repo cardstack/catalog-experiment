@@ -1,7 +1,7 @@
 import "qunit";
 import { Memoize } from "typescript-memoize";
-import { FileSystem } from "../src/filesystem";
-import { isURL } from "../src/path";
+import { FileSystem } from "../../src/filesystem";
+import { isURL } from "../../src/path";
 
 export const origin = "http://localhost:4200";
 

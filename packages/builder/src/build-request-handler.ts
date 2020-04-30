@@ -21,7 +21,7 @@ export const handleBuildRequest: Handler = async function (
   if (file instanceof Response) {
     return file;
   }
-  if (file.stat.type === "directory") {
+  if (file.stat().type === "directory") {
     path = join(path, "index.html");
     file = await openFile(
       context.fs,
@@ -64,5 +64,5 @@ function setContentHeaders(
     "content-type",
     contentType(mime) as Exclude<string, false>
   );
-  response.headers.set("content-length", String(file.stat.size));
+  response.headers.set("content-length", String(file.stat().size));
 }
