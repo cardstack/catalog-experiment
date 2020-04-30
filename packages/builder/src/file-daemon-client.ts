@@ -26,8 +26,8 @@ export class FileDaemonClient {
   private running: Promise<void>;
 
   constructor(
-    private fileServerURL: string,
-    private websocketServerURL: string,
+    private fileServerURL: URL,
+    private websocketServerURL: URL,
     private fs: FileSystem,
     private mountPath: string
   ) {
@@ -77,7 +77,7 @@ export class FileDaemonClient {
 
   private tryConnect() {
     console.log(`attempting to connect`);
-    let socket = new WebSocket(this.websocketServerURL);
+    let socket = new WebSocket(this.websocketServerURL.href);
     let socketIsClosed: () => void;
     let socketClosed: Promise<void> = new Promise((r) => {
       socketIsClosed = r;
@@ -282,7 +282,7 @@ export class FileDaemonClient {
   }
 
   private async getEntrypointsAsMappings(
-    thisOrigin = new URL(this.fileServerURL)
+    thisOrigin = this.fileServerURL
   ): Promise<EntrypointsMapping | undefined> {
     let entrypoints = await this._getEntrypointsObject(thisOrigin);
     if (entrypoints) {
@@ -291,7 +291,7 @@ export class FileDaemonClient {
   }
 
   private async getEntrypointsAsDestPaths(
-    thisOrigin = new URL(this.fileServerURL)
+    thisOrigin = this.fileServerURL
   ): Promise<string[] | undefined> {
     let entrypoints = await this._getEntrypointsObject(thisOrigin);
     if (entrypoints) {
@@ -300,7 +300,7 @@ export class FileDaemonClient {
   }
 
   private async _getEntrypointsObject(
-    thisOrigin = new URL(this.fileServerURL)
+    thisOrigin = this.fileServerURL
   ): Promise<EntrypointsMapping | string[] | undefined> {
     let entrypointsFile: FileDescriptor;
     try {
@@ -321,7 +321,7 @@ export class FileDaemonClient {
 
   private async generateEntrypointsMappingFile(
     originalEntrypoints: string[],
-    thisOrigin = new URL(this.fileServerURL)
+    thisOrigin = this.fileServerURL
   ): Promise<EntrypointsMapping> {
     let entrypoints: { [srcFile: string]: string } = {};
     for (let destPath of originalEntrypoints) {

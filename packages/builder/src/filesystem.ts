@@ -23,17 +23,19 @@ export class FileSystem {
   }[] = [];
 
   addEventListener(origin: string, fn: EventListener) {
-    if (this.listeners.has(origin)) {
-      this.listeners.get(origin)?.push(fn);
+    let normalizedOrigin = new URL(origin).origin;
+    if (this.listeners.has(normalizedOrigin)) {
+      this.listeners.get(normalizedOrigin)?.push(fn);
     } else {
-      this.listeners.set(origin, [fn]);
+      this.listeners.set(normalizedOrigin, [fn]);
     }
   }
 
   removeEventListener(origin: string, fn: EventListener) {
-    if (this.listeners.has(origin)) {
-      this.listeners.set(origin, [
-        ...this.listeners.get(origin)!.filter((l) => l !== fn),
+    let normalizedOrigin = new URL(origin).origin;
+    if (this.listeners.has(normalizedOrigin)) {
+      this.listeners.set(normalizedOrigin, [
+        ...this.listeners.get(normalizedOrigin)!.filter((l) => l !== fn),
       ]);
     }
   }

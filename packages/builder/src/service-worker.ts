@@ -14,9 +14,9 @@ const fs = new FileSystem();
 const ourBackendEndpoint = "__alive__";
 const webroot: string = "/";
 
-let origin: string;
-let websocketURL: string;
-let fileDaemonURL: string;
+let origin: URL;
+let websocketURL: URL;
+let fileDaemonURL: URL;
 let isDisabled = false;
 let finishedBuild: Promise<void>;
 let client: FileDaemonClient | undefined;
@@ -26,10 +26,13 @@ console.log(`service worker evaluated`);
 worker.addEventListener("install", () => {
   console.log(`installing`);
   let workerURL = new URL(worker.location.href);
-  origin = workerURL.searchParams.get("origin") || defaultOrigin;
-  websocketURL =
-    workerURL.searchParams.get("websocketURL") || defaultWebsocketURL;
-  fileDaemonURL = workerURL.searchParams.get("fileDaemonURL") || defaultOrigin;
+  origin = new URL(workerURL.searchParams.get("origin") || defaultOrigin);
+  websocketURL = new URL(
+    workerURL.searchParams.get("websocketURL") || defaultWebsocketURL
+  );
+  fileDaemonURL = new URL(
+    workerURL.searchParams.get("fileDaemonURL") || defaultOrigin
+  );
 
   // force moving on to activation even if another service worker had control
   worker.skipWaiting();

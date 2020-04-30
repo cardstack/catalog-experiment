@@ -24,7 +24,7 @@ QUnit.module("acceptance builder", function (hooks) {
     }
   }
 
-  async function testFetch(path: string, origin: string = testOrigin) {
+  async function testFetch(path: string, origin: string = testOrigin.href) {
     return fetch(new URL(path, origin).href, { mode: "no-cors" });
   }
 

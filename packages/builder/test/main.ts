@@ -3,7 +3,7 @@ import { testOrigin } from "./origins";
 if (!navigator.serviceWorker.controller) {
   // first load
   navigator.serviceWorker.register(
-    `/service-worker.js?origin=${encodeURIComponent(testOrigin)}`,
+    `/service-worker.js?origin=${encodeURIComponent(testOrigin.href)}`,
     { scope: "/" }
   );
   console.log("Waiting for test service worker");
