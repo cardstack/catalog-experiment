@@ -48,29 +48,62 @@ export interface Bundle {
   exposedModules: ModuleResolution[];
 }
 
+export interface AssignmentStrategies {
+  [bundleURL: string]: (
+    moduleResolution: ModuleResolution,
+    existingAssignments: BundleAssignments
+  ) => boolean;
+}
+
 export class BundleAssignments {
   // keys are js module hrefs
   private modules: Map<string, Bundle> = new Map();
   bundles: Bundle[] = [];
 
-  constructor(rootResolutions: ModuleResolution[]) {
+  constructor(
+    rootResolutions: ModuleResolution[],
+    private strategies: AssignmentStrategies = { "/dist/0.js": () => true }
+  ) {
     if (rootResolutions.length === 0) {
       throw new Error(`need at least one rootResolution`);
     }
-    let bundle = {
-      url: new URL(`/dist/0.js`, rootResolutions[0].url.origin),
-      exposedModules: rootResolutions,
-    };
-    this.traverse(rootResolutions, bundle);
-    this.bundles.push(bundle);
+    for (let [bundlePath, strategy] of Object.entries(strategies)) {
+      let rootResolutionsForBundle = rootResolutions.filter((r) =>
+        strategy(r, this)
+      );
+      if (rootResolutionsForBundle.length === 0) {
+        continue;
+      }
+
+      let bundle = {
+        url: new URL(bundlePath, rootResolutionsForBundle[0].url.origin),
+        exposedModules: rootResolutionsForBundle,
+      };
+
+      this.bundles.push(bundle);
+    }
+    this.traverse(rootResolutions);
   }
 
-  private traverse(resolutions: ModuleResolution[], parentBundle: Bundle) {
+  private traverse(resolutions: ModuleResolution[]) {
     for (let module of resolutions) {
+      let parentBundle: Bundle | undefined;
+      for (let [bundlePath, strategy] of Object.entries(this.strategies)) {
+        if (strategy(module, this)) {
+          parentBundle = this.bundles.find(
+            (b) => b.url.pathname === bundlePath
+          )!;
+          break;
+        }
+      }
+      if (!parentBundle) {
+        throw new Error(
+          `the module ${module.url.href} did not match any bundle assignment strategies`
+        );
+      }
       this.modules.set(module.url.href, parentBundle);
       this.traverse(
-        Object.values(module.imports).map(({ resolution }) => resolution),
-        parentBundle
+        Object.values(module.imports).map(({ resolution }) => resolution)
       );
     }
   }
@@ -84,7 +117,9 @@ export class BundleAssignments {
   }
 
   importFor(
-    jsModule: URL,
-    originalName: string
-  ): { bundle: Bundle; newName: string };
+    _jsModule: URL,
+    _originalName: string
+  ): { bundle: Bundle; newName: string } {
+    throw new Error(`unimplemented`);
+  }
 }

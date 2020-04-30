@@ -2,7 +2,7 @@ import { BuilderNode, Value, NextNode, AllNode } from "./common";
 import { EntrypointsJSONNode, HTMLEntrypoint } from "./html";
 import { FileNode } from "./file";
 import { JSParseNode } from "./js";
-import { describeImports, ImportDescription } from "../describe-imports";
+import { describeImports, ImportDescription } from "../describe-module";
 import { File } from "@babel/types";
 import mapValues from "lodash/mapValues";
 
