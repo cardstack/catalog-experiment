@@ -82,4 +82,9 @@ export class BundleAssignments {
     }
     return bundle;
   }
+
+  importFor(
+    jsModule: URL,
+    originalName: string
+  ): { bundle: Bundle; newName: string };
 }
