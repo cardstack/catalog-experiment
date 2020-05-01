@@ -79,4 +79,41 @@ console.log(a + b);
     `.trim()
     );
   });
+
+  test("it prevents collisions between module-scoped bindings", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import './a.js';
+        let shared = 1;
+        console.log(shared);
+      `,
+      "a.js": `
+        import './b.js';
+        let shared = 2;
+        console.log(shared);
+      `,
+      "b.js": `
+        let shared = 3;
+        console.log(shared);
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs, [url("index.js")]);
+    let combined = combineModules(
+      bundleAtUrl(assignments, url("dist/0.js")),
+      assignments
+    );
+
+    assert.equal(
+      combined,
+      `
+let shared1 = 3;
+console.log(shared1);
+let shared0 = 2;
+console.log(shared0);
+let shared = 1;
+console.log(shared);
+    `.trim()
+    );
+  });
 });

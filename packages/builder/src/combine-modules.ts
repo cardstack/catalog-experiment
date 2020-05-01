@@ -1,7 +1,13 @@
-import { parse } from "@babel/core";
+import { parse, transformFromAstSync } from "@babel/core";
 import generate from "@babel/generator";
-import { Statement } from "@babel/types";
+import {
+  Statement,
+  ExportNamedDeclaration,
+  ImportDeclaration,
+  Program,
+} from "@babel/types";
 import { Bundle, BundleAssignments } from "./nodes/bundle";
+import { NodePath } from "@babel/traverse";
 import { ModuleResolution } from "./nodes/resolution";
 
 export function combineModules(
@@ -12,38 +18,93 @@ export function combineModules(
   if (bundleAst?.type !== "File") {
     throw new Error(`Empty bundle AST is not a 'File' type`);
   }
+  let state: State = { usedNames: new Set() };
   let bundleBody = bundleAst.program.body;
   for (let module of bundle.exposedModules) {
-    appendToBundle(bundleBody, module);
+    appendToBundle(bundleBody, module, state);
   }
 
   let { code } = generate(bundleAst);
   return code;
 }
 
-function appendToBundle(bundleBody: Statement[], module: ModuleResolution) {
-  for (let { desc, resolution } of Object.values(module.imports)) {
-    appendToBundle(bundleBody, resolution);
-  }
-  adjustModule(module);
-  bundleBody.push(...module.parsed.program.body);
+interface State {
+  usedNames: Set<string>;
 }
 
-function adjustModule(module: ModuleResolution) {
-  let body = module.parsed.program.body;
+function appendToBundle(
+  bundleBody: Statement[],
+  module: ModuleResolution,
+  state: State
+) {
+  let adjusted = adjustModule(module, state);
+  for (let { resolution } of Object.values(module.imports)) {
+    appendToBundle(bundleBody, resolution, state);
+  }
+  bundleBody.push(...adjusted.program.body);
+}
 
-  module.parsed.program.body = body
-    .map((statement) => {
-      switch (statement.type) {
-        // case 'ExportDefaultDeclaration':
-        // case 'ExportDefaultDeclaration':
-        case "ExportNamedDeclaration":
-          statement = statement.declaration; // TODO need to guard against collisions
-          break;
+function adjustModule(module: ModuleResolution, state: State) {
+  let config: PluginConfig = { state, module };
+  let result = transformFromAstSync(module.parsed, undefined, {
+    ast: true,
+    plugins: [[adjustModulePlugin, config]],
+  });
+  if (!result?.ast) {
+    throw new Error(`transformed AST is null`);
+  }
+  return result.ast;
+}
+
+interface PluginConfig {
+  module: ModuleResolution;
+  state: State;
+}
+
+interface PluginContext {
+  opts: PluginConfig;
+}
+
+function adjustModulePlugin(): unknown {
+  const visitor = {
+    Program(path: NodePath<Program>, context: PluginContext) {
+      debugger;
+      let { usedNames } = context.opts.state;
+      for (let name of Object.keys(path.scope.bindings)) {
+        if (usedNames.has(name)) {
+          let newName = unusedNameLike(
+            name,
+            path as NodePath<unknown>,
+            usedNames
+          );
+          path.scope.rename(name, newName);
+          usedNames.add(newName);
+        } else {
+          usedNames.add(name);
+        }
       }
-      return statement;
-    })
-    .filter((s) => s.type !== "ImportDeclaration");
+    },
+    ExportNamedDeclaration(path: NodePath<ExportNamedDeclaration>) {
+      path.replaceWith(path.node.declaration);
+    },
+    ImportDeclaration(path: NodePath<ImportDeclaration>) {
+      path.remove();
+    },
+  };
+  return { visitor };
+}
+
+function unusedNameLike(
+  name: string,
+  path: NodePath<unknown>,
+  reserved: Set<string>
+) {
+  let candidate = name;
+  let counter = 0;
+  while (candidate in path.scope.bindings || reserved.has(candidate)) {
+    candidate = `${name}${counter++}`;
+  }
+  return candidate;
 }
 
 /*
