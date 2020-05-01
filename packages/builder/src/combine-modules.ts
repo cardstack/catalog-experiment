@@ -96,7 +96,7 @@ interface PluginContext {
 function adjustModulePlugin(): unknown {
   const visitor = {
     Program(path: NodePath<Program>, context: PluginContext) {
-      let { module, assignments, state } = context.opts;
+      let { module, state } = context.opts;
       let localAssignments = new Set<string>();
       for (let [name, binding] of Object.entries(path.scope.bindings)) {
         // figure out which names in module scope are imports vs things that
@@ -112,7 +112,7 @@ function adjustModulePlugin(): unknown {
               localAssignments,
               binding,
               initialName: name,
-              importedModule: imp.resolution,
+              importedFrom: imp.resolution,
               exportedName: remoteName,
             });
           } else if (imp.desc.namespace.includes(name)) {
@@ -135,7 +135,7 @@ function adjustModulePlugin(): unknown {
             localAssignments,
             binding,
             initialName: name,
-            importedModule: module,
+            importedFrom: module,
             exportedName: name,
           });
         } else {
@@ -168,7 +168,7 @@ interface BindingClaim {
   binding: Binding;
   initialName: string;
   exportedName?: string;
-  importedModule?: ModuleResolution;
+  importedFrom?: ModuleResolution;
 }
 
 function claimBinding({
@@ -176,16 +176,16 @@ function claimBinding({
   state,
   localAssignments,
   binding,
-  importedModule,
+  importedFrom,
   initialName,
   exportedName,
 }: BindingClaim) {
   let assignedName: string | undefined;
-  if (importedModule && exportedName) {
-    let mapping = state.assignedImportedNames.get(importedModule.url.href);
+  if (importedFrom && exportedName) {
+    let mapping = state.assignedImportedNames.get(importedFrom.url.href);
     if (!mapping) {
       mapping = new Map();
-      state.assignedImportedNames.set(importedModule.url.href, mapping);
+      state.assignedImportedNames.set(importedFrom.url.href, mapping);
     }
     assignedName = mapping.get(exportedName);
     if (!assignedName) {
