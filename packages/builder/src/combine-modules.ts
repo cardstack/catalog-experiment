@@ -18,7 +18,10 @@ export function combineModules(
   if (bundleAst?.type !== "File") {
     throw new Error(`Empty bundle AST is not a 'File' type`);
   }
-  let state: State = { usedNames: new Set() };
+  let state: State = {
+    usedNames: new Set(),
+    assignedImportedNames: new WeakMap(),
+  };
   let bundleBody = bundleAst.program.body;
   for (let module of bundle.exposedModules) {
     appendToBundle(bundleBody, module, state);
@@ -30,7 +33,16 @@ export function combineModules(
 
 interface State {
   usedNames: Set<string>;
+
+  // map goes from exported name to our name. our name also must appear in
+  // usedNames.
+  assignedImportedNames: WeakMap<
+    ModuleResolution,
+    Map<string | typeof NamespaceMarker, string>
+  >;
 }
+
+const NamespaceMarker = { isNamespace: true };
 
 function appendToBundle(
   bundleBody: Statement[],
@@ -68,24 +80,56 @@ interface PluginContext {
 function adjustModulePlugin(): unknown {
   const visitor = {
     Program(path: NodePath<Program>, context: PluginContext) {
-      debugger;
-      let { usedNames } = context.opts.state;
+      let { usedNames, assignedImportedNames } = context.opts.state;
       for (let name of Object.keys(path.scope.bindings)) {
-        if (usedNames.has(name)) {
-          let newName = unusedNameLike(
-            name,
-            path as NodePath<unknown>,
-            usedNames
-          );
-          path.scope.rename(name, newName);
-          usedNames.add(newName);
-        } else {
-          usedNames.add(name);
+        // figure out which names in module scope are imports vs things that
+        // live inside this module
+        for (let imp of Object.values(context.opts.module.imports)) {
+          let remoteName = imp.desc.names.get(name);
+          if (remoteName) {
+            // name is imported
+            let mapping = assignedImportedNames.get(imp.resolution);
+            if (!mapping) {
+              mapping = new Map();
+              assignedImportedNames.set(imp.resolution, mapping);
+            }
+            let assignedName = mapping.get(remoteName);
+            if (!assignedName) {
+              assignedName = unusedNameLike(
+                name,
+                path as NodePath<unknown>,
+                usedNames
+              );
+              usedNames.add(assignedName);
+              mapping.set(remoteName, assignedName);
+            }
+            if (name !== assignedName) {
+              path.scope.rename(name, assignedName);
+            }
+          } else if (imp.desc.namespace.includes(name)) {
+            // name is imported, like "import * as name from..."
+            throw new Error(`unimplemented`);
+          } else {
+            // name is not imported
+            if (usedNames.has(name)) {
+              let newName = unusedNameLike(
+                name,
+                path as NodePath<unknown>,
+                usedNames
+              );
+              path.scope.rename(name, newName);
+              usedNames.add(newName);
+            } else {
+              usedNames.add(name);
+            }
+          }
         }
       }
     },
     ExportNamedDeclaration(path: NodePath<ExportNamedDeclaration>) {
-      path.replaceWith(path.node.declaration);
+      if (path.node.declaration) {
+        path.replaceWith(path.node.declaration);
+      }
     },
     ImportDeclaration(path: NodePath<ImportDeclaration>) {
       path.remove();
@@ -112,8 +156,10 @@ function unusedNameLike(
   babel has: scope.rename(old, new);
   babel has Object.keys(path.scope.bindings) is all the names in scope at path
 
+  // we called this State["usedNames"] above
   let finalModuleScopeNames = Set<string>;
 
+  //
   let assignedImportedNames: WeakMap<ModuleResolution, Map<exportedName: string, finalModuleScopeName: string>>
 
   For each module, starting from the bundle.exposedModules and recursing deeper:

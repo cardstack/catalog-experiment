@@ -80,6 +80,64 @@ console.log(a + b);
     );
   });
 
+  test("internal imports share the same name in multiple modules", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { hello } from './lib.js';
+        import { b } from './b.js';
+        console.log(hello + b);
+      `,
+      "lib.js": `export const hello = 'hello';`,
+      "b.js": `
+        import { hello } from './lib.js';
+        export const b = hello + '!';`,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs, [url("index.js")]);
+    let combined = combineModules(
+      bundleAtUrl(assignments, url("dist/0.js")),
+      assignments
+    );
+
+    assert.equal(
+      combined,
+      `
+const hello = 'hello';
+const b = hello + '!';
+console.log(hello + b);
+    `.trim()
+    );
+  });
+
+  test("internal imports with local renaming share the same name in multiple modules", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { hello } from './lib.js';
+        import { b } from './b.js';
+        console.log(hello + b);
+      `,
+      "lib.js": `export const hello = 'hello';`,
+      "b.js": `
+        import { hello as h } from './lib.js';
+        export const b = h + '!';`,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs, [url("index.js")]);
+    let combined = combineModules(
+      bundleAtUrl(assignments, url("dist/0.js")),
+      assignments
+    );
+
+    assert.equal(
+      combined,
+      `
+const hello = 'hello';
+const b = hello + '!';
+console.log(hello + b);
+    `.trim()
+    );
+  });
+
   test("it prevents collisions between module-scoped bindings", async function (assert) {
     await assert.setupFiles({
       "index.js": `
