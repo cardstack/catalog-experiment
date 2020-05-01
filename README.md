@@ -55,18 +55,17 @@ yarn test
 
 To run the tests from the browser:
 
-1. Change directories to the builder package: `cd packages/builder`
-2. Start the test file daemon:
+1. Start the test server
    ```sh
-   yarn start:test-file-daemon
+   yarn test-server
    ```
-3. Start the builder:
+2. Start the builder (which also serves the tests)
    ```sh
-   yarn start
+   yarn builder
    ```
-4. Open the URL `http://localhost:8080` in your browser
+3. Open the URL `http://localhost:8080` in your browser
 
-Note that the tests leverage a service worker which still runs even when the test page is not open. If you run tests from the CLI, the service worker running in your browser may troll you. In which case you'll want to unregister the service worker in your browser so they don't interfere with one another.
+Note that the tests leverage a test server that runs a ports meant just for testing. If you run tests from the CLI, QUnit tests that happen to be open in the browser may try to connect to the test server (based on the tests that are running in your browser) that the CLI is using and will troll you.
 
 ## Explanation
 
