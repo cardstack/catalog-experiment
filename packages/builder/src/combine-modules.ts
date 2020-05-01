@@ -7,7 +7,7 @@ import {
   Program,
 } from "@babel/types";
 import { Bundle, BundleAssignments } from "./nodes/bundle";
-import { NodePath } from "@babel/traverse";
+import { NodePath, Binding } from "@babel/traverse";
 import { ModuleResolution } from "./nodes/resolution";
 
 export function combineModules(
@@ -97,46 +97,30 @@ function adjustModulePlugin(): unknown {
   const visitor = {
     Program(path: NodePath<Program>, context: PluginContext) {
       let { module, assignments, state } = context.opts;
-      let { usedNames, assignedImportedNames } = state;
       let localAssignments = new Set<string>();
-      for (let name of Object.keys(path.scope.bindings)) {
+      for (let [name, binding] of Object.entries(path.scope.bindings)) {
         // figure out which names in module scope are imports vs things that
         // live inside this module
         let isImported = false;
         for (let imp of Object.values(module.imports)) {
           let remoteName = imp.desc.names.get(name);
           if (remoteName) {
-            // name is imported
             isImported = true;
-            let mapping = assignedImportedNames.get(imp.resolution.url.href);
-            if (!mapping) {
-              mapping = new Map();
-              assignedImportedNames.set(imp.resolution.url.href, mapping);
-            }
-            let assignedName = mapping.get(remoteName);
-            if (!assignedName) {
-              assignedName = unusedNameLike(
-                name,
-                path as NodePath<unknown>,
-                usedNames,
-                true
-              );
-              if (!localAssignments.has(assignedName)) {
-                usedNames.add(assignedName);
-                mapping.set(remoteName, assignedName);
-                localAssignments.add(assignedName);
-              }
-            }
-            if (name !== assignedName && !localAssignments.has(assignedName)) {
-              path.scope.rename(name, assignedName);
-            }
+            claimBinding({
+              path,
+              state,
+              localAssignments,
+              binding,
+              initialName: name,
+              importedModule: imp.resolution,
+              exportedName: remoteName,
+            });
           } else if (imp.desc.namespace.includes(name)) {
             isImported = true;
             // name is imported, like "import * as name from..."
             throw new Error(`unimplemented`);
           }
         }
-
         if (isImported) {
           continue;
         }
@@ -145,46 +129,23 @@ function adjustModulePlugin(): unknown {
         // we should use the assignment for this binding, or create a new one
         // (strive to preserve the exported names when possible)
         if (module.exports.exportedNames.has(name)) {
-          let mapping = assignedImportedNames.get(module.url.href);
-          if (!mapping) {
-            mapping = new Map();
-            assignedImportedNames.set(module.url.href, mapping);
-          }
-          let assignedName = mapping.get(name);
-          if (!assignedName) {
-            assignedName = unusedNameLike(
-              name,
-              path as NodePath<unknown>,
-              usedNames,
-              true
-            );
-            if (!localAssignments.has(assignedName)) {
-              usedNames.add(assignedName);
-              mapping.set(name, assignedName);
-              localAssignments.add(assignedName);
-            }
-          }
-          if (name !== assignedName && !localAssignments.has(assignedName)) {
-            path.scope.rename(name, assignedName);
-          }
+          claimBinding({
+            path,
+            state,
+            localAssignments,
+            binding,
+            initialName: name,
+            importedModule: module,
+            exportedName: name,
+          });
         } else {
-          if (usedNames.has(name)) {
-            let newName = unusedNameLike(
-              name,
-              path as NodePath<unknown>,
-              usedNames
-            );
-            if (!localAssignments.has(newName)) {
-              path.scope.rename(name, newName);
-              usedNames.add(newName);
-              localAssignments.add(newName);
-            }
-          } else {
-            if (!localAssignments.has(name)) {
-              usedNames.add(name);
-              localAssignments.add(name);
-            }
-          }
+          claimBinding({
+            path,
+            state,
+            localAssignments,
+            binding,
+            initialName: name,
+          });
         }
       }
     },
@@ -200,14 +161,70 @@ function adjustModulePlugin(): unknown {
   return { visitor };
 }
 
+interface BindingClaim {
+  path: NodePath<Program>;
+  state: State;
+  localAssignments: Set<string>;
+  binding: Binding;
+  initialName: string;
+  exportedName?: string;
+  importedModule?: ModuleResolution;
+}
+
+function claimBinding({
+  path,
+  state,
+  localAssignments,
+  binding,
+  importedModule,
+  initialName,
+  exportedName,
+}: BindingClaim) {
+  let assignedName: string | undefined;
+  if (importedModule && exportedName) {
+    let mapping = state.assignedImportedNames.get(importedModule.url.href);
+    if (!mapping) {
+      mapping = new Map();
+      state.assignedImportedNames.set(importedModule.url.href, mapping);
+    }
+    assignedName = mapping.get(exportedName);
+    if (!assignedName) {
+      assignedName = unusedNameLike(
+        initialName,
+        binding,
+        path,
+        state.usedNames
+      );
+      if (!localAssignments.has(assignedName)) {
+        mapping.set(exportedName, assignedName);
+      }
+    }
+  }
+
+  if (!assignedName) {
+    assignedName = unusedNameLike(initialName, binding, path, state.usedNames);
+  }
+
+  if (!localAssignments.has(assignedName)) {
+    state.usedNames.add(assignedName);
+    localAssignments.add(assignedName);
+    if (initialName !== assignedName) {
+      path.scope.rename(initialName, assignedName);
+    }
+  }
+}
+
 function unusedNameLike(
   name: string,
-  path: NodePath<unknown>,
-  reserved: Set<string>,
-  nameIsFromScopedBindings = false
+  binding: Binding,
+  path: NodePath<Program>,
+  reserved: Set<string>
 ) {
   let candidate = name;
   let counter = 0;
+  let nameIsFromScopedBindings = Object.values(path.scope.bindings).includes(
+    binding
+  );
   while (
     (!nameIsFromScopedBindings && candidate in path.scope.bindings) ||
     reserved.has(candidate)
