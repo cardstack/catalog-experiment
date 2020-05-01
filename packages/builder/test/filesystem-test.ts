@@ -2,6 +2,7 @@ import {
   installFileAssertions,
   FileAssert,
   origin,
+  url,
 } from "./helpers/file-assertions";
 import {
   makeListener,
@@ -10,11 +11,7 @@ import {
 } from "./helpers/event-helpers";
 import { FileDescriptor } from "../src/filesystem";
 
-function url(path: string, base = origin): URL {
-  return new URL(path, base);
-}
-
-QUnit.module("module filesystem", function (origHooks) {
+QUnit.module("filesystem", function (origHooks) {
   let { test } = installFileAssertions(origHooks);
 
   QUnit.module("events", function () {

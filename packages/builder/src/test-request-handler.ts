@@ -28,8 +28,8 @@ export const handleTestRequest: Handler = async function (
         : await fs.open(new URL(path, origin), "file");
       file.write(text);
     }
-    let builder = new Builder(fs);
-    await builder.build(origin);
+    let builder = Builder.forProjects(fs, [origin]);
+    await builder.build();
     return new Response("OK", { status: 200 });
   } else if (
     path === "/teardown-fs" &&

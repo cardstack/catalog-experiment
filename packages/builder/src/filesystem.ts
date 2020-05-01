@@ -15,19 +15,27 @@ const utf8 = new TextDecoder("utf8");
 export class FileSystem {
   private root = new Directory();
   private listeners: Map<string, EventListener[]> = new Map();
+  private drainEvents?: Promise<void>;
+  private eventQueue: {
+    type: EventType;
+    url: URL;
+    listener: EventListener;
+  }[] = [];
 
   addEventListener(origin: string, fn: EventListener) {
-    if (this.listeners.has(origin)) {
-      this.listeners.get(origin)?.push(fn);
+    let normalizedOrigin = new URL(origin).origin;
+    if (this.listeners.has(normalizedOrigin)) {
+      this.listeners.get(normalizedOrigin)?.push(fn);
     } else {
-      this.listeners.set(origin, [fn]);
+      this.listeners.set(normalizedOrigin, [fn]);
     }
   }
 
   removeEventListener(origin: string, fn: EventListener) {
-    if (this.listeners.has(origin)) {
-      this.listeners.set(origin, [
-        ...this.listeners.get(origin)!.filter((l) => l !== fn),
+    let normalizedOrigin = new URL(origin).origin;
+    if (this.listeners.has(normalizedOrigin)) {
+      this.listeners.set(normalizedOrigin, [
+        ...this.listeners.get(normalizedOrigin)!.filter((l) => l !== fn),
       ]);
     }
   }
@@ -293,8 +301,39 @@ export class FileSystem {
     }
 
     for (let listener of listeners) {
-      setTimeout(() => listener({ url, type }), 0);
+      this.eventQueue.push({
+        type,
+        url,
+        listener,
+      });
     }
+    (async () => await this.drainEventQueue())();
+  }
+
+  private async drainEventQueue(): Promise<void> {
+    await this.drainEvents;
+
+    let eventsDrained: () => void;
+    this.drainEvents = new Promise((res) => (eventsDrained = res));
+
+    while (this.eventQueue.length > 0) {
+      let event = this.eventQueue.shift();
+      if (event) {
+        let { url, type, listener } = event;
+        let dispatched: () => void;
+        let waitForDispatch = new Promise((res) => (dispatched = res));
+        setTimeout(() => {
+          listener({ url, type });
+          dispatched();
+        }, 0);
+        await waitForDispatch;
+      }
+    }
+    eventsDrained!();
+  }
+
+  eventsFlushed(): Promise<void> {
+    return this.drainEvents ?? Promise.resolve();
   }
 
   async displayListing(): Promise<void> {
@@ -467,7 +506,7 @@ interface ListingEntry {
 }
 interface Stat {
   etag?: string;
-  mtime?: number;
+  mtime: number;
   size?: number;
   type: "directory" | "file";
 }

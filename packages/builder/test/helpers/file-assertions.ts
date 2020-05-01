@@ -9,6 +9,10 @@ export interface Scenario {
   [fileURL: string]: string;
 }
 
+export function url(path: string, base = origin): URL {
+  return new URL(path, base);
+}
+
 export interface FileAssert extends Assert {
   setupFiles(scenario?: Scenario, baseURL?: URL): Promise<void>;
   readonly fs: FileSystem;
