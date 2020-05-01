@@ -2,7 +2,6 @@ import { installFileAssertions, origin } from "./helpers/file-assertions";
 import { Builder } from "../src/builder";
 import { JSONParseNode, ConstantNode } from "../src/nodes/common";
 import { FileNode } from "../src/nodes/file";
-import { EntrypointsJSONNode, HTMLEntrypointNode } from "../src/nodes/html";
 
 QUnit.module("builder nodes", function (origHooks) {
   let { test } = installFileAssertions(origHooks);
@@ -28,42 +27,5 @@ QUnit.module("builder nodes", function (origHooks) {
     await assert.fs.eventsFlushed();
     result = await builder.build();
     assert.deepEqual(result, { test: "I am updated" });
-  });
-
-  test("html entrypoint node", async function (assert) {
-    await assert.setupFiles({
-      "/src/index.html": `<html><script type="module" src="/index.js"></script></html>`,
-      "/index.js": "",
-    });
-    let node = new HTMLEntrypointNode(
-      new URL(`${origin}/src/index.html`),
-      new URL(`${origin}/index.html`)
-    );
-    let builder = new Builder(assert.fs, { test: node });
-    await builder.build();
-    assert
-      .file("/index.html")
-      .matches(
-        `<html><script type="module" src="/built-index.js"></script></html>`
-      );
-    assert.file("/built-index.js").exists();
-  });
-
-  test("entrypointsJSON node", async function (assert) {
-    await assert.setupFiles({
-      "/entrypoints.json": JSON.stringify({
-        "/src/index.html": "/index.html",
-      }),
-      "/src/index.html": `<html><script type="module" src="/index.js"></script></html>`,
-      "/index.js": "",
-    });
-    let node = new EntrypointsJSONNode(new URL(origin));
-    let builder = new Builder(assert.fs, { test: node });
-    await builder.build();
-    assert
-      .file("/index.html")
-      .matches(
-        `<html><script type="module" src="/built-index.js"></script></html>`
-      );
   });
 });

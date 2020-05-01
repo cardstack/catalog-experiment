@@ -65,16 +65,17 @@ export class BundleAssignments {
     rootResolutions: ModuleResolution[],
     private config: AssignmentConfig = {}
   ) {
-    if (rootResolutions.length === 0) {
-      throw new Error(`need at least one rootResolution`);
-    }
-    if (Object.keys(config).length === 0) {
-      this.config[new URL("/dist/0.js", rootResolutions[0].url.origin).href] = {
-        exposedModuleURLs: rootResolutions.map((r) => r.url),
-      };
-    }
+    if (rootResolutions.length > 0) {
+      if (Object.keys(config).length === 0) {
+        this.config[
+          new URL("/dist/0.js", rootResolutions[0].url.origin).href
+        ] = {
+          exposedModuleURLs: rootResolutions.map((r) => r.url),
+        };
+      }
 
-    this.traverse(rootResolutions);
+      this.traverse(rootResolutions);
+    }
   }
 
   private discoverExposedModule(module: ModuleResolution): Bundle | undefined {
