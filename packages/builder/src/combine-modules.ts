@@ -17,8 +17,6 @@ export function combineModules(
     appendToBundle(bundleBody, module);
   }
 
-  // TODO perhaps we want to save the source code in the ModuleResolutions so we
-  // can generate source maps...
   let { code } = generate(bundleAst);
   return code;
 }
@@ -45,10 +43,7 @@ function adjustModule(module: ModuleResolution) {
       }
       return statement;
     })
-    .filter(
-      // This is just a silly baby step to the final goal
-      (s) => s.type !== "ImportDeclaration"
-    );
+    .filter((s) => s.type !== "ImportDeclaration");
 }
 
 /*
