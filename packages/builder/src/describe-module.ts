@@ -2,11 +2,22 @@ import {
   File,
   ImportDeclaration,
   Import,
+  ExportNamedDeclaration,
+  VariableDeclarator,
+  Identifier,
   CallExpression,
   StringLiteral,
 } from "@babel/types";
 import traverse, { NodePath } from "@babel/traverse";
 
+export interface ModuleDescription {
+  imports: ImportDescription[];
+  exports: ExportDescription;
+}
+
+export interface ExportDescription {
+  exportedNames: Set<string>;
+}
 export interface ImportDescription {
   // true if this specifier is used dynamically in this module
   isDynamic: boolean;
@@ -24,8 +35,11 @@ export interface ImportDescription {
   namespace: string[];
 }
 
-export function describeImports(ast: File): ImportDescription[] {
+export function describeModule(ast: File): ModuleDescription {
   let imports: Map<string, ImportDescription> = new Map();
+  let exports: ExportDescription = {
+    exportedNames: new Set(),
+  };
 
   traverse(ast, {
     ImportDeclaration(path: NodePath<ImportDeclaration>) {
@@ -71,8 +85,32 @@ export function describeImports(ast: File): ImportDescription[] {
         desc.isDynamic = true;
       }
     },
+    ExportNamedDeclaration(path: NodePath<ExportNamedDeclaration>) {
+      let exportSpecifier = path.node.specifiers.find(
+        (s) => s.type === "ExportSpecifier"
+      );
+
+      // what other ones are there besides VariableDeclarators?
+      let exportDeclarations = Array.isArray(
+        path.node.declaration.declarations
+      );
+      if (exportDeclarations) {
+        for (let declarator of (path.node.declaration
+          .declarations as VariableDeclarator[]).filter(
+          (d) => d.id.type === "Identifier"
+        )) {
+          exports.exportedNames.add((declarator.id as Identifier).name);
+        }
+      } else if (exportSpecifier) {
+        exports.exportedNames.add(exportSpecifier.exported.name);
+      }
+    },
   });
-  return [...imports.values()];
+
+  return {
+    imports: [...imports.values()],
+    exports,
+  };
 }
 
 function assertNever(_value: never): never {

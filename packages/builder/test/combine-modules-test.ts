@@ -6,7 +6,7 @@ import {
   Bundle,
   AssignmentConfig,
 } from "../src/nodes/bundle";
-import { describeImports } from "../src/describe-module";
+import { describeModule } from "../src/describe-module";
 import { parse } from "@babel/core";
 import { url } from "./helpers/file-assertions";
 import { FileSystem } from "../src/filesystem";
@@ -27,16 +27,18 @@ async function makeModuleResolutions(
     throw new Error(`parsed js for ${moduleURL.href} is not a babel File type`);
   }
   let imports: ModuleResolution["imports"] = {};
+  let desc = describeModule(parsed);
+  let { exports } = desc;
   await Promise.all(
-    describeImports(parsed).map(async (desc) => {
-      let depURL = await resolver.resolve(desc.specifier, moduleURL);
-      imports[desc.specifier] = {
-        desc,
+    desc.imports.map(async (imp) => {
+      let depURL = await resolver.resolve(imp.specifier, moduleURL);
+      imports[imp.specifier] = {
+        desc: imp,
         resolution: await makeModuleResolutions(fs, depURL),
       };
     })
   );
-  return { url: moduleURL, parsed, imports };
+  return { url: moduleURL, parsed, imports, exports };
 }
 
 async function makeBundleAssignments(

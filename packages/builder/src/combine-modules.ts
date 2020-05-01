@@ -12,7 +12,7 @@ import { ModuleResolution } from "./nodes/resolution";
 
 export function combineModules(
   bundle: Bundle,
-  _assignments: BundleAssignments
+  assignments: BundleAssignments
 ): string {
   let bundleAst = parse("");
   if (bundleAst?.type !== "File") {
@@ -20,11 +20,11 @@ export function combineModules(
   }
   let state: State = {
     usedNames: new Set(),
-    assignedImportedNames: new WeakMap(),
+    assignedImportedNames: new Map(),
   };
   let bundleBody = bundleAst.program.body;
   for (let module of bundle.exposedModules) {
-    appendToBundle(bundleBody, module, state);
+    appendToBundle(bundleBody, module, state, assignments);
   }
 
   let { code } = generate(bundleAst);
@@ -34,10 +34,10 @@ export function combineModules(
 interface State {
   usedNames: Set<string>;
 
-  // map goes from exported name to our name. our name also must appear in
-  // usedNames.
-  assignedImportedNames: WeakMap<
-    ModuleResolution,
+  // outer map is the href of the exported module. the inner map goes from
+  // exported name to our name. our name also must appear in usedNames.
+  assignedImportedNames: Map<
+    string,
     Map<string | typeof NamespaceMarker, string>
   >;
 }
@@ -47,17 +47,32 @@ const NamespaceMarker = { isNamespace: true };
 function appendToBundle(
   bundleBody: Statement[],
   module: ModuleResolution,
-  state: State
+  state: State,
+  assignments: BundleAssignments,
+  appendedModules: string[] = []
 ) {
-  let adjusted = adjustModule(module, state);
+  let adjusted = adjustModule(module, state, assignments);
   for (let { resolution } of Object.values(module.imports)) {
-    appendToBundle(bundleBody, resolution, state);
+    if (!appendedModules.includes(resolution.url.href)) {
+      appendToBundle(
+        bundleBody,
+        resolution,
+        state,
+        assignments,
+        appendedModules
+      );
+      appendedModules.push(resolution.url.href);
+    }
   }
   bundleBody.push(...adjusted.program.body);
 }
 
-function adjustModule(module: ModuleResolution, state: State) {
-  let config: PluginConfig = { state, module };
+function adjustModule(
+  module: ModuleResolution,
+  state: State,
+  assignments: BundleAssignments
+) {
+  let config: PluginConfig = { state, module, assignments };
   let result = transformFromAstSync(module.parsed, undefined, {
     ast: true,
     plugins: [[adjustModulePlugin, config]],
@@ -69,6 +84,7 @@ function adjustModule(module: ModuleResolution, state: State) {
 }
 
 interface PluginConfig {
+  assignments: BundleAssignments;
   module: ModuleResolution;
   state: State;
 }
@@ -80,47 +96,93 @@ interface PluginContext {
 function adjustModulePlugin(): unknown {
   const visitor = {
     Program(path: NodePath<Program>, context: PluginContext) {
-      let { usedNames, assignedImportedNames } = context.opts.state;
+      let { module, assignments, state } = context.opts;
+      let { usedNames, assignedImportedNames } = state;
+      let localAssignments = new Set<string>();
       for (let name of Object.keys(path.scope.bindings)) {
         // figure out which names in module scope are imports vs things that
         // live inside this module
-        for (let imp of Object.values(context.opts.module.imports)) {
+        let isImported = false;
+        for (let imp of Object.values(module.imports)) {
           let remoteName = imp.desc.names.get(name);
           if (remoteName) {
             // name is imported
-            let mapping = assignedImportedNames.get(imp.resolution);
+            isImported = true;
+            let mapping = assignedImportedNames.get(imp.resolution.url.href);
             if (!mapping) {
               mapping = new Map();
-              assignedImportedNames.set(imp.resolution, mapping);
+              assignedImportedNames.set(imp.resolution.url.href, mapping);
             }
             let assignedName = mapping.get(remoteName);
             if (!assignedName) {
               assignedName = unusedNameLike(
                 name,
                 path as NodePath<unknown>,
-                usedNames
+                usedNames,
+                true
               );
-              usedNames.add(assignedName);
-              mapping.set(remoteName, assignedName);
+              if (!localAssignments.has(assignedName)) {
+                usedNames.add(assignedName);
+                mapping.set(remoteName, assignedName);
+                localAssignments.add(assignedName);
+              }
             }
-            if (name !== assignedName) {
+            if (name !== assignedName && !localAssignments.has(assignedName)) {
               path.scope.rename(name, assignedName);
             }
           } else if (imp.desc.namespace.includes(name)) {
+            isImported = true;
             // name is imported, like "import * as name from..."
             throw new Error(`unimplemented`);
-          } else {
-            // name is not imported
-            if (usedNames.has(name)) {
-              let newName = unusedNameLike(
-                name,
-                path as NodePath<unknown>,
-                usedNames
-              );
+          }
+        }
+
+        if (isImported) {
+          continue;
+        }
+
+        // Check to see if the name is actually an export in which case
+        // we should use the assignment for this binding, or create a new one
+        // (strive to preserve the exported names when possible)
+        if (module.exports.exportedNames.has(name)) {
+          let mapping = assignedImportedNames.get(module.url.href);
+          if (!mapping) {
+            mapping = new Map();
+            assignedImportedNames.set(module.url.href, mapping);
+          }
+          let assignedName = mapping.get(name);
+          if (!assignedName) {
+            assignedName = unusedNameLike(
+              name,
+              path as NodePath<unknown>,
+              usedNames,
+              true
+            );
+            if (!localAssignments.has(assignedName)) {
+              usedNames.add(assignedName);
+              mapping.set(name, assignedName);
+              localAssignments.add(assignedName);
+            }
+          }
+          if (name !== assignedName && !localAssignments.has(assignedName)) {
+            path.scope.rename(name, assignedName);
+          }
+        } else {
+          if (usedNames.has(name)) {
+            let newName = unusedNameLike(
+              name,
+              path as NodePath<unknown>,
+              usedNames
+            );
+            if (!localAssignments.has(newName)) {
               path.scope.rename(name, newName);
               usedNames.add(newName);
-            } else {
+              localAssignments.add(newName);
+            }
+          } else {
+            if (!localAssignments.has(name)) {
               usedNames.add(name);
+              localAssignments.add(name);
             }
           }
         }
@@ -141,11 +203,15 @@ function adjustModulePlugin(): unknown {
 function unusedNameLike(
   name: string,
   path: NodePath<unknown>,
-  reserved: Set<string>
+  reserved: Set<string>,
+  nameIsFromScopedBindings = false
 ) {
   let candidate = name;
   let counter = 0;
-  while (candidate in path.scope.bindings || reserved.has(candidate)) {
+  while (
+    (!nameIsFromScopedBindings && candidate in path.scope.bindings) ||
+    reserved.has(candidate)
+  ) {
     candidate = `${name}${counter++}`;
   }
   return candidate;

@@ -2,7 +2,11 @@ import { BuilderNode, Value, NextNode, AllNode } from "./common";
 import { EntrypointsJSONNode, HTMLEntrypoint } from "./html";
 import { FileNode } from "./file";
 import { JSParseNode } from "./js";
-import { describeImports, ImportDescription } from "../describe-module";
+import {
+  describeModule,
+  ImportDescription,
+  ExportDescription,
+} from "../describe-module";
 import { File } from "@babel/types";
 import mapValues from "lodash/mapValues";
 
@@ -41,6 +45,7 @@ export class ModuleResolutionsNode implements BuilderNode {
 export interface ModuleResolution {
   url: URL;
   parsed: File;
+  exports: ExportDescription;
   imports: {
     [specifier: string]: {
       desc: ImportDescription;
@@ -72,16 +77,19 @@ export class ModuleResolutionNode implements BuilderNode {
   }
   async run({ parsed }: { parsed: File }): Promise<NextNode<ModuleResolution>> {
     let imports: SpecifierNodes = {};
+    let desc = describeModule(parsed);
     await Promise.all(
-      describeImports(parsed).map(async (desc) => {
-        let depURL = await this.resolver.resolve(desc.specifier, this.url);
-        imports[desc.specifier] = {
-          desc,
+      desc.imports.map(async (imp) => {
+        let depURL = await this.resolver.resolve(imp.specifier, this.url);
+        imports[imp.specifier] = {
+          desc: imp,
           resolution: new ModuleResolutionNode(depURL, this.resolver),
         };
       })
     );
-    return { node: new FinishResolutionNode(this.url, imports, parsed) };
+    return {
+      node: new FinishResolutionNode(this.url, imports, desc.exports, parsed),
+    };
   }
 }
 
@@ -90,6 +98,7 @@ class FinishResolutionNode implements BuilderNode {
   constructor(
     private url: URL,
     private imports: SpecifierNodes,
+    private exports: ExportDescription,
     private parsed: File
   ) {
     this.cacheKey = this;
@@ -104,6 +113,7 @@ class FinishResolutionNode implements BuilderNode {
       value: {
         url: this.url,
         parsed: this.parsed,
+        exports: this.exports,
         imports: mapValues(this.imports, ({ desc }, specifier) => ({
           desc,
           resolution: resolutions[specifier],
