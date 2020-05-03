@@ -3,6 +3,7 @@ import {
   ImportDeclaration,
   Import,
   ExportNamedDeclaration,
+  ExportSpecifier,
   VariableDeclarator,
   Identifier,
   CallExpression,
@@ -17,6 +18,9 @@ export interface ModuleDescription {
 
 export interface ExportDescription {
   exportedNames: Set<string>;
+
+  // keys are the exported names, values are the imported names
+  reexports: Map<string, string>;
 }
 export interface ImportDescription {
   // true if this specifier is used dynamically in this module
@@ -33,12 +37,16 @@ export interface ImportDescription {
   // the whole module's namespace has been (statically) imported as these local
   // names
   namespace: string[];
+
+  // keys are the exported names, values are the imported names
+  reexports: Map<string, string>;
 }
 
 export function describeModule(ast: File): ModuleDescription {
   let imports: Map<string, ImportDescription> = new Map();
-  let exports: ExportDescription = {
+  let exportDesc: ExportDescription = {
     exportedNames: new Set(),
+    reexports: new Map(),
   };
 
   traverse(ast, {
@@ -50,6 +58,7 @@ export function describeModule(ast: File): ModuleDescription {
           isDynamic: false,
           names: new Map(),
           namespace: [],
+          reexports: new Map(),
         };
         imports.set(desc.specifier, desc);
       }
@@ -79,6 +88,7 @@ export function describeModule(ast: File): ModuleDescription {
           isDynamic: true,
           names: new Map(),
           namespace: [],
+          reexports: new Map(),
         };
         imports.set(desc.specifier, desc);
       } else {
@@ -86,31 +96,68 @@ export function describeModule(ast: File): ModuleDescription {
       }
     },
     ExportNamedDeclaration(path: NodePath<ExportNamedDeclaration>) {
-      let exportSpecifier = path.node.specifiers.find(
+      let exportSpecifiers = path.node.specifiers.filter(
         (s) => s.type === "ExportSpecifier"
-      );
+      ) as ExportSpecifier[];
 
       // what other ones are there besides VariableDeclarators?
       let exportDeclarations = Array.isArray(
-        path.node.declaration.declarations
+        path.node.declaration?.declarations
       );
       if (exportDeclarations) {
         for (let declarator of (path.node.declaration
           .declarations as VariableDeclarator[]).filter(
           (d) => d.id.type === "Identifier"
         )) {
-          exports.exportedNames.add((declarator.id as Identifier).name);
+          exportDesc.exportedNames.add((declarator.id as Identifier).name);
         }
-      } else if (exportSpecifier) {
-        exports.exportedNames.add(exportSpecifier.exported.name);
+      } else if (exportSpecifiers.length > 0) {
+        for (let exportSpecifier of exportSpecifiers) {
+          let exportedName = exportSpecifier.exported.name as string;
+          exportDesc.exportedNames.add(exportedName);
+
+          if (isReexport(path)) {
+            let importedName = exportSpecifier.local.name as string;
+            let importDesc = imports.get(importedName);
+            if (!importDesc) {
+              importDesc = {
+                specifier: path.node.source!.value, // reexport will always have a non-null source value
+                isDynamic: false,
+                names: new Map(),
+                namespace: [],
+                reexports: new Map(),
+              };
+              imports.set(importDesc.specifier, importDesc);
+            }
+            // setting the reexports on both the import and export desc, so that
+            // we can access this information from either side.
+            importDesc.reexports.set(exportedName, importedName);
+            exportDesc.reexports.set(exportedName, importedName);
+          }
+        }
       }
     },
   });
 
   return {
     imports: [...imports.values()],
-    exports,
+    exports: exportDesc,
   };
+}
+
+function isReexport(path: NodePath<ExportNamedDeclaration>): boolean {
+  let exportSpecifiers = path.node.specifiers.filter(
+    (s) => s.type === "ExportSpecifier"
+  ) as ExportSpecifier[];
+  for (let exportSpecifier of exportSpecifiers) {
+    if (
+      exportSpecifier.local.type === "Identifier" &&
+      path.node.source?.value
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function assertNever(_value: never): never {
