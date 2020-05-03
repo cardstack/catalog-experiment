@@ -176,4 +176,190 @@ console.log(shared);
     `.trim()
     );
   });
+
+  test("prevents collisions for renamed import", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { hello } from './lib.js';
+        import { a } from './a.js';
+        import { b } from './b.js';
+        console.log(hello + a + b);
+      `,
+      "lib.js": `export const hello = 'hello';`,
+      "a.js": `export const a = 'a';`,
+      "b.js": `
+        import { hello as a } from './lib.js';
+        export const b = a + '!';`,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs, [url("index.js")]);
+    let combined = combineModules(
+      bundleAtUrl(assignments, url("dist/0.js")),
+      assignments
+    );
+
+    assert.equal(
+      combined,
+      `
+const hello = 'hello';
+const a = 'a';
+const b = hello + '!';
+console.log(hello + a + b);
+    `.trim()
+    );
+  });
+
+  test("preserves entrypoint exports", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { a } from './a.js';
+        export const b = 'b';
+        console.log(a + b);
+      `,
+      "a.js": `export const a = 'a';`,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs, [url("index.js")]);
+    let combined = combineModules(
+      bundleAtUrl(assignments, url("dist/0.js")),
+      assignments
+    );
+
+    assert.equal(
+      combined,
+      `
+const a = 'a';
+export const b = 'b';
+console.log(a + b);
+    `.trim()
+    );
+  });
+
+  test("prevents collisions with entrypoint exports", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { a } from './a.js';
+        export const c = 'c';
+        console.log(a);
+      `,
+      "a.js": `
+        export const a = 'a';
+        const c = 'a different c';
+        console.log(c);
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs, [url("index.js")]);
+    let combined = combineModules(
+      bundleAtUrl(assignments, url("dist/0.js")),
+      assignments
+    );
+
+    assert.equal(
+      combined,
+      `
+const a = 'a';
+const c0 = 'a different c';
+console.log(c0);
+export const c = 'c';
+console.log(a);
+    `.trim()
+    );
+  });
+
+  test("collaspes reexports", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { hello } from './b.js';
+        const hi = 'hi';
+        console.log(hi + hello);
+      `,
+      "lib.js": `export const hello = 'hello';`,
+      "b.js": `
+        export { hello } from './lib.js';
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs, [url("index.js")]);
+    let combined = combineModules(
+      bundleAtUrl(assignments, url("dist/0.js")),
+      assignments
+    );
+
+    assert.equal(
+      combined,
+      `
+const hello = 'hello';
+const hi = 'hi';
+console.log(hi + hello);
+    `.trim()
+    );
+  });
+
+  test("prevents collisions with renamed reexports", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { b } from './b.js';
+        const hello = 'hi';
+        console.log(hello + b);
+      `,
+      "lib.js": `export const hello = 'hello';`,
+      "b.js": `
+        export { hello as b } from './lib.js';
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs, [url("index.js")]);
+    let combined = combineModules(
+      bundleAtUrl(assignments, url("dist/0.js")),
+      assignments
+    );
+
+    assert.equal(
+      combined,
+      `
+const hello0 = 'hello';
+const hello = 'hi';
+console.log(hello + hello0);
+    `.trim()
+    );
+  });
+
+  test("prevents collisions with chained reexports", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { b } from './b.js';
+        const hello = 'hi';
+        console.log(hello + b);
+      `,
+      "lib.js": `export const hello = 'hello';`,
+      "b.js": `
+        export { c as b } from './c.js';
+      `,
+      "c.js": `
+        export { hello as c } from './lib.js';
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs, [url("index.js")]);
+    let combined = combineModules(
+      bundleAtUrl(assignments, url("dist/0.js")),
+      assignments
+    );
+
+    assert.equal(
+      combined,
+      `
+const hello0 = 'hello';
+const hello = 'hi';
+console.log(hello + hello0);
+    `.trim()
+    );
+  });
+
+  // Test ideas:
+  // mulitple named imports: import { a, b, c} from './lib.js'
+  // mulitple named exports: export { a, b, c } from './lib.js'
+  // import default and variations on that theme
+  // import namespace and variations on that theme
 });

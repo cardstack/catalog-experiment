@@ -99,22 +99,39 @@ function adjustModulePlugin(): unknown {
       let { module, state } = context.opts;
       let localAssignments = new Set<string>();
       for (let [name, binding] of Object.entries(path.scope.bindings)) {
+        let bindingContext = {
+          state,
+          path,
+          localAssignments,
+          initialName: name,
+          binding,
+        };
         // figure out which names in module scope are imports vs things that
         // live inside this module
         let isImported = false;
         for (let imp of Object.values(module.imports)) {
-          let remoteName = imp.desc.names.get(name);
-          if (remoteName) {
+          let exportedAs = imp.desc.names.get(name);
+          if (exportedAs) {
             isImported = true;
-            claimBinding({
-              path,
-              state,
-              localAssignments,
-              binding,
-              initialName: name,
-              importedFrom: imp.resolution,
-              exportedName: remoteName,
-            });
+            if (imp.resolution.exports.reexports.has(exportedAs)) {
+              // this is coming from a reexport--let's favor the original exported name
+              let { exportedName, exportedFrom } = resolveReexport(
+                exportedAs,
+                imp.resolution
+              );
+              claimBinding({
+                ...bindingContext,
+                suggestedName: exportedName,
+                importedFrom: exportedFrom,
+                exportedAs: exportedName,
+              });
+            } else {
+              claimBinding({
+                ...bindingContext,
+                importedFrom: imp.resolution,
+                exportedAs,
+              });
+            }
           } else if (imp.desc.namespace.includes(name)) {
             isImported = true;
             // name is imported, like "import * as name from..."
@@ -125,40 +142,62 @@ function adjustModulePlugin(): unknown {
           continue;
         }
 
-        // Check to see if the name is actually an export in which case
-        // we should use the assignment for this binding, or create a new one
-        // (strive to preserve the exported names when possible)
+        // Check to see if the name is actually our export in which case we
+        // should use the established assignment for this binding, or create a
+        // new one (strive to preserve the exported names when possible)
         if (module.exports.exportedNames.has(name)) {
           claimBinding({
-            path,
-            state,
-            localAssignments,
-            binding,
-            initialName: name,
+            ...bindingContext,
             importedFrom: module,
-            exportedName: name,
+            exportedAs: name,
           });
         } else {
-          claimBinding({
-            path,
-            state,
-            localAssignments,
-            binding,
-            initialName: name,
-          });
+          claimBinding(bindingContext);
         }
       }
     },
-    ExportNamedDeclaration(path: NodePath<ExportNamedDeclaration>) {
+
+    ExportNamedDeclaration(
+      path: NodePath<ExportNamedDeclaration>,
+      context: PluginContext
+    ) {
+      let { module, assignments } = context.opts;
+      let bundle = assignments.bundleFor(module.url);
+      if (
+        bundle.exposedModules.map((m) => m.url.href).includes(module.url.href)
+      ) {
+        return; // don't change the exports of the exposed modules--they are sacrosanct
+      }
+
       if (path.node.declaration) {
         path.replaceWith(path.node.declaration);
+      } else {
+        path.remove();
       }
     },
+
     ImportDeclaration(path: NodePath<ImportDeclaration>) {
       path.remove();
     },
   };
   return { visitor };
+}
+
+function resolveReexport(
+  exportedName: string,
+  exportedFrom: ModuleResolution
+): { exportedName: string; exportedFrom: ModuleResolution } {
+  if (exportedFrom.exports.reexports.has(exportedName)) {
+    let reexportedFrom = Object.values(exportedFrom.imports).find((m) =>
+      m.desc.reexports.has(exportedName!)
+    )!;
+
+    return resolveReexport(
+      exportedFrom.exports.reexports.get(exportedName)!,
+      reexportedFrom.resolution
+    );
+  }
+  return { exportedName, exportedFrom };
 }
 
 interface BindingClaim {
@@ -167,42 +206,50 @@ interface BindingClaim {
   localAssignments: Set<string>;
   binding: Binding;
   initialName: string;
-  exportedName?: string;
+  suggestedName?: string;
+  exportedAs?: string;
   importedFrom?: ModuleResolution;
 }
 
-function claimBinding({
-  path,
-  state,
-  localAssignments,
-  binding,
-  importedFrom,
-  initialName,
-  exportedName,
-}: BindingClaim) {
+function claimBinding(bindingClaim: BindingClaim) {
+  let {
+    path,
+    state,
+    localAssignments,
+    binding,
+    importedFrom,
+    suggestedName,
+    initialName,
+    exportedAs,
+  } = bindingClaim;
   let assignedName: string | undefined;
-  if (importedFrom && exportedName) {
+  if (importedFrom && exportedAs) {
     let mapping = state.assignedImportedNames.get(importedFrom.url.href);
     if (!mapping) {
       mapping = new Map();
       state.assignedImportedNames.set(importedFrom.url.href, mapping);
     }
-    assignedName = mapping.get(exportedName);
+    assignedName = mapping.get(exportedAs);
     if (!assignedName) {
       assignedName = unusedNameLike(
-        initialName,
+        suggestedName ?? initialName,
         binding,
         path,
         state.usedNames
       );
       if (!localAssignments.has(assignedName)) {
-        mapping.set(exportedName, assignedName);
+        mapping.set(exportedAs, assignedName);
       }
     }
   }
 
   if (!assignedName) {
-    assignedName = unusedNameLike(initialName, binding, path, state.usedNames);
+    assignedName = unusedNameLike(
+      suggestedName ?? initialName,
+      binding,
+      path,
+      state.usedNames
+    );
   }
 
   if (!localAssignments.has(assignedName)) {
@@ -222,9 +269,7 @@ function unusedNameLike(
 ) {
   let candidate = name;
   let counter = 0;
-  let nameIsFromScopedBindings = Object.values(path.scope.bindings).includes(
-    binding
-  );
+  let nameIsFromScopedBindings = path.scope.bindings[name] === binding;
   while (
     (!nameIsFromScopedBindings && candidate in path.scope.bindings) ||
     reserved.has(candidate)
