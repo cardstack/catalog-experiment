@@ -11,13 +11,22 @@ import {
 } from "@babel/types";
 import traverse, { NodePath } from "@babel/traverse";
 
+export const NamespaceMarker = { isNamespace: true };
+export type NamespaceMarker = typeof NamespaceMarker;
+export function isNamespaceMarker(
+  value: string | NamespaceMarker
+): value is NamespaceMarker {
+  return typeof value !== "string";
+}
+
 export interface ModuleDescription {
   imports: ImportDescription[];
   exports: ExportDescription;
 }
 
 export interface ExportDescription {
-  exportedNames: Set<string>;
+  // keys are publicly-visible names, values are module-scoped names from inside
+  exportedNames: Map<string, string>;
 
   // keys are the exported names, values are the imported names
   reexports: Map<string, string>;
@@ -45,7 +54,7 @@ export interface ImportDescription {
 export function describeModule(ast: File): ModuleDescription {
   let imports: Map<string, ImportDescription> = new Map();
   let exportDesc: ExportDescription = {
-    exportedNames: new Set(),
+    exportedNames: new Map(),
     reexports: new Map(),
   };
 
@@ -109,12 +118,18 @@ export function describeModule(ast: File): ModuleDescription {
           .declarations as VariableDeclarator[]).filter(
           (d) => d.id.type === "Identifier"
         )) {
-          exportDesc.exportedNames.add((declarator.id as Identifier).name);
+          exportDesc.exportedNames.set(
+            (declarator.id as Identifier).name,
+            (declarator.id as Identifier).name
+          );
         }
       } else if (exportSpecifiers.length > 0) {
         for (let exportSpecifier of exportSpecifiers) {
           let exportedName = exportSpecifier.exported.name as string;
-          exportDesc.exportedNames.add(exportedName);
+          exportDesc.exportedNames.set(
+            exportedName,
+            exportSpecifier.local.name
+          );
 
           if (isReexport(path)) {
             let importedName = exportSpecifier.local.name as string;

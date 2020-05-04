@@ -7,8 +7,9 @@ import {
   Program,
 } from "@babel/types";
 import { Bundle, BundleAssignments } from "./nodes/bundle";
-import { NodePath, Binding } from "@babel/traverse";
+import { NodePath } from "@babel/traverse";
 import { ModuleResolution } from "./nodes/resolution";
+import { NamespaceMarker, isNamespaceMarker } from "./describe-module";
 
 export function combineModules(
   bundle: Bundle,
@@ -37,12 +38,10 @@ interface State {
   // outer map is the href of the exported module. the inner map goes from
   // exported name to our name. our name also must appear in usedNames.
   assignedImportedNames: Map<
-    string,
-    Map<string | typeof NamespaceMarker, string>
+    string, // TODO: back to weakmap with ModuleResolution here. Update test helper to do identity mapping.
+    Map<string | NamespaceMarker, string>
   >;
 }
-
-const NamespaceMarker = { isNamespace: true };
 
 function appendToBundle(
   bundleBody: Statement[],
@@ -93,65 +92,103 @@ interface PluginContext {
   opts: PluginConfig;
 }
 
+function getImportedNames(
+  module: ModuleResolution
+): Map<
+  string,
+  {
+    remoteName: string | typeof NamespaceMarker;
+    remoteModule: ModuleResolution;
+  }
+> {
+  let output: Map<
+    string,
+    { remoteName: string; remoteModule: ModuleResolution }
+  > = new Map();
+  for (let imp of Object.values(module.imports)) {
+    for (let [localName, remoteName] of imp.desc.names) {
+      output.set(localName, { remoteName, remoteModule: imp.resolution });
+    }
+  }
+  return output;
+}
+
+function getExportedLocalNames(module: ModuleResolution): Map<string, string> {
+  let result = new Map();
+  for (let [outsideName, insideName] of module.exports.exportedNames) {
+    result.set(insideName, outsideName);
+  }
+  return result;
+}
+
 function adjustModulePlugin(): unknown {
   const visitor = {
     Program(path: NodePath<Program>, context: PluginContext) {
+      debugger;
       let { module, state } = context.opts;
-      for (let [name, binding] of Object.entries(path.scope.bindings)) {
-        let bindingContext = {
-          state,
-          path,
-          initialName: name,
-          binding,
-        };
+      let importedNames = getImportedNames(module);
+      let exportedLocalNames = getExportedLocalNames(module);
+      for (let name of Object.keys(path.scope.bindings)) {
+        let assignedName: string;
+
         // figure out which names in module scope are imports vs things that
         // live inside this module
-        let isImported = false;
-        for (let imp of Object.values(module.imports)) {
-          let exportedAs = imp.desc.names.get(name);
-          if (exportedAs) {
-            isImported = true;
-            if (imp.resolution.exports.reexports.has(exportedAs)) {
-              // this is coming from a reexport--let's favor the original exported name
-              let { exportedName, exportedFrom } = resolveReexport(
-                exportedAs,
-                imp.resolution
-              );
-              claimBinding({
-                ...bindingContext,
-                suggestedName: exportedName,
-                importedFrom: exportedFrom,
-                exportedAs: exportedName,
-              });
+        let nameIsImported = importedNames.get(name);
+        if (nameIsImported) {
+          let { remoteName, remoteModule } = resolveReexport(nameIsImported);
+          let alreadyAssignedName = state.assignedImportedNames
+            .get(remoteModule.url.href)
+            ?.get(remoteName);
+
+          if (alreadyAssignedName) {
+            assignedName = alreadyAssignedName;
+          } else {
+            let goalName: string;
+            if (!isNamespaceMarker(remoteName)) {
+              goalName = remoteName;
             } else {
-              claimBinding({
-                ...bindingContext,
-                importedFrom: imp.resolution,
-                exportedAs,
-              });
+              goalName = name;
             }
-          } else if (imp.desc.namespace.includes(name)) {
-            isImported = true;
-            // name is imported, like "import * as name from..."
-            throw new Error(`unimplemented`);
+            if (name === goalName) {
+              assignedName = name;
+            } else {
+              assignedName = unusedNameLike(goalName, path, state.usedNames);
+            }
+            assignImportName(remoteModule, remoteName, assignedName, state);
+          }
+        } else {
+          // Check to see if the name is actually our export in which case we
+          // should use the established assignment for this binding, or create a
+          // new one (strive to preserve the exported names when possible)
+          let outsideName = exportedLocalNames.get(name);
+          if (outsideName) {
+            let alreadyAssignedName = state.assignedImportedNames
+              .get(module.url.href)
+              ?.get(outsideName);
+
+            if (alreadyAssignedName) {
+              assignedName = alreadyAssignedName;
+            } else {
+              if (state.usedNames.has(outsideName)) {
+                assignedName = unusedNameLike(
+                  outsideName,
+                  path,
+                  state.usedNames
+                );
+              } else {
+                assignedName = outsideName;
+              }
+            }
+            assignImportName(module, name, assignedName, state);
+          } else {
+            if (state.usedNames.has(name)) {
+              assignedName = unusedNameLike(name, path, state.usedNames);
+            } else {
+              assignedName = name;
+            }
           }
         }
-        if (isImported) {
-          continue;
-        }
-
-        // Check to see if the name is actually our export in which case we
-        // should use the established assignment for this binding, or create a
-        // new one (strive to preserve the exported names when possible)
-        if (module.exports.exportedNames.has(name)) {
-          claimBinding({
-            ...bindingContext,
-            importedFrom: module,
-            exportedAs: name,
-          });
-        } else {
-          claimBinding(bindingContext);
-        }
+        claimAndRename(path, state, name, assignedName);
       }
     },
 
@@ -181,90 +218,63 @@ function adjustModulePlugin(): unknown {
   return { visitor };
 }
 
-function resolveReexport(
-  exportedName: string,
-  exportedFrom: ModuleResolution
-): { exportedName: string; exportedFrom: ModuleResolution } {
-  if (exportedFrom.exports.reexports.has(exportedName)) {
-    let reexportedFrom = Object.values(exportedFrom.imports).find((m) =>
-      m.desc.reexports.has(exportedName!)
+function resolveReexport({
+  remoteName,
+  remoteModule,
+}: {
+  remoteName: string | NamespaceMarker;
+  remoteModule: ModuleResolution;
+}): { remoteName: string | NamespaceMarker; remoteModule: ModuleResolution } {
+  if (isNamespaceMarker(remoteName)) {
+    return { remoteName, remoteModule };
+  }
+  if (remoteModule.exports.reexports.has(remoteName)) {
+    let reexportedFrom = Object.values(remoteModule.imports).find((m) =>
+      m.desc.reexports.has(remoteName!)
     )!;
 
-    return resolveReexport(
-      exportedFrom.exports.reexports.get(exportedName)!,
-      reexportedFrom.resolution
-    );
+    return resolveReexport({
+      remoteName: remoteModule.exports.reexports.get(remoteName)!,
+      remoteModule: reexportedFrom.resolution,
+    });
   }
-  return { exportedName, exportedFrom };
+  return { remoteName, remoteModule };
 }
 
-interface BindingClaim {
-  path: NodePath<Program>;
-  state: State;
-  binding: Binding;
-  initialName: string;
-  suggestedName?: string;
-  exportedAs?: string;
-  importedFrom?: ModuleResolution;
+function assignImportName(
+  module: ModuleResolution,
+  exportedName: string | NamespaceMarker,
+  assignedName: string,
+  state: State
+) {
+  let mapping = state.assignedImportedNames.get(module.url.href);
+  if (!mapping) {
+    mapping = new Map();
+    state.assignedImportedNames.set(module.url.href, mapping);
+  }
+  mapping.set(exportedName, assignedName);
 }
 
-function claimBinding(bindingClaim: BindingClaim) {
-  let {
-    path,
-    state,
-    binding,
-    importedFrom,
-    suggestedName,
-    initialName,
-    exportedAs,
-  } = bindingClaim;
-  let assignedName: string | undefined;
-  if (importedFrom && exportedAs) {
-    let mapping = state.assignedImportedNames.get(importedFrom.url.href);
-    if (!mapping) {
-      mapping = new Map();
-      state.assignedImportedNames.set(importedFrom.url.href, mapping);
-    }
-    assignedName = mapping.get(exportedAs);
-    if (!assignedName) {
-      assignedName = unusedNameLike(
-        suggestedName ?? initialName,
-        binding,
-        path,
-        state.usedNames
-      );
-      mapping.set(exportedAs, assignedName);
-    }
-  }
-
-  if (!assignedName) {
-    assignedName = unusedNameLike(
-      suggestedName ?? initialName,
-      binding,
-      path,
-      state.usedNames
-    );
-  }
-
-  state.usedNames.add(assignedName);
-  if (initialName !== assignedName) {
-    path.scope.rename(initialName, assignedName);
+function claimAndRename(
+  path: NodePath<Program>,
+  state: State,
+  origName: string,
+  newName: string
+) {
+  state.usedNames.add(newName);
+  if (origName !== newName) {
+    path.scope.rename(origName, newName);
   }
 }
 
 function unusedNameLike(
   name: string,
-  binding: Binding,
   path: NodePath<Program>,
   reserved: Set<string>
 ) {
   let candidate = name;
   let counter = 0;
-  let nameIsFromScopedBindings = path.scope.bindings[name] === binding;
-  while (
-    (!nameIsFromScopedBindings && candidate in path.scope.bindings) ||
-    reserved.has(candidate)
-  ) {
+  while (candidate in path.scope.bindings || reserved.has(candidate)) {
     candidate = `${name}${counter++}`;
   }
   return candidate;

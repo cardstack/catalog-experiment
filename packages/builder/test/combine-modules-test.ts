@@ -357,6 +357,38 @@ console.log(hello + hello0);
     );
   });
 
+  test("distinguishes exported names from module-scoped names", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { a, b } from './b.js';
+        console.log(a + b);
+      `,
+      "b.js": `
+        export { a } from './a.js';
+        const a = 'internal';
+        export { a as b };
+      `,
+      "a.js": `
+        export const a = 1;
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs, [url("index.js")]);
+    let combined = combineModules(
+      bundleAtUrl(assignments, url("dist/0.js")),
+      assignments
+    );
+
+    assert.equal(
+      combined,
+      `
+const a = 1;
+const b = 'internal';
+console.log(a + b);
+      `.trim()
+    );
+  });
+
   // Test ideas:
   // mulitple named imports: import { a, b, c} from './lib.js'
   // mulitple named exports: export { a, b, c } from './lib.js'
