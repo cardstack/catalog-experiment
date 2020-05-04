@@ -6,14 +6,14 @@ import {
   ImportDeclaration,
   Program,
 } from "@babel/types";
-import { Bundle, BundleAssignments } from "./nodes/bundle";
+import { BundleAssignments } from "./nodes/bundle";
 import { NodePath } from "@babel/traverse";
 import { ModuleResolution } from "./nodes/resolution";
 import { NamespaceMarker, isNamespaceMarker } from "./describe-module";
 import { Memoize } from "typescript-memoize";
 
 export function combineModules(
-  bundle: Bundle,
+  bundle: URL,
   assignments: BundleAssignments
 ): string {
   let bundleAst = parse("");
@@ -21,12 +21,28 @@ export function combineModules(
     throw new Error(`Empty bundle AST is not a 'File' type`);
   }
   let state: State = {
+    bundle,
     usedNames: new Set(),
     assignedImportedNames: new Map(),
   };
+  let appendedModules: Set<string> = new Set();
   let bundleBody = bundleAst.program.body;
-  for (let module of bundle.exposedModules) {
-    appendToBundle(bundleBody, module, state, assignments);
+
+  // handle the entry module we represent, if any
+  let entryModule = assignments.entrypointInBundle(bundle);
+  if (entryModule) {
+    appendToBundle(
+      bundleBody,
+      entryModule,
+      state,
+      assignments,
+      appendedModules
+    );
+  }
+
+  // handle the exported names we must expose, if any
+  for (let exp of assignments.exportsFromBundle(bundle).values()) {
+    appendToBundle(bundleBody, exp.module, state, assignments, appendedModules);
   }
 
   let { code } = generate(bundleAst);
@@ -34,6 +50,8 @@ export function combineModules(
 }
 
 interface State {
+  bundle: URL;
+
   usedNames: Set<string>;
 
   // outer map is the href of the exported module. the inner map goes from
@@ -46,20 +64,15 @@ function appendToBundle(
   module: ModuleResolution,
   state: State,
   assignments: BundleAssignments,
-  appendedModules: string[] = []
+  appendedModules: Set<string>
 ) {
+  if (appendedModules.has(module.url.href)) {
+    return;
+  }
+  appendedModules.add(module.url.href);
   let adjusted = adjustModule(module, state, assignments);
   for (let { resolution } of Object.values(module.imports)) {
-    if (!appendedModules.includes(resolution.url.href)) {
-      appendToBundle(
-        bundleBody,
-        resolution,
-        state,
-        assignments,
-        appendedModules
-      );
-      appendedModules.push(resolution.url.href);
-    }
+    appendToBundle(bundleBody, resolution, state, assignments, appendedModules);
   }
   bundleBody.push(...adjusted.program.body);
 }
@@ -228,13 +241,14 @@ function adjustModulePlugin(): unknown {
       path: NodePath<ExportNamedDeclaration>,
       context: PluginContext
     ) {
-      let { module, assignments } = context.opts;
-      let bundle = assignments.bundleFor(module.url);
-      if (
-        bundle.exposedModules.map((m) => m.url.href).includes(module.url.href)
-      ) {
-        return; // don't change the exports of the exposed modules--they are sacrosanct
-      }
+      // let exports = context.opts.assignments.exportsFromBundle(
+      //   context.opts.state.bundle
+      // );
+      // if (path.node.declaration) {
+      //   switch (path.node.declaration.type) {
+      //     case "VariableDeclaration":
+      //   }
+      // }
 
       if (path.node.declaration) {
         path.replaceWith(path.node.declaration);

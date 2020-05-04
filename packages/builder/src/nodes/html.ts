@@ -138,7 +138,7 @@ export class HTMLEntrypoint {
     for (let { element, url } of this.jsEntrypoints.values()) {
       let scriptAttrs = Object.assign({}, element.attribs);
       scriptAttrs.src = maybeRelativeURL(
-        assignments.bundleFor(url).url,
+        assignments.bundleForEntrypoint(url),
         this.dest
       );
       this.replace(element, new dom.Element("script", scriptAttrs));

@@ -1,21 +1,13 @@
 import { installFileAssertions } from "./helpers/file-assertions";
 import { combineModules } from "../src/combine-modules";
 import { Resolver, ModuleResolution } from "../src/nodes/resolution";
-import {
-  BundleAssignments,
-  Bundle,
-  AssignmentConfig,
-} from "../src/nodes/bundle";
-import { describeModule } from "../src/describe-module";
+import { BundleAssignments } from "../src/nodes/bundle";
+import { describeModule, NamespaceMarker } from "../src/describe-module";
 import { parse } from "@babel/core";
 import { url } from "./helpers/file-assertions";
 import { FileSystem } from "../src/filesystem";
 
 let resolver = new Resolver(); // TODO need to resolve modules without '.js' extension
-
-function bundleAtUrl(assignments: BundleAssignments, url: URL): Bundle {
-  return assignments.bundles.find((b) => b.url.href === url.href)!;
-}
 
 async function makeModuleResolutions(
   fs: FileSystem,
@@ -43,13 +35,64 @@ async function makeModuleResolutions(
 
 async function makeBundleAssignments(
   fs: FileSystem,
-  entrypoints: URL[],
-  config?: AssignmentConfig
+  opts?: {
+    exports?: {
+      [outsideName: string]: { file: string; name: string | NamespaceMarker };
+    };
+    containsEntrypoint?: string;
+  }
 ): Promise<BundleAssignments> {
-  let resolutions = await Promise.all(
-    entrypoints.map((e) => makeModuleResolutions(fs, e))
+  let optsWithDefaults = Object.assign(
+    {
+      containsEntrypoint: "index.js",
+      exports: {},
+    },
+    opts
   );
-  return new BundleAssignments(resolutions, config);
+
+  let entryResolution: ModuleResolution | undefined;
+  if (optsWithDefaults.containsEntrypoint) {
+    entryResolution = await makeModuleResolutions(
+      fs,
+      url(optsWithDefaults.containsEntrypoint)
+    );
+  }
+
+  let exportsMap: ReturnType<
+    BundleAssignments["exportsFromBundle"]
+  > = new Map();
+  for (let [outsideName, { file, name }] of Object.entries(
+    optsWithDefaults.exports
+  )) {
+    exportsMap.set(outsideName, {
+      name,
+      module: await makeModuleResolutions(fs, url(file)),
+    });
+  }
+
+  let bundles = [url(`dist/0.js`)];
+
+  return {
+    bundles,
+    bundleForEntrypoint(jsEntry: URL) {
+      if (entryResolution && jsEntry.href === entryResolution.url.href) {
+        return bundles[0];
+      }
+      throw new Error(`not a js entrypoint ${jsEntry}`);
+    },
+    entrypointInBundle(bundle: URL) {
+      if (bundle.href === bundles[0].href) {
+        return entryResolution;
+      }
+    },
+    exportsFromBundle(bundle: URL) {
+      if (bundle.href === bundles[0].href) {
+        return exportsMap;
+      } else {
+        return new Map();
+      }
+    },
+  };
 }
 
 QUnit.module("combine modules", function (origHooks) {
@@ -66,11 +109,8 @@ QUnit.module("combine modules", function (origHooks) {
       "b.js": `export const b = 'b';`,
     });
 
-    let assignments = await makeBundleAssignments(assert.fs, [url("index.js")]);
-    let combined = combineModules(
-      bundleAtUrl(assignments, url("dist/0.js")),
-      assignments
-    );
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.equal(
       combined,
@@ -95,11 +135,8 @@ console.log(a + b);
         export const b = hello + '!';`,
     });
 
-    let assignments = await makeBundleAssignments(assert.fs, [url("index.js")]);
-    let combined = combineModules(
-      bundleAtUrl(assignments, url("dist/0.js")),
-      assignments
-    );
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.equal(
       combined,
@@ -124,11 +161,8 @@ console.log(hello + b);
         export const b = h + '!';`,
     });
 
-    let assignments = await makeBundleAssignments(assert.fs, [url("index.js")]);
-    let combined = combineModules(
-      bundleAtUrl(assignments, url("dist/0.js")),
-      assignments
-    );
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.equal(
       combined,
@@ -158,11 +192,8 @@ console.log(hello + b);
       `,
     });
 
-    let assignments = await makeBundleAssignments(assert.fs, [url("index.js")]);
-    let combined = combineModules(
-      bundleAtUrl(assignments, url("dist/0.js")),
-      assignments
-    );
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.equal(
       combined,
@@ -192,11 +223,8 @@ console.log(shared);
         export const b = a + '!';`,
     });
 
-    let assignments = await makeBundleAssignments(assert.fs, [url("index.js")]);
-    let combined = combineModules(
-      bundleAtUrl(assignments, url("dist/0.js")),
-      assignments
-    );
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.equal(
       combined,
@@ -209,7 +237,7 @@ console.log(hello + a + b);
     );
   });
 
-  test("preserves entrypoint exports", async function (assert) {
+  test("preserves bundle exports", async function (assert) {
     await assert.setupFiles({
       "index.js": `
         import { a } from './a.js';
@@ -219,11 +247,15 @@ console.log(hello + a + b);
       "a.js": `export const a = 'a';`,
     });
 
-    let assignments = await makeBundleAssignments(assert.fs, [url("index.js")]);
-    let combined = combineModules(
-      bundleAtUrl(assignments, url("dist/0.js")),
-      assignments
-    );
+    let assignments = await makeBundleAssignments(assert.fs, {
+      exports: {
+        b: {
+          file: "index.js",
+          name: "b",
+        },
+      },
+    });
+    let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.equal(
       combined,
@@ -235,7 +267,7 @@ console.log(a + b);
     );
   });
 
-  test("prevents collisions with entrypoint exports", async function (assert) {
+  test("prevents collisions with bundle exports", async function (assert) {
     await assert.setupFiles({
       "index.js": `
         import { a } from './a.js';
@@ -249,11 +281,15 @@ console.log(a + b);
       `,
     });
 
-    let assignments = await makeBundleAssignments(assert.fs, [url("index.js")]);
-    let combined = combineModules(
-      bundleAtUrl(assignments, url("dist/0.js")),
-      assignments
-    );
+    let assignments = await makeBundleAssignments(assert.fs, {
+      exports: {
+        c: {
+          file: "index.js",
+          name: "c",
+        },
+      },
+    });
+    let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.equal(
       combined,
@@ -280,11 +316,8 @@ console.log(a);
       `,
     });
 
-    let assignments = await makeBundleAssignments(assert.fs, [url("index.js")]);
-    let combined = combineModules(
-      bundleAtUrl(assignments, url("dist/0.js")),
-      assignments
-    );
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.equal(
       combined,
@@ -314,11 +347,8 @@ console.log(hi + hello);
       `,
     });
 
-    let assignments = await makeBundleAssignments(assert.fs, [url("index.js")]);
-    let combined = combineModules(
-      bundleAtUrl(assignments, url("dist/0.js")),
-      assignments
-    );
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.equal(
       combined,
@@ -348,11 +378,8 @@ console.log(hello + b);
       `,
     });
 
-    let assignments = await makeBundleAssignments(assert.fs, [url("index.js")]);
-    let combined = combineModules(
-      bundleAtUrl(assignments, url("dist/0.js")),
-      assignments
-    );
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.equal(
       combined,
@@ -376,11 +403,8 @@ console.log(a + b);
       `,
     });
 
-    let assignments = await makeBundleAssignments(assert.fs, [url("index.js")]);
-    let combined = combineModules(
-      bundleAtUrl(assignments, url("dist/0.js")),
-      assignments
-    );
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.equal(
       combined,
@@ -390,6 +414,27 @@ const goodbye = 'goodbye';
 const lib = { hello, goodbye };
 console.log(lib.hello + lib.goodbye);
       `.trim()
+    );
+  });
+
+  test("it can refer to modules in other bundles", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { a } from './a.js';
+        console.log(a);
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.equal(
+      combined,
+      `
+const a = 'a';
+const b = 'b';
+console.log(a + b);
+    `.trim()
     );
   });
 

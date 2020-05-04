@@ -35,7 +35,7 @@ export class MakeBundledModulesNode implements BuilderNode {
 
     let bundles = bundleAssignments.bundles.map(
       (bundle) =>
-        new WriteFileNode(new BundleNode(bundle, bundleAssignments), bundle.url)
+        new WriteFileNode(new BundleNode(bundle, bundleAssignments), bundle)
     );
 
     return { node: new AllNode([...htmls, ...bundles]) };
