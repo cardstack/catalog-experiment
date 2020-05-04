@@ -143,16 +143,10 @@ function adjustModulePlugin(): unknown {
           if (alreadyAssignedName) {
             assignedName = alreadyAssignedName;
           } else {
-            let goalName: string;
-            if (!isNamespaceMarker(remoteName)) {
-              goalName = remoteName;
+            if (state.usedNames.has(name)) {
+              assignedName = unusedNameLike(name, path, state.usedNames);
             } else {
-              goalName = name;
-            }
-            if (name === goalName) {
               assignedName = name;
-            } else {
-              assignedName = unusedNameLike(goalName, path, state.usedNames);
             }
             assignImportName(remoteModule, remoteName, assignedName, state);
           }

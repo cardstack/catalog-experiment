@@ -296,36 +296,7 @@ console.log(hi + hello);
     );
   });
 
-  test("prevents collisions with renamed reexports", async function (assert) {
-    await assert.setupFiles({
-      "index.js": `
-        import { b } from './b.js';
-        const hello = 'hi';
-        console.log(hello + b);
-      `,
-      "lib.js": `export const hello = 'hello';`,
-      "b.js": `
-        export { hello as b } from './lib.js';
-      `,
-    });
-
-    let assignments = await makeBundleAssignments(assert.fs, [url("index.js")]);
-    let combined = combineModules(
-      bundleAtUrl(assignments, url("dist/0.js")),
-      assignments
-    );
-
-    assert.equal(
-      combined,
-      `
-const hello0 = 'hello';
-const hello = 'hi';
-console.log(hello + hello0);
-    `.trim()
-    );
-  });
-
-  test("prevents collisions with chained reexports", async function (assert) {
+  test("prevents collisions with reexports", async function (assert) {
     await assert.setupFiles({
       "index.js": `
         import { b } from './b.js';
@@ -335,6 +306,8 @@ console.log(hello + hello0);
       "lib.js": `export const hello = 'hello';`,
       "b.js": `
         export { c as b } from './c.js';
+        const b = 1;
+        console.log(b);
       `,
       "c.js": `
         export { hello as c } from './lib.js';
@@ -350,9 +323,11 @@ console.log(hello + hello0);
     assert.equal(
       combined,
       `
-const hello0 = 'hello';
+const b = 'hello';
+const b0 = 1;
+console.log(b0);
 const hello = 'hi';
-console.log(hello + hello0);
+console.log(hello + b);
     `.trim()
     );
   });
