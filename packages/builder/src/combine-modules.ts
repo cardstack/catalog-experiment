@@ -38,10 +38,7 @@ interface State {
 
   // outer map is the href of the exported module. the inner map goes from
   // exported name to our name. our name also must appear in usedNames.
-  assignedImportedNames: Map<
-    string, // TODO: back to weakmap with ModuleResolution here. Update test helper to do identity mapping.
-    Map<string | NamespaceMarker, string>
-  >;
+  assignedImportedNames: Map<string, Map<string | NamespaceMarker, string>>;
 }
 
 function appendToBundle(
