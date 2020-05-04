@@ -103,6 +103,7 @@ class ModuleRewriter {
   constructor(private path: NodePath<Program>, config: PluginConfig) {
     this.module = config.module;
     this.sharedState = config.state;
+    this.rewriteScope();
   }
 
   @Memoize()
