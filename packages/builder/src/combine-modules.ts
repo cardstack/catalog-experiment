@@ -91,6 +91,7 @@ interface PluginConfig {
 
 interface PluginContext {
   opts: PluginConfig;
+  rewriter: ModuleRewriter;
 }
 
 class ModuleRewriter {
@@ -99,9 +100,9 @@ class ModuleRewriter {
   // shared between all ModuleRewriters in the same bundle
   private sharedState: State;
 
-  constructor(private path: NodePath<Program>, context: PluginContext) {
-    this.module = context.opts.module;
-    this.sharedState = context.opts.state;
+  constructor(private path: NodePath<Program>, config: PluginConfig) {
+    this.module = config.module;
+    this.sharedState = config.state;
   }
 
   @Memoize()
@@ -220,10 +221,9 @@ class ModuleRewriter {
 }
 
 function adjustModulePlugin(): unknown {
-  const visitor = {
+  let visitor = {
     Program(path: NodePath<Program>, context: PluginContext) {
-      let rewriter = new ModuleRewriter(path, context);
-      rewriter.rewriteScope();
+      context.rewriter = new ModuleRewriter(path, context.opts);
     },
 
     ExportNamedDeclaration(
