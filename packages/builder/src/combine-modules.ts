@@ -10,6 +10,7 @@ import { Bundle, BundleAssignments } from "./nodes/bundle";
 import { NodePath } from "@babel/traverse";
 import { ModuleResolution } from "./nodes/resolution";
 import { NamespaceMarker, isNamespaceMarker } from "./describe-module";
+import { Memoize } from "typescript-memoize";
 
 export function combineModules(
   bundle: Bundle,
@@ -92,98 +93,137 @@ interface PluginContext {
   opts: PluginConfig;
 }
 
-function getImportedNames(
-  module: ModuleResolution
-): Map<
-  string,
-  {
-    remoteName: string | typeof NamespaceMarker;
-    remoteModule: ModuleResolution;
+class ModuleRewriter {
+  private module: ModuleResolution;
+
+  // shared between all ModuleRewriters in the same bundle
+  private sharedState: State;
+
+  constructor(private path: NodePath<Program>, context: PluginContext) {
+    this.module = context.opts.module;
+    this.sharedState = context.opts.state;
   }
-> {
-  let output: Map<
+
+  @Memoize()
+  private get importedNames(): Map<
     string,
-    { remoteName: string; remoteModule: ModuleResolution }
-  > = new Map();
-  for (let imp of Object.values(module.imports)) {
-    for (let [localName, remoteName] of imp.desc.names) {
-      output.set(localName, { remoteName, remoteModule: imp.resolution });
+    {
+      remoteName: string | typeof NamespaceMarker;
+      remoteModule: ModuleResolution;
+    }
+  > {
+    let output: Map<
+      string,
+      { remoteName: string; remoteModule: ModuleResolution }
+    > = new Map();
+    for (let imp of Object.values(this.module.imports)) {
+      for (let [localName, remoteName] of imp.desc.names) {
+        output.set(localName, { remoteName, remoteModule: imp.resolution });
+      }
+    }
+    return output;
+  }
+
+  @Memoize()
+  private get exportedLocalNames(): Map<string, string> {
+    let result = new Map();
+    for (let [outsideName, insideName] of this.module.exports.exportedNames) {
+      result.set(insideName, outsideName);
+    }
+    return result;
+  }
+
+  rewriteScope() {
+    for (let name of Object.keys(this.path.scope.bindings)) {
+      let assignedName: string;
+
+      // figure out which names in module scope are imports vs things that
+      // live inside this module
+      let nameIsImported = this.importedNames.get(name);
+      if (nameIsImported) {
+        let { remoteName, remoteModule } = resolveReexport(nameIsImported);
+        assignedName = this.maybeAssignImportName(
+          remoteModule,
+          remoteName,
+          name
+        );
+      } else {
+        // Check to see if the name is actually our export in which case we
+        // should use the established assignment for this binding, or create a
+        // new one (strive to preserve the exported names when possible)
+        let outsideName = this.exportedLocalNames.get(name);
+        if (outsideName) {
+          assignedName = this.maybeAssignImportName(
+            this.module,
+            outsideName,
+            name
+          );
+        } else {
+          assignedName = this.unusedNameLike(name);
+        }
+      }
+      this.claimAndRename(name, assignedName);
     }
   }
-  return output;
-}
 
-function getExportedLocalNames(module: ModuleResolution): Map<string, string> {
-  let result = new Map();
-  for (let [outsideName, insideName] of module.exports.exportedNames) {
-    result.set(insideName, outsideName);
+  private maybeAssignImportName(
+    remoteModule: ModuleResolution,
+    remoteName: string | NamespaceMarker,
+    suggestedName: string
+  ): string {
+    let alreadyAssignedName = this.sharedState.assignedImportedNames
+      .get(remoteModule.url.href)
+      ?.get(remoteName);
+
+    if (alreadyAssignedName) {
+      return alreadyAssignedName;
+    } else {
+      let assignedName = this.unusedNameLike(suggestedName);
+      this.assignImportName(remoteModule, remoteName, assignedName);
+      return assignedName;
+    }
   }
-  return result;
+
+  private assignImportName(
+    module: ModuleResolution,
+    exportedName: string | NamespaceMarker,
+    assignedName: string
+  ) {
+    let mapping = this.sharedState.assignedImportedNames.get(module.url.href);
+    if (!mapping) {
+      mapping = new Map();
+      this.sharedState.assignedImportedNames.set(module.url.href, mapping);
+    }
+    mapping.set(exportedName, assignedName);
+  }
+
+  private claimAndRename(origName: string, newName: string) {
+    this.sharedState.usedNames.add(newName);
+    if (origName !== newName) {
+      this.path.scope.rename(origName, newName);
+    }
+  }
+
+  // it's understood that `name` can be in `path.scope.bindings` and that is not a
+  // collision because it's not conflicting with itself.
+  private unusedNameLike(name: string) {
+    let candidate = name;
+    let counter = 0;
+    while (
+      (candidate !== name && candidate in this.path.scope.bindings) ||
+      this.sharedState.usedNames.has(candidate)
+    ) {
+      candidate = `${name}${counter++}`;
+    }
+    return candidate;
+  }
 }
 
 function adjustModulePlugin(): unknown {
   const visitor = {
     Program(path: NodePath<Program>, context: PluginContext) {
-      debugger;
-      let { module, state } = context.opts;
-      let importedNames = getImportedNames(module);
-      let exportedLocalNames = getExportedLocalNames(module);
-      for (let name of Object.keys(path.scope.bindings)) {
-        let assignedName: string;
-
-        // figure out which names in module scope are imports vs things that
-        // live inside this module
-        let nameIsImported = importedNames.get(name);
-        if (nameIsImported) {
-          let { remoteName, remoteModule } = resolveReexport(nameIsImported);
-          let alreadyAssignedName = state.assignedImportedNames
-            .get(remoteModule.url.href)
-            ?.get(remoteName);
-
-          if (alreadyAssignedName) {
-            assignedName = alreadyAssignedName;
-          } else {
-            if (state.usedNames.has(name)) {
-              assignedName = unusedNameLike(name, path, state.usedNames);
-            } else {
-              assignedName = name;
-            }
-            assignImportName(remoteModule, remoteName, assignedName, state);
-          }
-        } else {
-          // Check to see if the name is actually our export in which case we
-          // should use the established assignment for this binding, or create a
-          // new one (strive to preserve the exported names when possible)
-          let outsideName = exportedLocalNames.get(name);
-          if (outsideName) {
-            let alreadyAssignedName = state.assignedImportedNames
-              .get(module.url.href)
-              ?.get(outsideName);
-
-            if (alreadyAssignedName) {
-              assignedName = alreadyAssignedName;
-            } else {
-              if (state.usedNames.has(outsideName)) {
-                assignedName = unusedNameLike(
-                  outsideName,
-                  path,
-                  state.usedNames
-                );
-              } else {
-                assignedName = outsideName;
-              }
-            }
-            assignImportName(module, name, assignedName, state);
-          } else {
-            if (state.usedNames.has(name)) {
-              assignedName = unusedNameLike(name, path, state.usedNames);
-            } else {
-              assignedName = name;
-            }
-          }
-        }
-        claimAndRename(path, state, name, assignedName);
-      }
+      let rewriter = new ModuleRewriter(path, context);
+      rewriter.rewriteScope();
     },
 
     ExportNamedDeclaration(
@@ -233,45 +273,6 @@ function resolveReexport({
     });
   }
   return { remoteName, remoteModule };
-}
-
-function assignImportName(
-  module: ModuleResolution,
-  exportedName: string | NamespaceMarker,
-  assignedName: string,
-  state: State
-) {
-  let mapping = state.assignedImportedNames.get(module.url.href);
-  if (!mapping) {
-    mapping = new Map();
-    state.assignedImportedNames.set(module.url.href, mapping);
-  }
-  mapping.set(exportedName, assignedName);
-}
-
-function claimAndRename(
-  path: NodePath<Program>,
-  state: State,
-  origName: string,
-  newName: string
-) {
-  state.usedNames.add(newName);
-  if (origName !== newName) {
-    path.scope.rename(origName, newName);
-  }
-}
-
-function unusedNameLike(
-  name: string,
-  path: NodePath<Program>,
-  reserved: Set<string>
-) {
-  let candidate = name;
-  let counter = 0;
-  while (candidate in path.scope.bindings || reserved.has(candidate)) {
-    candidate = `${name}${counter++}`;
-  }
-  return candidate;
 }
 
 /*
