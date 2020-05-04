@@ -53,7 +53,7 @@ async function makeBundleAssignments(
 }
 
 QUnit.module("combine modules", function (origHooks) {
-  let { test } = installFileAssertions(origHooks);
+  let { test, skip } = installFileAssertions(origHooks);
 
   test("it can combine modules", async function (assert) {
     await assert.setupFiles({
@@ -360,6 +360,35 @@ console.log(hello + b);
 const a = 1;
 const b = 'internal';
 console.log(a + b);
+      `.trim()
+    );
+  });
+
+  skip("can access namespace of module within bundle", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import * as lib from './lib.js';
+        console.log(lib.hello + lib.goodbye);
+      `,
+      "lib.js": `
+        export const hello = 'hello';
+        export const goodbye = 'goodbye';
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs, [url("index.js")]);
+    let combined = combineModules(
+      bundleAtUrl(assignments, url("dist/0.js")),
+      assignments
+    );
+
+    assert.equal(
+      combined,
+      `
+const hello = 'hello';
+const goodbye = 'goodbye';
+const lib = { hello, goodbye };
+console.log(lib.hello + lib.goodbye);
       `.trim()
     );
   });
