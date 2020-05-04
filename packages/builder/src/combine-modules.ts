@@ -97,12 +97,10 @@ function adjustModulePlugin(): unknown {
   const visitor = {
     Program(path: NodePath<Program>, context: PluginContext) {
       let { module, state } = context.opts;
-      let localAssignments = new Set<string>();
       for (let [name, binding] of Object.entries(path.scope.bindings)) {
         let bindingContext = {
           state,
           path,
-          localAssignments,
           initialName: name,
           binding,
         };
@@ -203,7 +201,6 @@ function resolveReexport(
 interface BindingClaim {
   path: NodePath<Program>;
   state: State;
-  localAssignments: Set<string>;
   binding: Binding;
   initialName: string;
   suggestedName?: string;
@@ -215,7 +212,6 @@ function claimBinding(bindingClaim: BindingClaim) {
   let {
     path,
     state,
-    localAssignments,
     binding,
     importedFrom,
     suggestedName,
@@ -237,9 +233,7 @@ function claimBinding(bindingClaim: BindingClaim) {
         path,
         state.usedNames
       );
-      if (!localAssignments.has(assignedName)) {
-        mapping.set(exportedAs, assignedName);
-      }
+      mapping.set(exportedAs, assignedName);
     }
   }
 
@@ -252,12 +246,9 @@ function claimBinding(bindingClaim: BindingClaim) {
     );
   }
 
-  if (!localAssignments.has(assignedName)) {
-    state.usedNames.add(assignedName);
-    localAssignments.add(assignedName);
-    if (initialName !== assignedName) {
-      path.scope.rename(initialName, assignedName);
-    }
+  state.usedNames.add(assignedName);
+  if (initialName !== assignedName) {
+    path.scope.rename(initialName, assignedName);
   }
 }
 
