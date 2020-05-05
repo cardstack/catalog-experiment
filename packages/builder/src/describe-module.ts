@@ -8,6 +8,7 @@ import {
   Identifier,
   CallExpression,
   StringLiteral,
+  isVariableDeclaration,
 } from "@babel/types";
 import traverse, { NodePath } from "@babel/traverse";
 
@@ -114,6 +115,14 @@ export function describeModule(ast: File): ModuleDescription {
         path.node.declaration?.declarations
       );
       if (exportDeclarations) {
+        for (let declarator of path.node.declaration) {
+          if (isVariableDeclaration(declarator)) {
+            for (let d of declarator.declarations) {
+              d.id; // this is an LVal
+            }
+          }
+        }
+
         for (let declarator of (path.node.declaration
           .declarations as VariableDeclarator[]).filter(
           (d) => d.id.type === "Identifier"
