@@ -267,6 +267,174 @@ console.log(a + b);
     );
   });
 
+  test("preserves bundle export variable declaration that use a different name on the outside of the bundle from the inside of the bundle", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { a } from './a.js';
+        export const b = 'b';
+        console.log(a + b);
+      `,
+      "a.js": `export const a = 'a';`,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs, {
+      exports: {
+        lib_b: {
+          file: "index.js",
+          name: "b",
+        },
+      },
+    });
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.equal(
+      combined,
+      `
+const a = 'a';
+const lib_b = 'b';
+export { lib_b };
+console.log(a + lib_b);
+    `.trim()
+    );
+  });
+
+  test("preserves bundle named export statements that use a different name on the outside of the bundle from the inside of the bundle", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { a } from './a.js';
+        const b = 'b';
+        export { b }
+        console.log(a + b);
+      `,
+      "a.js": `export const a = 'a';`,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs, {
+      exports: {
+        lib_b: {
+          file: "index.js",
+          name: "b",
+        },
+      },
+    });
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.equal(
+      combined,
+      `
+const a = 'a';
+const lib_b = 'b';
+export { lib_b };
+console.log(a + lib_b);
+    `.trim()
+    );
+  });
+
+  test("preserves bundle renamed export statements that use a different name on the outside of the bundle from the inside of the bundle", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { a } from './a.js';
+        const c = 'b';
+        export { c as b }
+        console.log(a + c);
+      `,
+      "a.js": `export const a = 'a';`,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs, {
+      exports: {
+        lib_b: {
+          file: "index.js",
+          name: "b",
+        },
+      },
+    });
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.equal(
+      combined,
+      `
+const a = 'a';
+const c = 'b';
+export { c as lib_b };
+console.log(a + c);
+    `.trim()
+    );
+  });
+
+  test("preserves function export statements that use a different name on the outside of the bundle from the inside of the bundle", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { a } from './a.js';
+        export function b() { return 'b' }
+        console.log(a + b());
+      `,
+      "a.js": `export const a = 'a';`,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs, {
+      exports: {
+        lib_b: {
+          file: "index.js",
+          name: "b",
+        },
+      },
+    });
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.equal(
+      combined,
+      `
+const a = 'a';
+
+function lib_b() {
+  return 'b';
+}
+
+export { lib_b };
+console.log(a + lib_b());
+    `.trim()
+    );
+  });
+
+  test("preserves class export statements that use a different name on the outside of the bundle from the inside of the bundle", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { a } from './a.js';
+        export class b { foo() { return 'bar'; } }
+        console.log(a + b.foo);
+      `,
+      "a.js": `export const a = 'a';`,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs, {
+      exports: {
+        lib_b: {
+          file: "index.js",
+          name: "b",
+        },
+      },
+    });
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.equal(
+      combined,
+      `
+const a = 'a';
+
+class lib_b {
+  foo() {
+    return 'bar';
+  }
+
+}
+
+export { lib_b };
+console.log(a + lib_b.foo);
+    `.trim()
+    );
+  });
+
   test("it prevents collisions with bundle exported variable declarations", async function (assert) {
     await assert.setupFiles({
       "index.js": `
@@ -302,6 +470,91 @@ console.log(a0());
     `.trim()
     );
   });
+
+  test("it prevents collisions with mulitple bundle exported named statements", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import './lib.js';
+        const a = 1;
+        const b = 2;
+        console.log(a + b);
+      `,
+      "lib.js": `
+        const a = 'a';
+        const b = 'b';
+        export { a, b };
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs, {
+      exports: {
+        a: {
+          file: "lib.js",
+          name: "a",
+        },
+        b: {
+          file: "lib.js",
+          name: "b",
+        },
+      },
+    });
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.equal(
+      combined,
+      `
+const a = 'a';
+const b = 'b';
+export { a, b };
+const a0 = 1;
+const b0 = 2;
+console.log(a0 + b0);
+    `.trim()
+    );
+  });
+
+  test("it prevents collisions with mulitple bundle exported variable declarations", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import './lib.js';
+        const a = 1;
+        const b = 2;
+        console.log(a + b);
+      `,
+      "lib.js": `
+        export const a = 'a', b = 'b';
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs, {
+      exports: {
+        a: {
+          file: "lib.js",
+          name: "a",
+        },
+        b: {
+          file: "lib.js",
+          name: "b",
+        },
+      },
+    });
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.equal(
+      combined,
+      `
+export const a = 'a',
+      b = 'b';
+const a0 = 1;
+const b0 = 2;
+console.log(a0 + b0);
+    `.trim()
+    );
+  });
+
+  test("TODO test against variable exported lvalues like export const [x, y] from blah()", async function (assert) {});
+
+  test("TODO test against export statements/declarations where some of the items are bundle exports and some are not", async function (assert) {});
 
   test("it prevents collisions with bundle exported function declarations", async function (assert) {
     await assert.setupFiles({
@@ -368,9 +621,6 @@ console.log(a0());
     `.trim()
     );
   });
-
-  // you can riff on this with lvalues and mixed export/non-export variable declarations
-  // include a test where the bundle export name from the inside is different from the outside
 
   test("it prevents collisions with bundle exports regardless of order", async function (assert) {
     await assert.setupFiles({
@@ -581,7 +831,6 @@ console.log(a + b);
 
   // Test ideas:
   // mulitple named imports: import { a, b, c} from './lib.js'
-  // mulitple named exports: export { a, b, c } from './lib.js'
   // import default and variations on that theme
   // import namespace and variations on that theme
 });

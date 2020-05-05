@@ -2,6 +2,7 @@ import { parse, transformFromAstSync } from "@babel/core";
 import generate from "@babel/generator";
 import {
   Statement,
+  ExportSpecifier,
   ExportNamedDeclaration,
   ImportDeclaration,
   Program,
@@ -154,14 +155,19 @@ class ModuleRewriter {
   @Memoize()
   private get exportedBundleNames(): Map<
     string, // module href
-    { localName: string; remoteName: string }
+    Map<string, string> // key is inside name, value is outside name
   > {
     let result = new Map();
     let bundleExports = this.assignments.exportsFromBundle(
       this.sharedState.bundle
     );
-    for (let [remoteName, { name: localName, module }] of bundleExports) {
-      result.set(module.url.href, { remoteName, localName });
+    for (let [outsideName, { name: insideName, module }] of bundleExports) {
+      let insideMapping = result.get(module.url.href);
+      if (!insideMapping) {
+        insideMapping = new Map();
+        result.set(module.url.href, insideMapping);
+      }
+      insideMapping.set(insideName, outsideName);
     }
     return result;
   }
@@ -177,20 +183,28 @@ class ModuleRewriter {
     path: NodePath<ExportNamedDeclaration>,
     _context: PluginContext
   ) {
-    if (Array.isArray(path.node.declaration?.declarations)) {
+    let exportSpecifiers = path.node.specifiers.filter(
+      (s) => s.type === "ExportSpecifier"
+    ) as ExportSpecifier[];
+
+    let hasDeclarations = Array.isArray(path.node.declaration?.declarations);
+    if (hasDeclarations) {
+      let retainExports = false;
       for (let declaration of path.node.declaration.declarations) {
         if (isVariableDeclarator(declaration)) {
           switch (declaration.id.type) {
             case "Identifier":
+              let localName = declaration.id.name;
               if (
                 this.exportedBundleNames.has(this.module.url.href) &&
-                this.exportedBundleNames.get(this.module.url.href)
-                  ?.localName === declaration.id.name
+                this.exportedBundleNames
+                  .get(this.module.url.href)
+                  ?.has(localName)
               ) {
                 // this is a bundle export--leave it alone
-                return;
-                // TODO need to separate out the declarations that are bundle exports
-                // and ones that are not...
+                retainExports = true;
+                break;
+                // TODO need to split the exported names from the non-exported names
               }
             case "ArrayPattern":
             case "AssignmentPattern":
@@ -205,6 +219,10 @@ class ModuleRewriter {
           }
         }
       }
+      // return out of this method, we want to retain the exports
+      if (retainExports) {
+        return;
+      }
     } else if (
       path.node.declaration &&
       isFunctionDeclaration(path.node.declaration)
@@ -216,8 +234,9 @@ class ModuleRewriter {
       }
       if (
         this.exportedBundleNames.has(this.module.url.href) &&
-        this.exportedBundleNames.get(this.module.url.href)?.localName ===
-          path.node.declaration.id.name
+        this.exportedBundleNames
+          .get(this.module.url.href)
+          ?.has(path.node.declaration.id.name)
       ) {
         // this is a bundle export--leave it alone
         return;
@@ -232,14 +251,62 @@ class ModuleRewriter {
         case "Identifier":
           if (
             this.exportedBundleNames.has(this.module.url.href) &&
-            this.exportedBundleNames.get(this.module.url.href)?.localName ===
-              path.node.declaration.id.name
+            this.exportedBundleNames
+              .get(this.module.url.href)
+              ?.has(path.node.declaration.id.name)
           ) {
             // this is a bundle export--leave it alone
             return;
           }
         default:
           throw new Error("unimplemented");
+      }
+    } else if (exportSpecifiers.length > 0) {
+      let changedSpecifiers = false;
+      let retainExports = false;
+      for (let specifier of exportSpecifiers) {
+        switch (specifier.exported.type) {
+          case "Identifier":
+            let name = specifier.exported.name;
+            if (
+              this.exportedBundleNames.has(this.module.url.href) &&
+              this.exportedBundleNames.get(this.module.url.href)?.has(name)
+            ) {
+              // this is a bundle export's inside name, we need to make sure to
+              // rename the export to the outside name
+              let exportedName = this.exportedBundleNames
+                .get(this.module.url.href)!
+                .get(name);
+              if (name !== exportedName) {
+                changedSpecifiers = true;
+                specifier.exported.name = exportedName;
+              } else {
+                retainExports = true;
+              }
+              // TODO need to split the exported names from the non-exported names
+            } else if (
+              this.bundleExports.get(name)?.module.url.href ===
+              this.module.url.href
+            ) {
+              // this is the bundle export's outside name, just leave it alone
+              retainExports = true;
+            }
+            break;
+
+          default:
+            assertNever(specifier.exported.type);
+        }
+      }
+
+      if (changedSpecifiers) {
+        // this will trigger a new ExportNamedDeclaration call, but with the outside name
+        path.replaceWith({ ...path.node, specifiers: exportSpecifiers });
+        return;
+      }
+
+      // return out of this method, we want to retain the exports
+      if (retainExports) {
+        return;
       }
     }
 
@@ -268,12 +335,12 @@ class ModuleRewriter {
         // Check to see if the name is actually our export in which case we
         // should use the established assignment for this binding, or create a
         // new one (strive to preserve the exported names when possible)
-        if (
-          this.bundleExports.has(name) &&
-          this.bundleExports.get(name)!.module.url.href === this.module.url.href
-        ) {
-          // this is a bundle export--it's name has been set already been reserved, just use it
-          assignedName = name;
+        if (this.exportedBundleNames.get(this.module.url.href)?.has(name)) {
+          // this is a bundle export--it's name has been set already been
+          // reserved, use the assigned export name for this binding
+          assignedName = this.exportedBundleNames
+            .get(this.module.url.href)!
+            .get(name)!;
         } else {
           let outsideName = this.exportedLocalNames.get(name);
           if (outsideName) {
