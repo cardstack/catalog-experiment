@@ -4,12 +4,12 @@ import {
   Import,
   ExportNamedDeclaration,
   ExportSpecifier,
-  VariableDeclarator,
-  Identifier,
   CallExpression,
   StringLiteral,
-  isVariableDeclaration,
+  isVariableDeclarator,
+  isFunctionDeclaration,
 } from "@babel/types";
+import { assertNever } from "./util";
 import traverse, { NodePath } from "@babel/traverse";
 
 export const NamespaceMarker = { isNamespace: true };
@@ -110,38 +110,56 @@ export function describeModule(ast: File): ModuleDescription {
         (s) => s.type === "ExportSpecifier"
       ) as ExportSpecifier[];
 
-      // what other ones are there besides VariableDeclarators?
-      let exportDeclarations = Array.isArray(
-        path.node.declaration?.declarations
-      );
-      if (exportDeclarations) {
-        for (let declarator of path.node.declaration) {
-          if (isVariableDeclaration(declarator)) {
-            for (let d of declarator.declarations) {
-              d.id; // this is an LVal
+      let hasDeclarations = Array.isArray(path.node.declaration?.declarations);
+      if (hasDeclarations) {
+        for (let declarator of path.node.declaration.declarations) {
+          if (isVariableDeclarator(declarator)) {
+            switch (declarator.id.type) {
+              case "Identifier":
+                exportDesc.exportedNames.set(
+                  declarator.id.name,
+                  declarator.id.name
+                );
+                break;
+              case "ArrayPattern":
+              case "AssignmentPattern":
+              case "MemberExpression":
+              case "ObjectPattern":
+              case "RestElement":
+              case "TSParameterProperty":
+                throw new Error("unimplemented");
+              default:
+                assertNever(declarator.id);
             }
           }
         }
-
-        for (let declarator of (path.node.declaration
-          .declarations as VariableDeclarator[]).filter(
-          (d) => d.id.type === "Identifier"
-        )) {
-          exportDesc.exportedNames.set(
-            (declarator.id as Identifier).name,
-            (declarator.id as Identifier).name
+      } else if (
+        path.node.declaration &&
+        isFunctionDeclaration(path.node.declaration)
+      ) {
+        if (path.node.declaration.id == null) {
+          throw new Error(
+            `Should never have a named export function declaration without an id`
           );
         }
+        exportDesc.exportedNames.set(
+          path.node.declaration.id.name,
+          path.node.declaration.id.name
+        );
       } else if (exportSpecifiers.length > 0) {
-        for (let exportSpecifier of exportSpecifiers) {
-          let exportedName = exportSpecifier.exported.name as string;
-          exportDesc.exportedNames.set(
-            exportedName,
-            exportSpecifier.local.name
-          );
+        for (let specifier of exportSpecifiers) {
+          let exportedName: string;
+          switch (specifier.exported.type) {
+            case "Identifier":
+              exportedName = specifier.exported.name;
+              exportDesc.exportedNames.set(exportedName, specifier.local.name);
+              break;
+            default:
+              assertNever(specifier.exported.type);
+          }
 
           if (isReexport(path)) {
-            let importedName = exportSpecifier.local.name as string;
+            let importedName = specifier.local.name as string;
             let importDesc = imports.get(importedName);
             if (!importDesc) {
               importDesc = {
@@ -182,8 +200,4 @@ function isReexport(path: NodePath<ExportNamedDeclaration>): boolean {
     }
   }
   return false;
-}
-
-function assertNever(_value: never): never {
-  throw new Error(`not never`);
 }

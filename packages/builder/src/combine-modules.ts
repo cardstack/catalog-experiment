@@ -5,8 +5,11 @@ import {
   ExportNamedDeclaration,
   ImportDeclaration,
   Program,
+  isVariableDeclarator,
+  isFunctionDeclaration,
 } from "@babel/types";
 import { BundleAssignments } from "./nodes/bundle";
+import { assertNever } from "./util";
 import { NodePath } from "@babel/traverse";
 import { ModuleResolution } from "./nodes/resolution";
 import { NamespaceMarker, isNamespaceMarker } from "./describe-module";
@@ -106,13 +109,15 @@ interface PluginContext {
 
 class ModuleRewriter {
   private module: ModuleResolution;
+  private assignments: BundleAssignments;
 
   // shared between all ModuleRewriters in the same bundle
   private sharedState: State;
 
-  constructor(private path: NodePath<Program>, config: PluginConfig) {
+  constructor(private programPath: NodePath<Program>, config: PluginConfig) {
     this.module = config.module;
     this.sharedState = config.state;
+    this.assignments = config.assignments;
     this.rewriteScope();
   }
 
@@ -145,8 +150,88 @@ class ModuleRewriter {
     return result;
   }
 
+  @Memoize()
+  private get exportedBundleNames(): Map<
+    string, // module href
+    { localName: string; remoteName: string }
+  > {
+    let result = new Map();
+    let bundleExports = this.assignments.exportsFromBundle(
+      this.sharedState.bundle
+    );
+    for (let [remoteName, { name: localName, module }] of bundleExports) {
+      result.set(module.url.href, { remoteName, localName });
+    }
+    return result;
+  }
+
+  @Memoize()
+  private get bundleExports(): ReturnType<
+    BundleAssignments["exportsFromBundle"]
+  > {
+    return this.assignments.exportsFromBundle(this.sharedState.bundle);
+  }
+
+  rewriteExportNamedDeclaration(
+    path: NodePath<ExportNamedDeclaration>,
+    _context: PluginContext
+  ) {
+    if (Array.isArray(path.node.declaration?.declarations)) {
+      for (let declaration of path.node.declaration.declarations) {
+        if (isVariableDeclarator(declaration)) {
+          switch (declaration.id.type) {
+            case "Identifier":
+              if (
+                this.exportedBundleNames.has(this.module.url.href) &&
+                this.exportedBundleNames.get(this.module.url.href)
+                  ?.localName === declaration.id.name
+              ) {
+                // this is a bundle export--leave it alone
+                return;
+                // TODO need to separate out the declarations that are bundle exports
+                // and ones that are not...
+              }
+            case "ArrayPattern":
+            case "AssignmentPattern":
+            case "MemberExpression":
+            case "ObjectPattern":
+            case "RestElement":
+            case "TSParameterProperty":
+              // TODO
+              break;
+            default:
+              assertNever(declaration.id);
+          }
+        }
+      }
+    } else if (
+      path.node.declaration &&
+      isFunctionDeclaration(path.node.declaration)
+    ) {
+      if (path.node.declaration.id == null) {
+        throw new Error(
+          `Should never have a named export function declaration without an id`
+        );
+      }
+      if (
+        this.exportedBundleNames.has(this.module.url.href) &&
+        this.exportedBundleNames.get(this.module.url.href)?.localName ===
+          path.node.declaration.id.name
+      ) {
+        // this is a bundle export--leave it alone
+        return;
+      }
+    }
+
+    if (path.node.declaration) {
+      path.replaceWith(path.node.declaration);
+    } else {
+      path.remove();
+    }
+  }
+
   rewriteScope() {
-    for (let name of Object.keys(this.path.scope.bindings)) {
+    for (let name of Object.keys(this.programPath.scope.bindings)) {
       let assignedName: string;
 
       // figure out which names in module scope are imports vs things that
@@ -163,15 +248,23 @@ class ModuleRewriter {
         // Check to see if the name is actually our export in which case we
         // should use the established assignment for this binding, or create a
         // new one (strive to preserve the exported names when possible)
-        let outsideName = this.exportedLocalNames.get(name);
-        if (outsideName) {
-          assignedName = this.maybeAssignImportName(
-            this.module,
-            outsideName,
-            name
-          );
+        if (
+          this.bundleExports.has(name) &&
+          this.bundleExports.get(name)!.module.url.href === this.module.url.href
+        ) {
+          // this is a bundle export--it's name has been set already been reserved, just use it
+          assignedName = name;
         } else {
-          assignedName = this.unusedNameLike(name);
+          let outsideName = this.exportedLocalNames.get(name);
+          if (outsideName) {
+            assignedName = this.maybeAssignImportName(
+              this.module,
+              outsideName,
+              name
+            );
+          } else {
+            assignedName = this.unusedNameLike(name);
+          }
         }
       }
       this.claimAndRename(name, assignedName);
@@ -212,7 +305,7 @@ class ModuleRewriter {
   private claimAndRename(origName: string, newName: string) {
     this.sharedState.usedNames.add(newName);
     if (origName !== newName) {
-      this.path.scope.rename(origName, newName);
+      this.programPath.scope.rename(origName, newName);
     }
   }
 
@@ -222,8 +315,9 @@ class ModuleRewriter {
     let candidate = name;
     let counter = 0;
     while (
-      (candidate !== name && candidate in this.path.scope.bindings) ||
-      this.sharedState.usedNames.has(candidate)
+      (candidate !== name && candidate in this.programPath.scope.bindings) ||
+      this.sharedState.usedNames.has(candidate) ||
+      this.bundleExports.has(candidate)
     ) {
       candidate = `${name}${counter++}`;
     }
@@ -241,20 +335,7 @@ function adjustModulePlugin(): unknown {
       path: NodePath<ExportNamedDeclaration>,
       context: PluginContext
     ) {
-      // let exports = context.opts.assignments.exportsFromBundle(
-      //   context.opts.state.bundle
-      // );
-      // if (path.node.declaration) {
-      //   switch (path.node.declaration.type) {
-      //     case "VariableDeclaration":
-      //   }
-      // }
-
-      if (path.node.declaration) {
-        path.replaceWith(path.node.declaration);
-      } else {
-        path.remove();
-      }
+      context.rewriter.rewriteExportNamedDeclaration(path, context);
     },
 
     ImportDeclaration(path: NodePath<ImportDeclaration>) {
