@@ -237,7 +237,7 @@ console.log(hello + a + b);
     );
   });
 
-  test("preserves bundle variable declaration exports", async function (assert) {
+  test("preserves bundle exports", async function (assert) {
     await assert.setupFiles({
       "index.js": `
         import { a } from './a.js';
@@ -337,8 +337,38 @@ console.log(a0());
     );
   });
 
-  // test("preserves bundle function declaration exports", async function (assert) {});
-  // test("preserves bundle export specifers", async function (assert) {});
+  test("it prevents collisions with bundle exported class declarations", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import './a.js';
+        const a = 'a';
+        console.log(a());
+        `,
+      "a.js": `
+        export class a {}
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs, {
+      exports: {
+        a: {
+          file: "a.js",
+          name: "a",
+        },
+      },
+    });
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.equal(
+      combined,
+      `
+export class a {}
+const a0 = 'a';
+console.log(a0());
+    `.trim()
+    );
+  });
+
   // you can riff on this with lvalues and mixed export/non-export variable declarations
   // include a test where the bundle export name from the inside is different from the outside
 
@@ -378,7 +408,7 @@ console.log(a0());
     );
   });
 
-  test("prevents collisions with bundle variable declaration export", async function (assert) {
+  test("prevents collisions with named bundle variable declaration export", async function (assert) {
     await assert.setupFiles({
       "index.js": `
         import { a } from './a.js';

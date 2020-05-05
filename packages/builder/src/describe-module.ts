@@ -8,6 +8,7 @@ import {
   StringLiteral,
   isVariableDeclarator,
   isFunctionDeclaration,
+  isClassDeclaration,
 } from "@babel/types";
 import { assertNever } from "./util";
 import traverse, { NodePath } from "@babel/traverse";
@@ -146,6 +147,22 @@ export function describeModule(ast: File): ModuleDescription {
           path.node.declaration.id.name,
           path.node.declaration.id.name
         );
+      } else if (
+        path.node.declaration &&
+        isClassDeclaration(path.node.declaration)
+      ) {
+        switch (
+          path.node.declaration.id.type // ugh, this type sucks :-(
+        ) {
+          case "Identifier":
+            exportDesc.exportedNames.set(
+              path.node.declaration.id.name,
+              path.node.declaration.id.name
+            );
+            break;
+          default:
+            throw new Error("unimplemented");
+        }
       } else if (exportSpecifiers.length > 0) {
         for (let specifier of exportSpecifiers) {
           let exportedName: string;

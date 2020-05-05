@@ -6,6 +6,7 @@ import {
   ImportDeclaration,
   Program,
   isVariableDeclarator,
+  isClassDeclaration,
   isFunctionDeclaration,
 } from "@babel/types";
 import { BundleAssignments } from "./nodes/bundle";
@@ -220,6 +221,25 @@ class ModuleRewriter {
       ) {
         // this is a bundle export--leave it alone
         return;
+      }
+    } else if (
+      path.node.declaration &&
+      isClassDeclaration(path.node.declaration)
+    ) {
+      switch (
+        path.node.declaration.id.type // ugh, this type sucks :-(
+      ) {
+        case "Identifier":
+          if (
+            this.exportedBundleNames.has(this.module.url.href) &&
+            this.exportedBundleNames.get(this.module.url.href)?.localName ===
+              path.node.declaration.id.name
+          ) {
+            // this is a bundle export--leave it alone
+            return;
+          }
+        default:
+          throw new Error("unimplemented");
       }
     }
 
