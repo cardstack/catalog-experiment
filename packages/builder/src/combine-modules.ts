@@ -4,6 +4,9 @@ import {
   Statement,
   ExportSpecifier,
   ExportNamedDeclaration,
+  exportNamedDeclaration,
+  exportSpecifier,
+  identifier,
   ImportDeclaration,
   Program,
   isVariableDeclarator,
@@ -45,9 +48,35 @@ export function combineModules(
     );
   }
 
+  let exported = assignments.exportsFromBundle(bundle);
+
   // handle the exported names we must expose, if any
-  for (let exp of assignments.exportsFromBundle(bundle).values()) {
+  for (let exp of exported.values()) {
     appendToBundle(bundleBody, exp.module, state, assignments, appendedModules);
+  }
+
+  // at this point we removed all export statements because our modules can
+  // directly consume each other's renamed bindings. Here we re-add exports for
+  // the things that are specifically configured to be exposed outside the
+  // bundle.
+  if (exported.size > 0) {
+    bundleBody.push(
+      exportNamedDeclaration(
+        undefined,
+        [...exported].map(([outsideName, { module, name }]) => {
+          let insideName = state.assignedImportedNames
+            .get(module.url.href)
+            ?.get(name);
+          if (!insideName) {
+            throw new Error(`bug: no internal mapping for ${outsideName}`);
+          }
+          return exportSpecifier(
+            identifier(insideName),
+            identifier(outsideName)
+          );
+        })
+      )
+    );
   }
 
   let { code } = generate(bundleAst);
@@ -173,144 +202,10 @@ class ModuleRewriter {
     return result;
   }
 
-  // TODO we should put this in the shared state
-  @Memoize()
-  private get bundleExports(): ReturnType<
-    BundleAssignments["exportsFromBundle"]
-  > {
-    return this.assignments.exportsFromBundle(this.sharedState.bundle);
-  }
-
   rewriteExportNamedDeclaration(
     path: NodePath<ExportNamedDeclaration>,
     _context: PluginContext
   ) {
-    let exportSpecifiers = path.node.specifiers.filter(
-      (s) => s.type === "ExportSpecifier"
-    ) as ExportSpecifier[];
-
-    let hasDeclarations = Array.isArray(path.node.declaration?.declarations);
-    if (hasDeclarations) {
-      let retainExports = false;
-      for (let declaration of path.node.declaration.declarations) {
-        if (isVariableDeclarator(declaration)) {
-          switch (declaration.id.type) {
-            case "Identifier":
-              let localName = declaration.id.name;
-              if (
-                this.exportedBundleNames
-                  .get(this.module.url.href)
-                  ?.has(localName)
-              ) {
-                // this is a bundle export--leave it alone
-                retainExports = true;
-                break;
-                // TODO need to split the exported names from the non-exported names
-              }
-            case "ArrayPattern":
-            case "AssignmentPattern":
-            case "MemberExpression":
-            case "ObjectPattern":
-            case "RestElement":
-            case "TSParameterProperty":
-              // TODO
-              break;
-            default:
-              assertNever(declaration.id);
-          }
-        }
-      }
-      // return out of this method, we want to retain the exports
-      if (retainExports) {
-        return;
-      }
-    } else if (
-      path.node.declaration &&
-      isFunctionDeclaration(path.node.declaration)
-    ) {
-      if (path.node.declaration.id == null) {
-        throw new Error(
-          `Should never have a named export function declaration without an id`
-        );
-      }
-      if (
-        this.exportedBundleNames.has(this.module.url.href) &&
-        this.exportedBundleNames
-          .get(this.module.url.href)
-          ?.has(path.node.declaration.id.name)
-      ) {
-        // this is a bundle export--leave it alone
-        return;
-      }
-    } else if (
-      path.node.declaration &&
-      isClassDeclaration(path.node.declaration)
-    ) {
-      switch (
-        path.node.declaration.id.type // ugh, this type sucks :-(
-      ) {
-        case "Identifier":
-          if (
-            this.exportedBundleNames.has(this.module.url.href) &&
-            this.exportedBundleNames
-              .get(this.module.url.href)
-              ?.has(path.node.declaration.id.name)
-          ) {
-            // this is a bundle export--leave it alone
-            return;
-          }
-        default:
-          throw new Error("unimplemented");
-      }
-    } else if (exportSpecifiers.length > 0) {
-      let changedSpecifiers = false;
-      let retainExports = false;
-      for (let specifier of exportSpecifiers) {
-        switch (specifier.exported.type) {
-          case "Identifier":
-            let name = specifier.exported.name;
-            if (
-              this.exportedBundleNames.has(this.module.url.href) &&
-              this.exportedBundleNames.get(this.module.url.href)?.has(name)
-            ) {
-              // this is a bundle export's inside name, we need to make sure to
-              // rename the export to the outside name
-              let exportedName = this.exportedBundleNames
-                .get(this.module.url.href)!
-                .get(name);
-              if (name !== exportedName) {
-                changedSpecifiers = true;
-                specifier.exported.name = exportedName;
-              } else {
-                retainExports = true;
-              }
-              // TODO need to split the exported names from the non-exported names
-            } else if (
-              this.bundleExports.get(name)?.module.url.href ===
-              this.module.url.href
-            ) {
-              // this is the bundle export's outside name, just leave it alone
-              retainExports = true;
-            }
-            break;
-
-          default:
-            assertNever(specifier.exported.type);
-        }
-      }
-
-      if (changedSpecifiers) {
-        // this will trigger a new ExportNamedDeclaration call, but with the outside name
-        path.replaceWith({ ...path.node, specifiers: exportSpecifiers });
-        return;
-      }
-
-      // return out of this method, we want to retain the exports
-      if (retainExports) {
-        return;
-      }
-    }
-
     if (path.node.declaration) {
       path.replaceWith(path.node.declaration);
     } else {
@@ -333,26 +228,15 @@ class ModuleRewriter {
           name
         );
       } else {
-        // Check to see if the name is actually our export in which case we
-        // should use the established assignment for this binding, or create a
-        // new one (strive to preserve the exported names when possible)
-        if (this.exportedBundleNames.get(this.module.url.href)?.has(name)) {
-          // this is a bundle export--it's name has been set already been
-          // reserved, use the assigned export name for this binding
-          assignedName = this.exportedBundleNames
-            .get(this.module.url.href)!
-            .get(name)!;
+        let outsideName = this.exportedLocalNames.get(name);
+        if (outsideName) {
+          assignedName = this.maybeAssignImportName(
+            this.module,
+            outsideName,
+            name
+          );
         } else {
-          let outsideName = this.exportedLocalNames.get(name);
-          if (outsideName) {
-            assignedName = this.maybeAssignImportName(
-              this.module,
-              outsideName,
-              name
-            );
-          } else {
-            assignedName = this.unusedNameLike(name);
-          }
+          assignedName = this.unusedNameLike(name);
         }
       }
       this.claimAndRename(name, assignedName);
@@ -404,9 +288,7 @@ class ModuleRewriter {
     let counter = 0;
     while (
       (candidate !== name && candidate in this.programPath.scope.bindings) ||
-      this.sharedState.usedNames.has(candidate) ||
-      //TODO just splat this into the unsued names when we create the state
-      this.bundleExports.has(candidate)
+      this.sharedState.usedNames.has(candidate)
     ) {
       candidate = `${name}${counter++}`;
     }

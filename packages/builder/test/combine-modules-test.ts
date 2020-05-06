@@ -1,4 +1,5 @@
 import { installFileAssertions } from "./helpers/file-assertions";
+import "./helpers/code-equality-assertions";
 import { combineModules } from "../src/combine-modules";
 import { Resolver, ModuleResolution } from "../src/nodes/resolution";
 import { BundleAssignments } from "../src/nodes/bundle";
@@ -257,12 +258,12 @@ console.log(hello + a + b);
     });
     let combined = combineModules(url("dist/0.js"), assignments);
 
-    assert.equal(
+    assert.codeEqual(
       combined,
-      `
-const a = 'a';
-export const b = 'b';
-console.log(a + b);
+      `const a = 'a';
+       const b = 'b';
+       console.log(a + b);
+       export { b };
     `.trim()
     );
   });
@@ -287,13 +288,13 @@ console.log(a + b);
     });
     let combined = combineModules(url("dist/0.js"), assignments);
 
-    assert.equal(
+    assert.codeEqual(
       combined,
       `
 const a = 'a';
-const lib_b = 'b';
-export { lib_b };
-console.log(a + lib_b);
+const b = 'b';
+console.log(a + b);
+export { b as lib_b };
     `.trim()
     );
   });
@@ -319,13 +320,13 @@ console.log(a + lib_b);
     });
     let combined = combineModules(url("dist/0.js"), assignments);
 
-    assert.equal(
+    assert.codeEqual(
       combined,
       `
 const a = 'a';
-const lib_b = 'b';
-export { lib_b };
-console.log(a + lib_b);
+const b = 'b';
+console.log(a + b);
+export { b as lib_b };
     `.trim()
     );
   });
@@ -351,13 +352,13 @@ console.log(a + lib_b);
     });
     let combined = combineModules(url("dist/0.js"), assignments);
 
-    assert.equal(
+    assert.codeEqual(
       combined,
       `
 const a = 'a';
 const c = 'b';
-export { c as lib_b };
 console.log(a + c);
+export { c as lib_b };
     `.trim()
     );
   });
@@ -382,18 +383,14 @@ console.log(a + c);
     });
     let combined = combineModules(url("dist/0.js"), assignments);
 
-    assert.equal(
+    assert.codeEqual(
       combined,
-      `
-const a = 'a';
-
-function lib_b() {
-  return 'b';
-}
-
-export { lib_b };
-console.log(a + lib_b());
-    `.trim()
+      `const a = 'a';
+      function b() {
+        return 'b';
+      }
+      console.log(a + b());
+      export { b as lib_b };`
     );
   });
 
@@ -417,21 +414,16 @@ console.log(a + lib_b());
     });
     let combined = combineModules(url("dist/0.js"), assignments);
 
-    assert.equal(
+    assert.codeEqual(
       combined,
-      `
-const a = 'a';
-
-class lib_b {
-  foo() {
-    return 'bar';
-  }
-
-}
-
-export { lib_b };
-console.log(a + lib_b.foo);
-    `.trim()
+      `const a = 'a';
+      class b {
+        foo() {
+          return 'bar';
+        }
+      }
+      console.log(a + b.foo);
+      export { b as lib_b };`
     );
   });
 
@@ -457,17 +449,14 @@ console.log(a + lib_b.foo);
     });
     let combined = combineModules(url("dist/0.js"), assignments);
 
-    assert.equal(
+    assert.codeEqual(
       combined,
-      `
-export const a = 'a';
-
-function a0() {
-  return 1;
-}
-
-console.log(a0());
-    `.trim()
+      `const a0 = 'a';
+      function a() {
+        return 1;
+      }
+      console.log(a());
+      export { a0 as a };`
     );
   });
 
@@ -500,16 +489,16 @@ console.log(a0());
     });
     let combined = combineModules(url("dist/0.js"), assignments);
 
-    assert.equal(
+    assert.codeEqual(
       combined,
       `
-const a = 'a';
-const b = 'b';
-export { a, b };
-const a0 = 1;
-const b0 = 2;
-console.log(a0 + b0);
-    `.trim()
+      const a0 = 'a';
+      const b0 = 'b';
+      const a = 1;
+      const b = 2;
+      console.log(a + b);
+      export { a0 as a, b0 as b };
+    `
     );
   });
 
@@ -540,21 +529,21 @@ console.log(a0 + b0);
     });
     let combined = combineModules(url("dist/0.js"), assignments);
 
-    assert.equal(
+    assert.codeEqual(
       combined,
       `
-export const a = 'a',
-      b = 'b';
-const a0 = 1;
-const b0 = 2;
-console.log(a0 + b0);
-    `.trim()
+      const a0 = 'a', b0 = 'b';
+      const a = 1;
+      const b = 2;
+      console.log(a + b);
+      export { a0 as a, b0 as b };
+    `
     );
   });
 
-  test("TODO test against variable exported lvalues like export const [x, y] from blah()", async function (assert) {});
+  skip("TODO test against variable exported lvalues like export const [x, y] from blah()", async function (assert) {});
 
-  test("TODO test against export statements/declarations where some of the items are bundle exports and some are not", async function (assert) {});
+  skip("TODO test against export statements/declarations where some of the items are bundle exports and some are not", async function (assert) {});
 
   test("it prevents collisions with bundle exported function declarations", async function (assert) {
     await assert.setupFiles({
@@ -578,14 +567,14 @@ console.log(a0 + b0);
     });
     let combined = combineModules(url("dist/0.js"), assignments);
 
-    assert.equal(
+    assert.codeEqual(
       combined,
-      `
-export function a() {
-  return 1;
-}
-const a0 = 'a';
-console.log(a0());
+      `function a0() {
+        return 1;
+      }
+      const a = 'a';
+      console.log(a());
+      export { a0 as a };
     `.trim()
     );
   });
@@ -615,10 +604,11 @@ console.log(a0());
     assert.equal(
       combined,
       `
-export class a {}
-const a0 = 'a';
-console.log(a0());
-    `.trim()
+      class a0 {}
+      const a = 'a';
+      console.log(a());
+      export { a0 as a };
+    `
     );
   });
 
