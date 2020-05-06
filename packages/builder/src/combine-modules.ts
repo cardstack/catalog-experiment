@@ -152,6 +152,7 @@ class ModuleRewriter {
     return result;
   }
 
+  // TODO we should put this in the shared state
   @Memoize()
   private get exportedBundleNames(): Map<
     string, // module href
@@ -172,6 +173,7 @@ class ModuleRewriter {
     return result;
   }
 
+  // TODO we should put this in the shared state
   @Memoize()
   private get bundleExports(): ReturnType<
     BundleAssignments["exportsFromBundle"]
@@ -196,7 +198,6 @@ class ModuleRewriter {
             case "Identifier":
               let localName = declaration.id.name;
               if (
-                this.exportedBundleNames.has(this.module.url.href) &&
                 this.exportedBundleNames
                   .get(this.module.url.href)
                   ?.has(localName)
@@ -404,6 +405,7 @@ class ModuleRewriter {
     while (
       (candidate !== name && candidate in this.programPath.scope.bindings) ||
       this.sharedState.usedNames.has(candidate) ||
+      //TODO just splat this into the unsued names when we create the state
       this.bundleExports.has(candidate)
     ) {
       candidate = `${name}${counter++}`;
