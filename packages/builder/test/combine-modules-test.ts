@@ -541,9 +541,9 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
-  skip("TODO test against variable exported lvalues like export const [x, y] from blah()", async function (assert) {});
+  skip("TODO test against variable exported lvalues like export const [x, y] from blah()", async function () {});
 
-  skip("TODO test against export statements/declarations where some of the items are bundle exports and some are not", async function (assert) {});
+  skip("TODO test against export statements/declarations where some of the items are bundle exports and some are not", async function () {});
 
   test("it prevents collisions with bundle exported function declarations", async function (assert) {
     await assert.setupFiles({

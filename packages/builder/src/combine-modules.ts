@@ -135,7 +135,6 @@ interface PluginContext {
 
 class ModuleRewriter {
   private module: ModuleResolution;
-  private assignments: BundleAssignments;
 
   // shared between all ModuleRewriters in the same bundle
   private sharedState: State;
@@ -143,7 +142,6 @@ class ModuleRewriter {
   constructor(private programPath: NodePath<Program>, config: PluginConfig) {
     this.module = config.module;
     this.sharedState = config.state;
-    this.assignments = config.assignments;
     this.rewriteScope();
   }
 
@@ -172,27 +170,6 @@ class ModuleRewriter {
     let result = new Map();
     for (let [outsideName, insideName] of this.module.exports.exportedNames) {
       result.set(insideName, outsideName);
-    }
-    return result;
-  }
-
-  // TODO we should put this in the shared state
-  @Memoize()
-  private get exportedBundleNames(): Map<
-    string, // module href
-    Map<string, string> // key is inside name, value is outside name
-  > {
-    let result = new Map();
-    let bundleExports = this.assignments.exportsFromBundle(
-      this.sharedState.bundle
-    );
-    for (let [outsideName, { name: insideName, module }] of bundleExports) {
-      let insideMapping = result.get(module.url.href);
-      if (!insideMapping) {
-        insideMapping = new Map();
-        result.set(module.url.href, insideMapping);
-      }
-      insideMapping.set(insideName, outsideName);
     }
     return result;
   }
