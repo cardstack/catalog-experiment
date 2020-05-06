@@ -113,13 +113,13 @@ QUnit.module("combine modules", function (origHooks) {
     let assignments = await makeBundleAssignments(assert.fs);
     let combined = combineModules(url("dist/0.js"), assignments);
 
-    assert.equal(
+    assert.codeEqual(
       combined,
       `
-const a = 'a';
-const b = 'b';
-console.log(a + b);
-    `.trim()
+      const a = 'a';
+      const b = 'b';
+      console.log(a + b);
+      `
     );
   });
 
@@ -139,13 +139,13 @@ console.log(a + b);
     let assignments = await makeBundleAssignments(assert.fs);
     let combined = combineModules(url("dist/0.js"), assignments);
 
-    assert.equal(
+    assert.codeEqual(
       combined,
       `
-const hello = 'hello';
-const b = hello + '!';
-console.log(hello + b);
-    `.trim()
+      const hello = 'hello';
+      const b = hello + '!';
+      console.log(hello + b);
+      `
     );
   });
 
@@ -165,13 +165,13 @@ console.log(hello + b);
     let assignments = await makeBundleAssignments(assert.fs);
     let combined = combineModules(url("dist/0.js"), assignments);
 
-    assert.equal(
+    assert.codeEqual(
       combined,
       `
-const hello = 'hello';
-const b = hello + '!';
-console.log(hello + b);
-    `.trim()
+      const hello = 'hello';
+      const b = hello + '!';
+      console.log(hello + b);
+      `
     );
   });
 
@@ -196,16 +196,16 @@ console.log(hello + b);
     let assignments = await makeBundleAssignments(assert.fs);
     let combined = combineModules(url("dist/0.js"), assignments);
 
-    assert.equal(
+    assert.codeEqual(
       combined,
       `
-let shared1 = 3;
-console.log(shared1);
-let shared0 = 2;
-console.log(shared0);
-let shared = 1;
-console.log(shared);
-    `.trim()
+      let shared1 = 3;
+      console.log(shared1);
+      let shared0 = 2;
+      console.log(shared0);
+      let shared = 1;
+      console.log(shared);
+      `
     );
   });
 
@@ -227,14 +227,14 @@ console.log(shared);
     let assignments = await makeBundleAssignments(assert.fs);
     let combined = combineModules(url("dist/0.js"), assignments);
 
-    assert.equal(
+    assert.codeEqual(
       combined,
       `
-const hello = 'hello';
-const a = 'a';
-const b = hello + '!';
-console.log(hello + a + b);
-    `.trim()
+      const hello = 'hello';
+      const a = 'a';
+      const b = hello + '!';
+      console.log(hello + a + b);
+      `
     );
   });
 
@@ -264,7 +264,7 @@ console.log(hello + a + b);
        const b = 'b';
        console.log(a + b);
        export { b };
-    `.trim()
+    `
     );
   });
 
@@ -291,11 +291,11 @@ console.log(hello + a + b);
     assert.codeEqual(
       combined,
       `
-const a = 'a';
-const b = 'b';
-console.log(a + b);
-export { b as lib_b };
-    `.trim()
+      const a = 'a';
+      const b = 'b';
+      console.log(a + b);
+      export { b as lib_b };
+      `
     );
   });
 
@@ -323,11 +323,11 @@ export { b as lib_b };
     assert.codeEqual(
       combined,
       `
-const a = 'a';
-const b = 'b';
-console.log(a + b);
-export { b as lib_b };
-    `.trim()
+      const a = 'a';
+      const b = 'b';
+      console.log(a + b);
+      export { b as lib_b };
+      `
     );
   });
 
@@ -355,11 +355,11 @@ export { b as lib_b };
     assert.codeEqual(
       combined,
       `
-const a = 'a';
-const c = 'b';
-console.log(a + c);
-export { c as lib_b };
-    `.trim()
+      const a = 'a';
+      const c = 'b';
+      console.log(a + c);
+      export { c as lib_b };
+      `
     );
   });
 
@@ -575,7 +575,7 @@ export { c as lib_b };
       const a = 'a';
       console.log(a());
       export { a0 as a };
-    `.trim()
+    `
     );
   });
 
@@ -601,7 +601,7 @@ export { c as lib_b };
     });
     let combined = combineModules(url("dist/0.js"), assignments);
 
-    assert.equal(
+    assert.codeEqual(
       combined,
       `
       class a0 {}
@@ -634,17 +634,16 @@ export { c as lib_b };
     });
     let combined = combineModules(url("dist/0.js"), assignments);
 
-    assert.equal(
+    assert.codeEqual(
       combined,
       `
-export const a = 'a';
-
-function a0() {
-  return 1;
-}
-
-console.log(a0());
-    `.trim()
+      const a0 = 'a';
+      function a() {
+        return 1;
+      }
+      console.log(a());
+      export { a0 as a };
+    `
     );
   });
 
@@ -672,15 +671,16 @@ console.log(a0());
     });
     let combined = combineModules(url("dist/0.js"), assignments);
 
-    assert.equal(
+    assert.codeEqual(
       combined,
       `
-const a = 'a';
-const c0 = 'a different c';
-console.log(c0);
-export const c = 'c';
-console.log(a);
-    `.trim()
+      const a = 'a';
+      const c0 = 'a different c';
+      console.log(c0);
+      const c = 'c';
+      console.log(a);
+      export { c };
+      `
     );
   });
 
@@ -700,13 +700,13 @@ console.log(a);
     let assignments = await makeBundleAssignments(assert.fs);
     let combined = combineModules(url("dist/0.js"), assignments);
 
-    assert.equal(
+    assert.codeEqual(
       combined,
       `
-const hello = 'hello';
-const hi = 'hi';
-console.log(hi + hello);
-    `.trim()
+      const hello = 'hello';
+      const hi = 'hi';
+      console.log(hi + hello);
+      `
     );
   });
 
@@ -731,15 +731,15 @@ console.log(hi + hello);
     let assignments = await makeBundleAssignments(assert.fs);
     let combined = combineModules(url("dist/0.js"), assignments);
 
-    assert.equal(
+    assert.codeEqual(
       combined,
       `
-const b = 'hello';
-const b0 = 1;
-console.log(b0);
-const hello = 'hi';
-console.log(hello + b);
-    `.trim()
+      const b = 'hello';
+      const b0 = 1;
+      console.log(b0);
+      const hello = 'hi';
+      console.log(hello + b);
+      `
     );
   });
 
@@ -762,13 +762,13 @@ console.log(hello + b);
     let assignments = await makeBundleAssignments(assert.fs);
     let combined = combineModules(url("dist/0.js"), assignments);
 
-    assert.equal(
+    assert.codeEqual(
       combined,
       `
-const a = 1;
-const b = 'internal';
-console.log(a + b);
-      `.trim()
+      const a = 1;
+      const b = 'internal';
+      console.log(a + b);
+      `
     );
   });
 
@@ -787,14 +787,14 @@ console.log(a + b);
     let assignments = await makeBundleAssignments(assert.fs);
     let combined = combineModules(url("dist/0.js"), assignments);
 
-    assert.equal(
+    assert.codeEqual(
       combined,
       `
-const hello = 'hello';
-const goodbye = 'goodbye';
-const lib = { hello, goodbye };
-console.log(lib.hello + lib.goodbye);
-      `.trim()
+      const hello = 'hello';
+      const goodbye = 'goodbye';
+      const lib = { hello, goodbye };
+      console.log(lib.hello + lib.goodbye);
+      `
     );
   });
 
@@ -809,13 +809,13 @@ console.log(lib.hello + lib.goodbye);
     let assignments = await makeBundleAssignments(assert.fs);
     let combined = combineModules(url("dist/0.js"), assignments);
 
-    assert.equal(
+    assert.codeEqual(
       combined,
       `
-const a = 'a';
-const b = 'b';
-console.log(a + b);
-    `.trim()
+      const a = 'a';
+      const b = 'b';
+      console.log(a + b);
+      `
     );
   });
 
