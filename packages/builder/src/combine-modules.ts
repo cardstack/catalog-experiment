@@ -2,19 +2,14 @@ import { parse, transformFromAstSync } from "@babel/core";
 import generate from "@babel/generator";
 import {
   Statement,
-  ExportSpecifier,
   ExportNamedDeclaration,
   exportNamedDeclaration,
   exportSpecifier,
   identifier,
   ImportDeclaration,
   Program,
-  isVariableDeclarator,
-  isClassDeclaration,
-  isFunctionDeclaration,
 } from "@babel/types";
 import { BundleAssignments } from "./nodes/bundle";
-import { assertNever } from "./util";
 import { NodePath } from "@babel/traverse";
 import { ModuleResolution } from "./nodes/resolution";
 import { NamespaceMarker, isNamespaceMarker } from "./describe-module";
