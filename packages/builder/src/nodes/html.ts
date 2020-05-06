@@ -12,7 +12,7 @@ import {
 import { FileNode } from "./file";
 import { Memoize } from "typescript-memoize";
 import { maybeURL, maybeRelativeURL } from "../path";
-import { BundleAssignments } from "./bundle";
+import { BundleAssignment } from "./bundle";
 
 export interface EntrypointsMapping {
   [src: string]: string;
@@ -134,11 +134,11 @@ export class HTMLEntrypoint {
     }
   }
 
-  render(assignments: BundleAssignments): string {
+  render(assignments: BundleAssignment[]): string {
     for (let { element, url } of this.jsEntrypoints.values()) {
       let scriptAttrs = Object.assign({}, element.attribs);
       scriptAttrs.src = maybeRelativeURL(
-        assignments.bundleForEntrypoint(url),
+        assignments.find((a) => a.module.url.href === url.href)?.bundleURL!,
         this.dest
       );
       this.replace(element, new dom.Element("script", scriptAttrs));

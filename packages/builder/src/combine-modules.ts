@@ -9,7 +9,7 @@ import {
   ImportDeclaration,
   Program,
 } from "@babel/types";
-import { BundleAssignments } from "./nodes/bundle";
+import { BundleAssignment } from "./nodes/bundle";
 import { NodePath } from "@babel/traverse";
 import { ModuleResolution } from "./nodes/resolution";
 import { NamespaceMarker, isNamespaceMarker } from "./describe-module";
@@ -17,7 +17,7 @@ import { Memoize } from "typescript-memoize";
 
 export function combineModules(
   bundle: URL,
-  assignments: BundleAssignments
+  assignments: BundleAssignment[]
 ): string {
   let bundleAst = parse("");
   if (bundleAst?.type !== "File") {
@@ -31,40 +31,27 @@ export function combineModules(
   let appendedModules: Set<string> = new Set();
   let bundleBody = bundleAst.program.body;
 
-  // handle the entry module we represent, if any
-  let entryModule = assignments.entrypointInBundle(bundle);
-  if (entryModule) {
+  // handle the exported names we must expose, if any
+  for (let assignment of assignments) {
     appendToBundle(
       bundleBody,
-      entryModule,
+      assignment.module,
       state,
       assignments,
       appendedModules
     );
   }
 
-  let exported = assignments.exportsFromBundle(bundle);
-
-  // handle the exported names we must expose, if any
-  for (let exp of exported.values()) {
-    appendToBundle(bundleBody, exp.module, state, assignments, appendedModules);
-  }
-
   // at this point we removed all export statements because our modules can
   // directly consume each other's renamed bindings. Here we re-add exports for
   // the things that are specifically configured to be exposed outside the
   // bundle.
-  if (exported.size > 0) {
+  let exports = assignedExports(assignments, state);
+  if (exports.size > 0) {
     bundleBody.push(
       exportNamedDeclaration(
         undefined,
-        [...exported].map(([outsideName, { module, name }]) => {
-          let insideName = state.assignedImportedNames
-            .get(module.url.href)
-            ?.get(name);
-          if (!insideName) {
-            throw new Error(`bug: no internal mapping for ${outsideName}`);
-          }
+        [...exports].map(([outsideName, insideName]) => {
           return exportSpecifier(
             identifier(insideName),
             identifier(outsideName)
@@ -76,6 +63,22 @@ export function combineModules(
 
   let { code } = generate(bundleAst);
   return code;
+}
+
+function assignedExports(assignments: BundleAssignment[], state: State) {
+  let exports: Map<string, string> = new Map();
+  for (let assignment of assignments) {
+    for (let [original, exposed] of assignment.exposedNames) {
+      let insideName = state.assignedImportedNames
+        .get(assignment.module.url.href)
+        ?.get(original);
+      if (!insideName) {
+        throw new Error(`bug: no internal mapping for ${exposed}`);
+      }
+      exports.set(exposed, insideName);
+    }
+  }
+  return exports;
 }
 
 interface State {
@@ -92,7 +95,7 @@ function appendToBundle(
   bundleBody: Statement[],
   module: ModuleResolution,
   state: State,
-  assignments: BundleAssignments,
+  assignments: BundleAssignment[],
   appendedModules: Set<string>
 ) {
   if (appendedModules.has(module.url.href)) {
@@ -109,7 +112,7 @@ function appendToBundle(
 function adjustModule(
   module: ModuleResolution,
   state: State,
-  assignments: BundleAssignments
+  assignments: BundleAssignment[]
 ) {
   let config: PluginConfig = { state, module, assignments };
   let result = transformFromAstSync(module.parsed, undefined, {
@@ -123,7 +126,7 @@ function adjustModule(
 }
 
 interface PluginConfig {
-  assignments: BundleAssignments;
+  assignments: BundleAssignment[];
   module: ModuleResolution;
   state: State;
 }
