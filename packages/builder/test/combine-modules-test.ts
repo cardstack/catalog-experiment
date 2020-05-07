@@ -2,7 +2,7 @@ import { installFileAssertions } from "./helpers/file-assertions";
 import "./helpers/code-equality-assertions";
 import { combineModules } from "../src/combine-modules";
 import { Resolver, ModuleResolution } from "../src/nodes/resolution";
-import { BundleAssignment } from "../src/nodes/bundle";
+import { BundleAssignment, expandAssignments } from "../src/nodes/bundle";
 import { describeModule, NamespaceMarker } from "../src/describe-module";
 import { parse } from "@babel/core";
 import { url } from "./helpers/file-assertions";
@@ -55,14 +55,16 @@ async function makeBundleAssignments(
     },
     opts
   );
-  let assignments: BundleAssignment[] = [];
+
+  // keys are module.url.href
+  let assignments: Map<string, BundleAssignment> = new Map();
 
   if (optsWithDefaults.containsEntrypoint) {
     let module = await makeModuleResolutions(
       fs,
       url(optsWithDefaults.containsEntrypoint)
     );
-    assignments.push({
+    assignments.set(module.url.href, {
       bundleURL: url("dist/0.js"),
       module,
       exposedNames: new Map(),
@@ -74,16 +76,14 @@ async function makeBundleAssignments(
       optsWithDefaults.exports
     )) {
       let fileURL = url(file);
-      let assignment = assignments.find(
-        (a) => a.module.url.href === fileURL.href
-      );
+      let assignment = assignments.get(fileURL.href);
       if (!assignment) {
         assignment = {
           bundleURL: url("dist/0.js"),
           module: await makeModuleResolutions(fs, fileURL),
           exposedNames: new Map(),
         };
-        assignments.push(assignment);
+        assignments.set(assignment.module.url.href, assignment);
       }
       assignment.exposedNames.set(name, outsideName);
     }
@@ -92,20 +92,22 @@ async function makeBundleAssignments(
   if (opts?.assignments) {
     for (let assignment of opts.assignments) {
       let fileURL = url(assignment.module);
-      if (assignments.find((a) => a.module.url.href === fileURL.href)) {
+      if (assignments.get(fileURL.href)) {
         throw new Error(
           `invalid test setup, module ${assignment.module} is both inside and outside the default bundle`
         );
       }
-      assignments.push({
+      let a = {
         bundleURL: url(assignment.assignedToBundle),
         module: await makeModuleResolutions(fs, fileURL),
         exposedNames: new Map(Object.entries(assignment.nameMapping)),
-      });
+      };
+      assignments.set(a.module.url.href, a);
     }
   }
 
-  return assignments;
+  expandAssignments(assignments, [...assignments.values()]);
+  return [...assignments.values()];
 }
 
 QUnit.module("combine modules", function (origHooks) {
@@ -831,11 +833,11 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
-  skip("preserves bundle imports from other modules", async function (assert) {
+  test("preserves bundle imports from other modules", async function (assert) {
     await assert.setupFiles({
       "index.js": `
         import { a } from './a.js';
-        export const b = 'b';
+        const b = 'b';
         console.log(a + b);
       `,
       "a.js": `
@@ -847,7 +849,7 @@ QUnit.module("combine modules", function (origHooks) {
       assignments: [
         {
           module: "a.js",
-          assignedToBundle: "2.js",
+          assignedToBundle: "dist/2.js",
           nameMapping: {
             a: "lib_a",
           },
@@ -858,8 +860,8 @@ QUnit.module("combine modules", function (origHooks) {
 
     assert.codeEqual(
       combined,
-      `import { a } from './2.js';
-       export const b = 'b';
+      `import { lib_a as a } from './2.js';
+       const b = 'b';
        console.log(a + b);`
     );
   });

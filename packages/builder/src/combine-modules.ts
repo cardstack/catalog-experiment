@@ -4,16 +4,20 @@ import {
   Statement,
   ExportNamedDeclaration,
   exportNamedDeclaration,
+  importDeclaration,
+  importSpecifier,
   exportSpecifier,
   identifier,
   ImportDeclaration,
   Program,
+  stringLiteral,
 } from "@babel/types";
 import { BundleAssignment } from "./nodes/bundle";
 import { NodePath } from "@babel/traverse";
 import { ModuleResolution } from "./nodes/resolution";
 import { NamespaceMarker, isNamespaceMarker } from "./describe-module";
 import { Memoize } from "typescript-memoize";
+import { maybeRelativeURL } from "./path";
 
 export function combineModules(
   bundle: URL,
@@ -30,9 +34,12 @@ export function combineModules(
   };
   let appendedModules: Set<string> = new Set();
   let bundleBody = bundleAst.program.body;
+  let ownAssignments = assignments.filter(
+    (a) => a.bundleURL.href === bundle.href
+  );
 
   // handle the exported names we must expose, if any
-  for (let assignment of assignments) {
+  for (let assignment of ownAssignments) {
     appendToBundle(
       bundleBody,
       assignment.module,
@@ -46,7 +53,7 @@ export function combineModules(
   // directly consume each other's renamed bindings. Here we re-add exports for
   // the things that are specifically configured to be exposed outside the
   // bundle.
-  let exports = assignedExports(assignments, state);
+  let exports = assignedExports(ownAssignments, state);
   if (exports.size > 0) {
     bundleBody.push(
       exportNamedDeclaration(
@@ -57,6 +64,20 @@ export function combineModules(
             identifier(outsideName)
           );
         })
+      )
+    );
+  }
+
+  for (let [bundleHref, mapping] of assignedImports(assignments, state)) {
+    bundleBody.unshift(
+      importDeclaration(
+        [...mapping].map(([exportedName, localName]) => {
+          return importSpecifier(
+            identifier(localName),
+            identifier(exportedName)
+          );
+        }),
+        stringLiteral(maybeRelativeURL(new URL(bundleHref, bundle), bundle))
       )
     );
   }
@@ -79,6 +100,32 @@ function assignedExports(assignments: BundleAssignment[], state: State) {
     }
   }
   return exports;
+}
+
+function assignedImports(
+  assignments: BundleAssignment[],
+  state: State
+): Map<string, Map<string, string>> {
+  let imports = new Map();
+  for (let [moduleHref, mappings] of state.assignedImportedNames) {
+    let assignment = assignments.find((a) => a.module.url.href === moduleHref)!;
+    if (assignment.bundleURL.href === state.bundle.href) {
+      // internal, no import needed
+      continue;
+    }
+    let importsFromBundle = imports.get(assignment.bundleURL.href);
+    if (!importsFromBundle) {
+      importsFromBundle = new Map();
+      imports.set(assignment.bundleURL.href, importsFromBundle);
+    }
+    for (let [exportedName, localName] of mappings) {
+      importsFromBundle.set(
+        assignment.exposedNames.get(exportedName),
+        localName
+      );
+    }
+  }
+  return imports;
 }
 
 interface State {
@@ -104,7 +151,21 @@ function appendToBundle(
   appendedModules.add(module.url.href);
   let adjusted = adjustModule(module, state, assignments);
   for (let { resolution } of Object.values(module.imports)) {
-    appendToBundle(bundleBody, resolution, state, assignments, appendedModules);
+    let assignment = assignments.find(
+      (a) => a.module.url.href === resolution.url.href
+    );
+    if (!assignment) {
+      throw new Error(`no bundle assignment for module ${resolution.url.href}`);
+    }
+    if (assignment.bundleURL.href === state.bundle.href) {
+      appendToBundle(
+        bundleBody,
+        resolution,
+        state,
+        assignments,
+        appendedModules
+      );
+    }
   }
   bundleBody.push(...adjusted.program.body);
 }

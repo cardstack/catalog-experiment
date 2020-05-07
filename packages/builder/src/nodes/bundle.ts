@@ -17,15 +17,18 @@ export class BundleAssignmentsNode implements BuilderNode {
   }: {
     resolutions: ModuleResolution[];
   }): Promise<Value<BundleAssignment[]>> {
+    let assignments = new Map();
+    for (let [index, module] of resolutions.entries()) {
+      let bundleURL = new URL(`/dist/${index}.js`, resolutions[0].url.origin);
+      assignments.set(module.url.href, {
+        bundleURL,
+        module,
+        exposedNames: new Map(),
+      });
+    }
+    expandAssignments(assignments, [...assignments.values()]);
     return {
-      value: resolutions.map((module, index) => {
-        let bundleURL = new URL(`/dist/${index}.js`, resolutions[0].url.origin);
-        return {
-          bundleURL,
-          module,
-          exposedNames: new Map(),
-        };
-      }),
+      value: [...assignments.values()],
     };
   }
 }
@@ -61,4 +64,24 @@ export interface BundleAssignment {
   // from name-as-originally exported to name-as-exposed-in-this-bundle, if any.
   // Not every export from every module will be publicly exposed by a bundle.
   exposedNames: Map<string | NamespaceMarker, string>;
+}
+
+export function expandAssignments(
+  assignments: Map<string, BundleAssignment>,
+  queue: BundleAssignment[]
+) {
+  while (queue.length > 0) {
+    let assignment = queue.shift()!;
+    for (let dependency of Object.values(assignment.module.imports)) {
+      if (!assignments.has(dependency.resolution.url.href)) {
+        let a = {
+          bundleURL: assignment.bundleURL,
+          module: dependency.resolution,
+          exposedNames: new Map(),
+        };
+        assignments.set(a.module.url.href, a);
+        queue.push(a);
+      }
+    }
+  }
 }
