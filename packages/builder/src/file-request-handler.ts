@@ -3,11 +3,27 @@ import { contentType, lookup } from "mime-types";
 import { FileSystem, FileSystemError, FileDescriptor } from "./filesystem";
 import { join } from "./path";
 
+const builderOrigin = "http://localhost:8080";
+
 export const handleFileRequest: Handler = async function (
   req: Request,
   context: Context
 ) {
   let requestURL = new URL(req.url);
+  // For the webpack hosted builder requests, we need to honor same origin
+  // policy (apparently), as the responses are empty otherwise. So instead route
+  // these requests through the file daemon where they will be proxied to the
+  // webpack hosted builder. I wonder about 3rd party js, we might need the file
+  // daemon to be more aggressive with its proxying....
+  if (context.originURL && requestURL.origin === builderOrigin) {
+    return new Response(
+      (
+        await fetch(new URL(requestURL.pathname, context.originURL.href).href)
+      ).body
+    );
+  }
+
+  // This might not be doing what we think it's doing per the comment above...
   if (
     !context.originURL.href ||
     requestURL.origin !== context.originURL.origin

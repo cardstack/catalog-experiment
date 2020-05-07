@@ -14,3 +14,6 @@
 /packages/builder/**/*.d.ts
 /packages/builder/**/*.js
 /packages/builder/**/*.js.map
+/packages/ui/**/*.d.ts
+/packages/ui/**/*.js
+/packages/ui/**/*.js.map

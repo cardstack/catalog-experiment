@@ -15,7 +15,6 @@ const webroot: string = "/";
 
 let originURL: URL;
 let websocketURL: URL;
-let fileDaemonURL: URL;
 let isDisabled = false;
 let finishedBuild: Promise<void>;
 let client: FileDaemonClient | undefined;
@@ -24,14 +23,8 @@ console.log(`service worker evaluated`);
 
 worker.addEventListener("install", () => {
   console.log(`installing`);
-  let workerURL = new URL(worker.location.href);
-  originURL = new URL(workerURL.searchParams.get("origin") || defaultOrigin);
-  websocketURL = new URL(
-    workerURL.searchParams.get("websocketURL") || defaultWebsocketURL
-  );
-  fileDaemonURL = new URL(
-    workerURL.searchParams.get("fileDaemonURL") || defaultOrigin
-  );
+  originURL = new URL(defaultOrigin);
+  websocketURL = new URL(defaultWebsocketURL);
 
   // force moving on to activation even if another service worker had control
   worker.skipWaiting();
@@ -39,13 +32,13 @@ worker.addEventListener("install", () => {
 
 worker.addEventListener("activate", () => {
   console.log(
-    `service worker activated using builder origin: ${originURL}, file daemon URL: ${fileDaemonURL}, websocket URL: ${websocketURL}`
+    `service worker activated using builder origin: ${originURL}, websocket URL: ${websocketURL}`
   );
 
   // takes over when there is *no* existing service worker
   worker.clients.claim();
 
-  client = new FileDaemonClient(fileDaemonURL, websocketURL, fs, webroot);
+  client = new FileDaemonClient(originURL, websocketURL, fs, webroot);
 
   // TODO watch for file changes and build when fs changes
   let builder = Builder.forProjects(fs, [originURL]);
@@ -81,7 +74,7 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
       // service worker--but there is only one handler right now...
       let stack: Handler[] = [handleFileRequest];
       let response: Response | undefined;
-      let context = { fs, webroot, originURL: originURL };
+      let context = { fs, webroot, originURL };
       for (let handler of stack) {
         response = await handler(event.request, context);
         if (response) {
