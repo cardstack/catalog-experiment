@@ -14,7 +14,7 @@ export const handleTestRequest: Handler = async function (
 ) {
   let requestUrl = new URL(req.url);
   let path = requestUrl.pathname;
-  let { fs, origin } = context;
+  let { fs, originURL } = context;
   if (
     path === "/setup-fs" &&
     req.method === "POST" &&
@@ -25,10 +25,10 @@ export const handleTestRequest: Handler = async function (
     for (let [path, text] of Object.entries(scenario)) {
       let file = isURL(path)
         ? await fs.open(new URL(path), "file")
-        : await fs.open(new URL(path, origin), "file");
+        : await fs.open(new URL(path, originURL), "file");
       file.write(text);
     }
-    let builder = Builder.forProjects(fs, [origin]);
+    let builder = Builder.forProjects(fs, [originURL]);
     await builder.build();
     return new Response("OK", { status: 200 });
   } else if (

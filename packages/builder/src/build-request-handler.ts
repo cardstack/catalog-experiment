@@ -8,7 +8,10 @@ export const handleBuildRequest: Handler = async function (
   context: Context
 ) {
   let requestURL = new URL(req.url);
-  if (!context.origin.href || requestURL.origin !== context.origin.href) {
+  if (
+    !context.originURL.href ||
+    requestURL.origin !== context.originURL.origin
+  ) {
     return new Response((await fetch(req)).body);
   }
 

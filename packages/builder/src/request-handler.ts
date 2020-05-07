@@ -8,5 +8,5 @@ export type Handler = (
 export interface Context {
   fs: FileSystem;
   webroot: string;
-  origin: URL;
+  originURL: URL;
 }

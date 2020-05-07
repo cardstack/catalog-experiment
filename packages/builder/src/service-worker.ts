@@ -48,7 +48,7 @@ worker.addEventListener("activate", () => {
 
   // when testing these 2 values are usually different, and in that case we
   // don't want a file daemon client
-  if (origin === fileDaemonURL) {
+  if (origin.href === fileDaemonURL.href) {
     client = new FileDaemonClient(fileDaemonURL, websocketURL, fs, webroot);
 
     // TODO watch for file changes and build when fs changes
@@ -83,7 +83,7 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
 
       let stack: Handler[] = [handleTestRequest, handleBuildRequest];
       let response: Response | undefined;
-      let context = { fs, webroot, origin };
+      let context = { fs, webroot, originURL: origin };
       for (let handler of stack) {
         response = await handler(event.request, context);
         if (response) {
