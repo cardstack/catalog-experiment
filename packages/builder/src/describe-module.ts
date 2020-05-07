@@ -4,12 +4,22 @@ import {
   Import,
   ExportNamedDeclaration,
   ExportSpecifier,
-  VariableDeclarator,
-  Identifier,
   CallExpression,
   StringLiteral,
+  isVariableDeclarator,
+  isFunctionDeclaration,
+  isClassDeclaration,
 } from "@babel/types";
+import { assertNever } from "./util";
 import traverse, { NodePath } from "@babel/traverse";
+
+export const NamespaceMarker = { isNamespace: true };
+export type NamespaceMarker = typeof NamespaceMarker;
+export function isNamespaceMarker(
+  value: string | NamespaceMarker
+): value is NamespaceMarker {
+  return typeof value !== "string";
+}
 
 export interface ModuleDescription {
   imports: ImportDescription[];
@@ -17,7 +27,8 @@ export interface ModuleDescription {
 }
 
 export interface ExportDescription {
-  exportedNames: Set<string>;
+  // keys are publicly-visible names, values are module-scoped names from inside
+  exportedNames: Map<string, string>;
 
   // keys are the exported names, values are the imported names
   reexports: Map<string, string>;
@@ -45,7 +56,7 @@ export interface ImportDescription {
 export function describeModule(ast: File): ModuleDescription {
   let imports: Map<string, ImportDescription> = new Map();
   let exportDesc: ExportDescription = {
-    exportedNames: new Set(),
+    exportedNames: new Map(),
     reexports: new Map(),
   };
 
@@ -100,24 +111,72 @@ export function describeModule(ast: File): ModuleDescription {
         (s) => s.type === "ExportSpecifier"
       ) as ExportSpecifier[];
 
-      // what other ones are there besides VariableDeclarators?
-      let exportDeclarations = Array.isArray(
-        path.node.declaration?.declarations
-      );
-      if (exportDeclarations) {
-        for (let declarator of (path.node.declaration
-          .declarations as VariableDeclarator[]).filter(
-          (d) => d.id.type === "Identifier"
-        )) {
-          exportDesc.exportedNames.add((declarator.id as Identifier).name);
+      let hasDeclarations = Array.isArray(path.node.declaration?.declarations);
+      if (hasDeclarations) {
+        for (let declarator of path.node.declaration.declarations) {
+          if (isVariableDeclarator(declarator)) {
+            switch (declarator.id.type) {
+              case "Identifier":
+                exportDesc.exportedNames.set(
+                  declarator.id.name,
+                  declarator.id.name
+                );
+                break;
+              case "ArrayPattern":
+              case "AssignmentPattern":
+              case "MemberExpression":
+              case "ObjectPattern":
+              case "RestElement":
+              case "TSParameterProperty":
+                throw new Error("unimplemented");
+              default:
+                assertNever(declarator.id);
+            }
+          }
+        }
+      } else if (
+        path.node.declaration &&
+        isFunctionDeclaration(path.node.declaration)
+      ) {
+        if (path.node.declaration.id == null) {
+          throw new Error(
+            `Should never have a named export function declaration without an id`
+          );
+        }
+        exportDesc.exportedNames.set(
+          path.node.declaration.id.name,
+          path.node.declaration.id.name
+        );
+      } else if (
+        path.node.declaration &&
+        isClassDeclaration(path.node.declaration)
+      ) {
+        switch (
+          path.node.declaration.id.type // ugh, this type sucks :-(
+        ) {
+          case "Identifier":
+            exportDesc.exportedNames.set(
+              path.node.declaration.id.name,
+              path.node.declaration.id.name
+            );
+            break;
+          default:
+            throw new Error("unimplemented");
         }
       } else if (exportSpecifiers.length > 0) {
-        for (let exportSpecifier of exportSpecifiers) {
-          let exportedName = exportSpecifier.exported.name as string;
-          exportDesc.exportedNames.add(exportedName);
+        for (let specifier of exportSpecifiers) {
+          let exportedName: string;
+          switch (specifier.exported.type) {
+            case "Identifier":
+              exportedName = specifier.exported.name;
+              exportDesc.exportedNames.set(exportedName, specifier.local.name);
+              break;
+            default:
+              assertNever(specifier.exported.type);
+          }
 
           if (isReexport(path)) {
-            let importedName = exportSpecifier.local.name as string;
+            let importedName = specifier.local.name as string;
             let importDesc = imports.get(importedName);
             if (!importDesc) {
               importDesc = {
@@ -158,8 +217,4 @@ function isReexport(path: NodePath<ExportNamedDeclaration>): boolean {
     }
   }
   return false;
-}
-
-function assertNever(_value: never): never {
-  throw new Error(`not never`);
 }

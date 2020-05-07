@@ -1,6 +1,7 @@
 import { BuilderNode, Value } from "./common";
 import { ModuleResolutionsNode, ModuleResolution } from "./resolution";
 import { combineModules } from "../combine-modules";
+import { NamespaceMarker } from "../describe-module";
 
 export class BundleAssignmentsNode implements BuilderNode {
   cacheKey = this;
@@ -15,16 +16,26 @@ export class BundleAssignmentsNode implements BuilderNode {
     resolutions,
   }: {
     resolutions: ModuleResolution[];
-  }): Promise<Value<BundleAssignments>> {
+  }): Promise<Value<BundleAssignment[]>> {
+    let assignments = new Map();
+    for (let [index, module] of resolutions.entries()) {
+      let bundleURL = new URL(`/dist/${index}.js`, resolutions[0].url.origin);
+      assignments.set(module.url.href, {
+        bundleURL,
+        module,
+        exposedNames: new Map(),
+      });
+    }
+    expandAssignments(assignments, [...assignments.values()]);
     return {
-      value: new BundleAssignments(resolutions),
+      value: [...assignments.values()],
     };
   }
 }
 
 export class BundleNode {
   cacheKey: BundleNode;
-  constructor(private bundle: Bundle, private assignments: BundleAssignments) {
+  constructor(private bundle: URL, private assignments: BundleAssignment[]) {
     this.cacheKey = this;
   }
 
@@ -43,87 +54,34 @@ export class BundleNode {
   }
 }
 
-export interface Bundle {
-  url: URL;
-  exposedModules: ModuleResolution[];
+export interface BundleAssignment {
+  // which bundle are we in
+  bundleURL: URL;
+
+  // which module are we talking about
+  module: ModuleResolution;
+
+  // from name-as-originally exported to name-as-exposed-in-this-bundle, if any.
+  // Not every export from every module will be publicly exposed by a bundle.
+  exposedNames: Map<string | NamespaceMarker, string>;
 }
 
-// This is how we assign various sub-graphs of the module resolution graph to
-// different bundles
-export interface AssignmentConfig {
-  [bundleHref: string]: {
-    exposedModuleURLs: URL[];
-  };
-}
-
-export class BundleAssignments {
-  // keys are js module hrefs
-  private modules: Map<string, Bundle> = new Map();
-  bundles: Bundle[] = [];
-
-  constructor(
-    rootResolutions: ModuleResolution[],
-    private config: AssignmentConfig = {}
-  ) {
-    if (rootResolutions.length > 0) {
-      if (Object.keys(config).length === 0) {
-        this.config[
-          new URL("/dist/0.js", rootResolutions[0].url.origin).href
-        ] = {
-          exposedModuleURLs: rootResolutions.map((r) => r.url),
+export function expandAssignments(
+  assignments: Map<string, BundleAssignment>,
+  queue: BundleAssignment[]
+) {
+  while (queue.length > 0) {
+    let assignment = queue.shift()!;
+    for (let dependency of Object.values(assignment.module.imports)) {
+      if (!assignments.has(dependency.resolution.url.href)) {
+        let a = {
+          bundleURL: assignment.bundleURL,
+          module: dependency.resolution,
+          exposedNames: new Map(),
         };
-      }
-
-      this.traverse(rootResolutions);
-    }
-  }
-
-  private discoverExposedModule(module: ModuleResolution): Bundle | undefined {
-    for (let [bundleHref, { exposedModuleURLs }] of Object.entries(
-      this.config
-    )) {
-      if (exposedModuleURLs.map((u) => u.href).includes(module.url.href)) {
-        let bundle = this.bundles.find((b) => b.url.href === bundleHref);
-        if (!bundle) {
-          bundle = {
-            url: new URL(bundleHref),
-            exposedModules: [module],
-          };
-          this.bundles.push(bundle);
-        }
-        return bundle;
+        assignments.set(a.module.url.href, a);
+        queue.push(a);
       }
     }
-  }
-
-  private traverse(resolutions: ModuleResolution[], parentBundle?: Bundle) {
-    for (let module of resolutions) {
-      parentBundle = this.discoverExposedModule(module) ?? parentBundle;
-      if (!parentBundle) {
-        throw new Error(
-          `cannot determine parent bundle for module ${module.url.href}`
-        );
-      }
-      this.modules.set(module.url.href, parentBundle);
-      this.traverse(
-        Object.values(module.imports).map(({ resolution }) => resolution),
-        parentBundle
-      );
-    }
-  }
-
-  bundleFor(jsModule: URL): Bundle {
-    let bundle = this.modules.get(jsModule.href);
-    if (!bundle) {
-      throw new Error(`unknown js modules ${jsModule.href}`);
-    }
-    return bundle;
-  }
-
-  importFor(
-    _jsModule: URL,
-    _originalName: string
-  ): { bundle: Bundle; newName: string } {
-    throw new Error(`unimplemented`);
   }
 }

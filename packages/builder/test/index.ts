@@ -8,5 +8,6 @@ import "./filesystem-test";
 import "./file-daemon-client-test";
 import "./builder-acceptance-test";
 import "./combine-modules-test";
+import "./describe-module-test";
 
 QUnit.start();

@@ -3,57 +3,161 @@ import generate from "@babel/generator";
 import {
   Statement,
   ExportNamedDeclaration,
+  exportNamedDeclaration,
+  importDeclaration,
+  importSpecifier,
+  exportSpecifier,
+  identifier,
   ImportDeclaration,
   Program,
+  stringLiteral,
 } from "@babel/types";
-import { Bundle, BundleAssignments } from "./nodes/bundle";
-import { NodePath, Binding } from "@babel/traverse";
+import { BundleAssignment } from "./nodes/bundle";
+import { NodePath } from "@babel/traverse";
 import { ModuleResolution } from "./nodes/resolution";
+import { NamespaceMarker, isNamespaceMarker } from "./describe-module";
+import { Memoize } from "typescript-memoize";
+import { maybeRelativeURL } from "./path";
 
 export function combineModules(
-  bundle: Bundle,
-  assignments: BundleAssignments
+  bundle: URL,
+  assignments: BundleAssignment[]
 ): string {
   let bundleAst = parse("");
   if (bundleAst?.type !== "File") {
     throw new Error(`Empty bundle AST is not a 'File' type`);
   }
   let state: State = {
+    bundle,
     usedNames: new Set(),
     assignedImportedNames: new Map(),
   };
+  let appendedModules: Set<string> = new Set();
   let bundleBody = bundleAst.program.body;
-  for (let module of bundle.exposedModules) {
-    appendToBundle(bundleBody, module, state, assignments);
+  let ownAssignments = assignments.filter(
+    (a) => a.bundleURL.href === bundle.href
+  );
+
+  // handle the exported names we must expose, if any
+  for (let assignment of ownAssignments) {
+    appendToBundle(
+      bundleBody,
+      assignment.module,
+      state,
+      assignments,
+      appendedModules
+    );
+  }
+
+  // at this point we removed all export statements because our modules can
+  // directly consume each other's renamed bindings. Here we re-add exports for
+  // the things that are specifically configured to be exposed outside the
+  // bundle.
+  let exports = assignedExports(ownAssignments, state);
+  if (exports.size > 0) {
+    bundleBody.push(
+      exportNamedDeclaration(
+        undefined,
+        [...exports].map(([outsideName, insideName]) => {
+          return exportSpecifier(
+            identifier(insideName),
+            identifier(outsideName)
+          );
+        })
+      )
+    );
+  }
+
+  for (let [bundleHref, mapping] of assignedImports(assignments, state)) {
+    bundleBody.unshift(
+      importDeclaration(
+        [...mapping].map(([exportedName, localName]) => {
+          return importSpecifier(
+            identifier(localName),
+            identifier(exportedName)
+          );
+        }),
+        stringLiteral(maybeRelativeURL(new URL(bundleHref, bundle), bundle))
+      )
+    );
   }
 
   let { code } = generate(bundleAst);
   return code;
 }
 
+function assignedExports(assignments: BundleAssignment[], state: State) {
+  let exports: Map<string, string> = new Map();
+  for (let assignment of assignments) {
+    for (let [original, exposed] of assignment.exposedNames) {
+      let insideName = state.assignedImportedNames
+        .get(assignment.module.url.href)
+        ?.get(original);
+      if (!insideName) {
+        throw new Error(`bug: no internal mapping for ${exposed}`);
+      }
+      exports.set(exposed, insideName);
+    }
+  }
+  return exports;
+}
+
+function assignedImports(
+  assignments: BundleAssignment[],
+  state: State
+): Map<string, Map<string, string>> {
+  let imports = new Map();
+  for (let [moduleHref, mappings] of state.assignedImportedNames) {
+    let assignment = assignments.find((a) => a.module.url.href === moduleHref)!;
+    if (assignment.bundleURL.href === state.bundle.href) {
+      // internal, no import needed
+      continue;
+    }
+    let importsFromBundle = imports.get(assignment.bundleURL.href);
+    if (!importsFromBundle) {
+      importsFromBundle = new Map();
+      imports.set(assignment.bundleURL.href, importsFromBundle);
+    }
+    for (let [exportedName, localName] of mappings) {
+      importsFromBundle.set(
+        assignment.exposedNames.get(exportedName),
+        localName
+      );
+    }
+  }
+  return imports;
+}
+
 interface State {
+  bundle: URL;
+
   usedNames: Set<string>;
 
   // outer map is the href of the exported module. the inner map goes from
   // exported name to our name. our name also must appear in usedNames.
-  assignedImportedNames: Map<
-    string,
-    Map<string | typeof NamespaceMarker, string>
-  >;
+  assignedImportedNames: Map<string, Map<string | NamespaceMarker, string>>;
 }
-
-const NamespaceMarker = { isNamespace: true };
 
 function appendToBundle(
   bundleBody: Statement[],
   module: ModuleResolution,
   state: State,
-  assignments: BundleAssignments,
-  appendedModules: string[] = []
+  assignments: BundleAssignment[],
+  appendedModules: Set<string>
 ) {
+  if (appendedModules.has(module.url.href)) {
+    return;
+  }
+  appendedModules.add(module.url.href);
   let adjusted = adjustModule(module, state, assignments);
   for (let { resolution } of Object.values(module.imports)) {
-    if (!appendedModules.includes(resolution.url.href)) {
+    let assignment = assignments.find(
+      (a) => a.module.url.href === resolution.url.href
+    );
+    if (!assignment) {
+      throw new Error(`no bundle assignment for module ${resolution.url.href}`);
+    }
+    if (assignment.bundleURL.href === state.bundle.href) {
       appendToBundle(
         bundleBody,
         resolution,
@@ -61,7 +165,6 @@ function appendToBundle(
         assignments,
         appendedModules
       );
-      appendedModules.push(resolution.url.href);
     }
   }
   bundleBody.push(...adjusted.program.body);
@@ -70,7 +173,7 @@ function appendToBundle(
 function adjustModule(
   module: ModuleResolution,
   state: State,
-  assignments: BundleAssignments
+  assignments: BundleAssignment[]
 ) {
   let config: PluginConfig = { state, module, assignments };
   let result = transformFromAstSync(module.parsed, undefined, {
@@ -84,96 +187,162 @@ function adjustModule(
 }
 
 interface PluginConfig {
-  assignments: BundleAssignments;
+  assignments: BundleAssignment[];
   module: ModuleResolution;
   state: State;
 }
 
 interface PluginContext {
   opts: PluginConfig;
+  rewriter: ModuleRewriter;
+}
+
+class ModuleRewriter {
+  private module: ModuleResolution;
+
+  // shared between all ModuleRewriters in the same bundle
+  private sharedState: State;
+
+  constructor(private programPath: NodePath<Program>, config: PluginConfig) {
+    this.module = config.module;
+    this.sharedState = config.state;
+    this.rewriteScope();
+  }
+
+  @Memoize()
+  private get importedNames(): Map<
+    string,
+    {
+      remoteName: string | typeof NamespaceMarker;
+      remoteModule: ModuleResolution;
+    }
+  > {
+    let output: Map<
+      string,
+      { remoteName: string; remoteModule: ModuleResolution }
+    > = new Map();
+    for (let imp of Object.values(this.module.imports)) {
+      for (let [localName, remoteName] of imp.desc.names) {
+        output.set(localName, { remoteName, remoteModule: imp.resolution });
+      }
+    }
+    return output;
+  }
+
+  @Memoize()
+  private get exportedLocalNames(): Map<string, string> {
+    let result = new Map();
+    for (let [outsideName, insideName] of this.module.exports.exportedNames) {
+      result.set(insideName, outsideName);
+    }
+    return result;
+  }
+
+  rewriteExportNamedDeclaration(
+    path: NodePath<ExportNamedDeclaration>,
+    _context: PluginContext
+  ) {
+    if (path.node.declaration) {
+      path.replaceWith(path.node.declaration);
+    } else {
+      path.remove();
+    }
+  }
+
+  rewriteScope() {
+    for (let name of Object.keys(this.programPath.scope.bindings)) {
+      let assignedName: string;
+
+      // figure out which names in module scope are imports vs things that
+      // live inside this module
+      let nameIsImported = this.importedNames.get(name);
+      if (nameIsImported) {
+        let { remoteName, remoteModule } = resolveReexport(nameIsImported);
+        assignedName = this.maybeAssignImportName(
+          remoteModule,
+          remoteName,
+          name
+        );
+      } else {
+        let outsideName = this.exportedLocalNames.get(name);
+        if (outsideName) {
+          assignedName = this.maybeAssignImportName(
+            this.module,
+            outsideName,
+            name
+          );
+        } else {
+          assignedName = this.unusedNameLike(name);
+        }
+      }
+      this.claimAndRename(name, assignedName);
+    }
+  }
+
+  private maybeAssignImportName(
+    remoteModule: ModuleResolution,
+    remoteName: string | NamespaceMarker,
+    suggestedName: string
+  ): string {
+    let alreadyAssignedName = this.sharedState.assignedImportedNames
+      .get(remoteModule.url.href)
+      ?.get(remoteName);
+
+    if (alreadyAssignedName) {
+      return alreadyAssignedName;
+    } else {
+      let assignedName = this.unusedNameLike(suggestedName);
+      this.assignImportName(remoteModule, remoteName, assignedName);
+      return assignedName;
+    }
+  }
+
+  private assignImportName(
+    module: ModuleResolution,
+    exportedName: string | NamespaceMarker,
+    assignedName: string
+  ) {
+    let mapping = this.sharedState.assignedImportedNames.get(module.url.href);
+    if (!mapping) {
+      mapping = new Map();
+      this.sharedState.assignedImportedNames.set(module.url.href, mapping);
+    }
+    mapping.set(exportedName, assignedName);
+  }
+
+  private claimAndRename(origName: string, newName: string) {
+    this.sharedState.usedNames.add(newName);
+    if (origName !== newName) {
+      this.programPath.scope.rename(origName, newName);
+    }
+  }
+
+  // it's understood that `name` can be in `path.scope.bindings` and that is not a
+  // collision because it's not conflicting with itself.
+  private unusedNameLike(name: string) {
+    let candidate = name;
+    let counter = 0;
+    while (
+      (candidate !== name && candidate in this.programPath.scope.bindings) ||
+      this.sharedState.usedNames.has(candidate)
+    ) {
+      candidate = `${name}${counter++}`;
+    }
+    return candidate;
+  }
 }
 
 function adjustModulePlugin(): unknown {
-  const visitor = {
+  let visitor = {
     Program(path: NodePath<Program>, context: PluginContext) {
-      let { module, state } = context.opts;
-      let localAssignments = new Set<string>();
-      for (let [name, binding] of Object.entries(path.scope.bindings)) {
-        let bindingContext = {
-          state,
-          path,
-          localAssignments,
-          initialName: name,
-          binding,
-        };
-        // figure out which names in module scope are imports vs things that
-        // live inside this module
-        let isImported = false;
-        for (let imp of Object.values(module.imports)) {
-          let exportedAs = imp.desc.names.get(name);
-          if (exportedAs) {
-            isImported = true;
-            if (imp.resolution.exports.reexports.has(exportedAs)) {
-              // this is coming from a reexport--let's favor the original exported name
-              let { exportedName, exportedFrom } = resolveReexport(
-                exportedAs,
-                imp.resolution
-              );
-              claimBinding({
-                ...bindingContext,
-                suggestedName: exportedName,
-                importedFrom: exportedFrom,
-                exportedAs: exportedName,
-              });
-            } else {
-              claimBinding({
-                ...bindingContext,
-                importedFrom: imp.resolution,
-                exportedAs,
-              });
-            }
-          } else if (imp.desc.namespace.includes(name)) {
-            isImported = true;
-            // name is imported, like "import * as name from..."
-            throw new Error(`unimplemented`);
-          }
-        }
-        if (isImported) {
-          continue;
-        }
-
-        // Check to see if the name is actually our export in which case we
-        // should use the established assignment for this binding, or create a
-        // new one (strive to preserve the exported names when possible)
-        if (module.exports.exportedNames.has(name)) {
-          claimBinding({
-            ...bindingContext,
-            importedFrom: module,
-            exportedAs: name,
-          });
-        } else {
-          claimBinding(bindingContext);
-        }
-      }
+      context.rewriter = new ModuleRewriter(path, context.opts);
     },
 
     ExportNamedDeclaration(
       path: NodePath<ExportNamedDeclaration>,
       context: PluginContext
     ) {
-      let { module, assignments } = context.opts;
-      let bundle = assignments.bundleFor(module.url);
-      if (
-        bundle.exposedModules.map((m) => m.url.href).includes(module.url.href)
-      ) {
-        return; // don't change the exports of the exposed modules--they are sacrosanct
-      }
-
-      if (path.node.declaration) {
-        path.replaceWith(path.node.declaration);
-      } else {
-        path.remove();
-      }
+      context.rewriter.rewriteExportNamedDeclaration(path, context);
     },
 
     ImportDeclaration(path: NodePath<ImportDeclaration>) {
@@ -183,100 +352,27 @@ function adjustModulePlugin(): unknown {
   return { visitor };
 }
 
-function resolveReexport(
-  exportedName: string,
-  exportedFrom: ModuleResolution
-): { exportedName: string; exportedFrom: ModuleResolution } {
-  if (exportedFrom.exports.reexports.has(exportedName)) {
-    let reexportedFrom = Object.values(exportedFrom.imports).find((m) =>
-      m.desc.reexports.has(exportedName!)
+function resolveReexport({
+  remoteName,
+  remoteModule,
+}: {
+  remoteName: string | NamespaceMarker;
+  remoteModule: ModuleResolution;
+}): { remoteName: string | NamespaceMarker; remoteModule: ModuleResolution } {
+  if (isNamespaceMarker(remoteName)) {
+    return { remoteName, remoteModule };
+  }
+  if (remoteModule.exports.reexports.has(remoteName)) {
+    let reexportedFrom = Object.values(remoteModule.imports).find((m) =>
+      m.desc.reexports.has(remoteName!)
     )!;
 
-    return resolveReexport(
-      exportedFrom.exports.reexports.get(exportedName)!,
-      reexportedFrom.resolution
-    );
+    return resolveReexport({
+      remoteName: remoteModule.exports.reexports.get(remoteName)!,
+      remoteModule: reexportedFrom.resolution,
+    });
   }
-  return { exportedName, exportedFrom };
-}
-
-interface BindingClaim {
-  path: NodePath<Program>;
-  state: State;
-  localAssignments: Set<string>;
-  binding: Binding;
-  initialName: string;
-  suggestedName?: string;
-  exportedAs?: string;
-  importedFrom?: ModuleResolution;
-}
-
-function claimBinding(bindingClaim: BindingClaim) {
-  let {
-    path,
-    state,
-    localAssignments,
-    binding,
-    importedFrom,
-    suggestedName,
-    initialName,
-    exportedAs,
-  } = bindingClaim;
-  let assignedName: string | undefined;
-  if (importedFrom && exportedAs) {
-    let mapping = state.assignedImportedNames.get(importedFrom.url.href);
-    if (!mapping) {
-      mapping = new Map();
-      state.assignedImportedNames.set(importedFrom.url.href, mapping);
-    }
-    assignedName = mapping.get(exportedAs);
-    if (!assignedName) {
-      assignedName = unusedNameLike(
-        suggestedName ?? initialName,
-        binding,
-        path,
-        state.usedNames
-      );
-      if (!localAssignments.has(assignedName)) {
-        mapping.set(exportedAs, assignedName);
-      }
-    }
-  }
-
-  if (!assignedName) {
-    assignedName = unusedNameLike(
-      suggestedName ?? initialName,
-      binding,
-      path,
-      state.usedNames
-    );
-  }
-
-  if (!localAssignments.has(assignedName)) {
-    state.usedNames.add(assignedName);
-    localAssignments.add(assignedName);
-    if (initialName !== assignedName) {
-      path.scope.rename(initialName, assignedName);
-    }
-  }
-}
-
-function unusedNameLike(
-  name: string,
-  binding: Binding,
-  path: NodePath<Program>,
-  reserved: Set<string>
-) {
-  let candidate = name;
-  let counter = 0;
-  let nameIsFromScopedBindings = path.scope.bindings[name] === binding;
-  while (
-    (!nameIsFromScopedBindings && candidate in path.scope.bindings) ||
-    reserved.has(candidate)
-  ) {
-    candidate = `${name}${counter++}`;
-  }
-  return candidate;
+  return { remoteName, remoteModule };
 }
 
 /*
