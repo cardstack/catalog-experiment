@@ -4,8 +4,7 @@ import {
   defaultWebsocketURL,
 } from "./file-daemon-client";
 import { FileSystem } from "./filesystem";
-import { handleTestRequest } from "./test-request-handler";
-import { handleBuildRequest } from "./build-request-handler";
+import { handleFileRequest } from "./file-request-handler";
 import { Handler } from "./request-handler";
 import { Builder } from "./builder";
 
@@ -14,7 +13,7 @@ const fs = new FileSystem();
 const ourBackendEndpoint = "__alive__";
 const webroot: string = "/";
 
-let origin: URL;
+let originURL: URL;
 let websocketURL: URL;
 let fileDaemonURL: URL;
 let isDisabled = false;
@@ -26,7 +25,7 @@ console.log(`service worker evaluated`);
 worker.addEventListener("install", () => {
   console.log(`installing`);
   let workerURL = new URL(worker.location.href);
-  origin = new URL(workerURL.searchParams.get("origin") || defaultOrigin);
+  originURL = new URL(workerURL.searchParams.get("origin") || defaultOrigin);
   websocketURL = new URL(
     workerURL.searchParams.get("websocketURL") || defaultWebsocketURL
   );
@@ -40,26 +39,23 @@ worker.addEventListener("install", () => {
 
 worker.addEventListener("activate", () => {
   console.log(
-    `service worker activated using builder origin: ${origin}, file daemon URL: ${fileDaemonURL}, websocket URL: ${websocketURL}`
+    `service worker activated using builder origin: ${originURL}, file daemon URL: ${fileDaemonURL}, websocket URL: ${websocketURL}`
   );
 
   // takes over when there is *no* existing service worker
   worker.clients.claim();
 
-  // when testing these 2 values are usually different, and in that case we
-  // don't want a file daemon client
-  if (origin.href === fileDaemonURL.href) {
-    client = new FileDaemonClient(fileDaemonURL, websocketURL, fs, webroot);
+  client = new FileDaemonClient(fileDaemonURL, websocketURL, fs, webroot);
 
-    // TODO watch for file changes and build when fs changes
-    let builder = Builder.forProjects(fs, [origin]);
-    finishedBuild = (async () => {
-      await client.ready;
-      await builder.build();
-      console.log(`completed build, file system:`);
-      await fs.displayListing();
-    })();
-  }
+  // TODO watch for file changes and build when fs changes
+  let builder = Builder.forProjects(fs, [originURL]);
+  finishedBuild = (async () => {
+    await client.ready;
+    await builder.build();
+    console.log(`completed build, file system:`);
+    await fs.displayListing();
+  })();
+
   (async () => {
     await checkForOurBackend();
   })();
@@ -81,9 +77,11 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
         await finishedBuild;
       }
 
-      let stack: Handler[] = [handleTestRequest, handleBuildRequest];
+      // This is probably a bit overbuilt--it's meant as a sort of middleware for our
+      // service worker--but there is only one handler right now...
+      let stack: Handler[] = [handleFileRequest];
       let response: Response | undefined;
-      let context = { fs, webroot, originURL: origin };
+      let context = { fs, webroot, originURL: originURL };
       for (let handler of stack) {
         response = await handler(event.request, context);
         if (response) {

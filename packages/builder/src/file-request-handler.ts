@@ -3,7 +3,7 @@ import { contentType, lookup } from "mime-types";
 import { FileSystem, FileSystemError, FileDescriptor } from "./filesystem";
 import { join } from "./path";
 
-export const handleBuildRequest: Handler = async function (
+export const handleFileRequest: Handler = async function (
   req: Request,
   context: Context
 ) {
