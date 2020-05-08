@@ -64,6 +64,11 @@ function handleUICommand(event: MessageEvent) {
       break;
     case "hide":
       iframe.style.transform = `translate(0, 0)`;
+
+      // just for testing purposes...
+      setTimeout(() => {
+        iframe.style.transform = `translate(${-1 * uiWidth}px, 0)`;
+      }, 5000);
       break;
     default:
       assertNever(command);
