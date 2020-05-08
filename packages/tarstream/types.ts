@@ -408,7 +408,3 @@ export function paddingNeeded(size: number) {
   // align to record boundary
   return Math.ceil(size / recordSize) * recordSize - size;
 }
-
-export function assertNever(_value: never): never {
-  throw new Error(`not never`);
-}

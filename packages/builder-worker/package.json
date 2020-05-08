@@ -1,6 +1,6 @@
 {
-  "name": "builder",
-  "version": "1.0.0",
+  "name": "builder-worker",
+  "version": "0.0.1",
   "license": "MIT",
   "devDependencies": {
     "@babel/core": "^7.9.0",
@@ -42,6 +42,7 @@
     "dom-serializer": "^0.2.2",
     "htmlparser2": "^4.1.0",
     "lodash": "^4.17.15",
-    "moment": "^2.24.0"
+    "moment": "^2.24.0",
+    "shared": "0.0.1"
   }
 }

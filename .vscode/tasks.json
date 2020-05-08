@@ -1,0 +1,115 @@
+// See https://go.microsoft.com/fwlink/?LinkId=733558
+// for the documentation about the tasks.json format
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "typescript",
+      "tsconfig": "packages/builder-dom/tsconfig.json",
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "option": "watch",
+      "problemMatcher": {
+        "base": "$tsc-watch",
+        "applyTo": "allDocuments"
+      },
+      "group": "build",
+      "label": "tsc: watch - builder-dom",
+      "isBackground": true,
+      "presentation": {
+        "panel": "new"
+      }
+    },
+    {
+      "type": "typescript",
+      "tsconfig": "packages/builder-worker/tsconfig.json",
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "option": "watch",
+      "problemMatcher": {
+        "base": "$tsc-watch",
+        "applyTo": "allDocuments"
+      },
+      "group": "build",
+      "label": "tsc: watch - builder-worker",
+      "isBackground": true,
+      "presentation": {
+        "panel": "new"
+      }
+    },
+    {
+      "type": "typescript",
+      "tsconfig": "packages/file-daemon/tsconfig.json",
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "option": "watch",
+      "problemMatcher": {
+        "base": "$tsc-watch",
+        "applyTo": "allDocuments"
+      },
+      "group": "build",
+      "label": "tsc: watch - file-daemon",
+      "isBackground": true,
+      "presentation": {
+        "panel": "new"
+      }
+    },
+    {
+      "type": "typescript",
+      "tsconfig": "packages/shared/tsconfig.json",
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "option": "watch",
+      "problemMatcher": {
+        "base": "$tsc-watch",
+        "applyTo": "allDocuments"
+      },
+      "group": "build",
+      "label": "tsc: watch - shared",
+      "isBackground": true,
+      "presentation": {
+        "panel": "new"
+      }
+    },
+    {
+      "type": "typescript",
+      "tsconfig": "packages/tarstream/tsconfig.json",
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "option": "watch",
+      "problemMatcher": {
+        "base": "$tsc-watch",
+        "applyTo": "allDocuments"
+      },
+      "group": "build",
+      "label": "tsc: watch - tarstream",
+      "isBackground": true,
+      "presentation": {
+        "panel": "new"
+      }
+    },
+    {
+      "type": "typescript",
+      "tsconfig": "packages/ui/tsconfig.json",
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "option": "watch",
+      "problemMatcher": {
+        "base": "$tsc-watch",
+        "applyTo": "allDocuments"
+      },
+      "group": "build",
+      "label": "tsc: watch - ui",
+      "isBackground": true,
+      "presentation": {
+        "panel": "new"
+      }
+    }
+  ]
+}

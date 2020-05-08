@@ -10,7 +10,7 @@ import {
   isFunctionDeclaration,
   isClassDeclaration,
 } from "@babel/types";
-import { assertNever } from "./util";
+import { assertNever } from "shared/util";
 import traverse, { NodePath } from "@babel/traverse";
 
 export const NamespaceMarker = { isNamespace: true };

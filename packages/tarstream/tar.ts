@@ -6,8 +6,8 @@ import {
   formatTarNumber,
   recordSize,
   paddingNeeded,
-  assertNever,
 } from "./types";
+import { assertNever } from "shared/util";
 import { DIRTYPE, NULL_CHAR } from "./constants";
 
 type State =

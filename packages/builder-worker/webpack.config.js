@@ -75,7 +75,7 @@ let config = {
 
 let dom = Object.assign({}, config, {
   entry: {
-    main: "./src/main.ts",
+    main: "../builder-dom/main.ts",
     test: "./test/index.ts",
   },
 });

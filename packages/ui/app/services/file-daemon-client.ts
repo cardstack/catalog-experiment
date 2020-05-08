@@ -5,7 +5,8 @@ import UIManagerService from "./ui-manager";
 import {
   Event as FileDaemonEvent,
   FilesChangedEvent,
-} from "../../../builder/src/file-daemon-client";
+} from "../../../builder-worker/src/file-daemon-client";
+import { assertNever } from "shared/util";
 
 export default class FileDaemonClientService extends Service {
   @service uiManager!: UIManagerService;
@@ -80,8 +81,4 @@ interface FileDaemonClientEvent {
 
 function isFileDaemonClientEvent(data: any): data is FileDaemonClientEvent {
   return "kind" in data && data.kind === "file-daemon-client-event";
-}
-
-function assertNever(_value: never): never {
-  throw new Error(`not never`);
 }

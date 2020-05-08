@@ -2,12 +2,7 @@
 // in one project. Most of this project is worker context, but this file is main
 // thread context.
 
-import { assertNever } from "./util";
-
-// @ts-ignore: we are actually in main thread, not worker.
-const win = window;
-// @ts-ignore: we are actually in main thread, not worker.
-const doc = document;
+import { assertNever } from "shared/util";
 
 let uiWidth: number;
 
@@ -18,12 +13,12 @@ if (!navigator.serviceWorker.controller) {
   });
   console.log("Waiting for service worker");
   navigator.serviceWorker.ready.then(() => {
-    win.location.reload();
+    window.location.reload();
   });
 } else {
   // Render the CatalogJS UI and respond to window positioning requests
-  let iframe = doc.createElement("iframe");
-  iframe.setAttribute("src", `${win.origin}/catalogjs-ui/`);
+  let iframe = document.createElement("iframe");
+  iframe.setAttribute("src", `${window.origin}/catalogjs-ui/`);
   iframe.setAttribute("id", "catalogjs-ui");
   iframe.setAttribute(
     "style",
@@ -36,15 +31,15 @@ if (!navigator.serviceWorker.controller) {
      transition: transform 300ms;
     `
   );
-  if (!doc.body) {
-    doc.body = doc.createElement("body");
+  if (!document.body) {
+    document.body = document.createElement("body");
   }
-  doc.body.append(iframe);
-  win.addEventListener("message", handleUICommand, false);
+  document.body.append(iframe);
+  window.addEventListener("message", handleUICommand, false);
 }
 
 function handleUICommand(event: MessageEvent) {
-  if (event.origin !== win.origin) {
+  if (event.origin !== window.origin) {
     return;
   }
   console.log("received command from UI", event.data);
@@ -52,7 +47,10 @@ function handleUICommand(event: MessageEvent) {
   if (!isUIManagerCommand(command)) {
     return;
   }
-  let iframe = doc.getElementById("catalogjs-ui");
+  let iframe = document.getElementById("catalogjs-ui");
+  if (!iframe) {
+    throw new Error("bug: cannot find the catalogjs ui iframe");
+  }
 
   switch (command.type) {
     case "ready":
