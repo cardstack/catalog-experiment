@@ -64,6 +64,7 @@ export function start(makeTestHandler?: HandlerMaker) {
       : undefined;
   let hoster = new FileHostingServer(
     serverArgs.port,
+    serverArgs.uiPort,
     rootDir,
     true,
     testRequestHandler
@@ -71,6 +72,12 @@ export function start(makeTestHandler?: HandlerMaker) {
 
   hoster.start();
   watcher.start();
+
+  // TODO we should introduce a switch where the UI app can either be statically
+  // hosted via the file hosting server (probably running on a different port from
+  // the app hosting) or hosted from Ember CLI so that it's easy for us to
+  // develop the UI app. For now, since its still early times we'll use ember
+  // cli to host the UI app.
   startEmberCli(serverArgs.uiPort);
 }
 

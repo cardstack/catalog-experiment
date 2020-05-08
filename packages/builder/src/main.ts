@@ -9,7 +9,6 @@ const win = window;
 // @ts-ignore: we are actually in main thread, not worker.
 const doc = document;
 
-const uiOrigin = "http://localhost:4300";
 let uiWidth: number;
 
 if (!navigator.serviceWorker.controller) {
@@ -24,7 +23,7 @@ if (!navigator.serviceWorker.controller) {
 } else {
   // Render the CatalogJS UI and respond to window positioning requests
   let iframe = doc.createElement("iframe");
-  iframe.setAttribute("src", uiOrigin);
+  iframe.setAttribute("src", `${win.origin}/catalogjs-ui/`);
   iframe.setAttribute("id", "catalogjs-ui");
   iframe.setAttribute(
     "style",
@@ -44,13 +43,15 @@ if (!navigator.serviceWorker.controller) {
   win.addEventListener("message", handleUICommand, false);
 }
 
-// TODO maybe we can import this from the UI package....
 function handleUICommand(event: MessageEvent) {
-  if (event.origin !== uiOrigin) {
+  if (event.origin !== win.origin) {
     return;
   }
   console.log("received command from UI", event.data);
-  let command = event.data as UIManagerCommands;
+  let command = event.data;
+  if (!isUIManagerCommand(command)) {
+    return;
+  }
   let iframe = doc.getElementById("catalogjs-ui");
 
   switch (command.type) {
@@ -75,17 +76,25 @@ function handleUICommand(event: MessageEvent) {
   }
 }
 
-interface Ready {
+// TODO this should all be imported from the ui package
+interface BaseUIManagerCommand {
+  kind: "ui-manager";
+}
+
+interface Ready extends BaseUIManagerCommand {
   type: "ready";
   width: number;
 }
 
-interface Show {
+interface Show extends BaseUIManagerCommand {
   type: "show";
 }
 
-interface Hide {
+interface Hide extends BaseUIManagerCommand {
   type: "hide";
 }
 
-type UIManagerCommands = Ready | Show | Hide;
+type UIManagerCommand = Ready | Show | Hide;
+function isUIManagerCommand(data: any): data is UIManagerCommand {
+  return "kind" in data && data.kind === "ui-manager";
+}

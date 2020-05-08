@@ -10,15 +10,24 @@ export const handleFileRequest: Handler = async function (
   context: Context
 ) {
   let requestURL = new URL(req.url);
+  let isCatalogJSUIRequest = /^\/catalogjs-ui/.test(requestURL.pathname);
   // For the webpack hosted builder requests, we need to honor same origin
   // policy (apparently), as the responses are empty otherwise. So instead route
   // these requests through the file daemon where they will be proxied to the
   // webpack hosted builder. I wonder about 3rd party js, we might need the file
   // daemon to be more aggressive with its proxying....
-  if (context.originURL && requestURL.origin === builderOrigin) {
+  if (
+    (context.originURL && requestURL.origin === builderOrigin) ||
+    isCatalogJSUIRequest
+  ) {
     return new Response(
       (
-        await fetch(new URL(requestURL.pathname, context.originURL.href).href)
+        await fetch(
+          new URL(
+            requestURL.pathname,
+            isCatalogJSUIRequest ? requestURL.origin : context.originURL.href
+          ).href
+        )
       ).body
     );
   }

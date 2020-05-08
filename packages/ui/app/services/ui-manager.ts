@@ -1,25 +1,30 @@
 import Service from "@ember/service";
 
-interface Ready {
+interface BaseUIManagerCommand {
+  kind: "ui-manager";
+}
+
+interface Ready extends BaseUIManagerCommand {
   type: "ready";
   width: number;
 }
 
-interface Show {
+interface Show extends BaseUIManagerCommand {
   type: "show";
 }
 
-interface Hide {
+interface Hide extends BaseUIManagerCommand {
   type: "hide";
 }
 
-export type UIManagerCommands = Ready | Show | Hide;
+export type UIManagerCommand = Ready | Show | Hide;
 
 export default class UIManagerService extends Service {
   constructor(...args: any[]) {
     super(...args);
 
     let ready: Ready = {
+      kind: "ui-manager",
       type: "ready",
       width: 300,
     };
@@ -29,12 +34,12 @@ export default class UIManagerService extends Service {
   }
 
   show() {
-    let show: Show = { type: "show" };
+    let show: Show = { kind: "ui-manager", type: "show" };
     window.parent.postMessage(show, "*");
   }
 
   hide() {
-    let hide: Hide = { type: "hide" };
+    let hide: Hide = { kind: "ui-manager", type: "hide" };
     window.parent.postMessage(hide, "*");
   }
 }
