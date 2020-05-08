@@ -1,56 +1,60 @@
-'use strict';
+"use strict";
 
 module.exports = {
   root: true,
-  parser: 'babel-eslint',
+  parser: "@typescript-eslint/parser",
   parserOptions: {
     ecmaVersion: 2018,
-    sourceType: 'module',
+    sourceType: "module",
     ecmaFeatures: {
-      legacyDecorators: true
-    }
+      legacyDecorators: true,
+    },
   },
-  plugins: [
-    'ember'
-  ],
-  extends: [
-    'eslint:recommended',
-    'plugin:ember/recommended'
-  ],
+  plugins: ["ember", "@typescript-eslint"],
+  extends: ["eslint:recommended", "plugin:ember/recommended"],
   env: {
-    browser: true
+    browser: true,
   },
   rules: {
-    'ember/no-jquery': 'error'
+    "ember/no-jquery": "error",
+    "@typescript-eslint/no-namespace": "error",
+    "@typescript-eslint/triple-slash-reference": "error",
+    "no-unused-vars": "off",
+    "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+    "@typescript-eslint/no-var-requires": "error",
   },
   overrides: [
     // node files
     {
       files: [
-        '.eslintrc.js',
-        '.template-lintrc.js',
-        'ember-cli-build.js',
-        'testem.js',
-        'blueprints/*/index.js',
-        'config/**/*.js',
-        'lib/*/index.js',
-        'server/**/*.js'
+        ".eslintrc.js",
+        ".template-lintrc.js",
+        "ember-cli-build.js",
+        "testem.js",
+        "blueprints/*/index.js",
+        "config/**/*.js",
+        "lib/*/index.js",
+        "server/**/*.js",
       ],
       parserOptions: {
-        sourceType: 'script'
+        sourceType: "script",
       },
       env: {
         browser: false,
-        node: true
+        node: true,
       },
-      plugins: ['node'],
-      rules: Object.assign({}, require('eslint-plugin-node').configs.recommended.rules, {
-        // add your custom rules and overrides for node files here
+      plugins: ["node"],
+      rules: Object.assign(
+        {},
+        require("eslint-plugin-node").configs.recommended.rules,
+        {
+          // add your custom rules and overrides for node files here
 
-        // this can be removed once the following is fixed
-        // https://github.com/mysticatea/eslint-plugin-node/issues/77
-        'node/no-unpublished-require': 'off'
-      })
-    }
-  ]
+          // this can be removed once the following is fixed
+          // https://github.com/mysticatea/eslint-plugin-node/issues/77
+          "node/no-unpublished-require": "off",
+        }
+      ),
+    },
+  ],
 };
