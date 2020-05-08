@@ -12,6 +12,34 @@ export const defaultOrigin = "http://localhost:4200";
 export const defaultWebsocketURL = "ws://localhost:3000";
 export const entrypointsPath = "/entrypoints.json";
 
+interface ConnectedEvent {
+  type: "connected";
+}
+interface DisconnectedEvent {
+  type: "disconnected";
+}
+interface SyncStartedEvent {
+  type: "sync-started";
+}
+interface SyncFinishedEvent {
+  type: "sync-finished";
+  files: string[];
+}
+
+interface FilesChangedEvent {
+  type: "files-changed";
+  modified: string[];
+  removed: string[];
+}
+
+export type Event =
+  | ConnectedEvent
+  | DisconnectedEvent
+  | SyncStartedEvent
+  | SyncFinishedEvent
+  | FilesChangedEvent;
+export type EventListener = (event: Event) => void;
+
 export class FileDaemonClient {
   ready: Promise<void>;
 
@@ -24,6 +52,12 @@ export class FileDaemonClient {
   private queue: WatchInfo[] = [];
   private resolveQueuePromise: undefined | (() => void);
   private running: Promise<void>;
+  private listeners: Set<EventListener> = new Set();
+  private drainEvents?: Promise<void>;
+  private eventQueue: {
+    event: Event;
+    listener: EventListener;
+  }[] = [];
 
   constructor(
     private fileServerURL: URL,
@@ -45,6 +79,22 @@ export class FileDaemonClient {
     await this.running;
     this.socket = undefined;
     console.log("file daemon client performed user-requested close");
+  }
+
+  addEventListener(fn: EventListener) {
+    this.listeners.add(fn);
+  }
+
+  removeEventListener(fn: EventListener) {
+    this.listeners.delete(fn);
+  }
+
+  removeAllEventListeners() {
+    this.listeners.clear();
+  }
+
+  eventsFlushed(): Promise<void> {
+    return this.drainEvents ?? Promise.resolve();
   }
 
   private async run() {
@@ -77,6 +127,7 @@ export class FileDaemonClient {
 
   private tryConnect() {
     console.log(`attempting to connect`);
+
     let socket = new WebSocket(this.websocketServerURL.href);
     let socketIsClosed: () => void;
     let socketClosed: Promise<void> = new Promise((r) => {
@@ -95,9 +146,11 @@ export class FileDaemonClient {
     socket.onclose = (event: CloseEvent) => {
       console.log(`websocket close`, event);
       socketIsClosed();
+      this.dispatchEvent({ type: "disconnected" });
     };
     socket.onopen = (event) => {
       console.log(`websocket open`, event);
+      this.dispatchEvent({ type: "connected" });
       this.backoffInterval = 0;
 
       this.startFullSync().catch((err) => {
@@ -143,6 +196,7 @@ export class FileDaemonClient {
   }
 
   private async startFullSync() {
+    this.dispatchEvent({ type: "sync-started" });
     let stream = (
       await fetch(`${this.fileServerURL}/`, {
         headers: {
@@ -154,15 +208,15 @@ export class FileDaemonClient {
     let mountedPath = this.mountedPath.bind(this);
     let fs = this.fs;
     let temp = await fs.tempURL();
+    let files: string[] = [];
     let untar = new UnTar(stream, {
       async file(entry) {
         if (entry.type === REGTYPE) {
-          let file = await fs.open(
-            new URL(mountedPath(entry.name), temp),
-            "file"
-          );
+          let url = new URL(mountedPath(entry.name), temp);
+          let file = await fs.open(url, "file");
           file.setEtag(`${entry.size}_${entry.modifyTime}`);
           await file.write(entry.stream());
+          files.push(url.href);
         }
       },
     });
@@ -174,6 +228,7 @@ export class FileDaemonClient {
     );
     await fs.remove(temp);
     console.log("completed full sync");
+    this.dispatchEvent({ type: "sync-finished", files });
     this.doneSyncing();
   }
 
@@ -220,10 +275,14 @@ export class FileDaemonClient {
       }
     }
 
+    let modified: string[] = [];
     // make sure to first check and see if the entrypoint file itself is
     // changing, in which case we should deal with that first.
     if (updates.find((f) => f.name === entrypointsPath)) {
       entrypointsChanged = true;
+      modified.push(
+        new URL(this.mountedPath(entrypointsPath), this.fileServerURL).href
+      );
       let destEntrypoints = (await (
         await fetch(`${this.fileServerURL}${entrypointsPath}`)
       ).json()) as string[];
@@ -248,10 +307,14 @@ export class FileDaemonClient {
       } else {
         console.log(`updating ${change.name}`);
       }
-      await this.updateFile(
-        change.name,
-        pathOverride,
-        change.etag || undefined
+      modified.push(
+        (
+          await this.updateFile(
+            change.name,
+            pathOverride,
+            change.etag || undefined
+          )
+        ).href
       );
     }
 
@@ -260,22 +323,29 @@ export class FileDaemonClient {
         invertedEntrypointsMapping
       )) {
         console.log(`updating ${destPath} (writing to ${sourcePath})`);
-        await this.updateFile(destPath, sourcePath);
+        modified.push((await this.updateFile(destPath, sourcePath)).href);
       }
       for (let removedSrcPath of difference(
         Object.keys(previousEntrypoints || []),
         Object.keys(entrypointsMapping)
       )) {
         await this.fs.remove(new URL(removedSrcPath, this.fileServerURL));
-        await this.updateFile(previousEntrypoints![removedSrcPath]);
+        modified.push(
+          (await this.updateFile(previousEntrypoints![removedSrcPath])).href
+        );
         console.log(`updating ${previousEntrypoints![removedSrcPath]}`);
       }
     }
 
+    let removed: string[] = [];
     for (let { name } of removals) {
       console.log(`removing ${name}`);
-      await this.fs.remove(new URL(this.mountedPath(name), this.fileServerURL));
+      let url = new URL(this.mountedPath(name), this.fileServerURL);
+      await this.fs.remove(url);
+      removed.push(url.href);
     }
+
+    this.dispatchEvent({ type: "files-changed", removed, modified });
 
     console.log(`completed processing changes, file system:`);
     await this.fs.displayListing();
@@ -338,7 +408,11 @@ export class FileDaemonClient {
     return entrypoints;
   }
 
-  private async updateFile(path: string, pathOverride?: string, etag?: string) {
+  private async updateFile(
+    path: string,
+    pathOverride?: string,
+    etag?: string
+  ): Promise<URL> {
     let res = await fetch(`${this.fileServerURL}${path}`);
     if (!etag) {
       etag = res.headers.get("etag") || undefined;
@@ -347,14 +421,16 @@ export class FileDaemonClient {
     if (!stream) {
       throw new Error(`Couldn't fetch ${path} from file server`);
     }
-    let file = await this.fs.open(
-      new URL(this.mountedPath(pathOverride ?? path), this.fileServerURL),
-      "file"
+    let url = new URL(
+      this.mountedPath(pathOverride ?? path),
+      this.fileServerURL
     );
+    let file = await this.fs.open(url, "file");
     if (etag) {
       file.setEtag(etag);
     }
     await file.write(stream);
+    return url;
   }
 
   private mountedPath(path: string): string {
@@ -381,5 +457,38 @@ export class FileDaemonClient {
       })
     );
     return changed.filter(Boolean) as FileInfo[];
+  }
+
+  private dispatchEvent(event: Event): void {
+    if (this.listeners.size === 0) {
+      return;
+    }
+
+    for (let listener of this.listeners) {
+      this.eventQueue.push({ event, listener });
+    }
+    (async () => await this.drainEventQueue())();
+  }
+
+  private async drainEventQueue(): Promise<void> {
+    await this.drainEvents;
+
+    let eventsDrained: () => void;
+    this.drainEvents = new Promise((res) => (eventsDrained = res));
+
+    while (this.eventQueue.length > 0) {
+      let eventArgs = this.eventQueue.shift();
+      if (eventArgs) {
+        let { event, listener } = eventArgs;
+        let dispatched: () => void;
+        let waitForDispatch = new Promise((res) => (dispatched = res));
+        setTimeout(() => {
+          listener(event);
+          dispatched();
+        }, 0);
+        await waitForDispatch;
+      }
+    }
+    eventsDrained!();
   }
 }

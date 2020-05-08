@@ -1,5 +1,7 @@
 import Service from "@ember/service";
 
+import { Event as FileDaemonEvent } from "../../../builder/src/file-daemon-client";
+
 interface BaseUIManagerCommand {
   kind: "ui-manager";
 }
@@ -19,6 +21,11 @@ interface Hide extends BaseUIManagerCommand {
 
 export type UIManagerCommand = Ready | Show | Hide;
 
+interface FileDaemonClientEvent {
+  kind: "file-daemon-client-event";
+  clientEvent: FileDaemonEvent;
+}
+
 export default class UIManagerService extends Service {
   constructor(...args: any[]) {
     super(...args);
@@ -29,8 +36,24 @@ export default class UIManagerService extends Service {
       width: 300,
     };
     window.parent.postMessage(ready, "*");
+    navigator.serviceWorker.addEventListener("message", (event) => {
+      if (!isFileDaemonClientEvent(event.data)) {
+        return;
+      }
+      console.log(
+        `UI app received File Daemon Client Event: ${JSON.stringify(
+          event.data.clientEvent,
+          null,
+          2
+        )}`
+      );
+    });
 
-    setTimeout(() => this.show(), 3000);
+    (async () => {
+      await fetch("/register-client");
+    })();
+
+    setTimeout(() => this.show(), 1000);
   }
 
   show() {
@@ -42,4 +65,8 @@ export default class UIManagerService extends Service {
     let hide: Hide = { kind: "ui-manager", type: "hide" };
     window.parent.postMessage(hide, "*");
   }
+}
+
+function isFileDaemonClientEvent(data: any): data is FileDaemonClientEvent {
+  return "kind" in data && data.kind === "file-daemon-client-event";
 }

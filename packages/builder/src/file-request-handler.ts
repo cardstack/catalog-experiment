@@ -1,31 +1,30 @@
-import { Handler, Context } from "./request-handler";
+import { Handler } from "./request-handler";
 import { contentType, lookup } from "mime-types";
 import { FileSystem, FileSystemError, FileDescriptor } from "./filesystem";
 import { join } from "./path";
 
 const builderOrigin = "http://localhost:8080";
+const worker = (self as unknown) as ServiceWorkerGlobalScope;
 
-export const handleFileRequest: Handler = async function (
-  req: Request,
-  context: Context
-) {
+export const handleFileRequest: Handler = async function (req, context) {
+  // turning this into a URL so we can normalize comparisons (trailing slashes
+  // wont mess with us that way)
+  let originURL = new URL(worker.origin);
   let requestURL = new URL(req.url);
   let isCatalogJSUIRequest = /^\/catalogjs-ui/.test(requestURL.pathname);
+
   // For the webpack hosted builder requests, we need to honor same origin
   // policy (apparently), as the responses are empty otherwise. So instead route
   // these requests through the file daemon where they will be proxied to the
   // webpack hosted builder. I wonder about 3rd party js, we might need the file
   // daemon to be more aggressive with its proxying....
-  if (
-    (context.originURL && requestURL.origin === builderOrigin) ||
-    isCatalogJSUIRequest
-  ) {
+  if (requestURL.origin === builderOrigin || isCatalogJSUIRequest) {
     return new Response(
       (
         await fetch(
           new URL(
             requestURL.pathname,
-            isCatalogJSUIRequest ? requestURL.origin : context.originURL.href
+            isCatalogJSUIRequest ? requestURL.origin : originURL.href
           ).href
         )
       ).body
@@ -33,10 +32,7 @@ export const handleFileRequest: Handler = async function (
   }
 
   // This might not be doing what we think it's doing per the comment above...
-  if (
-    !context.originURL.href ||
-    requestURL.origin !== context.originURL.origin
-  ) {
+  if (!originURL.href || requestURL.origin !== originURL.origin) {
     return new Response((await fetch(req)).body);
   }
 

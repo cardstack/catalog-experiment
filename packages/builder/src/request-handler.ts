@@ -1,4 +1,5 @@
 import { FileSystem } from "./filesystem";
+import { FileDaemonEventHandler } from "./file-daemon-event-handler";
 
 export type Handler = (
   request: Request,
@@ -7,6 +8,7 @@ export type Handler = (
 
 export interface Context {
   fs: FileSystem;
+  fileDaemonEventHandler: FileDaemonEventHandler;
+  event: FetchEvent;
   webroot: string;
-  originURL: URL;
 }

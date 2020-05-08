@@ -1,10 +1,8 @@
-import {
-  FileDaemonClient,
-  defaultOrigin,
-  defaultWebsocketURL,
-} from "./file-daemon-client";
+import { FileDaemonClient, defaultWebsocketURL } from "./file-daemon-client";
 import { FileSystem } from "./filesystem";
 import { handleFileRequest } from "./file-request-handler";
+import { handleClientRegister } from "./client-register-handler";
+import { FileDaemonEventHandler } from "./file-daemon-event-handler";
 import { Handler } from "./request-handler";
 import { Builder } from "./builder";
 
@@ -13,17 +11,16 @@ const fs = new FileSystem();
 const ourBackendEndpoint = "__alive__";
 const webroot: string = "/";
 
-let originURL: URL;
 let websocketURL: URL;
 let isDisabled = false;
 let finishedBuild: Promise<void>;
 let client: FileDaemonClient | undefined;
+let eventHandler = new FileDaemonEventHandler();
 
 console.log(`service worker evaluated`);
 
 worker.addEventListener("install", () => {
   console.log(`installing`);
-  originURL = new URL(defaultOrigin);
   websocketURL = new URL(defaultWebsocketURL);
 
   // force moving on to activation even if another service worker had control
@@ -32,13 +29,15 @@ worker.addEventListener("install", () => {
 
 worker.addEventListener("activate", () => {
   console.log(
-    `service worker activated using builder origin: ${originURL}, websocket URL: ${websocketURL}`
+    `service worker activated for origin: ${worker.origin}, websocket URL: ${websocketURL}`
   );
 
+  let originURL = new URL(worker.origin);
   // takes over when there is *no* existing service worker
   worker.clients.claim();
 
   client = new FileDaemonClient(originURL, websocketURL, fs, webroot);
+  client.addEventListener(eventHandler.handleEvent.bind(eventHandler));
 
   // TODO watch for file changes and build when fs changes
   let builder = Builder.forProjects(fs, [originURL]);
@@ -68,17 +67,20 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
         // wait for at least the first build so that there is an index.html
         // to render for the app.
         await finishedBuild;
-      }
 
-      // This is probably a bit overbuilt--it's meant as a sort of middleware for our
-      // service worker--but there is only one handler right now...
-      let stack: Handler[] = [handleFileRequest];
-      let response: Response | undefined;
-      let context = { fs, webroot, originURL };
-      for (let handler of stack) {
-        response = await handler(event.request, context);
-        if (response) {
-          return response;
+        let stack: Handler[] = [handleClientRegister, handleFileRequest];
+        let response: Response | undefined;
+        let context = {
+          fs,
+          webroot,
+          event,
+          fileDaemonEventHandler: eventHandler,
+        };
+        for (let handler of stack) {
+          response = await handler(event.request, context);
+          if (response) {
+            return response;
+          }
         }
       }
 
