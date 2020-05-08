@@ -18,7 +18,11 @@ export const handleFileRequest: Handler = async function (req, context) {
   // these requests through the file daemon where they will be proxied to the
   // webpack hosted builder. I wonder about 3rd party js, we might need the file
   // daemon to be more aggressive with its proxying....
-  if (requestURL.origin === builderOrigin || isCatalogJSUIRequest) {
+  if (
+    requestURL.origin === builderOrigin ||
+    isCatalogJSUIRequest ||
+    requestURL.pathname === "/ember-cli-live-reload.js"
+  ) {
     return new Response(
       (
         await fetch(

@@ -12,21 +12,21 @@ export const defaultOrigin = "http://localhost:4200";
 export const defaultWebsocketURL = "ws://localhost:3000";
 export const entrypointsPath = "/entrypoints.json";
 
-interface ConnectedEvent {
+export interface ConnectedEvent {
   type: "connected";
 }
-interface DisconnectedEvent {
+export interface DisconnectedEvent {
   type: "disconnected";
 }
-interface SyncStartedEvent {
+export interface SyncStartedEvent {
   type: "sync-started";
 }
-interface SyncFinishedEvent {
+export interface SyncFinishedEvent {
   type: "sync-finished";
   files: string[];
 }
 
-interface FilesChangedEvent {
+export interface FilesChangedEvent {
   type: "files-changed";
   modified: string[];
   removed: string[];
@@ -42,6 +42,7 @@ export type EventListener = (event: Event) => void;
 
 export class FileDaemonClient {
   ready: Promise<void>;
+  connected = false;
 
   private closeRequested = false;
   private socket: WebSocket | undefined;
@@ -146,12 +147,14 @@ export class FileDaemonClient {
     socket.onclose = (event: CloseEvent) => {
       console.log(`websocket close`, event);
       socketIsClosed();
+      this.connected = false;
       this.dispatchEvent({ type: "disconnected" });
     };
     socket.onopen = (event) => {
       console.log(`websocket open`, event);
       this.dispatchEvent({ type: "connected" });
       this.backoffInterval = 0;
+      this.connected = true;
 
       this.startFullSync().catch((err) => {
         console.error(`Error encountered running full sync`, err);
@@ -212,11 +215,13 @@ export class FileDaemonClient {
     let untar = new UnTar(stream, {
       async file(entry) {
         if (entry.type === REGTYPE) {
-          let url = new URL(mountedPath(entry.name), temp);
-          let file = await fs.open(url, "file");
+          let file = await fs.open(
+            new URL(mountedPath(entry.name), temp),
+            "file"
+          );
           file.setEtag(`${entry.size}_${entry.modifyTime}`);
           await file.write(entry.stream());
-          files.push(url.href);
+          files.push(entry.name);
         }
       },
     });
@@ -228,7 +233,12 @@ export class FileDaemonClient {
     );
     await fs.remove(temp);
     console.log("completed full sync");
-    this.dispatchEvent({ type: "sync-finished", files });
+    this.dispatchEvent({
+      type: "sync-finished",
+      files: files.map(
+        (f) => new URL(this.mountedPath(f), this.fileServerURL).href
+      ),
+    });
     this.doneSyncing();
   }
 

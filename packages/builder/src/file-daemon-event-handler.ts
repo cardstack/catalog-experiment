@@ -10,20 +10,20 @@ export class FileDaemonEventHandler {
   removeClient(clientId: string) {
     this.clientIds.delete(clientId);
   }
+  async sendEvent(clientId: string, event: ClientEvent) {
+    let client = await worker.clients.get(clientId);
+    if (!client) {
+      return;
+    }
+    client.postMessage({
+      kind: "file-daemon-client-event",
+      clientEvent: event,
+    });
+  }
   handleEvent(event: ClientEvent) {
     (async () => {
       for (let clientId of this.clientIds) {
-        let client = await worker.clients.get(clientId);
-        // Exit early if we don't get the client.
-        // Eg, if it closed.
-        if (!client) {
-          this.removeClient(clientId);
-          continue;
-        }
-        client.postMessage({
-          kind: "file-daemon-client-event",
-          clientEvent: event,
-        });
+        await this.sendEvent(clientId, event);
       }
     })();
   }

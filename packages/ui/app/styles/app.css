@@ -1,0 +1,57 @@
+html {
+  height: 100%;
+}
+body {
+  height: 100%;
+  margin: 0;
+  background-color: rgba(0, 0, 0, 0.85);
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.close {
+  margin: 0.5rem 0.25rem;
+  background: none;
+  color: white;
+  border: none;
+  font-size: 36px;
+  line-height: 36px;
+  cursor: pointer;
+}
+
+.dashboard {
+  margin-top: 1rem;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.dashboard-section {
+  margin: 1rem 0;
+  padding: 0.75rem;
+}
+
+.connection-status span {
+  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.connection-status.connected span {
+  color: green;
+}
+
+.connection-status.connected {
+  background: rgba(0, 255, 0, 0.1);
+}
+
+.connection-status.disconnected span {
+  color: red;
+}
+
+.connection-status.disconnected {
+  background: rgba(255, 0, 0, 0.1);
+}
+
+.file-item {
+  padding-left: 1rem;
+  margin: 0.5rem 0;
+  font-size: 12px;
+}

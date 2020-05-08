@@ -74,6 +74,7 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
           fs,
           webroot,
           event,
+          fileDaemonClient: client,
           fileDaemonEventHandler: eventHandler,
         };
         for (let handler of stack) {
