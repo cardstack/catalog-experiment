@@ -12,14 +12,11 @@ yarn install
 
 ## Running it
 
-1. Start typescript compilation:
+1. Perform typescript compilation:
 
    ```sh
-   yarn build --watch
+   yarn build
    ```
-
-   Alternatively if you don't want to watch typescript files for changes and only
-   want to perform just a single build, then omit the `--watch` parameter.
 
 2. Start serving the builder:
    ```sh
@@ -30,7 +27,16 @@ yarn install
    yarn serve
    ```
 
-Conversely, if you want to use webpack to package up the file-daemon's js into a single bundle and run the file daemon from the webpack generated package, then:
+If you want to use a `tsc --watch`, it's a little tricky since each package has
+its own `tsconfig.json` and needs to have it's own `tsc --watch`. You can run
+`tsc --watch` in all the projects separately. Or, if you are using VS Code, we
+have setup a auto watch tasks that will automatically `tsc --watch` all the
+projects when you open the VS Code workspace for this project. You'll need to
+first confirm that you want to run the auto tasks, which you can enable in the
+`Tasks: Manage Automatic Tasks in Folder` from the Command Palette.
+
+Conversely, if you want to use webpack to package up the file-daemon's js into a
+single bundle and run the file daemon from the webpack generated package, then:
 
 1. Run the webpack for the file-daemon:
    ```sh
