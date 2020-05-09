@@ -1,0 +1,39 @@
+<div class="dashboard">
+  <div class="dashboard-section connection-status {{if this.fileDaemonClient.connected 'connected' 'disconnected'}}">
+    Server status:
+    {{#if this.fileDaemonClient.connected}}
+    <span>Connected</span>
+    {{else}}
+    <span>Disconnected</span>
+    {{/if}}
+  </div>
+  {{#if (or this.fileDaemonClient.isSyncing this.fileDaemonClient.syncedFiles.length)}}
+  <div class="dashboard-section file-sync">
+    {{#if this.fileDaemonClient.isSyncing}}
+    Syncing files...
+    {{else if this.fileDaemonClient.syncedFiles.length}}
+    Synced {{this.fileDaemonClient.syncedFiles.length}} files:
+    {{#each this.fileDaemonClient.syncedFiles as |file|}}
+    <div class="file-item">{{file}}</div>
+    {{/each}}
+    {{/if}}
+  </div>
+  {{/if}}
+  {{#if this.fileDaemonClient.lastChange}}
+  <div class="dashboard-section file-update">
+    {{#if this.fileDaemonClient.lastChange.removed.length}}
+    Removed files:
+    {{#each this.fileDaemonClient.lastChange.removed as |file|}}
+    <div class="file-item">{{file}}</div>
+    {{/each}}
+    {{/if}}
+
+    {{#if this.fileDaemonClient.lastChange.modified.length}}
+    Modified files:
+    {{#each this.fileDaemonClient.lastChange.modified as |file|}}
+    <div class="file-item">{{file}}</div>
+    {{/each}}
+    {{/if}}
+  </div>
+  {{/if}}
+</div>

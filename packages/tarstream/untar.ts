@@ -6,8 +6,8 @@ import {
   Header,
   calculateChecksum,
   paddingNeeded,
-  assertNever,
 } from "./types";
+import { assertNever } from "shared/util";
 import { TMAGIC, OLDGNU_MAGIC } from "./constants";
 
 interface Controller {

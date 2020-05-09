@@ -7,7 +7,16 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "Start File Daemon",
+      "name": "Serve app",
+      "cwd": "${workspaceRoot}/packages/app",
+      "env": {},
+      "program": "${workspaceRoot}/packages/file-daemon/index.js",
+      "args": ["-d", "."]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Start Test File Daemon",
       "cwd": "${workspaceRoot}/packages/builder/test/test-app",
       "env": {},
       "program": "${workspaceRoot}/packages/file-daemon/index.js",

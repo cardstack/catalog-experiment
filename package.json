@@ -9,11 +9,17 @@
   "private": true,
   "scripts": {
     "clean": "git clean -x -f",
-    "build": "tsc",
-    "test": "cd packages/builder && yarn test",
-    "builder": "cd packages/builder && yarn start",
+    "build": "yarn build:file-daemon && yarn build:tarstream && yarn build:ui && yarn build:builder-worker && yarn build:builder-dom && yarn build:shared",
+    "build:file-daemon": "cd packages/file-daemon && tsc",
+    "build:builder-worker": "cd packages/builder-worker && tsc",
+    "build:builder-dom": "cd packages/builder-dom && tsc",
+    "build:shared": "cd packages/shared && tsc",
+    "build:tarstream": "cd packages/tarstream && tsc",
+    "build:ui": "cd packages/ui && tsc",
+    "test": "cd packages/builder-worker && yarn test",
+    "builder": "cd packages/builder-worker && yarn start",
     "serve": "cd packages/app && yarn start",
-    "test-server": "cd packages/builder && yarn start:test-file-daemon"
+    "test-server": "cd packages/builder-worker && yarn start:test-file-daemon"
   },
   "resolutions": {
     "minimist": "^1.2.5"

@@ -22,6 +22,7 @@ export type RequestHandler = (
 export default class FileHostingServer {
   constructor(
     private port: number,
+    private uiPort: number,
     private directory: string,
     private corsEnabled = true,
     private testHandler?: RequestHandler
@@ -32,7 +33,7 @@ export default class FileHostingServer {
 
     console.log(`HTTP server listening on port: ${this.port}`);
     const server = http.createServer((req, res) => {
-      let path = req.url!;
+      let path = req.url === "//" ? "/" : req.url!;
       console.log(
         `Handling ${req.method} ${path}, with accept header: ${req.headers.accept}`
       );
@@ -84,7 +85,9 @@ export default class FileHostingServer {
             res.end();
           }
         } else {
-          if (existsSync(filePath)) {
+          if (/^\/catalogjs-ui/.test(path)) {
+            proxy.web(req, res, { target: `http://localhost:${this.uiPort}` });
+          } else if (existsSync(filePath)) {
             let stat = statSync(filePath);
             if (stat.isDirectory()) {
               serveFile(res, join(filePath, "index.html"));

@@ -1,7 +1,6 @@
 {
-  "name": "tarstream",
+  "name": "builder-dom",
   "version": "0.0.1",
-  "main": "index.js",
   "license": "MIT",
   "dependencies": {
     "shared": "0.0.1"

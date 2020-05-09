@@ -1,7 +1,7 @@
 **/*.log
 /node_modules
-/packages/builder/test/test-app
-/packages/builder/.file-daemon-key
+/packages/builder-worker/test/test-app
+/packages/builder-worker/.file-daemon-key
 
 /packages/*/node_modules
 /packages/*/dist
@@ -11,6 +11,17 @@
 /packages/tarstream/**/*.d.ts
 /packages/tarstream/**/*.js
 /packages/tarstream/**/*.js.map
-/packages/builder/**/*.d.ts
-/packages/builder/**/*.js
-/packages/builder/**/*.js.map
+/packages/builder-worker/**/*.d.ts
+/packages/builder-worker/**/*.js
+/packages/builder-worker/**/*.js.map
+/packages/builder-dom/**/*.d.ts
+/packages/builder-dom/**/*.js
+/packages/builder-dom/**/*.js.map
+/packages/shared/**/*.d.ts
+/packages/shared/**/*.js
+/packages/shared/**/*.js.map
+/packages/ui/**/*.d.ts
+/packages/ui/**/*.js
+/packages/ui/**/*.js.map
+
+!webpack.config.js
