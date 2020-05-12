@@ -8,12 +8,19 @@ import {
 } from "./path";
 import columnify from "columnify";
 import moment from "moment";
-
-const textEncoder = new TextEncoder();
-const utf8 = new TextDecoder("utf8");
+import { initial, isEqual } from "lodash";
+import {
+  FileSystemDriver,
+  DefaultDriver,
+  File,
+  Directory,
+  FileDescriptor,
+  Stat,
+} from "./filesystem-driver";
+export { FileDescriptor };
 
 export class FileSystem {
-  private root = new Directory();
+  // private root = new Directory();
   private listeners: Map<string, EventListener[]> = new Map();
   private drainEvents?: Promise<void>;
   private eventQueue: {
@@ -21,6 +28,16 @@ export class FileSystem {
     url: URL;
     listener: EventListener;
   }[] = [];
+
+  private drivers: Map<string, FileSystemDriver> = new Map();
+
+  constructor() {
+    this.drivers.set("/", new DefaultDriver());
+  }
+
+  root(): Directory {
+    return this.drivers.get("/")!.root;
+  }
 
   addEventListener(origin: string, fn: EventListener) {
     let normalizedOrigin = new URL(origin).origin;
@@ -44,6 +61,40 @@ export class FileSystem {
     this.listeners = new Map();
   }
 
+  async mount(url: URL, driver: FileSystemDriver) {
+    try {
+      await this.open(url);
+      throw new FileSystemError(
+        "ALREADY_EXISTS",
+        `Cannot mount volume at '${url.href}', this directory is already mounted.`
+      );
+    } catch (err) {
+      if (err.code !== "NOT_FOUND") {
+        throw err;
+      }
+    }
+    this.drivers.set(urlToPath(url), driver);
+    await driver.ready;
+  }
+
+  // get the drivers that are mounted below the specified URL
+  driversMountedIn(path: string): { url: URL; driver: FileSystemDriver }[];
+  driversMountedIn(url: URL): { url: URL; driver: FileSystemDriver }[];
+  driversMountedIn(
+    urlOrPath: URL | string
+  ): { url: URL; driver: FileSystemDriver }[] {
+    let path;
+    if (typeof urlOrPath === "string") {
+      path = urlOrPath;
+    } else {
+      path = urlToPath(urlOrPath);
+    }
+    let parent = splitPath(path);
+    return [...this.drivers]
+      .filter(([path]) => isEqual(parent, initial(splitPath(path))))
+      .map(([path, driver]) => ({ url: pathToURL(path), driver }));
+  }
+
   async move(sourceURL: URL, destURL: URL): Promise<void> {
     let sourcePath = urlToPath(sourceURL);
     let destPath = urlToPath(destURL);
@@ -51,7 +102,7 @@ export class FileSystem {
     let destParentDirName = dirName(destPath);
     let destParent = destParentDirName
       ? await this.openDir(destParentDirName, true)
-      : this.root;
+      : this.root();
     let name = baseName(destPath);
     destParent.files.set(name, source);
     this.dispatchEvent(destURL, "create");
@@ -68,13 +119,17 @@ export class FileSystem {
     let destParentDirName = dirName(destPath);
     let destParent = destParentDirName
       ? await this.openDir(destParentDirName, true)
-      : this.root;
+      : this.root();
+    let destDriver = destParent.driver;
 
     let name = baseName(destPath);
-    let destItem = source instanceof File ? source.clone() : new Directory();
+    let destItem =
+      source.type === "file"
+        ? source.clone(destDriver)
+        : destDriver.createDirectory();
     destParent.files.set(name, destItem);
     this.dispatchEvent(destURL, "create");
-    if (source instanceof Directory) {
+    if (source.type === "directory") {
       for (let childName of [...source.files.keys()]) {
         await this.copy(
           pathToURL(join(sourcePath, childName)),
@@ -98,7 +153,7 @@ export class FileSystem {
     if (!dir) {
       // should we have a special event for clearing the entire file system?
       // this only happens in tests...
-      this.root.files.delete(name);
+      this.root().files.delete(name);
     } else {
       let sourceDir: Directory;
       try {
@@ -144,10 +199,23 @@ export class FileSystem {
         url: pathToURL(join(path, name)),
         stat: item.stat(),
       });
-      if (item instanceof Directory && recurse) {
+      if (item.type === "directory" && recurse) {
         results.push(
           ...(await this._list(join(path, name), true, startingPath))
         );
+      }
+    }
+    let childVolumes = this.driversMountedIn(path).map((i) => ({
+      url: i.url,
+      dir: i.driver.root,
+    }));
+    for (let { url, dir } of childVolumes) {
+      results.push({
+        url,
+        stat: dir.stat(),
+      });
+      if (recurse) {
+        results.push(...(await this._list(urlToPath(url), true, startingPath)));
       }
     }
     return results;
@@ -168,7 +236,7 @@ export class FileSystem {
     let directory = await this._open(splitPath(path), {
       createMode: create ? "directory" : undefined,
     });
-    if (directory instanceof File) {
+    if (directory.type === "file") {
       throw new FileSystemError(
         "IS_NOT_A_DIRECTORY",
         `'${pathToURL(
@@ -194,23 +262,50 @@ export class FileSystem {
     }
     let name = pathSegments.shift()!;
 
-    parent = parent || this.root;
+    parent = parent || this.root();
     let resource: File | Directory;
+    let initialPathSegments = splitPath(initialPath);
+    let driverPath = join(
+      ...initialPathSegments.slice(
+        0,
+        initialPathSegments.length - pathSegments.length
+      )
+    );
+    let driver: FileSystemDriver;
+    if (this.drivers.has(driverPath)) {
+      // we have crossed a volume boundary, use the driver for this path and
+      // the parent should be the root of the volume
+      if (pathSegments.length === 0 && opts.createMode === "file") {
+        throw new FileSystemError(
+          "IS_NOT_A_DIRECTORY",
+          `'${pathToURL(
+            initialPath
+          )}' is not a directory (it's a file and we were expecting it to be a directory)`
+        );
+      }
+      driver = this.drivers.get(driverPath)!;
+      parent = driver.root;
+    } else {
+      // we are still within the volume that we were within on the previous
+      // pass, just use the driver associated with the parent
+      driver = parent.driver;
+    }
+
     if (!parent.files.has(name)) {
       if (pathSegments.length > 0 && opts.createMode) {
-        resource = new Directory();
+        resource = driver.createDirectory();
         // dont fire events for the interior dirs--it's really a pain keeping
         // track of the interior dir path, and honestly the leaf node create
         // events are probably more important
         parent.files.set(name, resource);
         return await this._open(pathSegments, opts, resource, initialPath);
       } else if (opts.createMode === "file") {
-        resource = new File();
+        resource = driver.createFile();
         parent.files.set(name, resource);
         this.dispatchEvent(initialPath, "create");
         return resource;
       } else if (opts.createMode === "directory") {
-        resource = new Directory();
+        resource = driver.createDirectory();
         parent.files.set(name, resource);
         this.dispatchEvent(initialPath, "create");
         return resource;
@@ -225,13 +320,13 @@ export class FileSystem {
 
       // resource is a file
       if (
-        resource instanceof File &&
+        resource.type === "file" &&
         pathSegments.length === 0 &&
         opts.createMode !== "directory"
       ) {
         return resource;
       } else if (
-        resource instanceof File &&
+        resource.type === "file" &&
         pathSegments.length === 0 &&
         opts.createMode === "directory"
       ) {
@@ -242,7 +337,7 @@ export class FileSystem {
             initialPath
           )}' is not a directory (it's a file and we were expecting it to be a directory)`
         );
-      } else if (resource instanceof File) {
+      } else if (resource.type === "file") {
         // there is unconsumed path left over...
         throw new FileSystemError(
           "NOT_FOUND",
@@ -351,166 +446,21 @@ export class FileSystem {
   }
 }
 
-class File {
-  buffer?: Uint8Array;
-  etag?: string;
-  mtime: number;
-
-  constructor() {
-    this.mtime = Date.now();
-  }
-
-  stat(): Stat {
-    return {
-      etag: this.etag,
-      mtime: this.mtime,
-      size: this.buffer ? this.buffer.length : 0,
-      type: "file",
-    };
-  }
-
-  getDescriptor(
-    url: URL,
-    dispatchEvent: FileSystem["dispatchEvent"]
-  ): FileDescriptor {
-    return new FileDescriptor(this, url, dispatchEvent);
-  }
-
-  clone(): File {
-    let file = new File();
-    file.etag = this.etag;
-    if (this.buffer) {
-      file.buffer = new Uint8Array(this.buffer);
-    }
-    return file;
-  }
-}
-
-class Directory {
-  etag?: string;
-  mtime: number;
-  readonly files: Files = new Map();
-
-  constructor() {
-    this.mtime = Date.now();
-  }
-
-  stat(): Stat {
-    return { etag: this.etag, mtime: this.mtime, type: "directory" };
-  }
-
-  getDescriptor(url: URL): FileDescriptor {
-    return new FileDescriptor(this, url);
-  }
-}
-
-export class FileDescriptor {
-  constructor(
-    private resource: File | Directory,
-    readonly url: URL,
-    private readonly dispatchEvent?: FileSystem["dispatchEvent"]
-  ) {}
-
-  setEtag(etag: string) {
-    this.resource.etag = etag;
-  }
-
-  stat(): Stat {
-    return this.resource.stat();
-  }
-
-  async write(buffer: Uint8Array): Promise<void>;
-  async write(stream: ReadableStream): Promise<void>;
-  async write(text: string): Promise<void>;
-  async write(
-    streamOrBuffer: ReadableStream | Uint8Array | string
-  ): Promise<void> {
-    if (this.resource instanceof Directory) {
-      throw new FileSystemError("IS_NOT_A_FILE");
-    }
-    if (streamOrBuffer instanceof Uint8Array) {
-      this.resource.buffer = streamOrBuffer;
-    } else if (typeof streamOrBuffer === "string") {
-      this.resource.buffer = textEncoder.encode(streamOrBuffer);
-    } else {
-      this.resource.buffer = await readStream(streamOrBuffer);
-    }
-    this.resource.mtime = Math.floor(Date.now() / 1000);
-    this.dispatchEvent!(this.url, "write"); // all descriptors created for files have this dispatcher
-  }
-
-  async read(): Promise<Uint8Array> {
-    if (this.resource instanceof Directory) {
-      throw new FileSystemError("IS_NOT_A_FILE");
-    }
-    return this.resource.buffer ? this.resource.buffer : new Uint8Array();
-  }
-
-  async readText(): Promise<string> {
-    if (this.resource instanceof Directory) {
-      throw new FileSystemError("IS_NOT_A_FILE");
-    }
-    return this.resource.buffer ? utf8.decode(this.resource.buffer) : "";
-  }
-
-  getReadbleStream(): ReadableStream {
-    if (this.resource instanceof Directory) {
-      throw new FileSystemError("IS_NOT_A_FILE");
-    }
-    let buffer = this.resource.buffer;
-    return new ReadableStream({
-      async start(controller: ReadableStreamDefaultController) {
-        if (!buffer) {
-          controller.close();
-        } else {
-          controller.enqueue(new Uint8Array(buffer));
-          controller.close();
-        }
-      },
-    });
-  }
-}
-
-type ErrorCodes = "NOT_FOUND" | "IS_NOT_A_FILE" | "IS_NOT_A_DIRECTORY";
+type ErrorCodes =
+  | "NOT_FOUND"
+  | "IS_NOT_A_FILE"
+  | "IS_NOT_A_DIRECTORY"
+  | "ALREADY_EXISTS";
 export class FileSystemError extends Error {
   constructor(public readonly code: ErrorCodes, message?: string) {
     super(message ?? code);
   }
 }
 
-async function readStream(stream: ReadableStream): Promise<Uint8Array> {
-  let reader = stream.getReader();
-  let buffers: Uint8Array[] = [];
-  while (true) {
-    let chunk = await reader.read();
-    if (chunk.done) {
-      break;
-    } else {
-      buffers.push(chunk.value);
-    }
-  }
-
-  let size = buffers.reduce((a, b) => a + b.length, 0);
-  let result = new Uint8Array(size);
-  let offset = 0;
-  for (let buffer of buffers) {
-    result.set(buffer, offset);
-    offset += buffer.length;
-  }
-  return result;
-}
-
 interface ListingEntry {
   url: URL;
   stat: Stat;
 }
-interface Stat {
-  etag?: string;
-  mtime: number;
-  size?: number;
-  type: "directory" | "file";
-}
-type Files = Map<string, File | Directory>;
 
 interface Options {
   createMode?: "file" | "directory";

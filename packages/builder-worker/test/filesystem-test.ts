@@ -6,9 +6,60 @@ import {
 } from "./helpers/file-assertions";
 import { withListener } from "./helpers/event-helpers";
 import { FileDescriptor, Event as FSEvent } from "../src/filesystem";
+import { DefaultDriver } from "../src/filesystem-driver";
 
 QUnit.module("filesystem", function (origHooks) {
   let { test } = installFileAssertions(origHooks);
+
+  QUnit.module("mounting", function () {
+    origHooks.beforeEach(async (assert) => {
+      let fileAssert = (assert as unknown) as FileAssert;
+      await fileAssert.setupFiles();
+    });
+
+    test("it can mount a volume within another volume", async function (assert) {
+      let driverA = new DefaultDriver();
+      let driverB = new DefaultDriver();
+      await assert.fs.mount(url("/driverA"), driverA);
+      await assert.fs.mount(url("/driverA/foo/driverB"), driverB);
+
+      await assert.fs.open(url("/driverA/foo"), "directory");
+      await assert.fs.open(url("/driverA/foo/driverB/bar"), "file");
+
+      let listing = (await assert.fs.list(url("/"), true)).map(
+        (i) => i.url.href
+      );
+      assert.deepEqual(listing, [
+        `${origin}/`,
+        `${origin}/driverA`,
+        `${origin}/driverA/foo`,
+        `${origin}/driverA/foo/driverB`,
+        `${origin}/driverA/foo/driverB/bar`,
+      ]);
+    });
+
+    test("it throws when you create a file at a volume mount point", async function (assert) {
+      let driverA = new DefaultDriver();
+      await assert.fs.mount(url("/driverA"), driverA);
+      try {
+        await assert.fs.open(url("/driverA"), "file");
+        throw new Error("should not be able to create file");
+      } catch (e) {
+        assert.equal(e.code, "IS_NOT_A_DIRECTORY", "error code is correct");
+      }
+    });
+
+    test("it throws when you mount a volume at a directory that already exists", async function (assert) {
+      let driverA = new DefaultDriver();
+      await assert.fs.open(url("/driverA"), "directory");
+      try {
+        await assert.fs.mount(url("/driverA"), driverA);
+        throw new Error("should not be able to create file");
+      } catch (e) {
+        assert.equal(e.code, "ALREADY_EXISTS", "error code is correct");
+      }
+    });
+  });
 
   QUnit.module("events", function () {
     origHooks.beforeEach(async (assert) => {
