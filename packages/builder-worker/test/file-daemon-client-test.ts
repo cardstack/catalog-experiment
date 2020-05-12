@@ -3,12 +3,13 @@ import { FileDaemonClient } from "../src/file-daemon-client";
 import { testFileDaemonURL as origin } from "./origins";
 import {
   makeClient,
+  makeListener,
   setupScenario,
   setFile,
   removeFile,
   resetFileSystem,
 } from "./helpers/file-daemon-helpers";
-import { makeListener, withListener } from "./helpers/event-helpers";
+import { withListener } from "./helpers/event-helpers";
 
 let scenario = Object.freeze({
   "entrypoints.json": `["index.html"]`,
