@@ -6,13 +6,20 @@ import {
   ReadResult,
 } from "web-streams-polyfill/ponyfill/es2018";
 
+interface Options {
+  autoClose: boolean;
+}
+
 export class NodeReadableToDOM implements ReadableStream {
   private _locked = false;
+  private options: Options;
 
   constructor(
     private readable: Readable | ReadStream,
-    private autoClose = true
-  ) {}
+    options: Partial<Options> = {}
+  ) {
+    this.options = Object.assign({ autoClose: true }, options);
+  }
 
   get locked() {
     return this._locked;
@@ -35,7 +42,7 @@ export class NodeReadableToDOM implements ReadableStream {
       () => {
         this._locked = false;
       },
-      this.autoClose
+      this.options.autoClose
     );
   }
 
