@@ -66,10 +66,18 @@ class NodeDirectory implements Directory {
   }
 
   get(name: string) {
-    return new NodeFile(
-      this.driver,
-      openSync(join(this.dir.path, name), constants.O_RDWR)
-    );
+    let entry = this.entries().find((e) => e.name === name);
+    if (entry && entry.isFile()) {
+      return new NodeFile(
+        this.driver,
+        openSync(join(this.dir.path, name), constants.O_RDWR)
+      );
+    } else if (entry && entry.isDirectory()) {
+      return new NodeDirectory(
+        this.driver,
+        opendirSync(join(this.dir.path, name))
+      );
+    }
   }
 
   children() {

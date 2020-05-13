@@ -42,7 +42,7 @@ export class FileSystem {
   addEventListener(origin: string, fn: EventListener) {
     let normalizedOrigin = new URL(origin).origin;
     if (this.listeners.has(normalizedOrigin)) {
-      this.listeners.get(normalizedOrigin)?.push(fn);
+      this.listeners.get(normalizedOrigin)!.push(fn);
     } else {
       this.listeners.set(normalizedOrigin, [fn]);
     }
