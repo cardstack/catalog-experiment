@@ -16,11 +16,20 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "Run QUnit",
+      "name": "Run QUnit (from webpack)",
       "cwd": "${workspaceRoot}/packages/builder-worker",
       "env": {},
       "program": "${workspaceRoot}/node_modules/.bin/qunit",
       "args": ["assets/node-test.js"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Run QUnit (from tsc build)",
+      "cwd": "${workspaceRoot}/packages/builder-node",
+      "env": {},
+      "program": "${workspaceRoot}/node_modules/.bin/qunit",
+      "args": ["test/test-entrypoint.js"]
     },
     {
       "type": "node",

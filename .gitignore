@@ -3,6 +3,7 @@
 /packages/builder-worker/test/test-app
 /packages/builder-worker/.file-daemon-key
 /packages/builder-worker/assets
+/packages/builder-node/test/testing
 
 /packages/*/node_modules
 /packages/*/dist
