@@ -184,7 +184,6 @@ export function installFileAssertions(hooks: NestedHooks) {
   ): Promise<void> {
     fs = new FileSystem();
     baseURL = b;
-    await fs.removeAll();
     for (let [path, text] of Object.entries(scenario)) {
       let file = isURL(path)
         ? await fs.open(new URL(path), "file")

@@ -17,10 +17,10 @@ import {
   FileDescriptor,
   Stat,
 } from "./filesystem-driver";
+
 export { FileDescriptor };
 
 export class FileSystem {
-  // private root = new Directory();
   private listeners: Map<string, EventListener[]> = new Map();
   private drainEvents?: Promise<void>;
   private eventQueue: {
@@ -74,7 +74,10 @@ export class FileSystem {
       }
     }
     this.drivers.set(urlToPath(url), driver);
-    await driver.ready;
+    let parent = dirName(urlToPath(url)) ?? "/";
+    // make sure that there is a directory we can mount our volume into
+    await this._open(splitPath(parent), { createMode: "directory" });
+    await driver.mounted;
   }
 
   // get the drivers that are mounted below the specified URL
@@ -104,7 +107,7 @@ export class FileSystem {
       ? await this.openDir(destParentDirName, true)
       : this.root();
     let name = baseName(destPath);
-    destParent.files.set(name, source);
+    destParent.add(name, source);
     this.dispatchEvent(destURL, "create");
     await this.remove(sourceURL);
   }
@@ -123,14 +126,14 @@ export class FileSystem {
     let destDriver = destParent.driver;
 
     let name = baseName(destPath);
-    let destItem =
-      source.type === "file"
-        ? source.clone(destDriver)
-        : destDriver.createDirectory();
-    destParent.files.set(name, destItem);
+    if (source.type === "file") {
+      source.clone(destDriver, destParent, name);
+    } else {
+      destDriver.createDirectory(destParent, name);
+    }
     this.dispatchEvent(destURL, "create");
     if (source.type === "directory") {
-      for (let childName of [...source.files.keys()]) {
+      for (let childName of [...source.children()]) {
         await this.copy(
           pathToURL(join(sourcePath, childName)),
           pathToURL(destPath ? join(destPath, childName) : name)
@@ -143,17 +146,13 @@ export class FileSystem {
     await this._remove(urlToPath(url));
   }
 
-  async removeAll(): Promise<void> {
-    await this._remove("/");
-  }
-
   private async _remove(path: string): Promise<void> {
     let name = baseName(path);
     let dir = dirName(path);
     if (!dir) {
       // should we have a special event for clearing the entire file system?
       // this only happens in tests...
-      this.root().files.delete(name);
+      this.root().remove(name);
     } else {
       let sourceDir: Directory;
       try {
@@ -164,7 +163,7 @@ export class FileSystem {
         }
         return; // just ignore files that dont exist
       }
-      sourceDir.files.delete(name);
+      sourceDir.remove(name);
       this.dispatchEvent(path, "remove");
     }
   }
@@ -193,8 +192,8 @@ export class FileSystem {
         stat: directory.stat(),
       });
     }
-    for (let name of [...directory.files.keys()].sort()) {
-      let item = directory.files.get(name)!;
+    for (let name of [...directory.children()].sort()) {
+      let item = directory.get(name)!;
       results.push({
         url: pathToURL(join(path, name)),
         stat: item.stat(),
@@ -272,6 +271,7 @@ export class FileSystem {
       )
     );
     let driver: FileSystemDriver;
+    let volume: Directory | undefined;
     if (this.drivers.has(driverPath)) {
       // we have crossed a volume boundary, use the driver for this path and
       // the parent should be the root of the volume
@@ -284,29 +284,26 @@ export class FileSystem {
         );
       }
       driver = this.drivers.get(driverPath)!;
-      parent = driver.root;
+      volume = driver.root;
     } else {
       // we are still within the volume that we were within on the previous
       // pass, just use the driver associated with the parent
       driver = parent.driver;
     }
 
-    if (!parent.files.has(name)) {
+    if (!parent.has(name) && !volume) {
       if (pathSegments.length > 0 && opts.createMode) {
-        resource = driver.createDirectory();
+        resource = driver.createDirectory(parent, name);
         // dont fire events for the interior dirs--it's really a pain keeping
         // track of the interior dir path, and honestly the leaf node create
         // events are probably more important
-        parent.files.set(name, resource);
         return await this._open(pathSegments, opts, resource, initialPath);
       } else if (opts.createMode === "file") {
-        resource = driver.createFile();
-        parent.files.set(name, resource);
+        resource = driver.createFile(parent, name);
         this.dispatchEvent(initialPath, "create");
         return resource;
       } else if (opts.createMode === "directory") {
-        resource = driver.createDirectory();
-        parent.files.set(name, resource);
+        resource = driver.createDirectory(parent, name);
         this.dispatchEvent(initialPath, "create");
         return resource;
       } else {
@@ -316,7 +313,7 @@ export class FileSystem {
         );
       }
     } else {
-      resource = parent.files.get(name)!;
+      resource = volume ?? parent.get(name)!;
 
       // resource is a file
       if (
@@ -386,6 +383,10 @@ export class FileSystem {
   private dispatchEvent(urlOrPath: URL | string, type: EventType): void {
     let url: URL;
     if (typeof urlOrPath === "string") {
+      if (urlOrPath === "/") {
+        return; // ignore this, it's an internal path (not an actual URL)
+      }
+
       url = pathToURL(urlOrPath);
     } else {
       url = urlOrPath;

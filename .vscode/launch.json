@@ -16,6 +16,15 @@
     {
       "type": "node",
       "request": "launch",
+      "name": "Run QUnit",
+      "cwd": "${workspaceRoot}/packages/builder-worker",
+      "env": {},
+      "program": "${workspaceRoot}/node_modules/.bin/qunit",
+      "args": ["assets/node-test.js"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
       "name": "Start Test File Daemon",
       "cwd": "${workspaceRoot}/packages/builder/test/test-app",
       "env": {},

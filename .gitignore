@@ -2,6 +2,7 @@
 /node_modules
 /packages/builder-worker/test/test-app
 /packages/builder-worker/.file-daemon-key
+/packages/builder-worker/assets
 
 /packages/*/node_modules
 /packages/*/dist
@@ -17,6 +18,9 @@
 /packages/builder-dom/**/*.d.ts
 /packages/builder-dom/**/*.js
 /packages/builder-dom/**/*.js.map
+/packages/builder-node/**/*.d.ts
+/packages/builder-node/**/*.js
+/packages/builder-node/**/*.js.map
 /packages/shared/**/*.d.ts
 /packages/shared/**/*.js
 /packages/shared/**/*.js.map

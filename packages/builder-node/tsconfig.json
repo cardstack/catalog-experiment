@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": true,
+    "esModuleInterop": true,
+    "module": "es6",
+    "moduleResolution": "Node",
+    "pretty": true,
+    "target": "ES2020",
+    "strict": true,
+    "sourceMap": true,
+    "experimentalDecorators": true,
+    "allowUnreachableCode": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
+  }
+}

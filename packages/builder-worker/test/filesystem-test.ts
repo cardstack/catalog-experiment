@@ -762,20 +762,6 @@ QUnit.module("filesystem", function (origHooks) {
       await assert.file("/foo").doesNotExist();
     });
 
-    test("can remove all origins", async function (assert) {
-      await assert.setupFiles({
-        "http://origin-a/foo.txt": "a",
-        "http://origin-b/foo.txt": "b",
-      });
-      await assert.file("http://origin-a/foo.txt").exists();
-      await assert.file("http://origin-b/foo.txt").exists();
-
-      await assert.fs.removeAll();
-
-      await assert.file("http://origin-a/foo.txt").doesNotExist();
-      await assert.file("http://origin-b/foo.txt").doesNotExist();
-    });
-
     test("does not complain when removing a non-existant file", async function (assert) {
       assert.expect(0);
       await assert.setupFiles();
