@@ -4,8 +4,14 @@ import {
   origin,
   url,
 } from "../../builder-worker/test/helpers/file-assertions";
+import { NodeReadableToDOM, DOMToNodeReadable } from "file-daemon/stream-shims";
 import { join } from "path";
-import { removeSync, ensureDirSync, outputFileSync } from "fs-extra";
+import {
+  removeSync,
+  ensureDirSync,
+  outputFileSync,
+  createReadStream,
+} from "fs-extra";
 import { NodeFileSystemDriver } from "../src/node-filesystem-driver";
 import { FileDescriptor } from "../../builder-worker/src/filesystem";
 
@@ -22,6 +28,7 @@ QUnit.module("Node FileSystem", function (origHooks) {
 
   QUnit.module("open", function () {
     let file: FileDescriptor | undefined;
+
     origHooks.beforeEach(async (assert) => {
       file = undefined;
       let fileAssert = (assert as unknown) as FileAssert;
@@ -161,5 +168,168 @@ QUnit.module("Node FileSystem", function (origHooks) {
         assert.equal(e.code, "IS_NOT_A_FILE", "error code is correct");
       }
     });
+  });
+
+  QUnit.module("file descriptor", function (origHooks) {
+    let file: FileDescriptor;
+    let directory: FileDescriptor;
+
+    origHooks.beforeEach(async (assert) => {
+      let fileAssert = (assert as unknown) as FileAssert;
+      await fileAssert.setupFiles();
+      removeSync(testDir);
+      ensureDirSync(testDir);
+
+      await fileAssert.fs.mount(url("/"), new NodeFileSystemDriver(testDir));
+      setup({
+        "/foo/bar": "Hello World",
+        test: "bye mars",
+      });
+      directory = await fileAssert.fs.open(url("/foo"));
+      file = await fileAssert.fs.open(url("/foo/bar"));
+    });
+
+    origHooks.afterEach(() => {
+      file.close();
+      directory.close();
+    });
+
+    QUnit.module("write", function () {
+      test("can write to a file with a string", async function (assert) {
+        await file.write("blah");
+        file.close();
+        assert.file("/foo/bar").matches(/blah/);
+      });
+
+      test("can write to a file with a buffer", async function (assert) {
+        let buffer = new TextEncoder().encode("bleep");
+        await file.write(buffer);
+        file.close();
+        assert.file("/foo/bar").matches(/bleep/);
+      });
+
+      test("can write to a file with a stream", async function (assert) {
+        let stream = new NodeReadableToDOM(
+          createReadStream(join(testDir, "test"))
+        );
+        await file.write(stream);
+        file.close();
+        assert.file("/foo/bar").matches(/bye mars/);
+      });
+
+      test("throws when writiting to a directory", async function (assert) {
+        try {
+          await directory.write("bang");
+          throw new Error("should not be able to write");
+        } catch (e) {
+          assert.equal(e.code, "IS_NOT_A_FILE", "error code is correct");
+        }
+      });
+    });
+
+    QUnit.module("read", function () {
+      test("can read a string from a file", async function (assert) {
+        assert.equal(
+          await file.readText(),
+          "Hello World",
+          "the file was read correctly"
+        );
+      });
+
+      test("can read a buffer from a file", async function (assert) {
+        assert.deepEqual(
+          await file.read(),
+          new TextEncoder().encode("Hello World"),
+          "the file was read correctly"
+        );
+      });
+
+      test("can read a stream from a file", async function (assert) {
+        let stream = new DOMToNodeReadable(file.getReadbleStream());
+        let buffer: Buffer;
+
+        let done = new Promise((res) => {
+          stream.on("data", (data) => {
+            buffer = data;
+          });
+          stream.on("end", () => {
+            console.log("stream ended");
+            res();
+          });
+        });
+        await done;
+
+        assert.equal(
+          buffer!.toString("utf8"),
+          "Hello World",
+          "the file was read correctly"
+        );
+      });
+
+      test("throws when reading from a directory", async function (assert) {
+        try {
+          await directory.read();
+          throw new Error("should not be able to read");
+        } catch (e) {
+          assert.equal(e.code, "IS_NOT_A_FILE", "error code is correct");
+        }
+
+        try {
+          await directory.readText();
+          throw new Error("should not be able to readText");
+        } catch (e) {
+          assert.equal(e.code, "IS_NOT_A_FILE", "error code is correct");
+        }
+
+        try {
+          directory.getReadbleStream();
+          throw new Error("should not be able to gettReadableStream");
+        } catch (e) {
+          assert.equal(e.code, "IS_NOT_A_FILE", "error code is correct");
+        }
+      });
+    });
+
+    /*
+    QUnit.module("stat", function () {
+      test("can get type from stat of file", async function (assert) {
+        assert.equal(file.stat().type, "file", "stat value is correct");
+      });
+
+      test("can get etag from stat of file", async function (assert) {
+        file.setEtag("abc");
+        assert.equal(file.stat().etag, "abc", "stat value is correct");
+      });
+
+      test("can get size from stat of file", async function (assert) {
+        assert.equal(file.stat().size, 11, "stat value is correct");
+      });
+
+      test("can get mtime from stat of file", async function (assert) {
+        assert.ok(file.stat().mtime, "mtime exists");
+      });
+
+      test("can get type from stat of directory", async function (assert) {
+        assert.equal(
+          directory.stat().type,
+          "directory",
+          "stat value is correct"
+        );
+      });
+
+      test("can get etag from stat of directory", async function (assert) {
+        directory.setEtag("xyz");
+        assert.equal(directory.stat().etag, "xyz", "stat value is correct");
+      });
+
+      test("can not get size from stat of directory", async function (assert) {
+        assert.equal(directory.stat().size, undefined, "stat value is correct");
+      });
+
+      test("can get mtime from stat of directory", async function (assert) {
+        assert.ok(directory.stat().mtime, "mtime exists");
+      });
+    });
+    */
   });
 });

@@ -73,7 +73,7 @@ async function openFile(
   url: URL
 ): Promise<FileDescriptor | Response> {
   try {
-    return await fs.open(url);
+    return (await fs.open(url)) as FileDescriptor;
   } catch (err) {
     if (err instanceof FileSystemError && err.code === "NOT_FOUND") {
       return new Response("Not found", { status: 404 });

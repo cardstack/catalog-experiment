@@ -8,13 +8,13 @@ import {
 } from "./path";
 import columnify from "columnify";
 import moment from "moment";
-import { initial, isEqual } from "lodash";
 import {
   FileSystemDriver,
+  Volume,
   DefaultDriver,
-  File,
-  Directory,
+  DefaultVolume,
   FileDescriptor,
+  DirectoryDescriptor,
   Stat,
 } from "./filesystem-driver";
 
@@ -28,15 +28,18 @@ export class FileSystem {
     url: URL;
     listener: EventListener;
   }[] = [];
-
-  private drivers: Map<string, FileSystemDriver> = new Map();
+  private root: DirectoryDescriptor;
+  // the key for the volumes map is actually the inode (aka "serial number") of
+  // the underlying directory
+  private volumes: Map<string, Volume> = new Map();
 
   constructor() {
-    this.drivers.set("/", new DefaultDriver());
-  }
-
-  root(): Directory {
-    return this.drivers.get("/")!.root;
+    let volume = new DefaultDriver().mountVolumeSync(
+      DefaultVolume.ROOT,
+      this.dispatchEvent.bind(this)
+    );
+    this.root = volume.root;
+    this.volumes.set(this.root.inode, volume);
   }
 
   addEventListener(origin: string, fn: EventListener) {
@@ -73,39 +76,19 @@ export class FileSystem {
         throw err;
       }
     }
-    this.drivers.set(urlToPath(url), driver);
-    let parent = dirName(urlToPath(url)) ?? "/";
-    // make sure that there is a directory we can mount our volume into
-    await this._open(splitPath(parent), { createMode: "directory" });
-    await driver.mounted;
-  }
-
-  // get the drivers that are mounted below the specified URL
-  driversMountedIn(path: string): { url: URL; driver: FileSystemDriver }[];
-  driversMountedIn(url: URL): { url: URL; driver: FileSystemDriver }[];
-  driversMountedIn(
-    urlOrPath: URL | string
-  ): { url: URL; driver: FileSystemDriver }[] {
-    let path;
-    if (typeof urlOrPath === "string") {
-      path = urlOrPath;
-    } else {
-      path = urlToPath(urlOrPath);
-    }
-    let parent = splitPath(path);
-    return [...this.drivers]
-      .filter(([path]) => isEqual(parent, initial(splitPath(path))))
-      .map(([path, driver]) => ({ url: pathToURL(path), driver }));
+    let dir = await this.open(url, "directory");
+    let volume = await driver.mountVolume(url, this.dispatchEvent.bind(this));
+    this.volumes.set(dir.inode, volume);
   }
 
   async move(sourceURL: URL, destURL: URL): Promise<void> {
     let sourcePath = urlToPath(sourceURL);
     let destPath = urlToPath(destURL);
-    let source = await this.openFileOrDir(sourcePath);
+    let source = await this.openPath(sourcePath);
     let destParentDirName = dirName(destPath);
     let destParent = destParentDirName
-      ? await this.openDir(destParentDirName, true)
-      : this.root();
+      ? await this.openDirPath(destParentDirName, true)
+      : this.root;
     let name = baseName(destPath);
     destParent.add(name, source);
     this.dispatchEvent(destURL, "create");
@@ -118,18 +101,18 @@ export class FileSystem {
     }
     let sourcePath = urlToPath(sourceURL);
     let destPath = urlToPath(destURL);
-    let source = await this.openFileOrDir(sourcePath);
+    let source = await this.openPath(sourcePath);
     let destParentDirName = dirName(destPath);
     let destParent = destParentDirName
-      ? await this.openDir(destParentDirName, true)
-      : this.root();
-    let destDriver = destParent.driver;
+      ? await this.openDirPath(destParentDirName, true)
+      : this.root;
+    let destVolume = destParent.volume;
 
     let name = baseName(destPath);
     if (source.type === "file") {
-      source.clone(destDriver, destParent, name);
+      await source.clone(destVolume, destParent, name);
     } else {
-      destDriver.createDirectory(destParent, name);
+      destVolume.createDirectory(destParent, name);
     }
     this.dispatchEvent(destURL, "create");
     if (source.type === "directory") {
@@ -152,11 +135,11 @@ export class FileSystem {
     if (!dir) {
       // should we have a special event for clearing the entire file system?
       // this only happens in tests...
-      this.root().remove(name);
+      this.root.remove(name);
     } else {
-      let sourceDir: Directory;
+      let sourceDir: DirectoryDescriptor;
       try {
-        sourceDir = await this.openDir(dir);
+        sourceDir = await this.openDirPath(dir);
       } catch (err) {
         if (err.code !== "NOT_FOUND") {
           throw err;
@@ -184,7 +167,10 @@ export class FileSystem {
     if (!startingPath) {
       startingPath = path;
     }
-    let directory = await this.openDir(path);
+    let directory = await this.openDirPath(path);
+    if (this.volumes.has(directory.inode)) {
+      directory = this.volumes.get(directory.inode)!.root;
+    }
     let results: ListingEntry[] = [];
     if (startingPath === path && path !== "/") {
       results.push({
@@ -204,34 +190,28 @@ export class FileSystem {
         );
       }
     }
-    let childVolumes = this.driversMountedIn(path).map((i) => ({
-      url: i.url,
-      dir: i.driver.root,
-    }));
-    for (let { url, dir } of childVolumes) {
-      results.push({
-        url,
-        stat: dir.stat(),
-      });
-      if (recurse) {
-        results.push(...(await this._list(urlToPath(url), true, startingPath)));
-      }
-    }
     return results;
   }
 
+  async open(url: URL, createMode: "file"): Promise<FileDescriptor>;
+  async open(url: URL, createMode: "directory"): Promise<DirectoryDescriptor>;
+  async open(url: URL): Promise<DirectoryDescriptor | FileDescriptor>;
   async open(
     url: URL,
     createMode?: Options["createMode"]
-  ): Promise<FileDescriptor> {
+  ): Promise<FileDescriptor | DirectoryDescriptor> {
     let path = urlToPath(url);
-    return (await this._open(splitPath(path), { createMode })).getDescriptor(
-      url,
-      this.dispatchEvent.bind(this)
-    );
+    return await this._open(splitPath(path), { createMode });
   }
 
-  private async openDir(path: string, create = false): Promise<Directory> {
+  private async openDirPath(
+    path: string,
+    create = false
+  ): Promise<DirectoryDescriptor> {
+    if (path === "/") {
+      return this.root;
+    }
+
     let directory = await this._open(splitPath(path), {
       createMode: create ? "directory" : undefined,
     });
@@ -246,66 +226,55 @@ export class FileSystem {
     return directory;
   }
 
-  private async openFileOrDir(path: string): Promise<File | Directory> {
+  private async openPath(
+    path: string
+  ): Promise<FileDescriptor | DirectoryDescriptor> {
+    if (path === "/") {
+      return this.root;
+    }
     return await this._open(splitPath(path));
   }
 
   private async _open(
     pathSegments: string[],
     opts: Options = {},
-    parent?: Directory,
+    parent?: DirectoryDescriptor,
     initialPath?: string
-  ): Promise<File | Directory> {
+  ): Promise<FileDescriptor | DirectoryDescriptor> {
     if (!initialPath) {
       initialPath = join(...pathSegments);
     }
     let name = pathSegments.shift()!;
 
-    parent = parent || this.root();
-    let resource: File | Directory;
-    let initialPathSegments = splitPath(initialPath);
-    let driverPath = join(
-      ...initialPathSegments.slice(
-        0,
-        initialPathSegments.length - pathSegments.length
-      )
-    );
-    let driver: FileSystemDriver;
-    let volume: Directory | undefined;
-    if (this.drivers.has(driverPath)) {
+    parent = parent || this.root;
+    let descriptor: FileDescriptor | DirectoryDescriptor;
+    let volume: Volume;
+    if (this.volumes.has(parent.inode)) {
       // we have crossed a volume boundary, use the driver for this path and
       // the parent should be the root of the volume
-      if (pathSegments.length === 0 && opts.createMode === "file") {
-        throw new FileSystemError(
-          "IS_NOT_A_DIRECTORY",
-          `'${pathToURL(
-            initialPath
-          )}' is not a directory (it's a file and we were expecting it to be a directory)`
-        );
-      }
-      driver = this.drivers.get(driverPath)!;
-      volume = driver.root;
+      volume = this.volumes.get(parent.inode)!;
+      parent = volume.root;
     } else {
       // we are still within the volume that we were within on the previous
       // pass, just use the driver associated with the parent
-      driver = parent.driver;
+      volume = parent.volume;
     }
 
-    if (!parent.has(name) && !volume) {
+    if (!parent.has(name)) {
       if (pathSegments.length > 0 && opts.createMode) {
-        resource = driver.createDirectory(parent, name);
+        descriptor = volume.createDirectory(parent, name);
         // dont fire events for the interior dirs--it's really a pain keeping
         // track of the interior dir path, and honestly the leaf node create
         // events are probably more important
-        return await this._open(pathSegments, opts, resource, initialPath);
+        return await this._open(pathSegments, opts, descriptor, initialPath);
       } else if (opts.createMode === "file") {
-        resource = driver.createFile(parent, name);
+        descriptor = volume.createFile(parent, name);
         this.dispatchEvent(initialPath, "create");
-        return resource;
+        return descriptor;
       } else if (opts.createMode === "directory") {
-        resource = driver.createDirectory(parent, name);
+        descriptor = volume.createDirectory(parent, name);
         this.dispatchEvent(initialPath, "create");
-        return resource;
+        return descriptor;
       } else {
         throw new FileSystemError(
           "NOT_FOUND",
@@ -313,17 +282,17 @@ export class FileSystem {
         );
       }
     } else {
-      resource = volume ?? parent.get(name)!;
+      descriptor = parent.get(name)!;
 
       // resource is a file
       if (
-        resource.type === "file" &&
+        descriptor.type === "file" &&
         pathSegments.length === 0 &&
         opts.createMode !== "directory"
       ) {
-        return resource;
+        return descriptor;
       } else if (
-        resource.type === "file" &&
+        descriptor.type === "file" &&
         pathSegments.length === 0 &&
         opts.createMode === "directory"
       ) {
@@ -334,7 +303,7 @@ export class FileSystem {
             initialPath
           )}' is not a directory (it's a file and we were expecting it to be a directory)`
         );
-      } else if (resource.type === "file") {
+      } else if (descriptor.type === "file") {
         // there is unconsumed path left over...
         throw new FileSystemError(
           "NOT_FOUND",
@@ -344,9 +313,9 @@ export class FileSystem {
 
       // resource is a directory
       if (pathSegments.length > 0) {
-        return await this._open(pathSegments, opts, resource, initialPath);
+        return await this._open(pathSegments, opts, descriptor, initialPath);
       } else if (pathSegments.length === 0 && opts.createMode !== "file") {
-        return resource;
+        return descriptor;
       } else {
         // we asked for a file and got a directory back
         throw new FileSystemError(

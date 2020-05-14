@@ -6,7 +6,7 @@ import {
 } from "./helpers/file-assertions";
 import { withListener } from "./helpers/event-helpers";
 import { FileDescriptor, Event as FSEvent } from "../src/filesystem";
-import { DefaultDriver } from "../src/filesystem-driver";
+import { DefaultDriver, DirectoryDescriptor } from "../src/filesystem-driver";
 
 QUnit.module("filesystem", function (origHooks) {
   let { test } = installFileAssertions(origHooks);
@@ -23,7 +23,7 @@ QUnit.module("filesystem", function (origHooks) {
       await assert.fs.mount(url("/driverA"), driverA);
       await assert.fs.mount(url("/driverA/foo/driverB"), driverB);
 
-      await assert.fs.open(url("/driverA/foo"), "directory");
+      await assert.fs.open(url("/driverA/blah"), "directory");
       await assert.fs.open(url("/driverA/foo/driverB/bar"), "file");
 
       let listing = (await assert.fs.list(url("/"), true)).map(
@@ -32,6 +32,7 @@ QUnit.module("filesystem", function (origHooks) {
       assert.deepEqual(listing, [
         `${origin}/`,
         `${origin}/driverA`,
+        `${origin}/driverA/blah`,
         `${origin}/driverA/foo`,
         `${origin}/driverA/foo/driverB`,
         `${origin}/driverA/foo/driverB/bar`,
@@ -45,7 +46,7 @@ QUnit.module("filesystem", function (origHooks) {
         await assert.fs.open(url("/driverA"), "file");
         throw new Error("should not be able to create file");
       } catch (e) {
-        assert.equal(e.code, "IS_NOT_A_DIRECTORY", "error code is correct");
+        assert.equal(e.code, "IS_NOT_A_FILE", "error code is correct");
       }
     });
 
@@ -341,15 +342,17 @@ QUnit.module("filesystem", function (origHooks) {
 
   QUnit.module("file descriptor", function (origHooks) {
     let file: FileDescriptor;
-    let directory: FileDescriptor;
+    let directory: DirectoryDescriptor;
 
     origHooks.beforeEach(async (assert) => {
       let fileAssert = (assert as unknown) as FileAssert;
       await fileAssert.setupFiles({
         "/foo/bar": "Hello World",
       });
-      directory = await fileAssert.fs.open(url("/foo"));
-      file = await fileAssert.fs.open(url("/foo/bar"));
+      directory = (await fileAssert.fs.open(
+        url("/foo")
+      )) as DirectoryDescriptor;
+      file = (await fileAssert.fs.open(url("/foo/bar"))) as FileDescriptor;
     });
 
     QUnit.module("write", function () {
@@ -380,15 +383,6 @@ QUnit.module("filesystem", function (origHooks) {
         await file.write(stream);
         assert.file("/foo/bar").matches(/blurp/);
       });
-
-      test("throws when writiting to a directory", async function (assert) {
-        try {
-          await directory.write("bang");
-          throw new Error("should not be able to write");
-        } catch (e) {
-          assert.equal(e.code, "IS_NOT_A_FILE", "error code is correct");
-        }
-      });
     });
 
     QUnit.module("read", function () {
@@ -415,29 +409,6 @@ QUnit.module("filesystem", function (origHooks) {
           new TextEncoder().encode("Hello World"),
           "the file was read correctly"
         );
-      });
-
-      test("throws when reading from a directory", async function (assert) {
-        try {
-          await directory.read();
-          throw new Error("should not be able to read");
-        } catch (e) {
-          assert.equal(e.code, "IS_NOT_A_FILE", "error code is correct");
-        }
-
-        try {
-          await directory.readText();
-          throw new Error("should not be able to readText");
-        } catch (e) {
-          assert.equal(e.code, "IS_NOT_A_FILE", "error code is correct");
-        }
-
-        try {
-          directory.getReadbleStream();
-          throw new Error("should not be able to gettReadableStream");
-        } catch (e) {
-          assert.equal(e.code, "IS_NOT_A_FILE", "error code is correct");
-        }
       });
     });
 

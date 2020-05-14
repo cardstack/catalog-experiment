@@ -1,172 +1,254 @@
-import { FileSystem, FileSystemError } from "./filesystem";
+import { FileSystem } from "./filesystem";
+import { pathToURL } from "./path";
 
 const textEncoder = new TextEncoder();
 const utf8 = new TextDecoder("utf8");
 
 export interface FileSystemDriver {
-  root: Directory;
-  mounted: Promise<void>;
-  createDirectory(parent: Directory, name: String): Directory;
-  createFile(parent: Directory, name: string): File;
-}
-
-interface Base {
-  readonly driver: FileSystemDriver;
-  etag?: string;
-  mtime: number;
-  stat(): Stat;
-  close(): void;
-  getDescriptor(
+  mountVolume(
     url: URL,
     dispatchEvent: FileSystem["dispatchEvent"]
-  ): FileDescriptor;
+  ): Promise<Volume>;
 }
 
-export interface Directory extends Base {
+export interface Volume {
+  root: DirectoryDescriptor;
+  createDirectory(
+    parent: DirectoryDescriptor,
+    name: String
+  ): DirectoryDescriptor;
+  createFile(parent: DirectoryDescriptor, name: string): FileDescriptor;
+}
+
+export interface Descriptor {
+  readonly url: URL;
+  readonly dispatchEvent: FileSystem["dispatchEvent"];
+  readonly volume: Volume;
+  stat(): Stat;
+  close(): void;
+  // TODO this should be an implementation class concern
+  setEtag(etag: string): void;
+}
+
+export interface DirectoryDescriptor extends Descriptor {
   readonly type: "directory";
-  get(name: string): File | Directory | undefined;
+  readonly inode: string;
+  get(name: string): FileDescriptor | DirectoryDescriptor | undefined;
   children(): string[];
   has(name: string): boolean;
   remove(name: string): void;
-  add(name: string, resource: File | Directory): void;
+  add(name: string, resource: FileDescriptor): void;
+  add(name: string, resource: DirectoryDescriptor): void;
+  add(name: string, resource: FileDescriptor | DirectoryDescriptor): void;
 }
 
-export interface File extends Base {
+export interface FileDescriptor extends Descriptor {
   readonly type: "file";
-  buffer?: Uint8Array;
-  clone(driver: FileSystemDriver, parent: Directory, name: string): File;
-}
-
-export interface FileDescriptor {
-  readonly url: URL;
-  setEtag(etag: string): void;
-  stat(): Stat;
+  readonly inode: string;
   write(buffer: Uint8Array): Promise<void>;
   write(stream: ReadableStream): Promise<void>;
   write(text: string): Promise<void>;
-  write(streamOrBuffer: ReadableStream | Uint8Array | string): Promise<void>;
   read(): Promise<Uint8Array>;
   readText(): Promise<string>;
   getReadbleStream(): ReadableStream;
-  close(): void;
+  clone(
+    volume: Volume,
+    parent: DirectoryDescriptor,
+    name: string
+  ): Promise<FileDescriptor>;
 }
+
+type DefaultDescriptors = DefaultDirectoryDescriptor | DefaultFileDescriptor;
+type DefaultResources = File | Directory;
+let descriptors: WeakMap<DefaultDescriptors, DefaultResources> = new WeakMap();
 
 export class DefaultDriver implements FileSystemDriver {
-  mounted = Promise.resolve();
-  root: DefaultDirectory;
-
-  constructor() {
-    this.root = new DefaultDirectory(this);
+  async mountVolume(url: URL, dispatchEvent: FileSystem["dispatchEvent"]) {
+    return this.mountVolumeSync(url, dispatchEvent);
   }
 
-  createDirectory(parent: DefaultDirectory, name: string): Directory {
-    let directory = new DefaultDirectory(this);
-    parent.add(name, directory);
-    return directory;
-  }
-
-  createFile(parent: DefaultDirectory, name: string): File {
-    let file = new DefaultFile(this);
-    parent.add(name, file);
-    return file;
+  // it's adventageous to leverage the synchronous nature of the default driver
+  // for mounting a default volume in the FileSystem constructor
+  mountVolumeSync(url: URL, dispatchEvent: FileSystem["dispatchEvent"]) {
+    return new DefaultVolume(url, dispatchEvent);
   }
 }
 
-class DefaultDirectory implements Directory {
+export class DefaultVolume implements Volume {
+  static readonly ROOT = new URL("http://root");
+  root: DefaultDirectoryDescriptor;
+
+  constructor(url: URL, private dispatchEvent: FileSystem["dispatchEvent"]) {
+    this.root = new Directory(this).getDescriptor(url, this.dispatchEvent);
+  }
+
+  createDirectory(parent: DefaultDirectoryDescriptor, name: string) {
+    let directory = new Directory(this);
+    let url: URL;
+    // The root folder is a special internal folder that only contains URL
+    // origins. So we fashion URL's from these origin for the child dirs.
+    if (parent.url.href === DefaultVolume.ROOT.href) {
+      url = pathToURL(name);
+    } else {
+      url = new URL(name, parent.url);
+    }
+    let descriptor = directory.getDescriptor(url, this.dispatchEvent);
+    parent.add(name, descriptor);
+    return descriptor;
+  }
+
+  createFile(parent: DefaultDirectoryDescriptor, name: string) {
+    let file = new File(this);
+    let descriptor = file.getDescriptor(
+      new URL(name, parent.url),
+      this.dispatchEvent
+    );
+    parent.add(name, descriptor);
+    return descriptor;
+  }
+}
+
+class Directory {
+  etag?: string;
+  mtime: number;
+  readonly files: Map<string, File | Directory> = new Map();
+  readonly serialNumber = makeSerialNumber();
+
+  constructor(readonly volume: DefaultVolume) {
+    this.mtime = Date.now();
+  }
+
+  getDescriptor(url: URL, dispatchEvent: FileSystem["dispatchEvent"]) {
+    return new DefaultDirectoryDescriptor(this, url, dispatchEvent);
+  }
+}
+
+class File {
+  buffer: Uint8Array = new Uint8Array();
+  etag?: string;
+  mtime: number;
+  readonly serialNumber = makeSerialNumber();
+
+  constructor(readonly volume: DefaultVolume) {
+    this.mtime = Date.now();
+  }
+
+  getDescriptor(url: URL, dispatchEvent: FileSystem["dispatchEvent"]) {
+    return new DefaultFileDescriptor(this, url, dispatchEvent);
+  }
+}
+
+class DefaultDirectoryDescriptor implements DirectoryDescriptor {
   readonly type = "directory";
-  etag?: string;
-  mtime: number;
-  private readonly files: Map<
-    string,
-    DefaultFile | DefaultDirectory
-  > = new Map();
+  readonly volume: DefaultVolume;
 
-  constructor(readonly driver: DefaultDriver) {
-    this.mtime = Date.now();
+  constructor(
+    resource: Directory,
+    readonly url: URL,
+    readonly dispatchEvent: FileSystem["dispatchEvent"]
+  ) {
+    descriptors.set(this, resource);
+    this.volume = resource.volume;
   }
 
-  close() {}
-
-  stat(): Stat {
-    return { etag: this.etag, mtime: this.mtime, type: "directory" };
+  private get resource() {
+    return descriptors.get(this)! as Directory;
   }
 
-  getDescriptor(url: URL): FileDescriptor {
-    return new DefaultFileDescriptor(this, url);
+  get inode() {
+    return String(this.resource.serialNumber);
   }
 
-  get(name: string) {
-    return this.files.get(name);
-  }
-
-  children() {
-    return [...this.files.keys()];
-  }
-
-  has(name: string) {
-    return this.files.has(name);
-  }
-
-  remove(name: string) {
-    this.files.delete(name);
-  }
-
-  add(name: string, resource: DefaultFile | DefaultDirectory) {
-    this.files.set(name, resource);
-  }
-}
-
-class DefaultFile implements File {
-  readonly type = "file";
-  buffer?: Uint8Array;
-  etag?: string;
-  mtime: number;
-
-  constructor(readonly driver: DefaultDriver) {
-    this.mtime = Date.now();
+  setEtag(etag: string) {
+    this.resource.etag = etag;
   }
 
   close() {}
 
   stat(): Stat {
     return {
-      etag: this.etag,
-      mtime: this.mtime,
-      size: this.buffer ? this.buffer.length : 0,
-      type: "file",
+      etag: this.resource.etag,
+      mtime: this.resource.mtime,
+      type: "directory",
     };
   }
 
-  getDescriptor(
-    url: URL,
-    dispatchEvent: FileSystem["dispatchEvent"]
-  ): FileDescriptor {
-    return new DefaultFileDescriptor(this, url, dispatchEvent);
+  get(name: string) {
+    if (name === "/") {
+      return this.volume.root;
+    }
+    return this.resource.files
+      .get(name)
+      ?.getDescriptor(new URL(name, this.url), this.dispatchEvent);
   }
 
-  clone(driver: FileSystemDriver, parent: Directory, name: string): File {
-    let file = driver.createFile(parent, name);
-    file.etag = this.etag;
-    if (this.buffer) {
-      file.buffer = new Uint8Array(this.buffer);
+  children() {
+    return [...this.resource.files.keys()];
+  }
+
+  has(name: string) {
+    if (name === "/") {
+      return true;
     }
-    return file;
+    return this.resource.files.has(name);
+  }
+
+  remove(name: string) {
+    this.resource.files.delete(name);
+  }
+
+  add(name: string, descriptor: DefaultDirectoryDescriptor): void;
+  add(name: string, descriptor: DefaultFileDescriptor): void;
+  add(name: string, descriptor: DefaultDescriptors): void {
+    this.resource.files.set(name, descriptors.get(descriptor)!);
   }
 }
 
 class DefaultFileDescriptor implements FileDescriptor {
+  readonly type = "file";
+  readonly volume: DefaultVolume;
+
   constructor(
-    private resource: DefaultFile | DefaultDirectory,
+    resource: File,
     readonly url: URL,
-    private readonly dispatchEvent?: FileSystem["dispatchEvent"]
-  ) {}
+    readonly dispatchEvent: FileSystem["dispatchEvent"]
+  ) {
+    descriptors.set(this, resource);
+    this.volume = resource.volume;
+  }
+
+  private get resource() {
+    return descriptors.get(this)! as File;
+  }
+
+  get inode() {
+    return String(this.resource.serialNumber);
+  }
 
   setEtag(etag: string) {
     this.resource.etag = etag;
   }
 
   stat(): Stat {
-    return this.resource.stat();
+    return {
+      etag: this.resource.etag,
+      mtime: this.resource.mtime,
+      size: this.resource.buffer.length,
+      type: "file",
+    };
+  }
+
+  async clone(
+    volume: Volume,
+    parent: DirectoryDescriptor,
+    name: string
+  ): Promise<FileDescriptor> {
+    let descriptor = volume.createFile(parent, name);
+    // descriptor.etag = this.etag;
+    if (this.resource.buffer) {
+      await descriptor.write(this.resource.buffer);
+    }
+    return descriptor;
   }
 
   async write(buffer: Uint8Array): Promise<void>;
@@ -175,9 +257,6 @@ class DefaultFileDescriptor implements FileDescriptor {
   async write(
     streamOrBuffer: ReadableStream | Uint8Array | string
   ): Promise<void> {
-    if (this.resource.type === "directory") {
-      throw new FileSystemError("IS_NOT_A_FILE");
-    }
     if (streamOrBuffer instanceof Uint8Array) {
       this.resource.buffer = streamOrBuffer;
     } else if (typeof streamOrBuffer === "string") {
@@ -185,30 +264,21 @@ class DefaultFileDescriptor implements FileDescriptor {
     } else {
       this.resource.buffer = await readStream(streamOrBuffer);
     }
-    this.resource.mtime = Math.floor(Date.now() / 1000);
+    this.resource.mtime = Math.floor(Date.now());
     this.dispatchEvent!(this.url, "write"); // all descriptors created for files have this dispatcher
   }
 
   close() {}
 
   async read(): Promise<Uint8Array> {
-    if (this.resource.type === "directory") {
-      throw new FileSystemError("IS_NOT_A_FILE");
-    }
     return this.resource.buffer ? this.resource.buffer : new Uint8Array();
   }
 
   async readText(): Promise<string> {
-    if (this.resource.type === "directory") {
-      throw new FileSystemError("IS_NOT_A_FILE");
-    }
     return this.resource.buffer ? utf8.decode(this.resource.buffer) : "";
   }
 
   getReadbleStream(): ReadableStream {
-    if (this.resource.type === "directory") {
-      throw new FileSystemError("IS_NOT_A_FILE");
-    }
     let buffer = this.resource.buffer;
     return new ReadableStream({
       async start(controller: ReadableStreamDefaultController) {
@@ -223,6 +293,7 @@ class DefaultFileDescriptor implements FileDescriptor {
   }
 }
 
+// TODO split this between a FileStat and a DirectoryStat
 export interface Stat {
   etag?: string;
   mtime: number;
@@ -230,7 +301,7 @@ export interface Stat {
   type: "directory" | "file";
 }
 
-async function readStream(stream: ReadableStream): Promise<Uint8Array> {
+export async function readStream(stream: ReadableStream): Promise<Uint8Array> {
   let reader = stream.getReader();
   let buffers: Uint8Array[] = [];
   while (true) {
@@ -250,4 +321,8 @@ async function readStream(stream: ReadableStream): Promise<Uint8Array> {
     offset += buffer.length;
   }
   return result;
+}
+
+function makeSerialNumber(): number {
+  return Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
 }

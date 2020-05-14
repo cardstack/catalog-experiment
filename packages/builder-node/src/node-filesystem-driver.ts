@@ -5,7 +5,12 @@ import {
   FileDescriptor,
   Stat,
 } from "../../builder-worker/src/filesystem-driver";
-import { FileSystem } from "../../builder-worker/src/filesystem";
+import {
+  FileSystem,
+  FileSystemError,
+} from "../../builder-worker/src/filesystem";
+import { DOMToNodeReadable, NodeReadableToDOM } from "file-daemon/stream-shims";
+import { Readable } from "stream";
 import { ensureDirSync, removeSync } from "fs-extra";
 import {
   openSync,
@@ -15,8 +20,17 @@ import {
   closeSync,
   Dirent,
   readdirSync,
+  writeFileSync,
+  fstatSync,
+  statSync,
+  createWriteStream,
+  readSync,
+  createReadStream,
 } from "fs";
 import { join } from "path";
+
+const textEncoder = new TextEncoder();
+const utf8 = new TextDecoder("utf8");
 
 export class NodeFileSystemDriver implements FileSystemDriver {
   mounted = Promise.resolve();
@@ -42,11 +56,8 @@ export class NodeFileSystemDriver implements FileSystemDriver {
 class NodeDirectory implements Directory {
   readonly type = "directory";
   etag?: string;
-  mtime: number;
 
-  constructor(readonly driver: NodeFileSystemDriver, readonly dir: Dir) {
-    this.mtime = Date.now();
-  }
+  constructor(readonly driver: NodeFileSystemDriver, readonly dir: Dir) {}
 
   private entries(): Dirent[] {
     return readdirSync(this.dir.path, { withFileTypes: true });
@@ -56,9 +67,13 @@ class NodeDirectory implements Directory {
     this.dir.closeSync();
   }
 
-  // TODO we should probably be using the fs.stat...
   stat(): Stat {
-    return { etag: this.etag, mtime: this.mtime, type: "directory" };
+    let stat = statSync(this.dir.path);
+    return { etag: this.etag, mtime: stat.mtimeMs, type: "directory" };
+  }
+
+  mtime(): number {
+    return this.stat().mtime;
   }
 
   getDescriptor(url: URL) {
@@ -103,22 +118,23 @@ class NodeDirectory implements Directory {
 
 class NodeFile implements File {
   readonly type = "file";
-  buffer?: Uint8Array;
-  etag?: string;
-  mtime: number;
+  etag?: string; // synthesize this like we do for the file daemon client
 
-  constructor(readonly driver: NodeFileSystemDriver, readonly fd: number) {
-    this.mtime = Date.now();
-  }
+  constructor(readonly driver: NodeFileSystemDriver, readonly fd: number) {}
 
   // TODO we should probably be using the fs.stat...
   stat(): Stat {
+    let stat = fstatSync(this.fd);
     return {
       etag: this.etag,
-      mtime: this.mtime,
-      size: this.buffer ? this.buffer.length : 0,
+      mtime: stat.mtimeMs,
+      size: stat.size,
       type: "file",
     };
+  }
+
+  mtime(): number {
+    return this.stat().mtime;
   }
 
   close() {
@@ -129,12 +145,10 @@ class NodeFile implements File {
     return new NodeFileDescriptor(this, url, dispatchEvent);
   }
 
+  // TODO seems unnecessary
   clone(driver: FileSystemDriver, parent: Directory, name: string) {
     let file = driver.createFile(parent, name);
-    file.etag = this.etag;
-    if (this.buffer) {
-      file.buffer = new Uint8Array(this.buffer);
-    }
+    file.etag = this.etag; // do we really wanna do this?
     return file;
   }
 }
@@ -145,10 +159,6 @@ class NodeFileDescriptor implements FileDescriptor {
     readonly url: URL,
     private readonly dispatchEvent?: FileSystem["dispatchEvent"]
   ) {}
-
-  private get path(): string {
-    return this.resource.driver.rootPath;
-  }
 
   close() {
     this.resource.close();
@@ -168,48 +178,67 @@ class NodeFileDescriptor implements FileDescriptor {
   async write(
     streamOrBuffer: ReadableStream | Uint8Array | string
   ): Promise<void> {
-    // if (this.resource.type === "directory") {
-    //   throw new FileSystemError("IS_NOT_A_FILE");
-    // }
-    // if (streamOrBuffer instanceof Uint8Array) {
-    //   this.resource.buffer = streamOrBuffer;
-    // } else if (typeof streamOrBuffer === "string") {
-    //   this.resource.buffer = textEncoder.encode(streamOrBuffer);
-    // } else {
-    //   this.resource.buffer = await readStream(streamOrBuffer);
-    // }
-    // this.resource.mtime = Math.floor(Date.now() / 1000);
+    if (this.resource.type === "directory") {
+      throw new FileSystemError("IS_NOT_A_FILE");
+    }
+    let buffer: Uint8Array | undefined;
+    let readableStream: Readable | undefined;
+    if (streamOrBuffer instanceof Uint8Array) {
+      buffer = streamOrBuffer;
+    } else if (typeof streamOrBuffer === "string") {
+      buffer = textEncoder.encode(streamOrBuffer);
+    } else {
+      readableStream = new DOMToNodeReadable(streamOrBuffer);
+    }
+
+    if (buffer) {
+      writeFileSync(this.resource.fd, buffer);
+    } else if (readableStream) {
+      let file = createWriteStream("", {
+        fd: this.resource.fd,
+        autoClose: false,
+      });
+      let done = new Promise((res, rej) => {
+        file.on("finish", res);
+        file.on("err", rej);
+      });
+      readableStream.pipe(file);
+      await done;
+    } else {
+      throw new Error(
+        `bug: should never have a situation where you dont have a buffer or a readable stream when writing to a file`
+      );
+    }
     this.dispatchEvent!(this.url, "write"); // all descriptors created for files have this dispatcher
   }
 
   async read(): Promise<Uint8Array> {
-    // if (this.resource.type === "directory") {
-    //   throw new FileSystemError("IS_NOT_A_FILE");
-    // }
-    // return this.resource.buffer ? this.resource.buffer : new Uint8Array();
+    if (this.resource.type === "directory") {
+      throw new FileSystemError("IS_NOT_A_FILE");
+    }
+    let size = this.stat().size!;
+    let buffer = new Uint8Array(size);
+    readSync(this.resource.fd, buffer, 0, size, 0);
+    return buffer;
   }
 
   async readText(): Promise<string> {
-    // if (this.resource.type === "directory") {
-    //   throw new FileSystemError("IS_NOT_A_FILE");
-    // }
-    // return this.resource.buffer ? utf8.decode(this.resource.buffer) : "";
+    if (this.resource.type === "directory") {
+      throw new FileSystemError("IS_NOT_A_FILE");
+    }
+    let buffer = await this.read();
+    return utf8.decode(buffer);
   }
 
   getReadbleStream(): ReadableStream {
-    // if (this.resource.type === "directory") {
-    //   throw new FileSystemError("IS_NOT_A_FILE");
-    // }
-    // let buffer = this.resource.buffer;
-    // return new ReadableStream({
-    //   async start(controller: ReadableStreamDefaultController) {
-    //     if (!buffer) {
-    //       controller.close();
-    //     } else {
-    //       controller.enqueue(new Uint8Array(buffer));
-    //       controller.close();
-    //     }
-    //   },
-    // });
+    if (this.resource.type === "directory") {
+      throw new FileSystemError("IS_NOT_A_FILE");
+    }
+    let readableStream = createReadStream("", {
+      fd: this.resource.fd,
+      autoClose: false,
+      start: 0,
+    });
+    return new NodeReadableToDOM(readableStream, { autoClose: false });
   }
 }

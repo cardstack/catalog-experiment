@@ -205,7 +205,13 @@ export class Builder<Input> {
     if (FileNode.isFileNode(node)) {
       this.ensureWatching(node.url);
       let fd = await this.fs.open(node.url);
-      return { value: await fd.readText(), changed: true };
+      if (fd.type === "file") {
+        return { value: await fd.readText(), changed: true };
+      } else {
+        throw new Error(
+          `bug: expecting ${node.url} to be a file, but it was a directory`
+        );
+      }
     } else {
       return this.handleUnchanged(
         node,

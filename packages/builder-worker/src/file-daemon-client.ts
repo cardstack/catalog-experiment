@@ -275,9 +275,9 @@ export class FileDaemonClient {
     let previousEntrypoints: EntrypointsMapping | undefined;
     try {
       previousEntrypoints = JSON.parse(
-        await (
-          await this.fs.open(new URL(entrypointsPath, this.fileServerURL))
-        ).readText()
+        await ((await this.fs.open(
+          new URL(entrypointsPath, this.fileServerURL)
+        )) as FileDescriptor).readText()
       ) as EntrypointsMapping;
     } catch (err) {
       if (err.code !== "NOT_FOUND") {
