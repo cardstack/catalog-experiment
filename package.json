@@ -19,7 +19,7 @@
     "build:ui": "cd packages/ui && tsc",
     "test": "npm-run-all test:*",
     "test:builder-worker": "cd packages/builder-worker && yarn test",
-    "test:builder-node": "cd packages/builder-node && yarn qunit test/test-entrypoint.js",
+    "test:builder-node": "cd packages/builder-worker && yarn webpack && yarn qunit assets/node-test.js",
     "builder": "cd packages/builder-worker && yarn start",
     "serve": "cd packages/app && yarn start"
   },
