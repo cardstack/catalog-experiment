@@ -4,6 +4,7 @@ import {
   DirectoryDescriptor,
   Volume,
   Stat,
+  assertURLEndsInDir,
 } from "../../builder-worker/src/filesystem-driver";
 import { FileSystem } from "../../builder-worker/src/filesystem";
 import { DOMToNodeReadable, NodeReadableToDOM } from "file-daemon/stream-shims";
@@ -13,7 +14,6 @@ import {
   openSync,
   opendirSync,
   Dir,
-  constants,
   closeSync,
   Dirent,
   readdirSync,
@@ -67,7 +67,7 @@ export class NodeVolume implements Volume {
     ensureDirSync(path);
     return new NodeDirectoryDescriptor(
       this,
-      new URL(name, parent.url),
+      new URL(name, assertURLEndsInDir(parent.url)),
       opendirSync(path),
       this.dispatchEvent
     );
@@ -83,7 +83,7 @@ export class NodeVolume implements Volume {
     let path = join(parentDir.path, name);
     return new NodeFileDescriptor(
       this,
-      new URL(name, parent.url),
+      new URL(name, assertURLEndsInDir(parent.url)),
       openSync(path, "w+"),
       this.dispatchEvent
     );
@@ -126,14 +126,14 @@ export class NodeDirectoryDescriptor implements DirectoryDescriptor {
     if (entry && entry.isFile()) {
       return new NodeFileDescriptor(
         this.volume,
-        new URL(name, this.url),
+        new URL(name, assertURLEndsInDir(this.url)),
         openSync(join(this.dir.path, name), "r+"),
         this.dispatchEvent
       );
     } else if (entry && entry.isDirectory()) {
       return new NodeDirectoryDescriptor(
         this.volume,
-        new URL(name, this.url),
+        new URL(name, assertURLEndsInDir(this.url)),
         opendirSync(join(this.dir.path, name)),
         this.dispatchEvent
       );

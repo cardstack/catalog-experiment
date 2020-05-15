@@ -89,7 +89,7 @@ export class DefaultVolume implements Volume {
     if (parent.url.href === DefaultVolume.ROOT.href) {
       url = pathToURL(name);
     } else {
-      url = new URL(name, parent.url);
+      url = new URL(name, assertURLEndsInDir(parent.url));
     }
     let descriptor = directory.getDescriptor(url, this.dispatchEvent);
     await parent.add(name, descriptor);
@@ -99,7 +99,7 @@ export class DefaultVolume implements Volume {
   async createFile(parent: DefaultDirectoryDescriptor, name: string) {
     let file = new File(this);
     let descriptor = file.getDescriptor(
-      new URL(name, parent.url),
+      new URL(name, assertURLEndsInDir(parent.url)),
       this.dispatchEvent
     );
     await parent.add(name, descriptor);
@@ -180,7 +180,7 @@ export class DefaultDirectoryDescriptor implements DirectoryDescriptor {
       if (this.url === DefaultVolume.ROOT) {
         url = pathToURL(name);
       } else {
-        url = new URL(name, this.url);
+        url = new URL(name, assertURLEndsInDir(this.url));
       }
       return this.resource.files
         .get(name)!
@@ -317,4 +317,13 @@ export async function readStream(stream: ReadableStream): Promise<Uint8Array> {
 
 function makeSerialNumber(): number {
   return Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
+}
+
+export function assertURLEndsInDir(url: URL) {
+  if (url.href.slice(-1) === "/") {
+    return url;
+  }
+  if (url.href.slice(-1) !== "/") {
+    return new URL(`${url.href}/`);
+  }
 }
