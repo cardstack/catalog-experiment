@@ -16,30 +16,34 @@ export interface Volume {
   createDirectory(
     parent: DirectoryDescriptor,
     name: String
-  ): DirectoryDescriptor;
-  createFile(parent: DirectoryDescriptor, name: string): FileDescriptor;
+  ): Promise<DirectoryDescriptor>;
+  createFile(
+    parent: DirectoryDescriptor,
+    name: string
+  ): Promise<FileDescriptor>;
 }
 
-export interface Descriptor {
+interface Descriptor {
   readonly url: URL;
-  readonly dispatchEvent: FileSystem["dispatchEvent"];
   readonly volume: Volume;
-  stat(): Stat;
+  stat(): Promise<Stat>;
   close(): void;
-  // TODO this should be an implementation class concern
-  setEtag(etag: string): void;
 }
 
 export interface DirectoryDescriptor extends Descriptor {
   readonly type: "directory";
   readonly inode: string;
-  get(name: string): FileDescriptor | DirectoryDescriptor | undefined;
-  children(): string[];
-  has(name: string): boolean;
-  remove(name: string): void;
-  add(name: string, resource: FileDescriptor): void;
-  add(name: string, resource: DirectoryDescriptor): void;
-  add(name: string, resource: FileDescriptor | DirectoryDescriptor): void;
+  get(name: string): Promise<FileDescriptor | DirectoryDescriptor | undefined>;
+  children(): Promise<string[]>;
+  has(name: string): Promise<boolean>;
+  remove(name: string): Promise<void>;
+  add(name: string, resource: DirectoryDescriptor): Promise<void>;
+  add(
+    name: string,
+    resource: FileDescriptor,
+    currentParent: DirectoryDescriptor,
+    currentName: string
+  ): Promise<void>;
 }
 
 export interface FileDescriptor extends Descriptor {
@@ -51,11 +55,6 @@ export interface FileDescriptor extends Descriptor {
   read(): Promise<Uint8Array>;
   readText(): Promise<string>;
   getReadbleStream(): ReadableStream;
-  clone(
-    volume: Volume,
-    parent: DirectoryDescriptor,
-    name: string
-  ): Promise<FileDescriptor>;
 }
 
 type DefaultDescriptors = DefaultDirectoryDescriptor | DefaultFileDescriptor;
@@ -82,7 +81,7 @@ export class DefaultVolume implements Volume {
     this.root = new Directory(this).getDescriptor(url, this.dispatchEvent);
   }
 
-  createDirectory(parent: DefaultDirectoryDescriptor, name: string) {
+  async createDirectory(parent: DefaultDirectoryDescriptor, name: string) {
     let directory = new Directory(this);
     let url: URL;
     // The root folder is a special internal folder that only contains URL
@@ -93,17 +92,17 @@ export class DefaultVolume implements Volume {
       url = new URL(name, parent.url);
     }
     let descriptor = directory.getDescriptor(url, this.dispatchEvent);
-    parent.add(name, descriptor);
+    await parent.add(name, descriptor);
     return descriptor;
   }
 
-  createFile(parent: DefaultDirectoryDescriptor, name: string) {
+  async createFile(parent: DefaultDirectoryDescriptor, name: string) {
     let file = new File(this);
     let descriptor = file.getDescriptor(
       new URL(name, parent.url),
       this.dispatchEvent
     );
-    parent.add(name, descriptor);
+    await parent.add(name, descriptor);
     return descriptor;
   }
 }
@@ -125,7 +124,6 @@ class Directory {
 
 class File {
   buffer: Uint8Array = new Uint8Array();
-  etag?: string;
   mtime: number;
   readonly serialNumber = makeSerialNumber();
 
@@ -138,14 +136,14 @@ class File {
   }
 }
 
-class DefaultDirectoryDescriptor implements DirectoryDescriptor {
+export class DefaultDirectoryDescriptor implements DirectoryDescriptor {
   readonly type = "directory";
   readonly volume: DefaultVolume;
 
   constructor(
     resource: Directory,
     readonly url: URL,
-    readonly dispatchEvent: FileSystem["dispatchEvent"]
+    private dispatchEvent: FileSystem["dispatchEvent"]
   ) {
     descriptors.set(this, resource);
     this.volume = resource.volume;
@@ -165,7 +163,7 @@ class DefaultDirectoryDescriptor implements DirectoryDescriptor {
 
   close() {}
 
-  stat(): Stat {
+  async stat(): Promise<Stat> {
     return {
       etag: this.resource.etag,
       mtime: this.resource.mtime,
@@ -173,45 +171,56 @@ class DefaultDirectoryDescriptor implements DirectoryDescriptor {
     };
   }
 
-  get(name: string) {
+  async get(name: string) {
     if (name === "/") {
       return this.volume.root;
     }
-    return this.resource.files
-      .get(name)
-      ?.getDescriptor(new URL(name, this.url), this.dispatchEvent);
+    if (this.has(name)) {
+      let url: URL;
+      if (this.url === DefaultVolume.ROOT) {
+        url = pathToURL(name);
+      } else {
+        url = new URL(name, this.url);
+      }
+      return this.resource.files
+        .get(name)!
+        .getDescriptor(url, this.dispatchEvent);
+    }
   }
 
-  children() {
+  async children() {
     return [...this.resource.files.keys()];
   }
 
-  has(name: string) {
+  async has(name: string) {
     if (name === "/") {
       return true;
     }
     return this.resource.files.has(name);
   }
 
-  remove(name: string) {
+  async remove(name: string) {
     this.resource.files.delete(name);
   }
 
-  add(name: string, descriptor: DefaultDirectoryDescriptor): void;
-  add(name: string, descriptor: DefaultFileDescriptor): void;
-  add(name: string, descriptor: DefaultDescriptors): void {
+  async add(
+    name: string,
+    descriptor: DefaultDirectoryDescriptor
+  ): Promise<void>;
+  async add(name: string, descriptor: DefaultFileDescriptor): Promise<void>;
+  async add(name: string, descriptor: DefaultDescriptors): Promise<void> {
     this.resource.files.set(name, descriptors.get(descriptor)!);
   }
 }
 
-class DefaultFileDescriptor implements FileDescriptor {
+export class DefaultFileDescriptor implements FileDescriptor {
   readonly type = "file";
   readonly volume: DefaultVolume;
 
   constructor(
     resource: File,
     readonly url: URL,
-    readonly dispatchEvent: FileSystem["dispatchEvent"]
+    private dispatchEvent: FileSystem["dispatchEvent"]
   ) {
     descriptors.set(this, resource);
     this.volume = resource.volume;
@@ -225,30 +234,13 @@ class DefaultFileDescriptor implements FileDescriptor {
     return String(this.resource.serialNumber);
   }
 
-  setEtag(etag: string) {
-    this.resource.etag = etag;
-  }
-
-  stat(): Stat {
+  async stat(): Promise<Stat> {
     return {
-      etag: this.resource.etag,
+      etag: `${this.resource.buffer.length}_${this.resource.mtime}`,
       mtime: this.resource.mtime,
       size: this.resource.buffer.length,
       type: "file",
     };
-  }
-
-  async clone(
-    volume: Volume,
-    parent: DirectoryDescriptor,
-    name: string
-  ): Promise<FileDescriptor> {
-    let descriptor = volume.createFile(parent, name);
-    // descriptor.etag = this.etag;
-    if (this.resource.buffer) {
-      await descriptor.write(this.resource.buffer);
-    }
-    return descriptor;
   }
 
   async write(buffer: Uint8Array): Promise<void>;

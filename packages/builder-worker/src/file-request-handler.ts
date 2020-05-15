@@ -1,6 +1,7 @@
 import { Handler } from "./request-handler";
 import { contentType, lookup } from "mime-types";
-import { FileSystem, FileSystemError, FileDescriptor } from "./filesystem";
+import { FileSystem, FileSystemError } from "./filesystem";
+import { FileDescriptor } from "./filesystem-driver";
 import { join } from "./path";
 
 const builderOrigin = "http://localhost:8080";
@@ -49,7 +50,7 @@ export const handleFileRequest: Handler = async function (req, context) {
   if (file instanceof Response) {
     return file;
   }
-  if (file.stat().type === "directory") {
+  if ((await file.stat()).type === "directory") {
     path = join(path, "index.html");
     file = await openFile(
       context.fs,
@@ -60,7 +61,7 @@ export const handleFileRequest: Handler = async function (req, context) {
     }
   }
   let response = new Response(file.getReadbleStream());
-  setContentHeaders(response, path, file);
+  await setContentHeaders(response, path, file);
   return response;
 };
 
@@ -82,15 +83,15 @@ async function openFile(
   }
 }
 
-function setContentHeaders(
+async function setContentHeaders(
   response: Response,
   path: string,
   file: FileDescriptor
-): void {
+): Promise<void> {
   let mime = lookup(path) || "application/octet-stream";
   response.headers.set(
     "content-type",
     contentType(mime) as Exclude<string, false>
   );
-  response.headers.set("content-length", String(file.stat().size));
+  response.headers.set("content-length", String((await file.stat()).size));
 }

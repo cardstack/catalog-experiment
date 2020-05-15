@@ -18,8 +18,7 @@
     "build:ui": "cd packages/ui && tsc",
     "test": "cd packages/builder-worker && yarn test",
     "builder": "cd packages/builder-worker && yarn start",
-    "serve": "cd packages/app && yarn start",
-    "test-server": "cd packages/builder-worker && yarn start:test-file-daemon"
+    "serve": "cd packages/app && yarn start"
   },
   "resolutions": {
     "minimist": "^1.2.5"

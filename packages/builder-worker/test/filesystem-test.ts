@@ -5,8 +5,12 @@ import {
   url,
 } from "./helpers/file-assertions";
 import { withListener } from "./helpers/event-helpers";
-import { FileDescriptor, Event as FSEvent } from "../src/filesystem";
-import { DefaultDriver, DirectoryDescriptor } from "../src/filesystem-driver";
+import { Event as FSEvent } from "../src/filesystem";
+import {
+  DefaultDriver,
+  DefaultFileDescriptor,
+  DefaultDirectoryDescriptor,
+} from "../src/filesystem-driver";
 
 QUnit.module("filesystem", function (origHooks) {
   let { test } = installFileAssertions(origHooks);
@@ -59,6 +63,27 @@ QUnit.module("filesystem", function (origHooks) {
       } catch (e) {
         assert.equal(e.code, "ALREADY_EXISTS", "error code is correct");
       }
+    });
+
+    test("can unmount a volume", async function (assert) {
+      let driverA = new DefaultDriver();
+      let driverB = new DefaultDriver();
+      let volumeA = await assert.fs.mount(url("/driverA"), driverA);
+      await assert.fs.mount(url("/driverA/foo/driverB"), driverB);
+
+      await assert.fs.open(url("/driverA/blah"), "directory");
+      await assert.fs.open(url("/driverA/foo/driverB/bar"), "file");
+
+      assert.fs.unmount(volumeA);
+
+      let listing = (await assert.fs.list(url("/"), true)).map(
+        (i) => i.url.href
+      );
+
+      // The mount point of A is actually inside a parent volume too (the
+      // default volume). This dir was auotmatically fashioned for us as a
+      // convenience when we requested A to be mounted.
+      assert.deepEqual(listing, [`${origin}/`, `${origin}/driverA`]);
     });
   });
 
@@ -133,11 +158,24 @@ QUnit.module("filesystem", function (origHooks) {
     });
 
     test("triggers a 'create' event for destination of copy", async function (assert) {
-      assert.expect(2);
+      assert.expect(4);
       await assert.fs.open(url("src"), "file");
       let listener = (e: FSEvent) => {
-        assert.equal(e.url.href, `${origin}/dest`, "the event url is correct");
-        assert.equal(e.type, "create", "the event type is correct");
+        if (e.type === "create") {
+          assert.equal(
+            e.url.href,
+            `${origin}/dest`,
+            "the event url is correct"
+          );
+          assert.equal(e.type, "create", "the event type is correct");
+        } else if (e.type === "write") {
+          assert.equal(
+            e.url.href,
+            `${origin}/dest`,
+            "the event url is correct"
+          );
+          assert.equal(e.type, "write", "the event type is correct");
+        }
       };
       await withListener(assert.fs, origin, listener, async () => {
         await assert.fs.copy(url("src"), url("dest"));
@@ -215,7 +253,7 @@ QUnit.module("filesystem", function (origHooks) {
         "/foo.txt": "hi",
       });
       let file = await assert.fs.open(url("/foo.txt"));
-      assert.equal(file.stat().type, "file", "type is correct");
+      assert.equal((await file.stat()).type, "file", "type is correct");
     });
 
     test("can get an existing directory when create mode is not specified", async function (assert) {
@@ -223,7 +261,7 @@ QUnit.module("filesystem", function (origHooks) {
         "/test/foo.txt": "hi",
       });
       let file = await assert.fs.open(url("/test"));
-      assert.equal(file.stat().type, "directory", "type is correct");
+      assert.equal((await file.stat()).type, "directory", "type is correct");
     });
 
     test("throws when path does not exist and create mode is not specified", async function (assert) {
@@ -242,7 +280,11 @@ QUnit.module("filesystem", function (origHooks) {
       let file = await assert.fs.open(url("/foo.txt"), "file");
 
       await assert.file("/foo.txt").exists();
-      await assert.equal(file.stat().type, "file", "the stat type is correct");
+      await assert.equal(
+        (await file.stat()).type,
+        "file",
+        "the stat type is correct"
+      );
     });
 
     test("can create a directory", async function (assert) {
@@ -252,7 +294,7 @@ QUnit.module("filesystem", function (origHooks) {
 
       await assert.file("/foo").exists();
       await assert.equal(
-        file.stat().type,
+        (await file.stat()).type,
         "directory",
         "the stat type is correct"
       );
@@ -263,7 +305,7 @@ QUnit.module("filesystem", function (origHooks) {
         "/foo.txt": "hi",
       });
       let file = await assert.fs.open(url("/foo.txt"), "file");
-      assert.equal(file.stat().type, "file", "type is correct");
+      assert.equal((await file.stat()).type, "file", "type is correct");
     });
 
     test("can get an existing directory when create mode is 'directory'", async function (assert) {
@@ -271,7 +313,7 @@ QUnit.module("filesystem", function (origHooks) {
         "/test/foo.txt": "hi",
       });
       let file = await assert.fs.open(url("/test"), "directory");
-      assert.equal(file.stat().type, "directory", "type is correct");
+      assert.equal((await file.stat()).type, "directory", "type is correct");
     });
 
     test("can create interior directories when create mode is 'file'", async function (assert) {
@@ -282,7 +324,7 @@ QUnit.module("filesystem", function (origHooks) {
       await assert.file("/foo").exists();
       let dir = await assert.fs.open(url("/foo"));
       await assert.equal(
-        dir.stat().type,
+        (await dir.stat()).type,
         "directory",
         "the stat type is correct"
       );
@@ -296,7 +338,7 @@ QUnit.module("filesystem", function (origHooks) {
       await assert.file("/foo").exists();
       let dir = await assert.fs.open(url("/foo"));
       await assert.equal(
-        dir.stat().type,
+        (await dir.stat()).type,
         "directory",
         "the stat type is correct"
       );
@@ -341,8 +383,8 @@ QUnit.module("filesystem", function (origHooks) {
   });
 
   QUnit.module("file descriptor", function (origHooks) {
-    let file: FileDescriptor;
-    let directory: DirectoryDescriptor;
+    let file: DefaultFileDescriptor;
+    let directory: DefaultDirectoryDescriptor;
 
     origHooks.beforeEach(async (assert) => {
       let fileAssert = (assert as unknown) as FileAssert;
@@ -351,8 +393,10 @@ QUnit.module("filesystem", function (origHooks) {
       });
       directory = (await fileAssert.fs.open(
         url("/foo")
-      )) as DirectoryDescriptor;
-      file = (await fileAssert.fs.open(url("/foo/bar"))) as FileDescriptor;
+      )) as DefaultDirectoryDescriptor;
+      file = (await fileAssert.fs.open(
+        url("/foo/bar")
+      )) as DefaultFileDescriptor;
     });
 
     QUnit.module("write", function () {
@@ -414,25 +458,20 @@ QUnit.module("filesystem", function (origHooks) {
 
     QUnit.module("stat", function () {
       test("can get type from stat of file", async function (assert) {
-        assert.equal(file.stat().type, "file", "stat value is correct");
-      });
-
-      test("can get etag from stat of file", async function (assert) {
-        file.setEtag("abc");
-        assert.equal(file.stat().etag, "abc", "stat value is correct");
+        assert.equal((await file.stat()).type, "file", "stat value is correct");
       });
 
       test("can get size from stat of file", async function (assert) {
-        assert.equal(file.stat().size, 11, "stat value is correct");
+        assert.equal((await file.stat()).size, 11, "stat value is correct");
       });
 
       test("can get mtime from stat of file", async function (assert) {
-        assert.ok(file.stat().mtime, "mtime exists");
+        assert.ok((await file.stat()).mtime, "mtime exists");
       });
 
       test("can get type from stat of directory", async function (assert) {
         assert.equal(
-          directory.stat().type,
+          (await directory.stat()).type,
           "directory",
           "stat value is correct"
         );
@@ -440,15 +479,23 @@ QUnit.module("filesystem", function (origHooks) {
 
       test("can get etag from stat of directory", async function (assert) {
         directory.setEtag("xyz");
-        assert.equal(directory.stat().etag, "xyz", "stat value is correct");
+        assert.equal(
+          (await directory.stat()).etag,
+          "xyz",
+          "stat value is correct"
+        );
       });
 
       test("can not get size from stat of directory", async function (assert) {
-        assert.equal(directory.stat().size, undefined, "stat value is correct");
+        assert.equal(
+          (await directory.stat()).size,
+          undefined,
+          "stat value is correct"
+        );
       });
 
       test("can get mtime from stat of directory", async function (assert) {
-        assert.ok(directory.stat().mtime, "mtime exists");
+        assert.ok((await directory.stat()).mtime, "mtime exists");
       });
     });
   });

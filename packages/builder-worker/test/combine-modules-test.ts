@@ -6,7 +6,8 @@ import { BundleAssignment, expandAssignments } from "../src/nodes/bundle";
 import { describeModule, NamespaceMarker } from "../src/describe-module";
 import { parse } from "@babel/core";
 import { url } from "./helpers/file-assertions";
-import { FileSystem, FileDescriptor } from "../src/filesystem";
+import { FileSystem } from "../src/filesystem";
+import { FileDescriptor } from "../src/filesystem-driver";
 
 let resolver = new Resolver(); // TODO need to resolve modules without '.js' extension
 

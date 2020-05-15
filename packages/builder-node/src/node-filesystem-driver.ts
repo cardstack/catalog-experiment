@@ -1,17 +1,14 @@
 import {
   FileSystemDriver,
-  File,
-  Directory,
   FileDescriptor,
+  DirectoryDescriptor,
+  Volume,
   Stat,
 } from "../../builder-worker/src/filesystem-driver";
-import {
-  FileSystem,
-  FileSystemError,
-} from "../../builder-worker/src/filesystem";
+import { FileSystem } from "../../builder-worker/src/filesystem";
 import { DOMToNodeReadable, NodeReadableToDOM } from "file-daemon/stream-shims";
 import { Readable } from "stream";
-import { ensureDirSync, removeSync } from "fs-extra";
+import { ensureDirSync, removeSync, move } from "fs-extra";
 import {
   openSync,
   opendirSync,
@@ -26,6 +23,7 @@ import {
   createWriteStream,
   readSync,
   createReadStream,
+  linkSync,
 } from "fs";
 import { join } from "path";
 
@@ -33,31 +31,78 @@ const textEncoder = new TextEncoder();
 const utf8 = new TextDecoder("utf8");
 
 export class NodeFileSystemDriver implements FileSystemDriver {
-  mounted = Promise.resolve();
-  root: NodeDirectory;
+  constructor(private path: string) {}
 
-  constructor(readonly rootPath: string) {
-    this.root = new NodeDirectory(this, opendirSync(rootPath));
-  }
-
-  createDirectory(parent: NodeDirectory, name: string) {
-    let path = join(parent.dir.path, name);
-    ensureDirSync(path);
-    return new NodeDirectory(this, opendirSync(path));
-  }
-
-  createFile(parent: NodeDirectory, name: string): File {
-    let path = join(parent.dir.path, name);
-    let file = new NodeFile(this, openSync(path, constants.O_CREAT));
-    return file;
+  async mountVolume(url: URL, dispatchEvent: FileSystem["dispatchEvent"]) {
+    return new NodeVolume(this.path, url, dispatchEvent);
   }
 }
 
-class NodeDirectory implements Directory {
-  readonly type = "directory";
-  etag?: string;
+let dirs: WeakMap<NodeDirectoryDescriptor, Dir> = new WeakMap();
 
-  constructor(readonly driver: NodeFileSystemDriver, readonly dir: Dir) {}
+export class NodeVolume implements Volume {
+  root: NodeDirectoryDescriptor;
+
+  constructor(
+    rootPath: string,
+    url: URL,
+    private dispatchEvent: FileSystem["dispatchEvent"]
+  ) {
+    this.root = new NodeDirectoryDescriptor(
+      this,
+      url,
+      opendirSync(rootPath),
+      dispatchEvent
+    );
+  }
+
+  async createDirectory(parent: NodeDirectoryDescriptor, name: string) {
+    let parentDir = dirs.get(parent);
+    if (!parentDir) {
+      throw new Error(
+        `bug: don't have handle on the node Dir descriptor for the directory at ${parent.url}`
+      );
+    }
+    let path = join(parentDir.path, name);
+    ensureDirSync(path);
+    return new NodeDirectoryDescriptor(
+      this,
+      new URL(name, parent.url),
+      opendirSync(path),
+      this.dispatchEvent
+    );
+  }
+
+  async createFile(parent: NodeDirectoryDescriptor, name: string) {
+    let parentDir = dirs.get(parent);
+    if (!parentDir) {
+      throw new Error(
+        `bug: don't have handle on the node Dir descriptor for the directory at ${parent.url}`
+      );
+    }
+    let path = join(parentDir.path, name);
+    return new NodeFileDescriptor(
+      this,
+      new URL(name, parent.url),
+      openSync(path, "w+"),
+      this.dispatchEvent
+    );
+  }
+}
+
+export class NodeDirectoryDescriptor implements DirectoryDescriptor {
+  readonly type = "directory";
+  readonly inode: string;
+
+  constructor(
+    readonly volume: NodeVolume,
+    readonly url: URL,
+    private dir: Dir,
+    private dispatchEvent: FileSystem["dispatchEvent"]
+  ) {
+    this.inode = String(statSync(dir.path).ino);
+    dirs.set(this, dir);
+  }
 
   private entries(): Dirent[] {
     return readdirSync(this.dir.path, { withFileTypes: true });
@@ -67,109 +112,104 @@ class NodeDirectory implements Directory {
     this.dir.closeSync();
   }
 
-  stat(): Stat {
+  async stat(): Promise<Stat> {
     let stat = statSync(this.dir.path);
-    return { etag: this.etag, mtime: stat.mtimeMs, type: "directory" };
+    return {
+      etag: String(stat.mtimeMs),
+      mtime: stat.mtimeMs,
+      type: "directory",
+    };
   }
 
-  mtime(): number {
-    return this.stat().mtime;
-  }
-
-  getDescriptor(url: URL) {
-    return new NodeFileDescriptor(this, url);
-  }
-
-  get(name: string) {
+  async get(name: string) {
     let entry = this.entries().find((e) => e.name === name);
     if (entry && entry.isFile()) {
-      return new NodeFile(
-        this.driver,
-        openSync(join(this.dir.path, name), constants.O_RDWR)
+      return new NodeFileDescriptor(
+        this.volume,
+        new URL(name, this.url),
+        openSync(join(this.dir.path, name), "r+"),
+        this.dispatchEvent
       );
     } else if (entry && entry.isDirectory()) {
-      return new NodeDirectory(
-        this.driver,
-        opendirSync(join(this.dir.path, name))
+      return new NodeDirectoryDescriptor(
+        this.volume,
+        new URL(name, this.url),
+        opendirSync(join(this.dir.path, name)),
+        this.dispatchEvent
       );
     }
   }
 
-  children() {
+  async children() {
     return this.entries().map((e) => e.name);
   }
 
-  has(name: string) {
+  async has(name: string) {
     return Boolean(this.entries().find((e) => e.name === name));
   }
 
-  remove(name: string) {
+  async remove(name: string) {
     removeSync(join(this.dir.path, name));
   }
 
-  add(name: string, resource: NodeFile | NodeDirectory) {
-    if (resource.type === "directory") {
-      return this.driver.createDirectory(this, name);
+  async add(name: string, descriptor: NodeDirectoryDescriptor): Promise<void>;
+  async add(
+    name: string,
+    descriptor: NodeFileDescriptor,
+    currentParent: NodeDirectoryDescriptor,
+    currentName: string
+  ): Promise<void>;
+  async add(
+    name: string,
+    descriptor: NodeFileDescriptor | NodeDirectoryDescriptor,
+    currentParent?: NodeDirectoryDescriptor,
+    currentName?: string
+  ): Promise<void> {
+    if (descriptor.type === "directory") {
+      // file systems don't allow hard links of directories because they can
+      // create cycles. so instead this will act like an 'mv' when performed on a
+      // directory.
+      await move(descriptor.dir.path, join(this.dir.path, name), {
+        overwrite: true,
+      });
+    } else if (!currentParent || !currentName) {
+      throw new Error(
+        `Bug: need to provide the current parent dir descriptor when adding a file to a dir so we can locate it on the filesystem`
+      );
     } else {
-      return this.driver.createFile(this, name);
+      linkSync(
+        join(currentParent.dir.path, currentName),
+        join(this.dir.path, name)
+      );
     }
   }
 }
 
-class NodeFile implements File {
+export class NodeFileDescriptor implements FileDescriptor {
   readonly type = "file";
-  etag?: string; // synthesize this like we do for the file daemon client
+  readonly inode: string;
 
-  constructor(readonly driver: NodeFileSystemDriver, readonly fd: number) {}
-
-  // TODO we should probably be using the fs.stat...
-  stat(): Stat {
-    let stat = fstatSync(this.fd);
-    return {
-      etag: this.etag,
-      mtime: stat.mtimeMs,
-      size: stat.size,
-      type: "file",
-    };
-  }
-
-  mtime(): number {
-    return this.stat().mtime;
+  constructor(
+    readonly volume: NodeVolume,
+    readonly url: URL,
+    readonly fd: number,
+    private readonly dispatchEvent?: FileSystem["dispatchEvent"]
+  ) {
+    this.inode = String(fstatSync(fd).ino);
   }
 
   close() {
     closeSync(this.fd);
   }
 
-  getDescriptor(url: URL, dispatchEvent: FileSystem["dispatchEvent"]) {
-    return new NodeFileDescriptor(this, url, dispatchEvent);
-  }
-
-  // TODO seems unnecessary
-  clone(driver: FileSystemDriver, parent: Directory, name: string) {
-    let file = driver.createFile(parent, name);
-    file.etag = this.etag; // do we really wanna do this?
-    return file;
-  }
-}
-
-class NodeFileDescriptor implements FileDescriptor {
-  constructor(
-    private resource: NodeFile | NodeDirectory,
-    readonly url: URL,
-    private readonly dispatchEvent?: FileSystem["dispatchEvent"]
-  ) {}
-
-  close() {
-    this.resource.close();
-  }
-
-  setEtag(etag: string) {
-    this.resource.etag = etag;
-  }
-
-  stat(): Stat {
-    return this.resource.stat();
+  async stat(): Promise<Stat> {
+    let stat = fstatSync(this.fd);
+    return {
+      etag: `${stat.size}_${stat.mtimeMs}`,
+      mtime: stat.mtimeMs,
+      size: stat.size,
+      type: "file",
+    };
   }
 
   async write(buffer: Uint8Array): Promise<void>;
@@ -178,9 +218,6 @@ class NodeFileDescriptor implements FileDescriptor {
   async write(
     streamOrBuffer: ReadableStream | Uint8Array | string
   ): Promise<void> {
-    if (this.resource.type === "directory") {
-      throw new FileSystemError("IS_NOT_A_FILE");
-    }
     let buffer: Uint8Array | undefined;
     let readableStream: Readable | undefined;
     if (streamOrBuffer instanceof Uint8Array) {
@@ -192,10 +229,10 @@ class NodeFileDescriptor implements FileDescriptor {
     }
 
     if (buffer) {
-      writeFileSync(this.resource.fd, buffer);
+      writeFileSync(this.fd, buffer);
     } else if (readableStream) {
       let file = createWriteStream("", {
-        fd: this.resource.fd,
+        fd: this.fd,
         autoClose: false,
       });
       let done = new Promise((res, rej) => {
@@ -213,29 +250,20 @@ class NodeFileDescriptor implements FileDescriptor {
   }
 
   async read(): Promise<Uint8Array> {
-    if (this.resource.type === "directory") {
-      throw new FileSystemError("IS_NOT_A_FILE");
-    }
-    let size = this.stat().size!;
+    let size = (await this.stat()).size!;
     let buffer = new Uint8Array(size);
-    readSync(this.resource.fd, buffer, 0, size, 0);
+    readSync(this.fd, buffer, 0, size, 0);
     return buffer;
   }
 
   async readText(): Promise<string> {
-    if (this.resource.type === "directory") {
-      throw new FileSystemError("IS_NOT_A_FILE");
-    }
     let buffer = await this.read();
     return utf8.decode(buffer);
   }
 
   getReadbleStream(): ReadableStream {
-    if (this.resource.type === "directory") {
-      throw new FileSystemError("IS_NOT_A_FILE");
-    }
     let readableStream = createReadStream("", {
-      fd: this.resource.fd,
+      fd: this.fd,
       autoClose: false,
       start: 0,
     });
