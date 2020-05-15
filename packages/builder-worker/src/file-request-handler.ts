@@ -1,6 +1,7 @@
 import { Handler } from "./request-handler";
 import { contentType, lookup } from "mime-types";
-import { FileSystem, FileSystemError, FileDescriptor } from "./filesystem";
+import { FileSystem, FileSystemError } from "./filesystem";
+import { FileDescriptor, DirectoryDescriptor } from "./filesystem-driver";
 import { join } from "./path";
 
 const builderOrigin = "http://localhost:8080";
@@ -42,15 +43,8 @@ export const handleFileRequest: Handler = async function (req, context) {
 
   console.log(`serving request ${requestURL} from filesystem`);
   let path = requestURL.pathname;
-  let file = await openFile(
-    context.fs,
-    url(requestURL.origin, context.webroot, path)
-  );
-  if (file instanceof Response) {
-    return file;
-  }
-  if (file.stat().type === "directory") {
-    path = join(path, "index.html");
+  let file: FileDescriptor | DirectoryDescriptor | Response | undefined;
+  try {
     file = await openFile(
       context.fs,
       url(requestURL.origin, context.webroot, path)
@@ -58,10 +52,25 @@ export const handleFileRequest: Handler = async function (req, context) {
     if (file instanceof Response) {
       return file;
     }
+    if ((await file.stat()).type === "directory") {
+      file.close();
+      path = join(path, "index.html");
+      file = await openFile(
+        context.fs,
+        url(requestURL.origin, context.webroot, path)
+      );
+      if (file instanceof Response) {
+        return file;
+      }
+    }
+    let response = new Response(file.getReadbleStream());
+    await setContentHeaders(response, path, file);
+    return response;
+  } finally {
+    if (file && !(file instanceof Response)) {
+      file.close();
+    }
   }
-  let response = new Response(file.getReadbleStream());
-  setContentHeaders(response, path, file);
-  return response;
 };
 
 function url(origin: string, webroot: string, relativePath: string) {
@@ -73,7 +82,7 @@ async function openFile(
   url: URL
 ): Promise<FileDescriptor | Response> {
   try {
-    return await fs.open(url);
+    return (await fs.open(url)) as FileDescriptor;
   } catch (err) {
     if (err instanceof FileSystemError && err.code === "NOT_FOUND") {
       return new Response("Not found", { status: 404 });
@@ -82,15 +91,15 @@ async function openFile(
   }
 }
 
-function setContentHeaders(
+async function setContentHeaders(
   response: Response,
   path: string,
   file: FileDescriptor
-): void {
+): Promise<void> {
   let mime = lookup(path) || "application/octet-stream";
   response.headers.set(
     "content-type",
     contentType(mime) as Exclude<string, false>
   );
-  response.headers.set("content-length", String(file.stat().size));
+  response.headers.set("content-length", String((await file.stat()).size));
 }

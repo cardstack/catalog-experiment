@@ -7,6 +7,7 @@ import { describeModule, NamespaceMarker } from "../src/describe-module";
 import { parse } from "@babel/core";
 import { url } from "./helpers/file-assertions";
 import { FileSystem } from "../src/filesystem";
+import { FileDescriptor } from "../src/filesystem-driver";
 
 let resolver = new Resolver(); // TODO need to resolve modules without '.js' extension
 
@@ -14,7 +15,7 @@ async function makeModuleResolutions(
   fs: FileSystem,
   moduleURL: URL
 ): Promise<ModuleResolution> {
-  let js = await (await fs.open(moduleURL)).readText();
+  let js = await ((await fs.open(moduleURL)) as FileDescriptor).readText();
   let parsed = parse(js);
   if (parsed?.type !== "File") {
     throw new Error(`parsed js for ${moduleURL.href} is not a babel File type`);

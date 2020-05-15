@@ -6,10 +6,20 @@ import {
   ReadResult,
 } from "web-streams-polyfill/ponyfill/es2018";
 
+interface Options {
+  autoClose: boolean;
+}
+
 export class NodeReadableToDOM implements ReadableStream {
   private _locked = false;
+  private options: Options;
 
-  constructor(private readable: Readable | ReadStream) {}
+  constructor(
+    private readable: Readable | ReadStream,
+    options: Partial<Options> = {}
+  ) {
+    this.options = Object.assign({ autoClose: true }, options);
+  }
 
   get locked() {
     return this._locked;
@@ -27,9 +37,13 @@ export class NodeReadableToDOM implements ReadableStream {
     _opts?: any
   ): ReadableStreamDefaultReader<Uint8Array> | ReadableStreamBYOBReader {
     this._locked = true;
-    return new NodeReadableToDOMReader(this.readable, () => {
-      this._locked = false;
-    });
+    return new NodeReadableToDOMReader(
+      this.readable,
+      () => {
+        this._locked = false;
+      },
+      this.options.autoClose
+    );
   }
 
   tee(): [ReadableStream, ReadableStream] {
@@ -68,7 +82,8 @@ class NodeReadableToDOMReader
 
   constructor(
     private readable: Readable | ReadStream,
-    private unlock: () => void
+    private unlock: () => void,
+    private autoClose: boolean
   ) {
     this.finishedPromise = new Promise((res, rej) => {
       this.doneReading = res;
@@ -80,7 +95,7 @@ class NodeReadableToDOMReader
         this.errorReceived();
         this.interruptReading(error);
       } finally {
-        if ("close" in this.readable) {
+        if ("close" in this.readable && this.autoClose) {
           this.readable.close();
         }
       }
@@ -90,7 +105,7 @@ class NodeReadableToDOMReader
         this.isFinished = true;
         this.doneReading();
       } finally {
-        if ("close" in this.readable) {
+        if ("close" in this.readable && this.autoClose) {
           this.readable.close();
         }
       }

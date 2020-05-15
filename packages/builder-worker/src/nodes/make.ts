@@ -2,6 +2,7 @@ import { BuilderNode, NextNode, AllNode, ConstantNode } from "./common";
 import { EntrypointsJSONNode, HTMLEntrypoint } from "./html";
 import { WriteFileNode } from "./file";
 import uniqBy from "lodash/uniqBy";
+import flatten from "lodash/flatten";
 import { BundleAssignmentsNode, BundleNode, BundleAssignment } from "./bundle";
 
 export class MakeBundledModulesNode implements BuilderNode {
@@ -25,7 +26,7 @@ export class MakeBundledModulesNode implements BuilderNode {
     htmlEntrypoints: HTMLEntrypoint[];
     bundleAssignments: BundleAssignment[];
   }): Promise<NextNode<void[]>> {
-    let htmls = uniqBy(htmlEntrypoints.flat(), "destURL").map(
+    let htmls = uniqBy(flatten(htmlEntrypoints), "destURL").map(
       (htmlEntrypoint) =>
         new WriteFileNode(
           new ConstantNode(htmlEntrypoint.render(bundleAssignments)),

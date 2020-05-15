@@ -12,6 +12,5 @@
     "allowUnreachableCode": false,
     "noUnusedLocals": true,
     "noUnusedParameters": true
-  },
-  "include": ["./**/*.ts"]
+  }
 }

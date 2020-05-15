@@ -43,6 +43,11 @@ export class BoundFileAssert {
   protected async contents(): Promise<ContentsResult> {
     try {
       let fd = await this.assert.fs.open(this.fullURL);
+      if (fd.type === "directory") {
+        throw new Error(
+          `was expecting ${this.fullURL} to be a file but it was a directory`
+        );
+      }
       let data = await fd.readText();
       return {
         result: true,
@@ -184,7 +189,6 @@ export function installFileAssertions(hooks: NestedHooks) {
   ): Promise<void> {
     fs = new FileSystem();
     baseURL = b;
-    await fs.removeAll();
     for (let [path, text] of Object.entries(scenario)) {
       let file = isURL(path)
         ? await fs.open(new URL(path), "file")
