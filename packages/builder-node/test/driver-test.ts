@@ -24,7 +24,7 @@ import { Event as FSEvent } from "../../builder-worker/src/filesystem";
 const testDir = join(__dirname, "testing");
 
 QUnit.module("Node FileSystem", function (origHooks) {
-  let { test, only } = installFileAssertions(origHooks);
+  let { test } = installFileAssertions(origHooks);
   let volumeId: string;
 
   function setup(scenario: { [path: string]: string }) {
