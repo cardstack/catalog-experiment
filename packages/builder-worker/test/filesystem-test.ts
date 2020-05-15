@@ -105,6 +105,7 @@ QUnit.module("filesystem", function (origHooks) {
         assert.equal(e.url.href, `${origin}/test`, "the event url is correct");
         assert.equal(e.type, "create", "the event type is correct");
       };
+      await assert.fs.open(url("/"), "directory"); // ignore these events
       await withListener(assert.fs, origin, listener, async () => {
         await assert.fs.open(url("test"), "file");
         await assert.fs.eventsFlushed();
@@ -117,6 +118,7 @@ QUnit.module("filesystem", function (origHooks) {
         assert.equal(e.url.href, `${origin}/test`, "the event url is correct");
         assert.equal(e.type, "create", "the event type is correct");
       };
+      await assert.fs.open(url("/"), "directory"); // ignore these events
       await withListener(assert.fs, origin, listener, async () => {
         await assert.fs.open(url("test"), "directory");
         await assert.fs.eventsFlushed();

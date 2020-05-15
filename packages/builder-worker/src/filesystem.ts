@@ -214,7 +214,7 @@ export class FileSystem {
         );
       }
     }
-    // directory.close();
+    directory.close();
     return results;
   }
 
@@ -288,9 +288,7 @@ export class FileSystem {
     if (!(await parent.has(name))) {
       if (pathSegments.length > 0 && opts.createMode) {
         descriptor = await volume.createDirectory(parent, name);
-        // dont fire events for the interior dirs--it's really a pain keeping
-        // track of the interior dir path, and honestly the leaf node create
-        // events are probably more important
+        this.dispatchEvent(descriptor.url, "create");
         return await this._open(pathSegments, opts, descriptor, initialPath);
       } else if (opts.createMode === "file") {
         descriptor = await volume.createFile(parent, name);
