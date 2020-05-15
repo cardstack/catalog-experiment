@@ -1,7 +1,7 @@
 import { Handler } from "./request-handler";
 import { contentType, lookup } from "mime-types";
 import { FileSystem, FileSystemError } from "./filesystem";
-import { FileDescriptor } from "./filesystem-driver";
+import { FileDescriptor, DirectoryDescriptor } from "./filesystem-driver";
 import { join } from "./path";
 
 const builderOrigin = "http://localhost:8080";
@@ -43,15 +43,8 @@ export const handleFileRequest: Handler = async function (req, context) {
 
   console.log(`serving request ${requestURL} from filesystem`);
   let path = requestURL.pathname;
-  let file = await openFile(
-    context.fs,
-    url(requestURL.origin, context.webroot, path)
-  );
-  if (file instanceof Response) {
-    return file;
-  }
-  if ((await file.stat()).type === "directory") {
-    path = join(path, "index.html");
+  let file: FileDescriptor | DirectoryDescriptor | Response | undefined;
+  try {
     file = await openFile(
       context.fs,
       url(requestURL.origin, context.webroot, path)
@@ -59,10 +52,25 @@ export const handleFileRequest: Handler = async function (req, context) {
     if (file instanceof Response) {
       return file;
     }
+    if ((await file.stat()).type === "directory") {
+      file.close();
+      path = join(path, "index.html");
+      file = await openFile(
+        context.fs,
+        url(requestURL.origin, context.webroot, path)
+      );
+      if (file instanceof Response) {
+        return file;
+      }
+    }
+    let response = new Response(file.getReadbleStream());
+    await setContentHeaders(response, path, file);
+    return response;
+  } finally {
+    if (file && !(file instanceof Response)) {
+      file.close();
+    }
   }
-  let response = new Response(file.getReadbleStream());
-  await setContentHeaders(response, path, file);
-  return response;
 };
 
 function url(origin: string, webroot: string, relativePath: string) {

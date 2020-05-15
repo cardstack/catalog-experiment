@@ -221,6 +221,7 @@ export class FileDaemonClient {
             "file"
           );
           await file.write(entry.stream());
+          file.close();
           files.push(entry.name);
         }
       },
@@ -273,15 +274,21 @@ export class FileDaemonClient {
     let entrypointsMapping: EntrypointsMapping | undefined;
     let entrypointsChanged = false;
     let previousEntrypoints: EntrypointsMapping | undefined;
+    let file: FileDescriptor | undefined;
     try {
+      file = (await this.fs.open(
+        new URL(entrypointsPath, this.fileServerURL)
+      )) as FileDescriptor;
       previousEntrypoints = JSON.parse(
-        await ((await this.fs.open(
-          new URL(entrypointsPath, this.fileServerURL)
-        )) as FileDescriptor).readText()
+        await file.readText()
       ) as EntrypointsMapping;
     } catch (err) {
       if (err.code !== "NOT_FOUND") {
         throw err;
+      }
+    } finally {
+      if (file) {
+        file.close();
       }
     }
 
@@ -374,21 +381,25 @@ export class FileDaemonClient {
   private async _getEntrypointsObject(
     thisOrigin = this.fileServerURL
   ): Promise<EntrypointsMapping | string[] | undefined> {
-    let entrypointsFile: FileDescriptor;
+    let entrypointsFile: FileDescriptor | undefined;
     try {
       entrypointsFile = (await this.fs.open(
         new URL(this.mountedPath(entrypointsPath), thisOrigin)
       )) as FileDescriptor;
+
+      return JSON.parse(await entrypointsFile.readText()) as
+        | string[]
+        | EntrypointsMapping;
     } catch (err) {
       if (err instanceof FileSystemError && err.code === "NOT_FOUND") {
         return; // in this case there is no build to perform
       }
       throw err;
+    } finally {
+      if (entrypointsFile) {
+        entrypointsFile.close();
+      }
     }
-
-    return JSON.parse(await entrypointsFile.readText()) as
-      | string[]
-      | EntrypointsMapping;
   }
 
   private async generateEntrypointsMappingFile(
@@ -420,6 +431,7 @@ export class FileDaemonClient {
     );
     let file = await this.fs.open(url, "file");
     await file.write(stream);
+    file.close();
     return url;
   }
 
@@ -431,19 +443,23 @@ export class FileDaemonClient {
     let changed = await Promise.all(
       changes.map(async (change) => {
         let { name, etag } = change;
-        let currentFile: FileDescriptor;
+        let currentFile: FileDescriptor | undefined;
         try {
           currentFile = (await this.fs.open(
             new URL(name, this.fileServerURL)
           )) as FileDescriptor;
+          if ((await currentFile.stat()).etag !== etag) {
+            return change;
+          }
         } catch (err) {
           if (err instanceof FileSystemError && err.code === "NOT_FOUND") {
             return change;
           }
           throw err;
-        }
-        if ((await currentFile.stat()).etag !== etag) {
-          return change;
+        } finally {
+          if (currentFile) {
+            currentFile.close();
+          }
         }
         return false;
       })

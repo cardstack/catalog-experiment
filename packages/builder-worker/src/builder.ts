@@ -8,6 +8,7 @@ import {
 } from "./nodes/common";
 import { FileNode, WriteFileNode } from "./nodes/file";
 import { MakeBundledModulesNode } from "./nodes/make";
+import { FileDescriptor } from "./filesystem-driver";
 
 type BoolForEach<T> = {
   [P in keyof T]: boolean;
@@ -183,6 +184,7 @@ export class Builder<Input> {
     if (WriteFileNode.isWriteFileNode(node)) {
       let fd = await this.fs.open(node.url, "file");
       await fd.write(Object.values(inputs.values)[0]);
+      fd.close();
       return { value: undefined, changed: true };
     } else {
       return this.handleUnchanged(node, await node.run(inputs.values));
@@ -204,13 +206,20 @@ export class Builder<Input> {
     }
     if (FileNode.isFileNode(node)) {
       this.ensureWatching(node.url);
-      let fd = await this.fs.open(node.url);
-      if (fd.type === "file") {
-        return { value: await fd.readText(), changed: true };
-      } else {
-        throw new Error(
-          `bug: expecting ${node.url} to be a file, but it was a directory`
-        );
+      let fd: FileDescriptor | undefined;
+      try {
+        fd = (await this.fs.open(node.url)) as FileDescriptor;
+        if (fd.type === "file") {
+          return { value: await fd.readText(), changed: true };
+        } else {
+          throw new Error(
+            `bug: expecting ${node.url} to be a file, but it was a directory`
+          );
+        }
+      } finally {
+        if (fd) {
+          fd.close();
+        }
       }
     } else {
       return this.handleUnchanged(
