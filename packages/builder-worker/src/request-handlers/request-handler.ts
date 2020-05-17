@@ -1,6 +1,6 @@
-import { FileSystem } from "./filesystem";
-import { FileDaemonEventHandler } from "./file-daemon-event-handler";
-import { FileDaemonClient } from "./file-daemon-client";
+import { FileSystem } from "../filesystem";
+import { FileDaemonEventHandler } from "../file-daemon-event-handler";
+import { FileDaemonClient } from "../file-daemon-client";
 
 export type Handler = (
   request: Request,

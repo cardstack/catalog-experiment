@@ -2,7 +2,7 @@ import invert from "lodash/invert";
 import difference from "lodash/difference";
 import { WatchInfo, FileInfo } from "../../file-daemon/interfaces";
 import { FileSystem, FileSystemError } from "./filesystem";
-import { FileDescriptor } from "./filesystem-driver";
+import { FileDescriptor } from "./filesystem-drivers/filesystem-driver";
 import { join, baseName, dirName } from "./path";
 import { REGTYPE } from "tarstream/constants";
 import { EntrypointsMapping } from "./nodes/html";

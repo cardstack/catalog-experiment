@@ -2,7 +2,7 @@ import { installFileAssertions, origin } from "./helpers/file-assertions";
 import { Builder } from "../src/builder";
 import { JSONParseNode, ConstantNode } from "../src/nodes/common";
 import { FileNode } from "../src/nodes/file";
-import { FileDescriptor } from "../src/filesystem-driver";
+import { FileDescriptor } from "../src/filesystem-drivers/filesystem-driver";
 
 QUnit.module("builder nodes", function (origHooks) {
   let { test } = installFileAssertions(origHooks);

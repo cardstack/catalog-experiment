@@ -1,8 +1,11 @@
 import { Handler } from "./request-handler";
 import { contentType, lookup } from "mime-types";
-import { FileSystem, FileSystemError } from "./filesystem";
-import { FileDescriptor, DirectoryDescriptor } from "./filesystem-driver";
-import { join } from "./path";
+import { FileSystem, FileSystemError } from "../filesystem";
+import {
+  FileDescriptor,
+  DirectoryDescriptor,
+} from "../filesystem-drivers/filesystem-driver";
+import { join } from "../path";
 
 const builderOrigin = "http://localhost:8080";
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
@@ -63,7 +66,7 @@ export const handleFileRequest: Handler = async function (req, context) {
         return file;
       }
     }
-    let response = new Response(file.getReadbleStream());
+    let response = new Response(await file.getReadbleStream());
     await setContentHeaders(response, path, file);
     return response;
   } finally {

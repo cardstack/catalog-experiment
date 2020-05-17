@@ -1,5 +1,5 @@
-import { FileSystem } from "./filesystem";
-import { pathToURL } from "./path";
+import { FileSystem } from "../filesystem";
+import { pathToURL } from "../path";
 
 const textEncoder = new TextEncoder();
 const utf8 = new TextDecoder("utf8");
@@ -13,9 +13,11 @@ export interface FileSystemDriver {
 
 export interface Volume {
   root: DirectoryDescriptor;
+  hasDirectoryAccess: boolean;
+  canCreateFiles: boolean;
   createDirectory(
     parent: DirectoryDescriptor,
-    name: String
+    name: string
   ): Promise<DirectoryDescriptor>;
   createFile(
     parent: DirectoryDescriptor,
@@ -54,7 +56,7 @@ export interface FileDescriptor extends Descriptor {
   write(text: string): Promise<void>;
   read(): Promise<Uint8Array>;
   readText(): Promise<string>;
-  getReadbleStream(): ReadableStream;
+  getReadbleStream(): Promise<ReadableStream>;
 }
 
 type DefaultDescriptors = DefaultDirectoryDescriptor | DefaultFileDescriptor;
@@ -76,6 +78,8 @@ export class DefaultDriver implements FileSystemDriver {
 export class DefaultVolume implements Volume {
   static readonly ROOT = new URL("http://root");
   root: DefaultDirectoryDescriptor;
+  readonly hasDirectoryAccess = true;
+  readonly canCreateFiles = true;
 
   constructor(url: URL, private dispatchEvent: FileSystem["dispatchEvent"]) {
     this.root = new Directory(this).getDescriptor(url, this.dispatchEvent);
@@ -93,16 +97,16 @@ export class DefaultVolume implements Volume {
     }
     let descriptor = directory.getDescriptor(url, this.dispatchEvent);
     await parent.add(name, descriptor);
+    this.dispatchEvent(url, "create");
     return descriptor;
   }
 
   async createFile(parent: DefaultDirectoryDescriptor, name: string) {
     let file = new File(this);
-    let descriptor = file.getDescriptor(
-      new URL(name, assertURLEndsInDir(parent.url)),
-      this.dispatchEvent
-    );
+    let url = new URL(name, assertURLEndsInDir(parent.url));
+    let descriptor = file.getDescriptor(url, this.dispatchEvent);
     await parent.add(name, descriptor);
+    this.dispatchEvent(url, "create");
     return descriptor;
   }
 }
@@ -201,6 +205,8 @@ export class DefaultDirectoryDescriptor implements DirectoryDescriptor {
 
   async remove(name: string) {
     this.resource.files.delete(name);
+    let url = new URL(name, assertURLEndsInDir(this.url));
+    this.dispatchEvent(url, "remove");
   }
 
   async add(
@@ -262,15 +268,15 @@ export class DefaultFileDescriptor implements FileDescriptor {
 
   close() {}
 
-  async read(): Promise<Uint8Array> {
+  async read() {
     return this.resource.buffer ? this.resource.buffer : new Uint8Array();
   }
 
-  async readText(): Promise<string> {
+  async readText() {
     return this.resource.buffer ? utf8.decode(this.resource.buffer) : "";
   }
 
-  getReadbleStream(): ReadableStream {
+  async getReadbleStream() {
     let buffer = this.resource.buffer;
     return new ReadableStream({
       async start(controller: ReadableStreamDefaultController) {
