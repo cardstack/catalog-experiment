@@ -17,10 +17,7 @@ import { FileSystem } from "../src/filesystem";
 import moment from "moment";
 
 const utf8 = new TextDecoder("utf8");
-
 const webServerHref = "http://test.com";
-//@ts-ignore tests are running in the main thread (ugh)...
-const win = window;
 
 QUnit.module("filesystem - http driver", function (origHooks) {
   let { test } = installFileAssertions(origHooks);
