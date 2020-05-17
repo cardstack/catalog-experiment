@@ -1,4 +1,6 @@
 import * as sinon from "sinon";
+import moment from "moment";
+
 //@ts-ignore tests are running in the main thread (ugh)...
 const win = window;
 const textEncoder = new TextEncoder();
@@ -6,7 +8,7 @@ const utf8 = new TextDecoder("utf8");
 
 interface MockResponse {
   status: number;
-  body: string | Uint8Array;
+  body?: string | Uint8Array;
   headers?: { [header: string]: string };
 }
 
@@ -56,31 +58,42 @@ export function stubFetch(mockConfigs: MockRequest[]): sinon.SinonStub {
       let status = response.status;
       let responseHeaders = new Headers();
       responseHeaders.set("Content-Type", "application/octet-stream");
+      responseHeaders.set(
+        "Last-Modified",
+        moment.utc().format("ddd, DD MMM YYYY HH:mm:ss GMT")
+      );
       if (response.headers) {
         for (let [key, value] of Object.entries(response.headers)) {
           responseHeaders.set(key, value);
         }
       }
-      responseHeaders.set("Content-Length", String(buffer.length));
+      responseHeaders.set(
+        "Content-Length",
+        buffer ? String(buffer.length) : "0"
+      );
 
       return {
         status,
         url,
         ok: status >= 200 && status <= 299,
         headers: responseHeaders,
-        body: {
-          getReader() {
-            return new SimpleReader(buffer);
-          },
-        },
+        body: buffer
+          ? {
+              getReader() {
+                return new SimpleReader(buffer!);
+              },
+            }
+          : null,
         text() {
-          return new Promise((res) => res(utf8.decode(buffer)));
+          return buffer ? new Promise((res) => res(utf8.decode(buffer))) : null;
         },
         arrayBuffer() {
-          return new Promise((res) => res(buffer.buffer));
+          return buffer ? new Promise((res) => res(buffer!.buffer)) : null;
         },
         blob() {
-          return new Promise((res) => res(new Blob([buffer.buffer])));
+          return buffer
+            ? new Promise((res) => res(new Blob([buffer!.buffer])))
+            : null;
         },
       };
     });

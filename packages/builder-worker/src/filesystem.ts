@@ -16,7 +16,7 @@ import {
   FileDescriptor,
   DirectoryDescriptor,
   Stat,
-} from "./filesystem-driver";
+} from "./filesystem-drivers/filesystem-driver";
 
 export class FileSystem {
   private listeners: Map<string, EventListener[]> = new Map();
@@ -74,8 +74,11 @@ export class FileSystem {
         throw err;
       }
     }
-    let dir = await this.open(url, "directory");
     let volume = await driver.mountVolume(url, this.dispatchEvent.bind(this));
+    let dir = await this._open(splitPath(urlToPath(url)), {
+      createMode: "directory",
+      isNewMountPoint: true,
+    });
     this.volumes.set(dir.inode, volume);
     dir.close();
     return dir.inode;
@@ -108,7 +111,6 @@ export class FileSystem {
     } else {
       await destParent.add(name, source);
     }
-    this.dispatchEvent(destURL, "create");
     await this.remove(sourceURL, false);
     source.close();
     destParent.close();
@@ -129,7 +131,7 @@ export class FileSystem {
     let name = baseName(destPath);
     if (source.type === "file") {
       let clone = await this.open(pathToURL(destPath), "file");
-      await clone.write(source.getReadbleStream());
+      await clone.write(await source.getReadbleStream());
       clone.close();
     } else {
       (await this.open(pathToURL(destPath), "directory")).close();
@@ -171,7 +173,6 @@ export class FileSystem {
       if (autoClose) {
         sourceDir.close();
       }
-      this.dispatchEvent(path, "remove");
     }
   }
 
@@ -285,18 +286,25 @@ export class FileSystem {
       volume = parent.volume;
     }
 
-    if (!(await parent.has(name))) {
-      if (pathSegments.length > 0 && opts.createMode) {
+    if (
+      // for volumes that dont have directory access, just consume the entire path
+      // and only process leaf nodes
+      (!volume.hasDirectoryAccess &&
+        pathSegments.length > 0 &&
+        !opts.isNewMountPoint) ||
+      (volume.canCreateFiles && !(await parent.has(name)))
+    ) {
+      if (
+        (!volume.hasDirectoryAccess && pathSegments.length > 0) ||
+        (pathSegments.length && opts.createMode)
+      ) {
         descriptor = await volume.createDirectory(parent, name);
-        this.dispatchEvent(descriptor.url, "create");
         return await this._open(pathSegments, opts, descriptor, initialPath);
-      } else if (opts.createMode === "file") {
+      } else if (volume.canCreateFiles && opts.createMode === "file") {
         descriptor = await volume.createFile(parent, name);
-        this.dispatchEvent(initialPath, "create");
         return descriptor;
-      } else if (opts.createMode === "directory") {
+      } else if (volume.hasDirectoryAccess && opts.createMode === "directory") {
         descriptor = await volume.createDirectory(parent, name);
-        this.dispatchEvent(initialPath, "create");
         return descriptor;
       } else {
         throw new FileSystemError(
@@ -305,7 +313,11 @@ export class FileSystem {
         );
       }
     } else {
-      descriptor = (await parent.get(name))!;
+      if (opts.isNewMountPoint && !volume.hasDirectoryAccess) {
+        descriptor = await volume.createDirectory(parent, name);
+      } else {
+        descriptor = (await parent.get(name))!;
+      }
 
       // resource is a file
       if (
@@ -460,6 +472,7 @@ interface ListingEntry {
 
 interface Options {
   createMode?: "file" | "directory";
+  isNewMountPoint?: true;
 }
 export interface Event {
   url: URL;

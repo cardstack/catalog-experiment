@@ -8,7 +8,7 @@ import {
 } from "./nodes/common";
 import { FileNode, WriteFileNode } from "./nodes/file";
 import { MakeBundledModulesNode } from "./nodes/make";
-import { FileDescriptor } from "./filesystem-driver";
+import { FileDescriptor } from "./filesystem-drivers/filesystem-driver";
 
 type BoolForEach<T> = {
   [P in keyof T]: boolean;

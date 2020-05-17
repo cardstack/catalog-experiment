@@ -1,9 +1,9 @@
 import { FileDaemonClient, defaultWebsocketURL } from "./file-daemon-client";
 import { FileSystem } from "./filesystem";
-import { handleFileRequest } from "./file-request-handler";
-import { handleClientRegister } from "./client-register-handler";
+import { handleFileRequest } from "./request-handlers/file-request-handler";
+import { handleClientRegister } from "./request-handlers/client-register-handler";
 import { FileDaemonEventHandler } from "./file-daemon-event-handler";
-import { Handler } from "./request-handler";
+import { Handler } from "./request-handlers/request-handler";
 import { Builder } from "./builder";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;

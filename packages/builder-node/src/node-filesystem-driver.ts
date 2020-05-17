@@ -5,7 +5,7 @@ import {
   Volume,
   Stat,
   assertURLEndsInDir,
-} from "../../builder-worker/src/filesystem-driver";
+} from "../../builder-worker/src/filesystem-drivers/filesystem-driver";
 import { FileSystem } from "../../builder-worker/src/filesystem";
 import { DOMToNodeReadable, NodeReadableToDOM } from "file-daemon/stream-shims";
 import { Readable } from "stream";
@@ -42,6 +42,8 @@ let dirs: WeakMap<NodeDirectoryDescriptor, Dir> = new WeakMap();
 
 export class NodeVolume implements Volume {
   root: NodeDirectoryDescriptor;
+  readonly hasDirectoryAccess = true;
+  readonly canCreateFiles = true;
 
   constructor(
     rootPath: string,
@@ -65,9 +67,11 @@ export class NodeVolume implements Volume {
     }
     let path = join(parentDir.path, name);
     ensureDirSync(path);
+    let url = new URL(name, assertURLEndsInDir(parent.url));
+    this.dispatchEvent(url, "create");
     return new NodeDirectoryDescriptor(
       this,
-      new URL(name, assertURLEndsInDir(parent.url)),
+      url,
       opendirSync(path),
       this.dispatchEvent
     );
@@ -81,9 +85,11 @@ export class NodeVolume implements Volume {
       );
     }
     let path = join(parentDir.path, name);
+    let url = new URL(name, assertURLEndsInDir(parent.url));
+    this.dispatchEvent(url, "create");
     return new NodeFileDescriptor(
       this,
-      new URL(name, assertURLEndsInDir(parent.url)),
+      url,
       openSync(path, "w+"),
       this.dispatchEvent
     );
@@ -150,6 +156,8 @@ export class NodeDirectoryDescriptor implements DirectoryDescriptor {
 
   async remove(name: string) {
     removeSync(join(this.dir.path, name));
+    let url = new URL(name, assertURLEndsInDir(this.url));
+    this.dispatchEvent(url, "remove");
   }
 
   async add(name: string, descriptor: NodeDirectoryDescriptor): Promise<void>;
@@ -249,19 +257,19 @@ export class NodeFileDescriptor implements FileDescriptor {
     this.dispatchEvent!(this.url, "write"); // all descriptors created for files have this dispatcher
   }
 
-  async read(): Promise<Uint8Array> {
+  async read() {
     let size = (await this.stat()).size!;
     let buffer = new Uint8Array(size);
     readSync(this.fd, buffer, 0, size, 0);
     return buffer;
   }
 
-  async readText(): Promise<string> {
+  async readText() {
     let buffer = await this.read();
     return utf8.decode(buffer);
   }
 
-  getReadbleStream(): ReadableStream {
+  async getReadbleStream() {
     let readableStream = createReadStream("", {
       fd: this.fd,
       autoClose: false,

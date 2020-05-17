@@ -10,7 +10,7 @@ import {
   DefaultDriver,
   DefaultFileDescriptor,
   DefaultDirectoryDescriptor,
-} from "../src/filesystem-driver";
+} from "../src/filesystem-drivers/filesystem-driver";
 
 QUnit.module("filesystem", function (origHooks) {
   let { test } = installFileAssertions(origHooks);
@@ -121,25 +121,6 @@ QUnit.module("filesystem", function (origHooks) {
       await assert.fs.open(url("/"), "directory"); // ignore these events
       await withListener(assert.fs, origin, listener, async () => {
         await assert.fs.open(url("test"), "directory");
-        await assert.fs.eventsFlushed();
-      });
-    });
-
-    test("triggers a 'create' event for destination of move", async function (assert) {
-      assert.expect(2);
-      await assert.fs.open(url("src"), "file");
-      let listener = (e: FSEvent) => {
-        if (e.type === "create") {
-          assert.equal(
-            e.url.href,
-            `${origin}/dest`,
-            "the event url is correct"
-          );
-          assert.equal(e.type, "create", "the event type is correct");
-        }
-      };
-      await withListener(assert.fs, origin, listener, async () => {
-        await assert.fs.move(url("src"), url("dest"));
         await assert.fs.eventsFlushed();
       });
     });
@@ -449,7 +430,7 @@ QUnit.module("filesystem", function (origHooks) {
       });
 
       test("can read a stream from a file", async function (assert) {
-        let buffer = await readStream(file.getReadbleStream());
+        let buffer = await readStream(await file.getReadbleStream());
         assert.deepEqual(
           buffer,
           new TextEncoder().encode("Hello World"),
@@ -799,7 +780,7 @@ QUnit.module("filesystem", function (origHooks) {
   });
 });
 
-async function readStream(stream: ReadableStream): Promise<Uint8Array> {
+export async function readStream(stream: ReadableStream): Promise<Uint8Array> {
   let reader = stream.getReader();
   let buffers: Uint8Array[] = [];
   while (true) {

@@ -17,7 +17,7 @@ import { NodeFileSystemDriver } from "../src/node-filesystem-driver";
 import {
   FileDescriptor,
   DirectoryDescriptor,
-} from "../../builder-worker/src/filesystem-driver";
+} from "../../builder-worker/src/filesystem-drivers/filesystem-driver";
 import { withListener } from "../../builder-worker/test/helpers/event-helpers";
 import { Event as FSEvent } from "../../builder-worker/src/filesystem";
 
@@ -256,7 +256,7 @@ QUnit.module("Node FileSystem", function (origHooks) {
       });
 
       test("can read a stream from a file", async function (assert) {
-        let stream = new DOMToNodeReadable(file.getReadbleStream());
+        let stream = new DOMToNodeReadable(await file.getReadbleStream());
         let buffer: Buffer;
 
         let done = new Promise((res) => {
@@ -666,25 +666,6 @@ QUnit.module("Node FileSystem", function (origHooks) {
       await assert.fs.open(url("/"), "directory"); // ignore these events
       await withListener(assert.fs, origin, listener, async () => {
         await assert.fs.open(url("test"), "directory");
-        await assert.fs.eventsFlushed();
-      });
-    });
-
-    test("triggers a 'create' event for destination of move", async function (assert) {
-      assert.expect(2);
-      await assert.fs.open(url("src"), "file");
-      let listener = (e: FSEvent) => {
-        if (e.type === "create") {
-          assert.equal(
-            e.url.href,
-            `${origin}/dest`,
-            "the event url is correct"
-          );
-          assert.equal(e.type, "create", "the event type is correct");
-        }
-      };
-      await withListener(assert.fs, origin, listener, async () => {
-        await assert.fs.move(url("src"), url("dest"));
         await assert.fs.eventsFlushed();
       });
     });
