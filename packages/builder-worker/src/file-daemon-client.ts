@@ -367,6 +367,7 @@ export class FileDaemonClient {
     if (entrypoints) {
       return entrypoints as EntrypointsMapping;
     }
+    return;
   }
 
   private async getEntrypointsAsDestPaths(
@@ -376,6 +377,7 @@ export class FileDaemonClient {
     if (entrypoints) {
       return entrypoints as string[];
     }
+    return;
   }
 
   private async _getEntrypointsObject(

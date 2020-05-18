@@ -191,6 +191,7 @@ export class DefaultDirectoryDescriptor implements DirectoryDescriptor {
         .get(name)!
         .getDescriptor(url, this.dispatchEvent);
     }
+    return;
   }
 
   async children() {
@@ -333,4 +334,5 @@ export function assertURLEndsInDir(url: URL) {
   if (url.href.slice(-1) !== "/") {
     return new URL(`${url.href}/`);
   }
+  return;
 }

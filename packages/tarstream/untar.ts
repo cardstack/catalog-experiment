@@ -320,4 +320,5 @@ function withStreamingErrorHandling(
   } catch (err) {
     controller.error(err);
   }
+  return;
 }

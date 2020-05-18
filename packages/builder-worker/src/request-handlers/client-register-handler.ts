@@ -29,4 +29,5 @@ export const handleClientRegister: Handler = async function (
     fileDaemonEventHandler.removeClient(event.clientId);
     return new Response("client unregistered", { status: 200 });
   }
+  return;
 };

@@ -25,8 +25,5 @@
 /packages/shared/**/*.d.ts
 /packages/shared/**/*.js
 /packages/shared/**/*.js.map
-/packages/ui/**/*.d.ts
-/packages/ui/**/*.js
-/packages/ui/**/*.js.map
 
 !webpack.config.js
