@@ -192,19 +192,34 @@ export class FileSystem {
     if (!startingPath) {
       startingPath = path;
     }
-    let directory = await this.openDirPath(path);
-    if (this.volumes.has(directory.inode)) {
-      directory = this.volumes.get(directory.inode)!.root;
+    let resource = await this.openPath(path);
+    if (this.volumes.has(resource.inode)) {
+      let volumeRoot = this.volumes.get(resource.inode)!.root;
+      if (volumeRoot.type === "directory") {
+        resource = volumeRoot;
+      } else {
+        resource.close();
+        return [{ url: volumeRoot.url, stat: await volumeRoot.stat() }];
+      }
     }
+    if (!resource.volume.hasDirectoryAccess) {
+      resource.close();
+      return [];
+    }
+    if (resource.type === "file") {
+      resource.close();
+      return [{ url: resource.url, stat: await resource.stat() }];
+    }
+
     let results: ListingEntry[] = [];
     if (startingPath === path && path !== "/") {
       results.push({
         url: pathToURL(path),
-        stat: await directory.stat(),
+        stat: await resource.stat(),
       });
     }
-    for (let name of [...(await directory.children())].sort()) {
-      let item = (await directory.get(name))!;
+    for (let name of [...(await resource.children())].sort()) {
+      let item = (await resource.get(name))!;
       results.push({
         url: pathToURL(join(path, name)),
         stat: await item.stat(),
@@ -215,7 +230,7 @@ export class FileSystem {
         );
       }
     }
-    directory.close();
+    resource.close();
     return results;
   }
 
@@ -279,11 +294,19 @@ export class FileSystem {
       // we have crossed a volume boundary, use the driver for this path and
       // the parent should be the root of the volume
       volume = this.volumes.get(parent.inode)!;
-      parent = volume.root;
+      if (volume.root.type === "directory") {
+        parent = volume.root;
+      } else if (pathSegments.length === 0) {
+        parent = await volume.createDirectory(parent, "");
+      }
     } else {
       // we are still within the volume that we were within on the previous
       // pass, just use the driver associated with the parent
       volume = parent.volume;
+    }
+
+    if (!name) {
+      return volume.root;
     }
 
     if (

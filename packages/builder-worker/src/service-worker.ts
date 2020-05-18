@@ -5,11 +5,13 @@ import { handleClientRegister } from "./request-handlers/client-register-handler
 import { FileDaemonEventHandler } from "./file-daemon-event-handler";
 import { Handler } from "./request-handlers/request-handler";
 import { Builder } from "./builder";
+import { HttpFileSystemDriver } from "./filesystem-drivers/http-driver";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 const fs = new FileSystem();
 const ourBackendEndpoint = "__alive__";
 const webroot: string = "/";
+const uiOrigin = "http://localhost:4300";
 
 let websocketURL: URL;
 let isDisabled = false;
@@ -44,6 +46,19 @@ worker.addEventListener("activate", () => {
   finishedBuild = (async () => {
     await client.ready;
     await builder.build();
+
+    // TODO it's unclear that we can use a different origin for our UI--within
+    // the iframe, even if it is being served from the filesystem, the browser
+    // might not permit cross-origin serviceworker access. Right now the file
+    // daemon client is clobbering the UI mount, so we are mounting after the
+    // sync--but this is not ideal... WE should revisit this after we have
+    // implemented a some kind of "layering" strategy (akin to docker) in our
+    // file system.
+    let uiDriver = new HttpFileSystemDriver(
+      new URL(`${uiOrigin}/catalogjs-ui/`)
+    );
+    await fs.mount(new URL(`/catalogjs-ui`, originURL), uiDriver);
+
     console.log(`completed build, file system:`);
     await fs.displayListing();
   })();

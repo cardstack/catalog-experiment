@@ -35,26 +35,26 @@ export class HttpFileSystemDriver implements FileSystemDriver {
 }
 
 export class HttpVolume implements Volume {
-  root: HttpDirectoryDescriptor;
+  root: HttpFileDescriptor;
   readonly hasDirectoryAccess = false;
   readonly canCreateFiles = false;
 
   constructor(
-    httpURL: URL,
+    private httpURL: URL,
     mountURL: URL,
     private dispatchEvent: FileSystem["dispatchEvent"],
     readonly opts: Options
   ) {
-    this.root = new HttpDirectoryDescriptor(
-      this,
-      mountURL,
-      httpURL,
-      dispatchEvent
-    );
+    this.root = new HttpFileDescriptor(this, mountURL, httpURL, dispatchEvent);
   }
 
-  async createDirectory(parent: HttpDirectoryDescriptor, name: string) {
-    let underlyingURL = new URL(name, assertURLEndsInDir(parent.underlyingURL));
+  async createDirectory(parent: DirectoryDescriptor, name: string) {
+    let underlyingURL: URL;
+    if (parent instanceof HttpDirectoryDescriptor) {
+      underlyingURL = new URL(name, assertURLEndsInDir(parent.underlyingURL));
+    } else {
+      underlyingURL = new URL(name, assertURLEndsInDir(this.httpURL));
+    }
     let url = new URL(name, assertURLEndsInDir(parent.url));
     return new HttpDirectoryDescriptor(
       this,
@@ -173,17 +173,23 @@ export class HttpFileDescriptor implements FileDescriptor {
 
   close() {}
 
-  async stat(): Promise<Stat> {
+  async stat(): Promise<HttpStat> {
     let response = await getOkResponse(this.underlyingURL);
     let etag = response.headers.get("ETag") ?? undefined;
     let modified = response.headers.get("Last-Modified");
     let mtime = modified ? moment(modified).valueOf() : Date.now();
+    // there is no guarantee that the webserver is populating this (e.g.
+    // ember-cli), we could read this file to see its length, but that seems
+    // wasteful.
     let sizeStr = response.headers.get("Content-Length");
     let size = sizeStr ? Number(sizeStr) : undefined;
+
     return {
       etag,
       mtime,
       size,
+      contentType:
+        response.headers.get("Content-Type") || "application/octet-stream",
       type: "file",
     };
   }
@@ -255,4 +261,8 @@ async function getOkResponse(url: URL): Promise<Response> {
     }
   }
   return response;
+}
+
+export interface HttpStat extends Stat {
+  contentType: string;
 }

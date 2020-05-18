@@ -12,7 +12,8 @@ export interface FileSystemDriver {
 }
 
 export interface Volume {
-  root: DirectoryDescriptor;
+  root: DirectoryDescriptor | FileDescriptor;
+  // TODO I think we can derive 'hasDirectoryAccess' from the Volume.root type...
   hasDirectoryAccess: boolean;
   canCreateFiles: boolean;
   createDirectory(
@@ -85,7 +86,7 @@ export class DefaultVolume implements Volume {
     this.root = new Directory(this).getDescriptor(url, this.dispatchEvent);
   }
 
-  async createDirectory(parent: DefaultDirectoryDescriptor, name: string) {
+  async createDirectory(parent: DirectoryDescriptor, name: string) {
     let directory = new Directory(this);
     let url: URL;
     // The root folder is a special internal folder that only contains URL

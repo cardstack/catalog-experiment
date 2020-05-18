@@ -4,8 +4,10 @@ import { FileSystem, FileSystemError } from "../filesystem";
 import {
   FileDescriptor,
   DirectoryDescriptor,
+  Stat,
 } from "../filesystem-drivers/filesystem-driver";
 import { join } from "../path";
+import { HttpStat } from "../filesystem-drivers/http-driver";
 
 const builderOrigin = "http://localhost:8080";
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
@@ -15,27 +17,15 @@ export const handleFileRequest: Handler = async function (req, context) {
   // wont mess with us that way)
   let originURL = new URL(worker.origin);
   let requestURL = new URL(req.url);
-  let isCatalogJSUIRequest = /^\/catalogjs-ui/.test(requestURL.pathname);
 
   // For the webpack hosted builder requests, we need to honor same origin
   // policy (apparently), as the responses are empty otherwise. So instead route
   // these requests through the file daemon where they will be proxied to the
   // webpack hosted builder. I wonder about 3rd party js, we might need the file
   // daemon to be more aggressive with its proxying....
-  if (
-    requestURL.origin === builderOrigin ||
-    isCatalogJSUIRequest ||
-    requestURL.pathname === "/ember-cli-live-reload.js"
-  ) {
+  if (requestURL.origin === builderOrigin) {
     return new Response(
-      (
-        await fetch(
-          new URL(
-            requestURL.pathname,
-            isCatalogJSUIRequest ? requestURL.origin : originURL.href
-          ).href
-        )
-      ).body
+      (await fetch(new URL(requestURL.pathname, originURL).href)).body
     );
   }
 
@@ -55,13 +45,13 @@ export const handleFileRequest: Handler = async function (req, context) {
     if (file instanceof Response) {
       return file;
     }
-    if ((await file.stat()).type === "directory") {
+    if (file.type === "directory") {
       file.close();
       path = join(path, "index.html");
-      file = await openFile(
+      file = (await openFile(
         context.fs,
         url(requestURL.origin, context.webroot, path)
-      );
+      )) as FileDescriptor;
       if (file instanceof Response) {
         return file;
       }
@@ -83,9 +73,9 @@ function url(origin: string, webroot: string, relativePath: string) {
 async function openFile(
   fs: FileSystem,
   url: URL
-): Promise<FileDescriptor | Response> {
+): Promise<FileDescriptor | DirectoryDescriptor | Response> {
   try {
-    return (await fs.open(url)) as FileDescriptor;
+    return await fs.open(url);
   } catch (err) {
     if (err instanceof FileSystemError && err.code === "NOT_FOUND") {
       return new Response("Not found", { status: 404 });
@@ -99,10 +89,17 @@ async function setContentHeaders(
   path: string,
   file: FileDescriptor
 ): Promise<void> {
-  let mime = lookup(path) || "application/octet-stream";
+  let mime: string;
+  let upstreamContentType: string | undefined;
+  let stat = (await file.stat()) as Stat | HttpStat;
+  if ("contentType" in stat) {
+    upstreamContentType = stat.contentType;
+  } else {
+    mime = lookup(path) || "application/octet-stream";
+  }
   response.headers.set(
     "content-type",
-    contentType(mime) as Exclude<string, false>
+    upstreamContentType || (contentType(mime!) as Exclude<string, false>)
   );
-  response.headers.set("content-length", String((await file.stat()).size));
+  response.headers.set("content-length", String(stat.size));
 }
