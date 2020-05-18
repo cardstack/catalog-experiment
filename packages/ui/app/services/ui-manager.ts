@@ -31,6 +31,8 @@ export default class UIManagerService extends Service {
     window.parent.postMessage(ready, "*");
   }
 
+  // TODO eliminate the need to call show and hide, and rather just monitor the
+  // iframe dimensions and inform the parent when the dimensions change.
   show() {
     let show: Show = { kind: "ui-manager", type: "show" };
     window.parent.postMessage(show, "*");

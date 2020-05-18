@@ -6,6 +6,8 @@ import {
   Event as FileDaemonEvent,
   FilesChangedEvent,
 } from "../../../builder-worker/src/file-daemon-client";
+//@ts-ignore
+import { task, timeout } from "ember-concurrency";
 import { assertNever } from "shared/util";
 
 export default class FileDaemonClientService extends Service {
@@ -15,9 +17,6 @@ export default class FileDaemonClientService extends Service {
   @tracked syncedFiles: string[] = [];
   @tracked lastChange?: FilesChangedEvent;
 
-  resetLastChange?: any;
-  resetSyncedFiles?: any;
-
   constructor(...args: any[]) {
     super(...args);
 
@@ -26,14 +25,17 @@ export default class FileDaemonClientService extends Service {
         return;
       }
       let clientEvent = event.data.clientEvent;
-      this.handleEvent(clientEvent);
+      this.handleEvent.perform(clientEvent);
     });
-    (async () => {
-      await fetch("/register-client");
-    })();
+    this.register.perform();
   }
 
-  handleEvent(event: FileDaemonEvent) {
+  @task(function* () {
+    yield fetch("/register-client");
+  })
+  register: any;
+
+  @(task(function* (this: FileDaemonClientService, event: FileDaemonEvent) {
     switch (event.type) {
       case "connected":
         if (!this.connected) {
@@ -53,25 +55,22 @@ export default class FileDaemonClientService extends Service {
         break;
       case "sync-finished":
         this.isSyncing = false;
-        clearTimeout(this.resetSyncedFiles);
         this.syncedFiles = event.files;
         this.uiManager.show();
-        this.resetSyncedFiles = setTimeout(() => {
-          this.syncedFiles = [];
-        }, 10000);
+        yield timeout(10000);
+        this.syncedFiles = [];
         break;
       case "files-changed":
-        clearTimeout(this.resetLastChange);
         this.lastChange = event;
         this.uiManager.show();
-        this.resetLastChange = setTimeout(() => {
-          this.lastChange = undefined;
-        }, 10000);
+        yield timeout(10000);
+        this.lastChange = undefined;
         break;
       default:
         assertNever(event);
     }
-  }
+  }).drop())
+  handleEvent: any;
 }
 
 interface FileDaemonClientEvent {

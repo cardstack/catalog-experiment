@@ -12,6 +12,12 @@
     "allowUnreachableCode": false,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
+    "noImplicitAny": true,
+    "noImplicitThis": true,
+    "strictNullChecks": true,
+    "strictPropertyInitialization": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
     "lib": ["ES6", "ScriptHost", "WebWorker", "WebWorker.ImportScripts"]
   }
 }

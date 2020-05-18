@@ -144,6 +144,7 @@ export class NodeDirectoryDescriptor implements DirectoryDescriptor {
         this.dispatchEvent
       );
     }
+    return;
   }
 
   async children() {

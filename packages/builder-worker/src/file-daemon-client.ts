@@ -277,7 +277,7 @@ export class FileDaemonClient {
     let file: FileDescriptor | undefined;
     try {
       file = (await this.fs.open(
-        new URL(entrypointsPath, this.fileServerURL)
+        new URL(this.mountedPath(entrypointsPath), this.fileServerURL)
       )) as FileDescriptor;
       previousEntrypoints = JSON.parse(
         await file.readText()
@@ -367,6 +367,7 @@ export class FileDaemonClient {
     if (entrypoints) {
       return entrypoints as EntrypointsMapping;
     }
+    return;
   }
 
   private async getEntrypointsAsDestPaths(
@@ -376,6 +377,7 @@ export class FileDaemonClient {
     if (entrypoints) {
       return entrypoints as string[];
     }
+    return;
   }
 
   private async _getEntrypointsObject(

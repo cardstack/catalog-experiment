@@ -1,6 +1,8 @@
 # Catalog-Experiment
 
-This repo proves out ideas for "CatalogJS", our planned JS CDN that eliminates the need for running `npm`/`yarn` and eliminating maintaining a `node_modules` folder in your web projects.
+This repo proves out ideas for "CatalogJS", our planned JS CDN that eliminates
+the need for running `npm`/`yarn` and eliminating maintaining a `node_modules`
+folder in your web projects.
 
 ## Building it
 
@@ -22,7 +24,11 @@ yarn install
    ```sh
    yarn builder
    ```
-3. Start serving the app:
+3. Start serving the CatalogJS UI:
+   ```
+   yarn ui
+   ```
+4. Start serving the sample app:
    ```sh
    yarn serve
    ```
@@ -46,14 +52,19 @@ single bundle and run the file daemon from the webpack generated package, then:
    ```sh
    yarn builder
    ```
-3. Start serving the from the webpack package:
+3. Start serving the CatalogJS UI:
+   ```
+   yarn ui
+   ```
+4. Start serving the from the webpack package:
    ```sh
    cd ./package/app && yarn start-pkg
    ```
 
 ## Testing it
 
-From the command line you can run all the tests by executing the following from the project root:
+From the command line you can run all the tests by executing the following from
+the project root:
 
 ```sh
 yarn test
@@ -71,10 +82,28 @@ To run the tests from the browser:
    ```
 3. Open the URL `http://localhost:8080` in your browser
 
-Note that the tests leverage a test server that runs a ports meant just for testing. If you run tests from the CLI, QUnit tests that happen to be open in the browser may try to connect to the test server (based on the tests that are running in your browser) that the CLI is using and will troll you.
+Note that the tests leverage a test server that runs a ports meant just for
+testing. If you run tests from the CLI, QUnit tests that happen to be open in
+the browser may try to connect to the test server (based on the tests that are
+running in your browser) that the CLI is using and will troll you.
+
+To run the node tests:
+
+1. cd to `packages/builder-worker`
+2. run webpack:
+   ```sh
+   yarn webpack
+   ```
+   (use the `--watch` option if you want to watch the file system for changes)
+3. run the tests:
+   ```sh
+   yarn qunit assets/node-test.js
+   ```
 
 ## Explanation
 
-The builder package is the in-browser (mostly in-service-worker) toolset that gets loaded into your app. It builds itself with webpack.
+The builder package is the in-browser (mostly in-service-worker) toolset that
+gets loaded into your app. It builds itself with webpack.
 
-The example app launches by running the file-daemon to serve itself into the browser, at which point the browser loads the builder tools.
+The example app launches by running the file-daemon to serve itself into the
+browser, at which point the browser loads the builder tools.
