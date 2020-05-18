@@ -47,13 +47,14 @@ worker.addEventListener("activate", () => {
     await client.ready;
     await builder.build();
 
-    // TODO it's unclear that we can use a different origin for our UI--within
-    // the iframe, even if it is being served from the filesystem, the browser
-    // might not permit cross-origin serviceworker access. Right now the file
-    // daemon client is clobbering the UI mount, so we are mounting after the
-    // sync--but this is not ideal... WE should revisit this after we have
-    // implemented a some kind of "layering" strategy (akin to docker) in our
-    // file system.
+    // For the UI running in the iframe, even though it is being served from the
+    // filesystem abstration, the browser does not permit cross-origin
+    // serviceworker access. Right now the file daemon client is clobbering the
+    // UI mount since it takes over the localhost:4200 origin. As a workaround
+    // we are mounting after the sync--but this is not ideal, since they are
+    // independent and should not be coupled to one another... We should revisit
+    // this after we have implemented a some kind of "layering" strategy (akin
+    // to docker) in our file system.
     let uiDriver = new HttpFileSystemDriver(
       new URL(`${uiOrigin}/catalogjs-ui/`)
     );
