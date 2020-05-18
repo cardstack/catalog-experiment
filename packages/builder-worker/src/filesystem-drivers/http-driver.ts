@@ -41,7 +41,7 @@ export class HttpVolume implements Volume {
 
   constructor(
     private httpURL: URL,
-    mountURL: URL,
+    private mountURL: URL,
     private dispatchEvent: FileSystem["dispatchEvent"],
     readonly opts: Options
   ) {
@@ -50,12 +50,14 @@ export class HttpVolume implements Volume {
 
   async createDirectory(parent: DirectoryDescriptor, name: string) {
     let underlyingURL: URL;
-    if (parent instanceof HttpDirectoryDescriptor) {
-      underlyingURL = new URL(name, assertURLEndsInDir(parent.underlyingURL));
-    } else {
+    let url: URL;
+    if (!name || !(parent instanceof HttpDirectoryDescriptor)) {
       underlyingURL = new URL(name, assertURLEndsInDir(this.httpURL));
+      url = new URL(name, assertURLEndsInDir(this.mountURL));
+    } else {
+      underlyingURL = new URL(name, assertURLEndsInDir(parent.underlyingURL));
+      url = new URL(name, assertURLEndsInDir(parent.url));
     }
-    let url = new URL(name, assertURLEndsInDir(parent.url));
     return new HttpDirectoryDescriptor(
       this,
       url,

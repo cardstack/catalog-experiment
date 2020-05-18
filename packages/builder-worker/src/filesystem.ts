@@ -255,6 +255,7 @@ export class FileSystem {
 
     let directory = await this._open(splitPath(path), {
       createMode: create ? "directory" : undefined,
+      readMode: "directory",
     });
     if (directory.type === "file") {
       throw new FileSystemError(
@@ -296,7 +297,7 @@ export class FileSystem {
       volume = this.volumes.get(parent.inode)!;
       if (volume.root.type === "directory") {
         parent = volume.root;
-      } else if (pathSegments.length === 0) {
+      } else {
         parent = await volume.createDirectory(parent, "");
       }
     } else {
@@ -374,7 +375,13 @@ export class FileSystem {
         return await this._open(pathSegments, opts, descriptor, initialPath);
       } else if (pathSegments.length === 0 && opts.createMode !== "file") {
         if (this.volumes.has(descriptor.inode)) {
-          return this.volumes.get(descriptor.inode)!.root;
+          let childVolume = this.volumes.get(descriptor.inode)!;
+          let root = childVolume.root;
+          if (root.type === "file" && opts.readMode === "directory") {
+            return await childVolume.createDirectory(parent, "");
+          } else {
+            return root;
+          }
         }
         return descriptor;
       } else {
@@ -495,6 +502,7 @@ interface ListingEntry {
 
 interface Options {
   createMode?: "file" | "directory";
+  readMode?: "file" | "directory";
   isNewMountPoint?: true;
 }
 export interface Event {

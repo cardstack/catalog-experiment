@@ -597,16 +597,18 @@ QUnit.module("filesystem", function (origHooks) {
       );
     });
 
-    test("throws when getting a listing for a path that is a file", async function (assert) {
+    test("can get a listing for a path that is a file", async function (assert) {
       await assert.setupFiles({
         "/a.txt": "a",
       });
-      try {
-        await assert.fs.list(url("/a.txt"));
-        throw new Error("should not be able to get a listing");
-      } catch (e) {
-        assert.equal(e.code, "IS_NOT_A_DIRECTORY", "the error code is correct");
-      }
+      let listing = (await assert.fs.list(url("/a.txt"))).map(
+        (fd) => fd.url.href
+      );
+      assert.deepEqual(
+        listing,
+        ["http://localhost:4200/a.txt"],
+        "the listing is correct"
+      );
     });
   });
 
