@@ -13,21 +13,24 @@ export const defaultOrigin = "http://localhost:4200";
 export const defaultWebsocketURL = "ws://localhost:3000";
 export const entrypointsPath = "/entrypoints.json";
 
-export interface ConnectedEvent {
+interface BaseEvent {
+  kind: "file-daemon-client-event";
+}
+export interface ConnectedEvent extends BaseEvent {
   type: "connected";
 }
-export interface DisconnectedEvent {
+export interface DisconnectedEvent extends BaseEvent {
   type: "disconnected";
 }
-export interface SyncStartedEvent {
+export interface SyncStartedEvent extends BaseEvent {
   type: "sync-started";
 }
-export interface SyncFinishedEvent {
+export interface SyncFinishedEvent extends BaseEvent {
   type: "sync-finished";
   files: string[];
 }
 
-export interface FilesChangedEvent {
+export interface FilesChangedEvent extends BaseEvent {
   type: "files-changed";
   modified: string[];
   removed: string[];
@@ -149,11 +152,17 @@ export class FileDaemonClient {
       console.log(`websocket close`, event);
       socketIsClosed();
       this.connected = false;
-      this.dispatchEvent({ type: "disconnected" });
+      this.dispatchEvent({
+        type: "disconnected",
+        kind: "file-daemon-client-event",
+      });
     };
     socket.onopen = (event) => {
       console.log(`websocket open`, event);
-      this.dispatchEvent({ type: "connected" });
+      this.dispatchEvent({
+        type: "connected",
+        kind: "file-daemon-client-event",
+      });
       this.backoffInterval = 0;
       this.connected = true;
 
@@ -200,7 +209,10 @@ export class FileDaemonClient {
   }
 
   private async startFullSync() {
-    this.dispatchEvent({ type: "sync-started" });
+    this.dispatchEvent({
+      type: "sync-started",
+      kind: "file-daemon-client-event",
+    });
     let stream = (
       await fetch(`${this.fileServerURL}/`, {
         headers: {
@@ -236,6 +248,7 @@ export class FileDaemonClient {
     console.log("completed full sync");
     this.dispatchEvent({
       type: "sync-finished",
+      kind: "file-daemon-client-event",
       files: files.map(
         (f) => new URL(this.mountedPath(f), this.fileServerURL).href
       ),
@@ -259,6 +272,25 @@ export class FileDaemonClient {
       await this.fs.move(sourceURL, new URL(destPath, tempOrigin));
     }
     await this.generateEntrypointsMappingFile(originalEntrypoints, tempOrigin);
+
+    let hasExistingIndexHtml: boolean;
+    let currentIndexHtml = new URL(
+      this.mountedPath("/index.html"),
+      this.fileServerURL
+    );
+    try {
+      await this.fs.open(currentIndexHtml);
+      hasExistingIndexHtml = true;
+    } catch (e) {
+      if (e.code === "NOT_FOUND") {
+        hasExistingIndexHtml = false;
+      } else {
+        throw e;
+      }
+    }
+    if (hasExistingIndexHtml) {
+      await this.fs.copy(currentIndexHtml, new URL("/index.html", tempOrigin));
+    }
   }
 
   private async handleInfo(watchInfo: WatchInfo) {
@@ -354,7 +386,12 @@ export class FileDaemonClient {
       removed.push(url.href);
     }
 
-    this.dispatchEvent({ type: "files-changed", removed, modified });
+    this.dispatchEvent({
+      type: "files-changed",
+      kind: "file-daemon-client-event",
+      removed,
+      modified,
+    });
 
     console.log(`completed processing changes, file system:`);
     await this.fs.displayListing();

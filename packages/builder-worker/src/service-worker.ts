@@ -1,11 +1,16 @@
-import { FileDaemonClient, defaultWebsocketURL } from "./file-daemon-client";
-import { FileSystem } from "./filesystem";
+import {
+  FileDaemonClient,
+  defaultWebsocketURL,
+  Event as FSDaemonClientEvent,
+} from "./file-daemon-client";
+import { FileSystem, Event as FsEvent } from "./filesystem";
 import { handleFileRequest } from "./request-handlers/file-request-handler";
 import { handleClientRegister } from "./request-handlers/client-register-handler";
 import { FileDaemonEventHandler } from "./file-daemon-event-handler";
 import { Handler } from "./request-handlers/request-handler";
 import { Builder } from "./builder";
 import { HttpFileSystemDriver } from "./filesystem-drivers/http-driver";
+import debounce from "lodash/debounce";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 const fs = new FileSystem();
@@ -41,8 +46,46 @@ worker.addEventListener("activate", () => {
   client = new FileDaemonClient(originURL, websocketURL, fs, webroot);
   client.addEventListener(eventHandler.handleEvent.bind(eventHandler));
 
-  // TODO watch for file changes and build when fs changes
   let builder = Builder.forProjects(fs, [originURL]);
+  let finishedRebuild: Promise<void[][]>;
+  let httpVolumeId: string;
+  let onChange = (event: FsEvent | FSDaemonClientEvent) => {
+    if (
+      "url" in event &&
+      (event.url.pathname.indexOf("/dist") === 0 ||
+        event.url.pathname === "/catalogjs-ui")
+    ) {
+      return;
+    }
+    if (
+      event.kind === "file-daemon-client-event" &&
+      event.type !== "sync-finished"
+    ) {
+      return;
+    }
+    (async () => {
+      await finishedRebuild;
+      await (finishedRebuild = builder.build());
+
+      if (event.type === "sync-finished") {
+        // this is a workaround to deal with the fact that the sync is stomping on
+        // our http mount for the ui. see the note below around creating a layered
+        // FS strategy
+        let uiDriver = new HttpFileSystemDriver(
+          new URL(`${uiOrigin}/catalogjs-ui/`)
+        );
+        await fs.unmount(httpVolumeId);
+        httpVolumeId = await fs.mount(
+          new URL(`/catalogjs-ui`, originURL),
+          uiDriver
+        );
+      }
+
+      console.log(`completed build, file system:`);
+      await fs.displayListing();
+    })();
+  };
+
   finishedBuild = (async () => {
     await client.ready;
     await builder.build();
@@ -58,10 +101,13 @@ worker.addEventListener("activate", () => {
     let uiDriver = new HttpFileSystemDriver(
       new URL(`${uiOrigin}/catalogjs-ui/`)
     );
-    await fs.mount(new URL(`/catalogjs-ui`, originURL), uiDriver);
+    httpVolumeId = await fs.mount(
+      new URL(`/catalogjs-ui`, originURL),
+      uiDriver
+    );
 
-    console.log(`completed build, file system:`);
-    await fs.displayListing();
+    fs.addEventListener(originURL.href, debounce(onChange, 1000));
+    client.addEventListener(onChange);
   })();
 
   (async () => {

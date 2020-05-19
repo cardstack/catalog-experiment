@@ -17,10 +17,12 @@ export const handleClientRegister: Handler = async function (
     fileDaemonEventHandler.addClient(event.clientId);
     if (fileDaemonClient.connected) {
       await fileDaemonEventHandler.sendEvent(event.clientId, {
+        kind: "file-daemon-client-event",
         type: "connected",
       });
     } else {
       await fileDaemonEventHandler.sendEvent(event.clientId, {
+        kind: "file-daemon-client-event",
         type: "disconnected",
       });
     }

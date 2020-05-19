@@ -576,7 +576,7 @@ QUnit.module("Node FileSystem", function (origHooks) {
     });
 
     test("it can mount a volume within another volume", async function (assert) {
-      assert.fs.unmount(volumeId);
+      await assert.fs.unmount(volumeId);
       ensureDirSync(join(testDir, "a"));
       ensureDirSync(join(testDir, "b"));
 
