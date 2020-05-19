@@ -47,7 +47,7 @@ worker.addEventListener("activate", () => {
   client.addEventListener(eventHandler.handleEvent.bind(eventHandler));
 
   let builder = Builder.forProjects(fs, [originURL]);
-  let finishedRebuild: Promise<void[][]>;
+  let finishedRebuild: Promise<void>;
   let httpVolumeId: string;
   let onChange = (event: FsEvent | FSDaemonClientEvent) => {
     if (
@@ -63,9 +63,16 @@ worker.addEventListener("activate", () => {
     ) {
       return;
     }
-    (async () => {
+
+    finishedRebuild = (async () => {
       await finishedRebuild;
-      await (finishedRebuild = builder.build());
+      console.log("starting rebuild...");
+      try {
+        await builder.build();
+        console.log("rebuild completed");
+      } catch (err) {
+        console.error(`rebuild failed: `, err);
+      }
 
       if (event.type === "sync-finished") {
         // this is a workaround to deal with the fact that the sync is stomping on
@@ -81,7 +88,7 @@ worker.addEventListener("activate", () => {
         );
       }
 
-      console.log(`completed build, file system:`);
+      console.log(`exiting rebuild, file system:`);
       await fs.displayListing();
     })();
   };
