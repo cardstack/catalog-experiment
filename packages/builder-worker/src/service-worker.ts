@@ -67,17 +67,19 @@ worker.addEventListener("activate", () => {
       await finishedRebuild;
       await (finishedRebuild = builder.build());
 
-      // this is a workaround to deal with the fact that the sync is stomping on
-      // our http mount for the ui. see the note below around creating a layered
-      // FS strategy
-      let uiDriver = new HttpFileSystemDriver(
-        new URL(`${uiOrigin}/catalogjs-ui/`)
-      );
-      await fs.unmount(httpVolumeId);
-      httpVolumeId = await fs.mount(
-        new URL(`/catalogjs-ui`, originURL),
-        uiDriver
-      );
+      if (event.type === "sync-finished") {
+        // this is a workaround to deal with the fact that the sync is stomping on
+        // our http mount for the ui. see the note below around creating a layered
+        // FS strategy
+        let uiDriver = new HttpFileSystemDriver(
+          new URL(`${uiOrigin}/catalogjs-ui/`)
+        );
+        await fs.unmount(httpVolumeId);
+        httpVolumeId = await fs.mount(
+          new URL(`/catalogjs-ui`, originURL),
+          uiDriver
+        );
+      }
 
       console.log(`completed build, file system:`);
       await fs.displayListing();
