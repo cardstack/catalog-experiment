@@ -36,8 +36,9 @@ QUnit.module("module builder", function (origHooks) {
     await assert.setupFiles({
       "entrypoints.json": `{"src-index.html": "index.html", "test/src-index.html": "test/index.html"}`,
       "src-index.html": `<html><script type="module" src="./index.js"></script></html>`,
-      "test/src-index.html": `<html><script type="module" src="../index.js"></script></html>`,
       "index.js": `export const message = "hello world";`,
+      "test/src-index.html": `<html><script type="module" src="./index.js"></script></html>`,
+      "test/index.js": `export const message = "bye mars";`,
     });
     let builder = Builder.forProjects(assert.fs, [origin]);
     await builder.build();
@@ -48,7 +49,7 @@ QUnit.module("module builder", function (origHooks) {
     await assert.file("test/index.html").exists();
     await assert
       .file("test/index.html")
-      .matches(/src=\"\/dist\/0.js\"/, "file contents are correct");
+      .matches(/src=\"\/dist\/1.js\"/, "file contents are correct");
   });
 
   test("it does not change source files", async function (assert) {
