@@ -363,7 +363,7 @@ QUnit.module("filesystem - http driver", function (origHooks) {
     });
 
     test("it can mount a volume within another volume", async function (assert) {
-      assert.fs.unmount(volumeId);
+      await assert.fs.unmount(volumeId);
 
       let driverA = new HttpFileSystemDriver(url(webA));
       let driverB = new HttpFileSystemDriver(url(webB));

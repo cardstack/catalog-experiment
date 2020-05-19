@@ -63,17 +63,6 @@ export class FileSystem {
   }
 
   async mount(url: URL, driver: FileSystemDriver): Promise<string> {
-    try {
-      (await this.open(url)).close();
-      throw new FileSystemError(
-        "ALREADY_EXISTS",
-        `Cannot mount volume at '${url.href}', this directory is already mounted.`
-      );
-    } catch (err) {
-      if (err.code !== "NOT_FOUND") {
-        throw err;
-      }
-    }
     let volume = await driver.mountVolume(url, this.dispatchEvent.bind(this));
     let dir = await this._open(splitPath(urlToPath(url)), {
       createMode: "directory",
@@ -84,11 +73,16 @@ export class FileSystem {
     return dir.inode;
   }
 
-  unmount(volumeKey: string) {
+  async unmount(volumeKey: string): Promise<void> {
     if (volumeKey === this.root.inode) {
       throw new Error("Cannot unmount the root volume");
     }
-    this.volumes.delete(volumeKey);
+    let volume = this.volumes.get(volumeKey);
+    if (volume) {
+      let url = volume.root.url;
+      this.volumes.delete(volumeKey);
+      await this.remove(url);
+    }
   }
 
   async move(sourceURL: URL, destURL: URL): Promise<void> {
@@ -456,7 +450,7 @@ export class FileSystem {
         let dispatched: () => void;
         let waitForDispatch = new Promise((res) => (dispatched = res));
         setTimeout(() => {
-          listener({ url, type });
+          listener({ url, type, kind: "filesystem-event" });
           dispatched();
         }, 0);
         await waitForDispatch;
@@ -506,6 +500,7 @@ interface Options {
   isNewMountPoint?: true;
 }
 export interface Event {
+  kind: "filesystem-event";
   url: URL;
   type: EventType;
 }

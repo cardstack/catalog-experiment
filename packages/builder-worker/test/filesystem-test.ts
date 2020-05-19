@@ -54,17 +54,6 @@ QUnit.module("filesystem", function (origHooks) {
       }
     });
 
-    test("it throws when you mount a volume at a directory that already exists", async function (assert) {
-      let driverA = new DefaultDriver();
-      await assert.fs.open(url("/driverA"), "directory");
-      try {
-        await assert.fs.mount(url("/driverA"), driverA);
-        throw new Error("should not be able to create file");
-      } catch (e) {
-        assert.equal(e.code, "ALREADY_EXISTS", "error code is correct");
-      }
-    });
-
     test("can unmount a volume", async function (assert) {
       let driverA = new DefaultDriver();
       let driverB = new DefaultDriver();
@@ -74,16 +63,18 @@ QUnit.module("filesystem", function (origHooks) {
       await assert.fs.open(url("/driverA/blah"), "directory");
       await assert.fs.open(url("/driverA/foo/driverB/bar"), "file");
 
-      assert.fs.unmount(volumeA);
+      await assert.fs.unmount(volumeA);
+
+      await assert.file("/driverA").doesNotExist();
+      await assert.file("/driverA/foo").doesNotExist();
+      await assert.file("/driverA/foo/driverB").doesNotExist();
+      await assert.file("/driverA/foo/driverB/bar").doesNotExist();
 
       let listing = (await assert.fs.list(url("/"), true)).map(
         (i) => i.url.href
       );
 
-      // The mount point of A is actually inside a parent volume too (the
-      // default volume). This dir was auotmatically fashioned for us as a
-      // convenience when we requested A to be mounted.
-      assert.deepEqual(listing, [`${origin}/`, `${origin}/driverA`]);
+      assert.deepEqual(listing, [`${origin}/`]);
     });
   });
 

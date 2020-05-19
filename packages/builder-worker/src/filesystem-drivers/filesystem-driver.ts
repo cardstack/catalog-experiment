@@ -62,7 +62,7 @@ export interface FileDescriptor extends Descriptor {
 
 type DefaultDescriptors = DefaultDirectoryDescriptor | DefaultFileDescriptor;
 type DefaultResources = File | Directory;
-let descriptors: WeakMap<DefaultDescriptors, DefaultResources> = new WeakMap();
+let descriptors: Map<string, DefaultResources> = new Map();
 
 export class DefaultDriver implements FileSystemDriver {
   async mountVolume(url: URL, dispatchEvent: FileSystem["dispatchEvent"]) {
@@ -150,12 +150,12 @@ export class DefaultDirectoryDescriptor implements DirectoryDescriptor {
     readonly url: URL,
     private dispatchEvent: FileSystem["dispatchEvent"]
   ) {
-    descriptors.set(this, resource);
+    descriptors.set(this.url.href, resource);
     this.volume = resource.volume;
   }
 
   private get resource() {
-    return descriptors.get(this)! as Directory;
+    return descriptors.get(this.url.href)! as Directory;
   }
 
   get inode() {
@@ -217,7 +217,7 @@ export class DefaultDirectoryDescriptor implements DirectoryDescriptor {
   ): Promise<void>;
   async add(name: string, descriptor: DefaultFileDescriptor): Promise<void>;
   async add(name: string, descriptor: DefaultDescriptors): Promise<void> {
-    this.resource.files.set(name, descriptors.get(descriptor)!);
+    this.resource.files.set(name, descriptors.get(descriptor.url.href)!);
   }
 }
 
@@ -230,12 +230,12 @@ export class DefaultFileDescriptor implements FileDescriptor {
     readonly url: URL,
     private dispatchEvent: FileSystem["dispatchEvent"]
   ) {
-    descriptors.set(this, resource);
+    descriptors.set(this.url.href, resource);
     this.volume = resource.volume;
   }
 
   private get resource() {
-    return descriptors.get(this)! as File;
+    return descriptors.get(this.url.href)! as File;
   }
 
   get inode() {
