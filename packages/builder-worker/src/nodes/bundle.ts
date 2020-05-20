@@ -73,7 +73,20 @@ export function expandAssignments(
   while (queue.length > 0) {
     let assignment = queue.shift()!;
     for (let dependency of Object.values(assignment.module.imports)) {
-      if (!assignments.has(dependency.resolution.url.href)) {
+      let depAssignment = assignments.get(dependency.resolution.url.href);
+      if (depAssignment) {
+        // already assigned
+        if (depAssignment.bundleURL.href !== assignment.bundleURL.href) {
+          // already assigned to another bundle, so the names we consume out of
+          // it must be exposed
+          for (let name of dependency.desc.names.values()) {
+            ensureExposed(name, depAssignment);
+          }
+          if (dependency.desc.namespace.length > 0) {
+            ensureExposed(NamespaceMarker, depAssignment);
+          }
+        }
+      } else {
         let a = {
           bundleURL: assignment.bundleURL,
           module: dependency.resolution,
@@ -84,4 +97,30 @@ export function expandAssignments(
       }
     }
   }
+}
+
+function ensureExposed(
+  exported: string | NamespaceMarker,
+  assignment: BundleAssignment
+) {
+  if (!assignment.exposedNames.has(exported)) {
+    assignment.exposedNames.set(
+      exported,
+      defaultName(exported, assignment.module)
+    );
+  }
+}
+
+function defaultName(
+  exported: string | NamespaceMarker,
+  module: ModuleResolution
+): string {
+  if (typeof exported === "string") {
+    return exported;
+  }
+  let match = /([a-zA-Z]\w+)(?:\.[jt]s)?$/i.exec(module.url.href);
+  if (match) {
+    return match[1];
+  }
+  return "a";
 }
