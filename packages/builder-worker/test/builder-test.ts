@@ -18,54 +18,65 @@ QUnit.module("module builder", function (origHooks) {
     return etags;
   }
 
-  test("can generate an index.html entrypoint from src-index.html", async function (assert) {
+  function makeBuilder(fs: FileSystem) {
+    return Builder.forProjects(fs, [
+      [
+        // input is default origin (http://localhost:4200)
+        new URL(origin),
+        // output is default origin/output (http://localhost:4200/output)
+        new URL("/output/", origin),
+      ],
+    ]);
+  }
+
+  test("can generate an index.html entrypoint", async function (assert) {
     await assert.setupFiles({
-      "entrypoints.json": `{"src-index.html": "index.html"}`,
-      "src-index.html": `<html><script type="module" src="./index.js"></script></html>`,
+      "entrypoints.json": `["index.html"]`,
+      "index.html": `<html><script type="module" src="./index.js"></script></html>`,
       "index.js": `export const message = "hello world";`,
     });
-    let builder = Builder.forProjects(assert.fs, [origin]);
+    let builder = makeBuilder(assert.fs);
     await builder.build();
-    await assert.file("index.html").exists();
+    await assert.file("output/index.html").exists();
     await assert
-      .file("/index.html")
-      .matches(/src=\"\/dist\/0.js\"/, "file contents are correct");
+      .file("output/index.html")
+      .matches(/src=\"\.\/dist\/0.js\"/, "file contents are correct");
   });
 
   test("can process multiple app entrypoints", async function (assert) {
     await assert.setupFiles({
-      "entrypoints.json": `{"src-index.html": "index.html", "test/src-index.html": "test/index.html"}`,
-      "src-index.html": `<html><script type="module" src="./index.js"></script></html>`,
+      "entrypoints.json": `["index.html", "test/index.html"]`,
+      "index.html": `<html><script type="module" src="./index.js"></script></html>`,
       "index.js": `export const message = "hello world";`,
-      "test/src-index.html": `<html><script type="module" src="./index.js"></script></html>`,
+      "test/index.html": `<html><script type="module" src="./index.js"></script></html>`,
       "test/index.js": `export const message = "bye mars";`,
     });
-    let builder = Builder.forProjects(assert.fs, [origin]);
+    let builder = makeBuilder(assert.fs);
     await builder.build();
-    await assert.file("index.html").exists();
+    await assert.file("output/index.html").exists();
     await assert
-      .file("/index.html")
-      .matches(/src=\"\/dist\/0.js\"/, "file contents are correct");
-    await assert.file("test/index.html").exists();
+      .file("output/index.html")
+      .matches(/src=\"\.\/dist\/0.js\"/, "file contents are correct");
+    await assert.file("output/test/index.html").exists();
     await assert
-      .file("test/index.html")
-      .matches(/src=\"\/dist\/1.js\"/, "file contents are correct");
+      .file("output/test/index.html")
+      .matches(/src=\"\.\.\/dist\/1.js\"/, "file contents are correct");
   });
 
   test("it does not change source files", async function (assert) {
     await assert.setupFiles({
-      "entrypoints.json": `{"src-index.html": "index.html"}`,
-      "src-index.html": `<html> <script type="module" src="./index.js"></script> </html>`,
+      "entrypoints.json": `["index.html"]`,
+      "index.html": `<html> <script type="module" src="./index.js"></script> </html>`,
       "index.js": `export const message = "hello world";`,
     });
     let originalEtags = await etags(assert.fs, origin);
-    let builder = Builder.forProjects(assert.fs, [origin]);
+    let builder = makeBuilder(assert.fs);
     await builder.build();
 
     let finalEtags = await etags(assert.fs, origin);
     await assert.equal(
-      finalEtags["/src-index.html"],
-      originalEtags["/src-index.html"],
+      finalEtags["/index.html"],
+      originalEtags["/index.html"],
       "file has not changed"
     );
     await assert.equal(
@@ -74,10 +85,10 @@ QUnit.module("module builder", function (origHooks) {
       "file has not changed"
     );
     await assert
-      .file("/src-index.html")
+      .file("/index.html")
       .matches(/src="\.\/index\.js"/, "file contents are correct");
     await assert
-      .file("/src-index.html")
+      .file("/index.html")
       .doesNotMatch(/src=\"\/dist\/0.js\"/, "file contents are correct");
     await assert
       .file("/index.js")
@@ -86,62 +97,62 @@ QUnit.module("module builder", function (origHooks) {
 
   test("doesn't touch scripts from different origins", async function (assert) {
     await assert.setupFiles({
-      "entrypoints.json": `{"src-index.html": "index.html"}`,
-      "src-index.html": `<html><script type="module" src="http://somewhere-else/index.js"></script></html>`,
+      "entrypoints.json": `["index.html"]`,
+      "index.html": `<html><script type="module" src="http://somewhere-else/index.js"></script></html>`,
       "index.js": `export const message = "hello world";`,
     });
-    let builder = Builder.forProjects(assert.fs, [origin]);
+    let builder = makeBuilder(assert.fs);
     await builder.build();
     await assert
-      .file("/index.html")
-      .doesNotMatch(/src=\"\/dist\/0.js\"/, "file contents are correct");
+      .file("output/index.html")
+      .doesNotMatch(/dist/, "file contents are correct");
   });
 
   test("can process scripts that have a relative path", async function (assert) {
     await assert.setupFiles({
-      "entrypoints.json": `{"src-index.html": "index.html"}`,
-      "src-index.html": `<html><script type="module" src="./index.js"></script></html>`,
+      "entrypoints.json": `["index.html"]`,
+      "index.html": `<html><script type="module" src="./index.js"></script></html>`,
       "index.js": `export const message = "hello world";`,
     });
-    let builder = Builder.forProjects(assert.fs, [origin]);
+    let builder = makeBuilder(assert.fs);
     await builder.build();
     await assert
-      .file("/index.html")
-      .matches(/src=\"\/dist\/0.js\"/, "file contents are correct");
+      .file("output/index.html")
+      .matches(/src=\"\.\/dist\/0.js\"/, "file contents are correct");
   });
 
   test("can process scripts that originate from the same origin", async function (assert) {
     await assert.setupFiles({
-      "entrypoints.json": `{"src-index.html": "index.html"}`,
-      "src-index.html": `<html><script type="module" src="${origin}/index.js"></script></html>`,
+      "entrypoints.json": `["index.html"]`,
+      "index.html": `<html><script type="module" src="${origin}/index.js"></script></html>`,
       "index.js": `export const message = "hello world";`,
     });
-    let builder = Builder.forProjects(assert.fs, [origin]);
+    let builder = makeBuilder(assert.fs);
     await builder.build();
     await assert
-      .file("/index.html")
-      .matches(/src=\"\/dist\/0.js\"/, "file contents are correct");
+      .file("output/index.html")
+      .matches(/src=\"\.\/dist\/0.js\"/, "file contents are correct");
   });
 
   test("can process scripts that live at the root of the DOM", async function (assert) {
     await assert.setupFiles({
-      "entrypoints.json": `{"src-index.html": "index.html"}`,
-      "src-index.html": `
+      "entrypoints.json": `["index.html"]`,
+      "index.html": `
         <!DOCTYPE html>
         <script type="module" src="./index.js"></script>`,
       "index.js": `export const message = "hello world";`,
     });
-    let builder = Builder.forProjects(assert.fs, [origin]);
+    let builder = makeBuilder(assert.fs);
     await builder.build();
     await assert
-      .file("/index.html")
-      .matches(/src=\"\/dist\/0.js\"/, "file contents are correct");
+      .file("output/index.html")
+      .matches(/src=\"\.\/dist\/0.js\"/, "file contents are correct");
   });
 
   test("modules within the app get bundled together", async function (assert) {
     await assert.setupFiles({
-      "entrypoints.json": `{"src-index.html": "index.html"}`,
-      "src-index.html": `
+      "entrypoints.json": `["index.html"]`,
+      "index.html": `
         <!DOCTYPE html>
         <script type="module" src="./index.js"></script>`,
       "index.js": `
@@ -150,9 +161,9 @@ QUnit.module("module builder", function (origHooks) {
       `,
       "ui.js": `export const message = "Hello world";`,
     });
-    let builder = Builder.forProjects(assert.fs, [origin]);
+    let builder = makeBuilder(assert.fs);
     await builder.build();
-    await assert.file("/dist/0.js").matches(/Hello world/);
-    await assert.file("/dist/0.js").doesNotMatch(/import/);
+    await assert.file("output/dist/0.js").matches(/Hello world/);
+    await assert.file("output/dist/0.js").doesNotMatch(/import/);
   });
 });

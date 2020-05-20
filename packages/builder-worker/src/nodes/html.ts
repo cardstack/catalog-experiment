@@ -14,42 +14,38 @@ import { Memoize } from "typescript-memoize";
 import { maybeURL, maybeRelativeURL } from "../path";
 import { BundleAssignment } from "./bundle";
 
-export interface EntrypointsMapping {
-  [src: string]: string;
-}
-
 export class EntrypointsJSONNode implements BuilderNode {
   cacheKey: string;
 
-  constructor(private root: URL) {
-    this.cacheKey = `entrypoints-json:${this.root.href}`;
+  constructor(private inputRoot: URL, private outputRoot: URL) {
+    this.cacheKey = `entrypoints-json:${this.inputRoot.href}:${this.outputRoot.href}`;
   }
 
   deps() {
     return {
       json: new JSONParseNode(
-        new FileNode(new URL("entrypoints.json", this.root))
+        new FileNode(new URL("entrypoints.json", this.inputRoot))
       ),
     };
   }
 
-  private assertValid(json: any): asserts json is { [src: string]: string } {
-    if (!json || typeof json !== "object") {
-      throw new Error(`invalid entrypoints.json in ${this.root.href}`);
+  private assertValid(json: any): asserts json is string[] {
+    if (!json || !Array.isArray(json)) {
+      throw new Error(`invalid entrypoints.json in ${this.inputRoot.href}`);
     }
-    if (!Object.values(json).every((k) => typeof k === "string")) {
-      throw new Error(`invalid entrypoints.json in ${this.root.href}`);
+    if (!json.every((k) => typeof k === "string")) {
+      throw new Error(`invalid entrypoints.json in ${this.inputRoot.href}`);
     }
   }
 
   async run({ json }: { json: any }): Promise<NextNode<HTMLEntrypoint[]>> {
     this.assertValid(json);
     let htmlEntrypoints = [];
-    for (let [src, dest] of Object.entries(json)) {
+    for (let src of json) {
       htmlEntrypoints.push(
         new HTMLEntrypointNode(
-          new URL(src, this.root),
-          new URL(dest, this.root)
+          new URL(src, this.inputRoot),
+          new URL(src, this.outputRoot)
         )
       );
     }
@@ -76,7 +72,7 @@ export class HTMLEntrypointNode implements BuilderNode {
     parsedHTML: OutputType<HTMLParseNode>;
   }): Promise<Value<HTMLEntrypoint>> {
     return {
-      value: new HTMLEntrypoint(parsedHTML, this.dest),
+      value: new HTMLEntrypoint(this.src, this.dest, parsedHTML),
     };
   }
 }
@@ -98,7 +94,11 @@ export class HTMLParseNode implements BuilderNode {
 }
 
 export class HTMLEntrypoint {
-  constructor(private parsedHTML: dom.Node[], private dest: URL) {}
+  constructor(
+    private src: URL,
+    private dest: URL,
+    private parsedHTML: dom.Node[]
+  ) {}
 
   get destURL() {
     return this.dest;
@@ -115,8 +115,8 @@ export class HTMLEntrypoint {
       this.parsedHTML
     );
     for (let element of scripts) {
-      let url = maybeURL(element.attribs.src, this.dest);
-      if (url && url.origin === this.dest.origin) {
+      let url = maybeURL(element.attribs.src, this.src);
+      if (url && url.origin === this.src.origin) {
         jsEntrypoints.set(url.href, { url, element });
       }
     }

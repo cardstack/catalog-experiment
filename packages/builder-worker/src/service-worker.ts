@@ -15,7 +15,6 @@ import debounce from "lodash/debounce";
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 const fs = new FileSystem();
 const ourBackendEndpoint = "__alive__";
-const webroot: string = "/";
 const uiOrigin = "http://localhost:4300";
 
 let websocketURL: URL;
@@ -23,6 +22,10 @@ let isDisabled = false;
 let finishedBuild: Promise<void>;
 let client: FileDaemonClient | undefined;
 let eventHandler = new FileDaemonEventHandler();
+
+let originURL = new URL(worker.origin);
+let inputURL = new URL("https://local-disk/");
+let projects: [URL, URL][] = [[inputURL, originURL]];
 
 console.log(`service worker evaluated`);
 
@@ -39,14 +42,13 @@ worker.addEventListener("activate", () => {
     `service worker activated for origin: ${worker.origin}, websocket URL: ${websocketURL}`
   );
 
-  let originURL = new URL(worker.origin);
   // takes over when there is *no* existing service worker
   worker.clients.claim();
 
-  client = new FileDaemonClient(originURL, websocketURL, fs, webroot);
+  client = new FileDaemonClient(originURL, websocketURL, fs, inputURL);
   client.addEventListener(eventHandler.handleEvent.bind(eventHandler));
 
-  let builder = Builder.forProjects(fs, [originURL]);
+  let builder = Builder.forProjects(fs, projects);
   let finishedRebuild: Promise<void>;
   let httpVolumeId: string;
   let onChange = (event: FsEvent | FSDaemonClientEvent) => {
@@ -113,7 +115,7 @@ worker.addEventListener("activate", () => {
       uiDriver
     );
 
-    fs.addEventListener(originURL.href, debounce(onChange, 1000));
+    fs.addEventListener(inputURL.href, debounce(onChange, 1000));
     client.addEventListener(onChange);
   })();
 
@@ -141,10 +143,10 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
         let response: Response | undefined;
         let context = {
           fs,
-          webroot,
           event,
           fileDaemonClient: client,
           fileDaemonEventHandler: eventHandler,
+          projects,
         };
         for (let handler of stack) {
           response = await handler(event.request, context);

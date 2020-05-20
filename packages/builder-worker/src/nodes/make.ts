@@ -7,11 +7,14 @@ import { BundleAssignmentsNode, BundleNode, BundleAssignment } from "./bundle";
 
 export class MakeBundledModulesNode implements BuilderNode {
   cacheKey = this;
-  constructor(private projectRoots: URL[]) {}
+  constructor(private projectRoots: [URL, URL][]) {}
 
   deps() {
     let htmlEntrypoints = new AllNode(
-      this.projectRoots.map((root) => new EntrypointsJSONNode(root))
+      this.projectRoots.map(
+        ([inputRoot, outputRoot]) =>
+          new EntrypointsJSONNode(inputRoot, outputRoot)
+      )
     );
     return {
       htmlEntrypoints,

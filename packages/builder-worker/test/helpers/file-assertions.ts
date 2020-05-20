@@ -190,9 +190,8 @@ export function installFileAssertions(hooks: NestedHooks) {
     fs = new FileSystem();
     baseURL = b;
     for (let [path, text] of Object.entries(scenario)) {
-      let file = isURL(path)
-        ? await fs.open(new URL(path), "file")
-        : await fs.open(new URL(path, baseURL), "file");
+      let url = new URL(path, baseURL);
+      let file = await fs.open(url, "file");
       file.write(text);
     }
   }

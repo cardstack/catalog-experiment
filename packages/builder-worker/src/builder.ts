@@ -54,17 +54,9 @@ export class Builder<Input> {
 
   constructor(private fs: FileSystem, private roots: Input) {}
 
-  static forProjects(fs: FileSystem, roots: URL[] | string[]) {
-    let urls: URL[];
-    if (
-      roots.length > 0 &&
-      (roots as any[]).every((r) => typeof r === "string")
-    ) {
-      urls = (roots as string[]).map((r) => new URL(r));
-    } else {
-      urls = roots as URL[];
-    }
-    return new Builder(fs, [new MakeBundledModulesNode(urls)]);
+  // roots lists [inputRoot, outputRoot]
+  static forProjects(fs: FileSystem, roots: [URL, URL][]) {
+    return new Builder(fs, [new MakeBundledModulesNode(roots)]);
   }
 
   async build(): Promise<OutputTypes<Input>> {

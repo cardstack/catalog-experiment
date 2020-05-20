@@ -13,18 +13,17 @@ import mapValues from "lodash/mapValues";
 export class ModuleResolutionsNode implements BuilderNode {
   cacheKey = this;
 
-  constructor(private projectRoots: URL[]) {}
+  constructor(private projectRoots: [URL, URL][]) {}
 
   deps() {
-    let entrypoints: { [href: string]: EntrypointsJSONNode } = {};
-    for (let root of this.projectRoots) {
-      entrypoints[root.href] = new EntrypointsJSONNode(root);
-    }
-    return entrypoints;
+    return this.projectRoots.map(
+      ([inputRoot, outputRoot]) =>
+        new EntrypointsJSONNode(inputRoot, outputRoot)
+    );
   }
 
   async run(projects: {
-    [href: string]: HTMLEntrypoint[];
+    [index: string]: HTMLEntrypoint[];
   }): Promise<NextNode<ModuleResolution[]>> {
     let jsEntrypoints: Set<string> = new Set();
     for (let project of Object.values(projects)) {

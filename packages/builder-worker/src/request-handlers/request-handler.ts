@@ -12,5 +12,5 @@ export interface Context {
   fileDaemonClient: FileDaemonClient;
   fileDaemonEventHandler: FileDaemonEventHandler;
   event: FetchEvent;
-  webroot: string;
+  projects: [URL, URL][]; // [input, output][]
 }

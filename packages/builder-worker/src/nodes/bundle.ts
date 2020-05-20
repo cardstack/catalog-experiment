@@ -6,7 +6,7 @@ import { NamespaceMarker } from "../describe-module";
 export class BundleAssignmentsNode implements BuilderNode {
   cacheKey = this;
 
-  constructor(private projectRoots: URL[]) {}
+  constructor(private projectRoots: [URL, URL][]) {}
 
   deps() {
     return { resolutions: new ModuleResolutionsNode(this.projectRoots) };
@@ -19,7 +19,8 @@ export class BundleAssignmentsNode implements BuilderNode {
   }): Promise<Value<BundleAssignment[]>> {
     let assignments = new Map();
     for (let [index, module] of resolutions.entries()) {
-      let bundleURL = new URL(`/dist/${index}.js`, resolutions[0].url.origin);
+      // place the bundles in the first project's output, under dist.
+      let bundleURL = new URL(`./dist/${index}.js`, this.projectRoots[0][1]);
       assignments.set(module.url.href, {
         bundleURL,
         module,
