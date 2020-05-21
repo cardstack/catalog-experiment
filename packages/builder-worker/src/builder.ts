@@ -313,8 +313,13 @@ export class Rebuilder<Input> {
 
   @bind
   private inputDidChange() {
-    if (this.state.name !== "shutdown-requested") {
-      this.setState({ name: "rebuild-requested" });
+    switch (this.state.name) {
+      case "shutdown-requested":
+      case "shutdown":
+        // shutdown takes precedence
+        break;
+      default:
+        this.setState({ name: "rebuild-requested" });
     }
   }
 
