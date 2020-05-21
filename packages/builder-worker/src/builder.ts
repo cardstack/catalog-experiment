@@ -302,6 +302,13 @@ export class Rebuilder<Input> {
 
   // roots lists [inputRoot, outputRoot]
   static forProjects(fs: FileSystem, roots: [URL, URL][]) {
+    for (let [input, output] of roots) {
+      if (input.origin === output.origin) {
+        throw new Error(
+          `The input root origin ${input.href} cannot be the same as the output root origin ${output}. This situation triggers a run away rebuild.`
+        );
+      }
+    }
     return new this(fs, [new MakeBundledModulesNode(roots)]);
   }
 
@@ -370,6 +377,11 @@ export class Rebuilder<Input> {
   }
 
   async shutdown(): Promise<void> {
+    if (this.state.name === "created") {
+      // we want to kick off the run loop so that this builder can't be reused
+      this.run();
+    }
+    this.setState({ name: "shutdown-requested" });
     while (this.state.name !== "shutdown") {
       await this.nextState.promise;
     }
