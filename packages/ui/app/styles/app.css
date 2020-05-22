@@ -10,6 +10,13 @@ body {
   color: rgba(255, 255, 255, 0.75);
 }
 
+.buttons {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+}
+
 .close {
   margin: 0.5rem 0.25rem;
   width: 38px;
@@ -19,6 +26,15 @@ body {
   font-size: 36px;
   line-height: 36px;
   cursor: pointer;
+}
+
+.restart-btn {
+  cursor: pointer;
+  opacity: 0.75;
+  height: 38px;
+  border: none;
+  border-radius: 5px;
+  padding: 0 15px;
 }
 
 .dashboard {

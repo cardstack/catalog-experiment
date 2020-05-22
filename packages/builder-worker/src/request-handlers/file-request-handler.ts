@@ -37,7 +37,7 @@ export const handleFileRequest: Handler = async function (req, context) {
   log(`serving request ${requestURL} from filesystem`);
   let response = await serveFile(requestURL, context);
   if (response.status === 404) {
-    for (let [input, output] of context.projects) {
+    for (let [input, output] of context.buildManager.projects) {
       // we serve each project's input files as a fallback to their output
       // files, which lets you not worry about assets that are unchanged by the
       // build.

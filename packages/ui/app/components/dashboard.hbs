@@ -1,6 +1,11 @@
 <div class="dashboard" {{did-update this.setScrollPosition this.logger.messages}}
   {{did-insert this.setScrollPosition this.logger.messages}}>
-  <CloseButton />
+  <div class="buttons">
+    <CloseButton />
+    <button type="button" class="restart-btn" {{on 'click' this.restart}}>
+      Restart Builder
+    </button>
+  </div>
   <div class="dashboard-section connection-status {{if this.fileDaemonClient.connected 'connected' 'disconnected'}}">
     Server status:
     {{#if this.fileDaemonClient.connected}}
