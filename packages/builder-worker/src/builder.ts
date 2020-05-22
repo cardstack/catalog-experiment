@@ -11,6 +11,9 @@ import { MakeBundledModulesNode } from "./nodes/make";
 import { FileDescriptor } from "./filesystem-drivers/filesystem-driver";
 import { Deferred } from "./deferred";
 import { assertNever } from "shared/util";
+import { Logger } from "./logger";
+
+const { debug } = Logger;
 
 type BoolForEach<T> = {
   [P in keyof T]: boolean;
@@ -66,7 +69,7 @@ class BuildRunner<Input> {
     let result = await this.evalNodes(this.roots, context);
     assertAllComplete(context.nodeStates);
     this.nodeStates = context.nodeStates;
-    console.log(describeNodes(this.nodeStates));
+    debug(describeNodes(this.nodeStates));
     return result.values;
   }
 

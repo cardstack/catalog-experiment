@@ -17,6 +17,9 @@ import {
   DirectoryDescriptor,
   Stat,
 } from "./filesystem-drivers/filesystem-driver";
+import { Logger } from "./logger";
+
+const { log } = Logger;
 
 export class FileSystem {
   private listeners: Map<string, EventListener[]> = new Map();
@@ -474,7 +477,7 @@ export class FileSystem {
       etag: stat.etag ?? "-",
       url,
     }));
-    console.log(columnify(listing));
+    log(columnify(listing));
   }
 }
 

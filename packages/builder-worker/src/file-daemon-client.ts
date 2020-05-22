@@ -1,32 +1,37 @@
 import { WatchInfo, FileInfo } from "../../file-daemon/interfaces";
 import { FileSystem, FileSystemError } from "./filesystem";
 import { FileDescriptor } from "./filesystem-drivers/filesystem-driver";
+import { Logger } from "./logger";
 import { REGTYPE } from "tarstream/constants";
 //@ts-ignore
 import { UnTar } from "tarstream";
+import { ClientEvent } from "./client-event";
 
 export const defaultOrigin = "http://localhost:4200";
 export const defaultWebsocketURL = "ws://localhost:3000";
 export const entrypointsPath = "/entrypoints.json";
 
-interface BaseEvent {
+const { log, error } = Logger;
+
+export interface FileDaemonClientEvent extends ClientEvent<Event> {
   kind: "file-daemon-client-event";
 }
-export interface ConnectedEvent extends BaseEvent {
+
+export interface ConnectedEvent {
   type: "connected";
 }
-export interface DisconnectedEvent extends BaseEvent {
+export interface DisconnectedEvent {
   type: "disconnected";
 }
-export interface SyncStartedEvent extends BaseEvent {
+export interface SyncStartedEvent {
   type: "sync-started";
 }
-export interface SyncFinishedEvent extends BaseEvent {
+export interface SyncFinishedEvent {
   type: "sync-finished";
   files: string[];
 }
 
-export interface FilesChangedEvent extends BaseEvent {
+export interface FilesChangedEvent {
   type: "files-changed";
   modified: string[];
   removed: string[];
@@ -84,7 +89,7 @@ export class FileDaemonClient {
     await this.ready;
     await this.running;
     this.socket = undefined;
-    console.log("file daemon client performed user-requested close");
+    log("file daemon client performed user-requested close");
   }
 
   addEventListener(fn: EventListener) {
@@ -121,7 +126,7 @@ export class FileDaemonClient {
           await this.backoff();
         }
       } catch (err) {
-        console.error(`handled unexpected error in FileDaemonClient`, err);
+        error(`handled unexpected error in FileDaemonClient`, err);
         if (this.socket) {
           this.socket.close();
           this.socket = undefined;
@@ -132,7 +137,7 @@ export class FileDaemonClient {
   }
 
   private tryConnect() {
-    console.log(`attempting to connect`);
+    log(`attempting to connect`);
 
     let socket = new WebSocket(this.websocketServerURL.href);
     let socketIsClosed: () => void;
@@ -147,28 +152,26 @@ export class FileDaemonClient {
       }
     };
     socket.onerror = (event) => {
-      console.log(`websocket error`, event);
+      log(`websocket error`, (event as unknown) as Error);
     };
     socket.onclose = (event: CloseEvent) => {
-      console.log(`websocket close`, event);
+      log(`websocket close: ${JSON.stringify(event)}`);
       socketIsClosed();
       this.connected = false;
       this.dispatchEvent({
         type: "disconnected",
-        kind: "file-daemon-client-event",
       });
     };
     socket.onopen = (event) => {
-      console.log(`websocket open`, event);
+      log(`websocket open: ${JSON.stringify(event)}`);
       this.dispatchEvent({
         type: "connected",
-        kind: "file-daemon-client-event",
       });
       this.backoffInterval = 0;
       this.connected = true;
 
       this.startFullSync().catch((err) => {
-        console.error(`Error encountered running full sync`, err);
+        error(`Error encountered running full sync`, err);
         throw err;
       });
     };
@@ -201,7 +204,7 @@ export class FileDaemonClient {
   }
 
   private async backoff() {
-    console.log(`using backoff delay ${this.backoffInterval}`);
+    log(`using backoff delay ${this.backoffInterval}`);
     await new Promise((resolve) => setTimeout(resolve, this.backoffInterval));
     this.backoffInterval = Math.min(
       Math.max(this.backoffInterval, 100) * 2,
@@ -212,7 +215,6 @@ export class FileDaemonClient {
   private async startFullSync() {
     this.dispatchEvent({
       type: "sync-started",
-      kind: "file-daemon-client-event",
     });
     let stream = (
       await fetch(`${this.fileServerURL}/`, {
@@ -238,20 +240,23 @@ export class FileDaemonClient {
     await untar.done;
     await fs.move(temp, this.mount);
     await fs.remove(temp);
-    console.log("completed full sync");
+    log("completed full sync");
     this.dispatchEvent({
       type: "sync-finished",
-      kind: "file-daemon-client-event",
       files: files.map((f) => this.mountedPath(f).href),
     });
     this.doneSyncing();
   }
 
   private async handleInfo(watchInfo: WatchInfo) {
-    console.log("handleMessage: Received file change notification", watchInfo);
+    log(
+      `handleMessage: Received file change notification ${JSON.stringify(
+        watchInfo
+      )}`
+    );
     let changes = await this.pruneChanges(watchInfo.files);
     if (changes.length === 0) {
-      console.log("no action for file update necessary");
+      log("no action for file update necessary");
       return;
     }
     let removals = changes.filter(({ etag }) => etag == null);
@@ -259,13 +264,13 @@ export class FileDaemonClient {
     let modified: string[] = [];
 
     for (let change of updates) {
-      console.log(`updating ${change.name}`);
+      log(`updating ${change.name}`);
       modified.push((await this.updateFile(change.name)).href);
     }
 
     let removed: string[] = [];
     for (let { name } of removals) {
-      console.log(`removing ${name}`);
+      log(`removing ${name}`);
       let url = this.mountedPath(name);
       await this.fs.remove(url);
       removed.push(url.href);
@@ -273,12 +278,10 @@ export class FileDaemonClient {
 
     this.dispatchEvent({
       type: "files-changed",
-      kind: "file-daemon-client-event",
       removed,
       modified,
     });
 
-    console.log(`completed processing changes, file system:`);
     await this.fs.displayListing();
   }
 
@@ -359,4 +362,14 @@ export class FileDaemonClient {
     }
     eventsDrained!();
   }
+}
+
+export function isFileDaemonClientEvent(
+  data: any
+): data is FileDaemonClientEvent {
+  return (
+    "kind" in data &&
+    data.kind === "file-daemon-client-event" &&
+    "clientEvent" in data
+  );
 }

@@ -21,6 +21,7 @@
   },
   "devDependencies": {
     "@ember/optional-features": "^1.3.0",
+    "@ember/render-modifiers": "^1.0.2",
     "@glimmer/component": "^1.0.0",
     "@glimmer/tracking": "^1.0.0",
     "@types/ember": "^3.1.2",
@@ -28,10 +29,10 @@
     "@types/ember__test-helpers": "^0.7.10",
     "@types/qunit": "^2.9.1",
     "@types/rsvp": "^4.0.3",
-    "@typescript-eslint/eslint-plugin": "^2.31.0",
-    "@typescript-eslint/parser": "^2.31.0",
     "babel-eslint": "^10.1.0",
+    "babel-plugin-transform-class-property-assignment-to-decorator": "^0.1.1",
     "broccoli-asset-rev": "^3.0.0",
+    "builder-worker": "0.0.1",
     "ember-auto-import": "^1.5.3",
     "ember-cli": "~3.18.0",
     "ember-cli-app-version": "^3.2.0",
@@ -40,14 +41,18 @@
     "ember-cli-dependency-checker": "^3.2.0",
     "ember-cli-htmlbars": "^4.3.1",
     "ember-cli-inject-live-reload": "^2.0.2",
+    "ember-cli-moment-shim": "^3.8.0",
     "ember-cli-sri": "^2.1.1",
     "ember-cli-typescript": "^3.1.3",
     "ember-cli-typescript-blueprints": "^3.0.0",
     "ember-cli-uglify": "^3.0.0",
     "ember-concurrency": "^1.1.7",
+    "ember-concurrency-typescript": "^0.1.0",
     "ember-export-application-global": "^2.0.1",
     "ember-fetch": "^8.0.1",
+    "ember-load-initializers": "^2.1.1",
     "ember-maybe-import-regenerator": "^0.1.6",
+    "ember-moment": "^8.0.0",
     "ember-qunit": "^4.6.0",
     "ember-resolver": "^8.0.0",
     "ember-source": "~3.18.0",
@@ -60,7 +65,7 @@
     "npm-run-all": "^4.1.5",
     "qunit-dom": "^1.2.0",
     "shared": "0.0.1",
-    "typescript": "^3.9.2"
+    "typescript": "^3.9.3"
   },
   "workspaces": {
     "nohoist": [

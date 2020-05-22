@@ -1,13 +1,20 @@
-import { FileDaemonClient, defaultWebsocketURL } from "./file-daemon-client";
+import {
+  FileDaemonClient,
+  defaultWebsocketURL,
+  Event as FileDaemonClientEvent,
+} from "./file-daemon-client";
 import { FileSystem } from "./filesystem";
+import { Logger, LogMessage } from "./logger";
 import { handleFileRequest } from "./request-handlers/file-request-handler";
 import { handleClientRegister } from "./request-handlers/client-register-handler";
-import { FileDaemonEventHandler } from "./file-daemon-event-handler";
+import { handleLogLevelRequest } from "./request-handlers/log-level-handler";
+import { ClientEventHandler } from "./client-event-handler";
 import { Handler } from "./request-handlers/request-handler";
 import { Rebuilder } from "./builder";
 import { HttpFileSystemDriver } from "./filesystem-drivers/http-driver";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
+const { log } = Logger;
 const fs = new FileSystem();
 const ourBackendEndpoint = "__alive__";
 const uiOrigin = "http://localhost:4300";
@@ -15,7 +22,8 @@ const uiOrigin = "http://localhost:4300";
 let websocketURL: URL;
 let isDisabled = false;
 let client: FileDaemonClient | undefined;
-let eventHandler = new FileDaemonEventHandler();
+let fileDaemonEventHandler: ClientEventHandler<FileDaemonClientEvent>;
+let logEventHandler: ClientEventHandler<LogMessage[]>;
 
 let originURL = new URL(worker.origin);
 let inputURL = new URL("https://local-disk/");
@@ -25,7 +33,10 @@ let rebuilder: Rebuilder<unknown>;
 console.log(`service worker evaluated`);
 
 worker.addEventListener("install", () => {
-  console.log(`installing`);
+  logEventHandler = new ClientEventHandler("log-messages");
+  Logger.addListener(logEventHandler.handleEvent.bind(logEventHandler));
+
+  log(`installing`);
   websocketURL = new URL(defaultWebsocketURL);
 
   // force moving on to activation even if another service worker had control
@@ -33,7 +44,7 @@ worker.addEventListener("install", () => {
 });
 
 worker.addEventListener("activate", () => {
-  console.log(
+  log(
     `service worker activated for origin: ${worker.origin}, websocket URL: ${websocketURL}`
   );
 
@@ -44,14 +55,18 @@ worker.addEventListener("activate", () => {
 });
 
 async function activate() {
+  fileDaemonEventHandler = new ClientEventHandler("file-daemon-client-event");
   client = new FileDaemonClient(originURL, websocketURL, fs, inputURL);
-  client.addEventListener(eventHandler.handleEvent.bind(eventHandler));
+  client.addEventListener(
+    fileDaemonEventHandler.handleEvent.bind(fileDaemonEventHandler)
+  );
   let uiDriver = new HttpFileSystemDriver(new URL(`${uiOrigin}/catalogjs-ui/`));
   let mounting = fs.mount(new URL(`/catalogjs-ui`, originURL), uiDriver);
   rebuilder = Rebuilder.forProjects(fs, projects);
   await Promise.all([client.ready, mounting]);
   rebuilder.start();
-  await checkForOurBackend();
+  await rebuilder.isIdle();
+  await fs.displayListing();
 }
 
 worker.addEventListener("fetch", (event: FetchEvent) => {
@@ -67,13 +82,18 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
       if (client) {
         await rebuilder.isIdle();
 
-        let stack: Handler[] = [handleClientRegister, handleFileRequest];
+        let stack: Handler[] = [
+          handleClientRegister,
+          handleLogLevelRequest,
+          handleFileRequest,
+        ];
         let response: Response | undefined;
         let context = {
           fs,
           event,
           fileDaemonClient: client,
-          fileDaemonEventHandler: eventHandler,
+          fileDaemonEventHandler,
+          logEventHandler,
           projects,
         };
         for (let handler of stack) {
@@ -88,6 +108,10 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
     })()
   );
 });
+
+(async () => {
+  checkForOurBackend();
+})();
 
 // Check to make sure that our backend is _really_ ours. Otherwise unregister
 // this service worker so it doesnt get in the way of non catalogjs web apps.

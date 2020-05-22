@@ -11,7 +11,6 @@ if (!navigator.serviceWorker.controller) {
   navigator.serviceWorker.register("/service-worker.js", {
     scope: "/",
   });
-  console.log("Waiting for service worker");
   navigator.serviceWorker.ready.then(() => {
     window.location.reload();
   });
@@ -42,7 +41,6 @@ function handleUICommand(event: MessageEvent) {
   if (event.origin !== window.origin) {
     return;
   }
-  console.log("received command from UI", event.data);
   let command = event.data;
   if (!isUIManagerCommand(command)) {
     return;

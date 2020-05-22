@@ -9,5 +9,6 @@ import "./file-daemon-client-test";
 import "./combine-modules-test";
 import "./describe-module-test";
 import "./http-driver-test";
+import "./logger-test";
 
 QUnit.start();

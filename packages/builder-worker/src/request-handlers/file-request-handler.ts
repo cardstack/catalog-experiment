@@ -6,11 +6,13 @@ import {
   DirectoryDescriptor,
   Stat,
 } from "../filesystem-drivers/filesystem-driver";
+import { Logger } from "../logger";
 import { HttpStat } from "../filesystem-drivers/http-driver";
 import { relativeURL } from "../path";
 
 const builderOrigin = "http://localhost:8080";
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
+const { log } = Logger;
 
 export const handleFileRequest: Handler = async function (req, context) {
   // turning this into a URL so we can normalize comparisons (trailing slashes
@@ -32,7 +34,7 @@ export const handleFileRequest: Handler = async function (req, context) {
     return await fetch(req);
   }
 
-  console.log(`serving request ${requestURL} from filesystem`);
+  log(`serving request ${requestURL} from filesystem`);
   let response = await serveFile(requestURL, context);
   if (response.status === 404) {
     for (let [input, output] of context.projects) {
