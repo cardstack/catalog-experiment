@@ -24,6 +24,7 @@ export class ClientEventHandler<T> {
     let clientEvent: ClientEvent<T> = { kind: this.kind, clientEvent: event };
     client.postMessage(clientEvent);
   }
+
   handleEvent(event: T) {
     let self = this;
     (async () => {

@@ -12,6 +12,7 @@ import { ClientEventHandler } from "./client-event-handler";
 import { Handler } from "./request-handlers/request-handler";
 import { Rebuilder } from "./builder";
 import { HttpFileSystemDriver } from "./filesystem-drivers/http-driver";
+import { ReloadEvent } from "./client-reload";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 const { log } = Logger;
@@ -24,6 +25,7 @@ let isDisabled = false;
 let client: FileDaemonClient | undefined;
 let fileDaemonEventHandler: ClientEventHandler<FileDaemonClientEvent>;
 let logEventHandler: ClientEventHandler<LogMessage[]>;
+let reloadEventHandler: ClientEventHandler<ReloadEvent>;
 
 let originURL = new URL(worker.origin);
 let inputURL = new URL("https://local-disk/");
@@ -55,6 +57,7 @@ worker.addEventListener("activate", () => {
 });
 
 async function activate() {
+  reloadEventHandler = new ClientEventHandler("reload");
   fileDaemonEventHandler = new ClientEventHandler("file-daemon-client-event");
   client = new FileDaemonClient(originURL, websocketURL, fs, inputURL);
   client.addEventListener(
@@ -62,7 +65,9 @@ async function activate() {
   );
   let uiDriver = new HttpFileSystemDriver(new URL(`${uiOrigin}/catalogjs-ui/`));
   let mounting = fs.mount(new URL(`/catalogjs-ui`, originURL), uiDriver);
-  rebuilder = Rebuilder.forProjects(fs, projects);
+  rebuilder = Rebuilder.forProjects(fs, projects, () =>
+    reloadEventHandler.handleEvent({})
+  );
   await Promise.all([client.ready, mounting]);
   rebuilder.start();
   await rebuilder.isIdle();
@@ -94,6 +99,7 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
           fileDaemonClient: client,
           fileDaemonEventHandler,
           logEventHandler,
+          reloadEventHandler,
           projects,
         };
         for (let handler of stack) {

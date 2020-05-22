@@ -13,6 +13,7 @@ export const handleClientRegister: Handler = async function (
     fileDaemonEventHandler,
     fileDaemonClient,
     logEventHandler,
+    reloadEventHandler,
   } = context;
   // cross origin requests will not have a client
   if (!event.clientId || requestURL.origin !== worker.origin) {
@@ -37,6 +38,9 @@ export const handleClientRegister: Handler = async function (
       case "log-messages":
         logEventHandler.addClient(event.clientId);
         await logEventHandler.sendEvent(event.clientId, Logger.messages());
+        return new Response("client registered", { status: 200 });
+      case "reload":
+        reloadEventHandler.addClient(event.clientId);
         return new Response("client registered", { status: 200 });
       default:
         return new Response(

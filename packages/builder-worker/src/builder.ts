@@ -292,6 +292,8 @@ type RebuilderState =
       name: "shutdown";
     };
 
+type afterBuildFn = () => void;
+
 export class Rebuilder<Input> {
   private runner: BuildRunner<Input>;
   private state: RebuilderState = {
@@ -299,12 +301,20 @@ export class Rebuilder<Input> {
   };
   private nextState: Deferred<RebuilderState> = new Deferred();
 
-  constructor(fs: FileSystem, roots: Input) {
+  constructor(
+    fs: FileSystem,
+    roots: Input,
+    private afterBuildFn?: afterBuildFn
+  ) {
     this.runner = new BuildRunner(fs, roots, this.inputDidChange);
   }
 
   // roots lists [inputRoot, outputRoot]
-  static forProjects(fs: FileSystem, roots: [URL, URL][]) {
+  static forProjects(
+    fs: FileSystem,
+    roots: [URL, URL][],
+    afterBuildFn?: afterBuildFn
+  ) {
     for (let [input, output] of roots) {
       if (input.origin === output.origin) {
         throw new Error(
@@ -312,7 +322,7 @@ export class Rebuilder<Input> {
         );
       }
     }
-    return new this(fs, [new MakeBundledModulesNode(roots)]);
+    return new this(fs, [new MakeBundledModulesNode(roots)], afterBuildFn);
   }
 
   start() {
@@ -349,6 +359,9 @@ export class Rebuilder<Input> {
         case "working":
           try {
             await this.runner.build();
+            if (typeof this.afterBuildFn === "function") {
+              setTimeout(() => this.afterBuildFn!(), 0);
+            }
           } catch (err) {
             console.error(`Exception while building`, err);
           }

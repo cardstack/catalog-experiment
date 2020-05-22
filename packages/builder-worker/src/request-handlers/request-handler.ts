@@ -5,6 +5,7 @@ import {
 } from "../file-daemon-client";
 import { ClientEventHandler } from "../client-event-handler";
 import { LogMessage } from "../logger";
+import { ReloadEvent } from "../client-reload";
 
 export type Handler = (
   request: Request,
@@ -16,6 +17,7 @@ export interface Context {
   fileDaemonClient: FileDaemonClient;
   fileDaemonEventHandler: ClientEventHandler<FileDaemonClientEvent>;
   logEventHandler: ClientEventHandler<LogMessage[]>;
+  reloadEventHandler: ClientEventHandler<ReloadEvent>;
   event: FetchEvent;
   projects: [URL, URL][]; // [input, output][]
 }
