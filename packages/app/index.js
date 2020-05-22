@@ -9,8 +9,6 @@ export async function boot(rootElement) {
   rootElement.append(img);
 }
 
-if (window.testing) {
-  window.bootApp = boot;
-} else {
+if (!window.testing) {
   boot(document.body);
 }

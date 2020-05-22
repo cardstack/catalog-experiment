@@ -115,6 +115,13 @@ export class HTMLEntrypoint {
       this.parsedHTML
     );
     for (let element of scripts) {
+      if (!element.attribs.src) {
+        continue;
+      }
+      if (element.attribs.type !== "module") {
+        // TODO need to deal with non-module js files...
+        continue;
+      }
       let url = maybeURL(element.attribs.src, this.src);
       if (url && url.origin === this.src.origin) {
         jsEntrypoints.set(url.href, { url, element });
