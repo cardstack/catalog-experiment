@@ -813,27 +813,6 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
-  skip("it can refer to modules in other bundles", async function (assert) {
-    await assert.setupFiles({
-      "index.js": `
-        import { a } from './a.js';
-        console.log(a);
-      `,
-    });
-
-    let assignments = await makeBundleAssignments(assert.fs);
-    let combined = combineModules(url("dist/0.js"), assignments);
-
-    assert.codeEqual(
-      combined,
-      `
-      const a = 'a';
-      const b = 'b';
-      console.log(a + b);
-      `
-    );
-  });
-
   test("preserves bundle imports from other modules", async function (assert) {
     await assert.setupFiles({
       "index.js": `

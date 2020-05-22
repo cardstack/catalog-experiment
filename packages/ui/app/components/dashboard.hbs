@@ -1,4 +1,11 @@
-<div class="dashboard">
+<div class="dashboard" {{did-update this.setScrollPosition this.logger.messages}}
+  {{did-insert this.setScrollPosition this.logger.messages}}>
+  <div class="buttons">
+    <CloseButton />
+    <button type="button" class="restart-btn" {{on 'click' this.restart}}>
+      Restart Builder
+    </button>
+  </div>
   <div class="dashboard-section connection-status {{if this.fileDaemonClient.connected 'connected' 'disconnected'}}">
     Server status:
     {{#if this.fileDaemonClient.connected}}
@@ -36,4 +43,20 @@
     {{/if}}
   </div>
   {{/if}}
+  <div class="dashboard-section log">
+    <div class="log-title">Log Messages:</div>
+    <div class="log-container">
+      {{#each this.logger.messages as |message|}}
+      <div class="message {{message.level}}">
+        <div class="timestamp">[{{moment-format message.timestamp 'MM-DD-YYYY HH:mm:ss'}}]</div>
+        <pre class="message-text">{{message.message}}</pre>
+        {{#if message.error}}
+        <div class="message-error">
+          <pre class="error-stack">{{message.error.stack}}</pre>
+        </div>
+        {{/if}}
+      </div>
+      {{/each}}
+    </div>
+  </div>
 </div>

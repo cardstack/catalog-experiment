@@ -1,33 +1,45 @@
 import {
   FileDaemonClient,
   defaultWebsocketURL,
-  Event as FSDaemonClientEvent,
+  Event as FileDaemonClientEvent,
 } from "./file-daemon-client";
-import { FileSystem, Event as FsEvent } from "./filesystem";
+import { FileSystem } from "./filesystem";
+import { Logger, LogMessage } from "./logger";
 import { handleFileRequest } from "./request-handlers/file-request-handler";
 import { handleClientRegister } from "./request-handlers/client-register-handler";
-import { FileDaemonEventHandler } from "./file-daemon-event-handler";
+import { handleLogLevelRequest } from "./request-handlers/log-level-handler";
+import { handleBuilderRestartRequest } from "./request-handlers/builder-restart-handler";
+import { ClientEventHandler } from "./client-event-handler";
 import { Handler } from "./request-handlers/request-handler";
-import { Builder } from "./builder";
 import { HttpFileSystemDriver } from "./filesystem-drivers/http-driver";
-import debounce from "lodash/debounce";
+import { ReloadEvent } from "./client-reload";
+import { BuildManager } from "./BuildManager";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
+const { log } = Logger;
 const fs = new FileSystem();
 const ourBackendEndpoint = "__alive__";
-const webroot: string = "/";
 const uiOrigin = "http://localhost:4300";
 
 let websocketURL: URL;
 let isDisabled = false;
-let finishedBuild: Promise<void>;
 let client: FileDaemonClient | undefined;
-let eventHandler = new FileDaemonEventHandler();
+let fileDaemonEventHandler: ClientEventHandler<FileDaemonClientEvent>;
+let logEventHandler: ClientEventHandler<LogMessage[]>;
+let reloadEventHandler: ClientEventHandler<ReloadEvent>;
+
+let originURL = new URL(worker.origin);
+let inputURL = new URL("https://local-disk/");
+let projects: [URL, URL][] = [[inputURL, originURL]];
+let buildManager: BuildManager;
 
 console.log(`service worker evaluated`);
 
 worker.addEventListener("install", () => {
-  console.log(`installing`);
+  logEventHandler = new ClientEventHandler("log-messages");
+  Logger.addListener(logEventHandler.handleEvent.bind(logEventHandler));
+
+  log(`installing`);
   websocketURL = new URL(defaultWebsocketURL);
 
   // force moving on to activation even if another service worker had control
@@ -35,85 +47,31 @@ worker.addEventListener("install", () => {
 });
 
 worker.addEventListener("activate", () => {
-  console.log(
+  log(
     `service worker activated for origin: ${worker.origin}, websocket URL: ${websocketURL}`
   );
 
-  let originURL = new URL(worker.origin);
   // takes over when there is *no* existing service worker
   worker.clients.claim();
 
-  client = new FileDaemonClient(originURL, websocketURL, fs, webroot);
-  client.addEventListener(eventHandler.handleEvent.bind(eventHandler));
-
-  let builder = Builder.forProjects(fs, [originURL]);
-  let finishedRebuild: Promise<void[][]>;
-  let httpVolumeId: string;
-  let onChange = (event: FsEvent | FSDaemonClientEvent) => {
-    if (
-      "url" in event &&
-      (event.url.pathname.indexOf("/dist") === 0 ||
-        event.url.pathname === "/catalogjs-ui")
-    ) {
-      return;
-    }
-    if (
-      event.kind === "file-daemon-client-event" &&
-      event.type !== "sync-finished"
-    ) {
-      return;
-    }
-    (async () => {
-      await finishedRebuild;
-      await (finishedRebuild = builder.build());
-
-      if (event.type === "sync-finished") {
-        // this is a workaround to deal with the fact that the sync is stomping on
-        // our http mount for the ui. see the note below around creating a layered
-        // FS strategy
-        let uiDriver = new HttpFileSystemDriver(
-          new URL(`${uiOrigin}/catalogjs-ui/`)
-        );
-        await fs.unmount(httpVolumeId);
-        httpVolumeId = await fs.mount(
-          new URL(`/catalogjs-ui`, originURL),
-          uiDriver
-        );
-      }
-
-      console.log(`completed build, file system:`);
-      await fs.displayListing();
-    })();
-  };
-
-  finishedBuild = (async () => {
-    await client.ready;
-    await builder.build();
-
-    // For the UI running in the iframe, even though it is being served from the
-    // filesystem abstration, the browser does not permit cross-origin
-    // serviceworker access. Right now the file daemon client is clobbering the
-    // UI mount since it takes over the localhost:4200 origin. As a workaround
-    // we are mounting after the sync--but this is not ideal, since they are
-    // independent and should not be coupled to one another... We should revisit
-    // this after we have implemented a some kind of "layering" strategy (akin
-    // to docker) in our file system.
-    let uiDriver = new HttpFileSystemDriver(
-      new URL(`${uiOrigin}/catalogjs-ui/`)
-    );
-    httpVolumeId = await fs.mount(
-      new URL(`/catalogjs-ui`, originURL),
-      uiDriver
-    );
-
-    fs.addEventListener(originURL.href, debounce(onChange, 1000));
-    client.addEventListener(onChange);
-  })();
-
-  (async () => {
-    await checkForOurBackend();
-  })();
+  activate();
 });
+
+async function activate() {
+  reloadEventHandler = new ClientEventHandler("reload");
+  fileDaemonEventHandler = new ClientEventHandler("file-daemon-client-event");
+  client = new FileDaemonClient(originURL, websocketURL, fs, inputURL);
+  client.addEventListener(
+    fileDaemonEventHandler.handleEvent.bind(fileDaemonEventHandler)
+  );
+  let uiDriver = new HttpFileSystemDriver(new URL(`${uiOrigin}/catalogjs-ui/`));
+  let mounting = fs.mount(new URL(`/catalogjs-ui`, originURL), uiDriver);
+  buildManager = new BuildManager(fs, projects, reloadEventHandler);
+  await Promise.all([client.ready, mounting]);
+  await buildManager.rebuilder.start();
+  await buildManager.rebuilder.isIdle();
+  await fs.displayListing();
+}
 
 worker.addEventListener("fetch", (event: FetchEvent) => {
   let url = new URL(event.request.url);
@@ -126,18 +84,23 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
   event.respondWith(
     (async () => {
       if (client) {
-        // wait for at least the first build so that there is an index.html
-        // to render for the app.
-        await finishedBuild;
+        await buildManager.rebuilder.isIdle();
 
-        let stack: Handler[] = [handleClientRegister, handleFileRequest];
+        let stack: Handler[] = [
+          handleClientRegister,
+          handleBuilderRestartRequest,
+          handleLogLevelRequest,
+          handleFileRequest,
+        ];
         let response: Response | undefined;
         let context = {
           fs,
-          webroot,
           event,
           fileDaemonClient: client,
-          fileDaemonEventHandler: eventHandler,
+          fileDaemonEventHandler,
+          logEventHandler,
+          reloadEventHandler,
+          buildManager,
         };
         for (let handler of stack) {
           response = await handler(event.request, context);
@@ -151,6 +114,10 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
     })()
   );
 });
+
+(async () => {
+  checkForOurBackend();
+})();
 
 // Check to make sure that our backend is _really_ ours. Otherwise unregister
 // this service worker so it doesnt get in the way of non catalogjs web apps.

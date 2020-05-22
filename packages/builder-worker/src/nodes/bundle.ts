@@ -6,7 +6,7 @@ import { NamespaceMarker } from "../describe-module";
 export class BundleAssignmentsNode implements BuilderNode {
   cacheKey = this;
 
-  constructor(private projectRoots: URL[]) {}
+  constructor(private projectRoots: [URL, URL][]) {}
 
   deps() {
     return { resolutions: new ModuleResolutionsNode(this.projectRoots) };
@@ -19,7 +19,8 @@ export class BundleAssignmentsNode implements BuilderNode {
   }): Promise<Value<BundleAssignment[]>> {
     let assignments = new Map();
     for (let [index, module] of resolutions.entries()) {
-      let bundleURL = new URL(`/dist/${index}.js`, resolutions[0].url.origin);
+      // place the bundles in the first project's output, under dist.
+      let bundleURL = new URL(`./dist/${index}.js`, this.projectRoots[0][1]);
       assignments.set(module.url.href, {
         bundleURL,
         module,
@@ -73,7 +74,20 @@ export function expandAssignments(
   while (queue.length > 0) {
     let assignment = queue.shift()!;
     for (let dependency of Object.values(assignment.module.imports)) {
-      if (!assignments.has(dependency.resolution.url.href)) {
+      let depAssignment = assignments.get(dependency.resolution.url.href);
+      if (depAssignment) {
+        // already assigned
+        if (depAssignment.bundleURL.href !== assignment.bundleURL.href) {
+          // already assigned to another bundle, so the names we consume out of
+          // it must be exposed
+          for (let name of dependency.desc.names.values()) {
+            ensureExposed(name, depAssignment);
+          }
+          if (dependency.desc.namespace.length > 0) {
+            ensureExposed(NamespaceMarker, depAssignment);
+          }
+        }
+      } else {
         let a = {
           bundleURL: assignment.bundleURL,
           module: dependency.resolution,
@@ -84,4 +98,30 @@ export function expandAssignments(
       }
     }
   }
+}
+
+function ensureExposed(
+  exported: string | NamespaceMarker,
+  assignment: BundleAssignment
+) {
+  if (!assignment.exposedNames.has(exported)) {
+    assignment.exposedNames.set(
+      exported,
+      defaultName(exported, assignment.module)
+    );
+  }
+}
+
+function defaultName(
+  exported: string | NamespaceMarker,
+  module: ModuleResolution
+): string {
+  if (typeof exported === "string") {
+    return exported;
+  }
+  let match = /([a-zA-Z]\w+)(?:\.[jt]s)?$/i.exec(module.url.href);
+  if (match) {
+    return match[1];
+  }
+  return "a";
 }

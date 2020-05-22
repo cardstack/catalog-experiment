@@ -1,6 +1,6 @@
 import { helloWorld } from "./ui.js";
 
-async function boot(rootElement) {
+export async function boot(rootElement) {
   rootElement.append(helloWorld());
 
   let img = document.createElement("img");
@@ -9,8 +9,6 @@ async function boot(rootElement) {
   rootElement.append(img);
 }
 
-if (window.testing) {
-  window.bootApp = boot;
-} else {
+if (!window.testing) {
   boot(document.body);
 }

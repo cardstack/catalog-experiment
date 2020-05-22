@@ -14,7 +14,12 @@ export function pathToURL(path: string): URL {
 }
 
 export function baseName(path: string): string {
-  return splitPath(path).pop()!;
+  let segments = splitPath(path);
+  let last = segments.pop()!;
+  if (last === "") {
+    last = segments.pop()!;
+  }
+  return last;
 }
 
 export function dirName(path: string): string | undefined {
@@ -35,6 +40,9 @@ export function splitPath(path: string): string[] {
   let segments = path.split("/");
   if (segments[0] === "") {
     segments[0] = "/";
+  }
+  if (segments[segments.length - 1] === "") {
+    segments.pop();
   }
   return segments;
 }

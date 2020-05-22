@@ -106,7 +106,7 @@ function assignedImports(
   assignments: BundleAssignment[],
   state: State
 ): Map<string, Map<string, string>> {
-  let imports = new Map();
+  let imports: ReturnType<typeof assignedImports> = new Map();
   for (let [moduleHref, mappings] of state.assignedImportedNames) {
     let assignment = assignments.find((a) => a.module.url.href === moduleHref)!;
     if (assignment.bundleURL.href === state.bundle.href) {
@@ -119,10 +119,13 @@ function assignedImports(
       imports.set(assignment.bundleURL.href, importsFromBundle);
     }
     for (let [exportedName, localName] of mappings) {
-      importsFromBundle.set(
-        assignment.exposedNames.get(exportedName),
-        localName
-      );
+      let exposedName = assignment.exposedNames.get(exportedName);
+      if (!exposedName) {
+        throw new Error(
+          `bug: tried to import ${exportedName} from ${moduleHref} from another bundle, but it's not exposed`
+        );
+      }
+      importsFromBundle.set(exposedName, localName);
     }
   }
   return imports;

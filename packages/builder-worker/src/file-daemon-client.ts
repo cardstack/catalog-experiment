@@ -1,36 +1,37 @@
-import invert from "lodash/invert";
-import difference from "lodash/difference";
 import { WatchInfo, FileInfo } from "../../file-daemon/interfaces";
 import { FileSystem, FileSystemError } from "./filesystem";
 import { FileDescriptor } from "./filesystem-drivers/filesystem-driver";
-import { join, baseName, dirName } from "./path";
+import { Logger } from "./logger";
 import { REGTYPE } from "tarstream/constants";
-import { EntrypointsMapping } from "./nodes/html";
 //@ts-ignore
 import { UnTar } from "tarstream";
+import { ClientEvent } from "./client-event";
 
 export const defaultOrigin = "http://localhost:4200";
 export const defaultWebsocketURL = "ws://localhost:3000";
 export const entrypointsPath = "/entrypoints.json";
 
-interface BaseEvent {
+const { log, error } = Logger;
+
+export interface FileDaemonClientEvent extends ClientEvent<Event> {
   kind: "file-daemon-client-event";
 }
-export interface ConnectedEvent extends BaseEvent {
+
+export interface ConnectedEvent {
   type: "connected";
 }
-export interface DisconnectedEvent extends BaseEvent {
+export interface DisconnectedEvent {
   type: "disconnected";
 }
-export interface SyncStartedEvent extends BaseEvent {
+export interface SyncStartedEvent {
   type: "sync-started";
 }
-export interface SyncFinishedEvent extends BaseEvent {
+export interface SyncFinishedEvent {
   type: "sync-finished";
   files: string[];
 }
 
-export interface FilesChangedEvent extends BaseEvent {
+export interface FilesChangedEvent {
   type: "files-changed";
   modified: string[];
   removed: string[];
@@ -68,10 +69,15 @@ export class FileDaemonClient {
     private fileServerURL: URL,
     private websocketServerURL: URL,
     private fs: FileSystem,
-    private mountPath: string
+    private mount: URL
   ) {
     this.ready = new Promise((res) => (this.doneSyncing = res));
     this.running = this.run();
+    if (!mount.href.endsWith("/")) {
+      throw new Error(
+        `file daemon client should be mounted on a directory with a trailing slash`
+      );
+    }
   }
 
   async close() {
@@ -83,7 +89,7 @@ export class FileDaemonClient {
     await this.ready;
     await this.running;
     this.socket = undefined;
-    console.log("file daemon client performed user-requested close");
+    log("file daemon client performed user-requested close");
   }
 
   addEventListener(fn: EventListener) {
@@ -120,7 +126,7 @@ export class FileDaemonClient {
           await this.backoff();
         }
       } catch (err) {
-        console.error(`handled unexpected error in FileDaemonClient`, err);
+        error(`handled unexpected error in FileDaemonClient`, err);
         if (this.socket) {
           this.socket.close();
           this.socket = undefined;
@@ -131,7 +137,7 @@ export class FileDaemonClient {
   }
 
   private tryConnect() {
-    console.log(`attempting to connect`);
+    log(`attempting to connect`);
 
     let socket = new WebSocket(this.websocketServerURL.href);
     let socketIsClosed: () => void;
@@ -146,28 +152,26 @@ export class FileDaemonClient {
       }
     };
     socket.onerror = (event) => {
-      console.log(`websocket error`, event);
+      log(`websocket error`, (event as unknown) as Error);
     };
     socket.onclose = (event: CloseEvent) => {
-      console.log(`websocket close`, event);
+      log(`websocket close: ${JSON.stringify(event)}`);
       socketIsClosed();
       this.connected = false;
       this.dispatchEvent({
         type: "disconnected",
-        kind: "file-daemon-client-event",
       });
     };
     socket.onopen = (event) => {
-      console.log(`websocket open`, event);
+      log(`websocket open: ${JSON.stringify(event)}`);
       this.dispatchEvent({
         type: "connected",
-        kind: "file-daemon-client-event",
       });
       this.backoffInterval = 0;
       this.connected = true;
 
       this.startFullSync().catch((err) => {
-        console.error(`Error encountered running full sync`, err);
+        error(`Error encountered running full sync`, err);
         throw err;
       });
     };
@@ -200,7 +204,7 @@ export class FileDaemonClient {
   }
 
   private async backoff() {
-    console.log(`using backoff delay ${this.backoffInterval}`);
+    log(`using backoff delay ${this.backoffInterval}`);
     await new Promise((resolve) => setTimeout(resolve, this.backoffInterval));
     this.backoffInterval = Math.min(
       Math.max(this.backoffInterval, 100) * 2,
@@ -211,7 +215,6 @@ export class FileDaemonClient {
   private async startFullSync() {
     this.dispatchEvent({
       type: "sync-started",
-      kind: "file-daemon-client-event",
     });
     let stream = (
       await fetch(`${this.fileServerURL}/`, {
@@ -221,17 +224,13 @@ export class FileDaemonClient {
       })
     ).body as ReadableStream;
 
-    let mountedPath = this.mountedPath.bind(this);
     let fs = this.fs;
     let temp = await fs.tempURL();
     let files: string[] = [];
     let untar = new UnTar(stream, {
       async file(entry) {
         if (entry.type === REGTYPE) {
-          let file = await fs.open(
-            new URL(mountedPath(entry.name), temp),
-            "file"
-          );
+          let file = await fs.open(new URL(entry.name, temp), "file");
           await file.write(entry.stream());
           file.close();
           files.push(entry.name);
@@ -239,243 +238,68 @@ export class FileDaemonClient {
       },
     });
     await untar.done;
-    await this.renameEntrypoints(temp);
-    await fs.move(
-      new URL(this.mountPath, temp),
-      new URL(this.mountPath, this.fileServerURL)
-    );
+    await fs.move(temp, this.mount);
     await fs.remove(temp);
-    console.log("completed full sync");
+    log("completed full sync");
     this.dispatchEvent({
       type: "sync-finished",
-      kind: "file-daemon-client-event",
-      files: files.map(
-        (f) => new URL(this.mountedPath(f), this.fileServerURL).href
-      ),
+      files: files.map((f) => this.mountedPath(f).href),
     });
     this.doneSyncing();
   }
 
-  // Only used for fullsync when we are writing in a temp origin
-  private async renameEntrypoints(tempOrigin: URL) {
-    let originalEntrypoints = await this.getEntrypointsAsDestPaths(tempOrigin);
-    if (!originalEntrypoints) {
-      return;
-    }
-
-    for (let entrypoint of originalEntrypoints) {
-      let sourceURL = new URL(this.mountedPath(entrypoint), tempOrigin);
-      let destPath = join(
-        dirName(sourceURL.pathname) || "/",
-        `src-${baseName(sourceURL.pathname)}`
-      );
-      await this.fs.move(sourceURL, new URL(destPath, tempOrigin));
-    }
-    await this.generateEntrypointsMappingFile(originalEntrypoints, tempOrigin);
-
-    let hasExistingIndexHtml: boolean;
-    let currentIndexHtml = new URL(
-      this.mountedPath("/index.html"),
-      this.fileServerURL
-    );
-    try {
-      await this.fs.open(currentIndexHtml);
-      hasExistingIndexHtml = true;
-    } catch (e) {
-      if (e.code === "NOT_FOUND") {
-        hasExistingIndexHtml = false;
-      } else {
-        throw e;
-      }
-    }
-    if (hasExistingIndexHtml) {
-      await this.fs.copy(currentIndexHtml, new URL("/index.html", tempOrigin));
-    }
-  }
-
   private async handleInfo(watchInfo: WatchInfo) {
-    console.log("handleMessage: Received file change notification", watchInfo);
+    log(
+      `handleMessage: Received file change notification ${JSON.stringify(
+        watchInfo
+      )}`
+    );
     let changes = await this.pruneChanges(watchInfo.files);
     if (changes.length === 0) {
-      console.log("no action for file update necessary");
+      log("no action for file update necessary");
       return;
     }
     let removals = changes.filter(({ etag }) => etag == null);
     let updates = changes.filter(({ etag }) => etag != null);
-
-    let entrypointsMapping: EntrypointsMapping | undefined;
-    let entrypointsChanged = false;
-    let previousEntrypoints: EntrypointsMapping | undefined;
-    let file: FileDescriptor | undefined;
-    try {
-      file = (await this.fs.open(
-        new URL(this.mountedPath(entrypointsPath), this.fileServerURL)
-      )) as FileDescriptor;
-      previousEntrypoints = JSON.parse(
-        await file.readText()
-      ) as EntrypointsMapping;
-    } catch (err) {
-      if (err.code !== "NOT_FOUND") {
-        throw err;
-      }
-    } finally {
-      if (file) {
-        file.close();
-      }
-    }
-
     let modified: string[] = [];
-    // make sure to first check and see if the entrypoint file itself is
-    // changing, in which case we should deal with that first.
-    if (updates.find((f) => f.name === entrypointsPath)) {
-      entrypointsChanged = true;
-      modified.push(
-        new URL(this.mountedPath(entrypointsPath), this.fileServerURL).href
-      );
-      let destEntrypoints = (await (
-        await fetch(`${this.fileServerURL}${entrypointsPath}`)
-      ).json()) as string[];
-      entrypointsMapping = await this.generateEntrypointsMappingFile(
-        destEntrypoints
-      );
-      updates = updates.filter((f) => f.name !== entrypointsPath);
-    }
-
-    if (!entrypointsMapping) {
-      entrypointsMapping = removals.find((f) => f.name === entrypointsPath)
-        ? {}
-        : (await this.getEntrypointsAsMappings()) ?? {};
-    }
-    let invertedEntrypointsMapping = invert(entrypointsMapping);
 
     for (let change of updates) {
-      let pathOverride: string | undefined;
-      if (invertedEntrypointsMapping[change.name]) {
-        pathOverride = invertedEntrypointsMapping[change.name];
-        console.log(`updating ${change.name} (writing to ${pathOverride})`);
-      } else {
-        console.log(`updating ${change.name}`);
-      }
-      modified.push((await this.updateFile(change.name, pathOverride)).href);
-    }
-
-    if (entrypointsChanged) {
-      for (let [destPath, sourcePath] of Object.entries(
-        invertedEntrypointsMapping
-      )) {
-        console.log(`updating ${destPath} (writing to ${sourcePath})`);
-        modified.push((await this.updateFile(destPath, sourcePath)).href);
-      }
-      for (let removedSrcPath of difference(
-        Object.keys(previousEntrypoints || []),
-        Object.keys(entrypointsMapping)
-      )) {
-        await this.fs.remove(new URL(removedSrcPath, this.fileServerURL));
-        modified.push(
-          (await this.updateFile(previousEntrypoints![removedSrcPath])).href
-        );
-        console.log(`updating ${previousEntrypoints![removedSrcPath]}`);
-      }
+      log(`updating ${change.name}`);
+      modified.push((await this.updateFile(change.name)).href);
     }
 
     let removed: string[] = [];
     for (let { name } of removals) {
-      console.log(`removing ${name}`);
-      let url = new URL(this.mountedPath(name), this.fileServerURL);
+      log(`removing ${name}`);
+      let url = this.mountedPath(name);
       await this.fs.remove(url);
       removed.push(url.href);
     }
 
     this.dispatchEvent({
       type: "files-changed",
-      kind: "file-daemon-client-event",
       removed,
       modified,
     });
 
-    console.log(`completed processing changes, file system:`);
     await this.fs.displayListing();
   }
 
-  private async getEntrypointsAsMappings(
-    thisOrigin = this.fileServerURL
-  ): Promise<EntrypointsMapping | undefined> {
-    let entrypoints = await this._getEntrypointsObject(thisOrigin);
-    if (entrypoints) {
-      return entrypoints as EntrypointsMapping;
-    }
-    return;
-  }
-
-  private async getEntrypointsAsDestPaths(
-    thisOrigin = this.fileServerURL
-  ): Promise<string[] | undefined> {
-    let entrypoints = await this._getEntrypointsObject(thisOrigin);
-    if (entrypoints) {
-      return entrypoints as string[];
-    }
-    return;
-  }
-
-  private async _getEntrypointsObject(
-    thisOrigin = this.fileServerURL
-  ): Promise<EntrypointsMapping | string[] | undefined> {
-    let entrypointsFile: FileDescriptor | undefined;
-    try {
-      entrypointsFile = (await this.fs.open(
-        new URL(this.mountedPath(entrypointsPath), thisOrigin)
-      )) as FileDescriptor;
-
-      return JSON.parse(await entrypointsFile.readText()) as
-        | string[]
-        | EntrypointsMapping;
-    } catch (err) {
-      if (err instanceof FileSystemError && err.code === "NOT_FOUND") {
-        return; // in this case there is no build to perform
-      }
-      throw err;
-    } finally {
-      if (entrypointsFile) {
-        entrypointsFile.close();
-      }
-    }
-  }
-
-  private async generateEntrypointsMappingFile(
-    originalEntrypoints: string[],
-    thisOrigin = this.fileServerURL
-  ): Promise<EntrypointsMapping> {
-    let entrypoints: { [srcFile: string]: string } = {};
-    for (let destPath of originalEntrypoints) {
-      let srcPath = join(dirName(destPath) || "/", `src-${baseName(destPath)}`);
-      entrypoints[srcPath] = join(destPath);
-    }
-    let entrypointsFile = await this.fs.open(
-      new URL(this.mountedPath(entrypointsPath), thisOrigin),
-      "file"
-    );
-    await entrypointsFile.write(JSON.stringify(entrypoints));
-    return entrypoints;
-  }
-
-  private async updateFile(path: string, pathOverride?: string): Promise<URL> {
+  private async updateFile(path: string): Promise<URL> {
     let res = await fetch(`${this.fileServerURL}${path}`);
     let stream = res.body as ReadableStream<Uint8Array>;
     if (!stream) {
       throw new Error(`Couldn't fetch ${path} from file server`);
     }
-    let url = new URL(
-      this.mountedPath(pathOverride ?? path),
-      this.fileServerURL
-    );
+    let url = this.mountedPath(path);
     let file = await this.fs.open(url, "file");
     await file.write(stream);
     file.close();
     return url;
   }
 
-  private mountedPath(path: string): string {
-    return join(this.mountPath, path);
+  private mountedPath(path: string): URL {
+    return new URL(path, this.mount);
   }
 
   private async pruneChanges(changes: FileInfo[]): Promise<FileInfo[]> {
@@ -538,4 +362,14 @@ export class FileDaemonClient {
     }
     eventsDrained!();
   }
+}
+
+export function isFileDaemonClientEvent(
+  data: any
+): data is FileDaemonClientEvent {
+  return (
+    "kind" in data &&
+    data.kind === "file-daemon-client-event" &&
+    "clientEvent" in data
+  );
 }

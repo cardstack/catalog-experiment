@@ -43,7 +43,7 @@ export function makeListener(
   return { listener, wait };
 }
 
-export function makeClient(fs: FileSystem, mountpoint = "/") {
+export function makeClient(fs: FileSystem, mountpoint = testFileDaemonURL) {
   return new FileDaemonClient(
     testFileDaemonURL,
     testWebsocketURL,

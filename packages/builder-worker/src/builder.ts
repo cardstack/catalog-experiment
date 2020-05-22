@@ -9,6 +9,11 @@ import {
 import { FileNode, WriteFileNode } from "./nodes/file";
 import { MakeBundledModulesNode } from "./nodes/make";
 import { FileDescriptor } from "./filesystem-drivers/filesystem-driver";
+import { Deferred } from "./deferred";
+import { assertNever } from "shared/util";
+import { Logger } from "./logger";
+
+const { debug, error } = Logger;
 
 type BoolForEach<T> = {
   [P in keyof T]: boolean;
@@ -47,25 +52,16 @@ class CurrentContext {
   constructor(public changedFiles: Set<string>) {}
 }
 
-export class Builder<Input> {
-  nodeStates: Map<CacheKey, CompleteState> = new Map();
-  watchedOrigins: Set<string> = new Set();
-  recentlyChangedFiles: Set<string> = new Set();
+class BuildRunner<Input> {
+  private nodeStates: Map<CacheKey, CompleteState> = new Map();
+  private watchedOrigins: Set<string> = new Set();
+  private recentlyChangedFiles: Set<string> = new Set();
 
-  constructor(private fs: FileSystem, private roots: Input) {}
-
-  static forProjects(fs: FileSystem, roots: URL[] | string[]) {
-    let urls: URL[];
-    if (
-      roots.length > 0 &&
-      (roots as any[]).every((r) => typeof r === "string")
-    ) {
-      urls = (roots as string[]).map((r) => new URL(r));
-    } else {
-      urls = roots as URL[];
-    }
-    return new Builder(fs, [new MakeBundledModulesNode(urls)]);
-  }
+  constructor(
+    private fs: FileSystem,
+    private roots: Input,
+    private inputDidChange?: () => void
+  ) {}
 
   async build(): Promise<OutputTypes<Input>> {
     let context = new CurrentContext(this.recentlyChangedFiles);
@@ -73,7 +69,7 @@ export class Builder<Input> {
     let result = await this.evalNodes(this.roots, context);
     assertAllComplete(context.nodeStates);
     this.nodeStates = context.nodeStates;
-    console.log(describeNodes(this.nodeStates));
+    debug(describeNodes(this.nodeStates));
     return result.values;
   }
 
@@ -239,6 +235,7 @@ export class Builder<Input> {
   @bind
   private fileDidChange(event: Event) {
     this.recentlyChangedFiles.add(event.url.href);
+    this.inputDidChange?.();
   }
 
   handleUnchanged(
@@ -255,6 +252,155 @@ export class Builder<Input> {
       return makeInternalResult(previous.output, false);
     }
     return makeInternalResult(result, true);
+  }
+}
+
+export class Builder<Input> {
+  private runner: BuildRunner<Input>;
+
+  constructor(fs: FileSystem, roots: Input) {
+    this.runner = new BuildRunner(fs, roots);
+  }
+
+  // roots lists [inputRoot, outputRoot]
+  static forProjects(fs: FileSystem, roots: [URL, URL][]) {
+    return new this(fs, [new MakeBundledModulesNode(roots)]);
+  }
+
+  async build(): ReturnType<BuildRunner<Input>["build"]> {
+    return this.runner.build();
+  }
+}
+
+type RebuilderState =
+  | {
+      name: "created";
+    }
+  | {
+      name: "working";
+    }
+  | {
+      name: "idle";
+    }
+  | {
+      name: "shutdown-requested";
+    }
+  | {
+      name: "rebuild-requested";
+    }
+  | {
+      name: "shutdown";
+    };
+
+type afterBuildFn = () => void;
+
+export class Rebuilder<Input> {
+  private runner: BuildRunner<Input>;
+  private state: RebuilderState = {
+    name: "created",
+  };
+  private nextState: Deferred<RebuilderState> = new Deferred();
+
+  constructor(
+    fs: FileSystem,
+    roots: Input,
+    private afterBuildFn?: afterBuildFn
+  ) {
+    this.runner = new BuildRunner(fs, roots, this.inputDidChange);
+  }
+
+  // roots lists [inputRoot, outputRoot]
+  static forProjects(
+    fs: FileSystem,
+    roots: [URL, URL][],
+    afterBuildFn?: afterBuildFn
+  ) {
+    for (let [input, output] of roots) {
+      if (input.origin === output.origin) {
+        throw new Error(
+          `The input root origin ${input.href} cannot be the same as the output root origin ${output}. This situation triggers a run away rebuild.`
+        );
+      }
+    }
+    return new this(fs, [new MakeBundledModulesNode(roots)], afterBuildFn);
+  }
+
+  start() {
+    if (this.state.name === "created") {
+      this.run();
+    }
+  }
+
+  @bind
+  private inputDidChange() {
+    switch (this.state.name) {
+      case "shutdown-requested":
+      case "shutdown":
+        // shutdown takes precedence
+        break;
+      default:
+        this.setState({ name: "rebuild-requested" });
+    }
+  }
+
+  private setState(newState: RebuilderState): void {
+    this.state = newState;
+    let nextState = this.nextState;
+    this.nextState = new Deferred();
+    nextState.resolve(newState);
+  }
+
+  private async run(): Promise<void> {
+    while (true) {
+      switch (this.state.name) {
+        case "created":
+          this.setState({ name: "working" });
+          break;
+        case "working":
+          try {
+            await this.runner.build();
+            if (typeof this.afterBuildFn === "function") {
+              setTimeout(() => this.afterBuildFn!(), 0);
+            }
+          } catch (err) {
+            error(`Exception while building`, err);
+          }
+          if (this.state.name === "working") {
+            this.setState({ name: "idle" });
+          }
+          break;
+        case "idle":
+          await this.nextState.promise;
+          break;
+        case "rebuild-requested":
+          this.setState({ name: "working" });
+          break;
+        case "shutdown-requested":
+          this.setState({ name: "shutdown" });
+          break;
+        case "shutdown":
+          return;
+        default:
+          throw assertNever(this.state);
+      }
+    }
+  }
+
+  async isIdle(): Promise<void> {
+    while (this.state.name !== "idle") {
+      await this.nextState.promise;
+    }
+  }
+
+  async shutdown(): Promise<void> {
+    if (this.state.name === "created") {
+      // we want to kick off the run loop so that this builder can't be reused
+      this.run();
+    }
+    this.setState({ name: "shutdown-requested" });
+    while (this.state.name !== "shutdown") {
+      await this.nextState.promise;
+    }
   }
 }
 

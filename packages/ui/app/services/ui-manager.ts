@@ -26,7 +26,7 @@ export default class UIManagerService extends Service {
     let ready: Ready = {
       kind: "ui-manager",
       type: "ready",
-      width: 300,
+      width: 700,
     };
     window.parent.postMessage(ready, "*");
   }

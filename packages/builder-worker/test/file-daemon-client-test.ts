@@ -65,15 +65,6 @@ QUnit.module("file-daemon-client", function (origHooks) {
       await assert.file("blah/bleep/blurp.txt").matches(/hi guys/);
       assert.equal((await assert.fs.listAllOrigins()).length, 1); // tmp origins are cleaned up
     });
-
-    test("can rename entrypoints", async function (assert) {
-      await assert.file("src-index.html").exists();
-      await assert.file("index.html").doesNotExist();
-      await assert.file("src-index.html").matches(/src="\.\/index\.js"/);
-      await assert
-        .file("entrypoints.json")
-        .matches(/{"\/src-index.html":"\/index.html"}/);
-    });
   });
 
   QUnit.module("readonly mount tests", function (origHooks) {
@@ -85,7 +76,7 @@ QUnit.module("file-daemon-client", function (origHooks) {
       let fileAssert = (assert as unknown) as FileAssert;
       await fileAssert.setupFiles({}, origin);
 
-      client = makeClient(fileAssert.fs, "/mount");
+      client = makeClient(fileAssert.fs, new URL("/mount/", origin));
       await client.ready;
     });
 
@@ -101,7 +92,7 @@ QUnit.module("file-daemon-client", function (origHooks) {
       await assert.file("/mount/index.js").exists();
       await assert.file("/mount/blah/foo.txt").exists();
       await assert.file("/mount/blah/bleep/blurp.txt").exists();
-      await assert.file("/mount/src-index.html").exists();
+      await assert.file("/mount/index.html").exists();
     });
   });
 
@@ -169,54 +160,6 @@ QUnit.module("file-daemon-client", function (origHooks) {
         await wait();
 
         await assert.file("blah/bleep/blurp.txt").doesNotExist();
-      });
-    });
-
-    test("can add an entrypoint", async function (assert) {
-      let { listener, wait } = makeListener(origin.href, "write", "new.html");
-      await withListener(assert.fs, origin.href, listener, async () => {
-        await setFile("new.html", "<body>hi</body>");
-        await wait();
-        await assert.file("src-new.html").doesNotExist();
-      });
-
-      ({ listener, wait } = makeListener(origin.href, "write", "src-new.html"));
-      await withListener(assert.fs, origin.href, listener, async () => {
-        await setFile("entrypoints.json", `["index.html", "new.html"]`);
-        await wait();
-        await assert.file("src-new.html").exists();
-        await assert.file("src-index.html").exists();
-        await assert
-          .file("entrypoints.json")
-          .matches(/"\/src-index.html":"\/index.html"/);
-        await assert
-          .file("entrypoints.json")
-          .matches(/"\/src-new.html":"\/new.html"/);
-      });
-    });
-
-    test("can update an entrypoint", async function (assert) {
-      let { listener, wait } = makeListener(
-        origin.href,
-        "write",
-        "src-index.html"
-      );
-      await withListener(assert.fs, origin.href, listener, async () => {
-        await setFile("index.html", "<body>updated</body>");
-        await wait();
-        await assert.file("src-index.html").matches(/updated/);
-      });
-    });
-
-    test("can delete an entrypoint", async function (assert) {
-      await assert.file("index.html").doesNotExist();
-
-      let { listener, wait } = makeListener(origin.href, "write", "index.html");
-      await withListener(assert.fs, origin.href, listener, async () => {
-        await setFile("entrypoints.json", `[]`);
-        await wait();
-        await assert.file("src-index.html").doesNotExist();
-        await assert.file("index.html").exists();
       });
     });
   });

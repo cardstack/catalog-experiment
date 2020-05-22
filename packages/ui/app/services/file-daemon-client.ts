@@ -1,11 +1,11 @@
-import Service from "@ember/service";
-import { inject as service } from "@ember/service";
+import Service, { inject as service } from "@ember/service";
 import { tracked } from "@glimmer/tracking";
 import UIManagerService from "./ui-manager";
 import {
   Event as FileDaemonEvent,
   FilesChangedEvent,
-} from "../../../builder-worker/src/file-daemon-client";
+  isFileDaemonClientEvent,
+} from "builder-worker/src/file-daemon-client";
 //@ts-ignore
 import { task, timeout } from "ember-concurrency";
 import { assertNever } from "shared/util";
@@ -30,12 +30,14 @@ export default class FileDaemonClientService extends Service {
     this.register.perform();
   }
 
-  @task(function* () {
-    yield fetch("/register-client");
-  })
-  register: any;
+  register = task(function* () {
+    yield fetch("/register-client/file-daemon-client");
+  });
 
-  @(task(function* (this: FileDaemonClientService, event: FileDaemonEvent) {
+  handleEvent = task(function* (
+    this: FileDaemonClientService,
+    event: FileDaemonEvent
+  ) {
     switch (event.type) {
       case "connected":
         if (!this.connected) {
@@ -69,15 +71,5 @@ export default class FileDaemonClientService extends Service {
       default:
         assertNever(event);
     }
-  }).drop())
-  handleEvent: any;
-}
-
-interface FileDaemonClientEvent {
-  kind: "file-daemon-client-event";
-  clientEvent: FileDaemonEvent;
-}
-
-function isFileDaemonClientEvent(data: any): data is FileDaemonClientEvent {
-  return "kind" in data && data.kind === "file-daemon-client-event";
+  }).drop();
 }

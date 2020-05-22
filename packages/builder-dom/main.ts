@@ -3,6 +3,7 @@
 // thread context.
 
 import { assertNever } from "shared/util";
+import { isReloadClientEvent } from "../builder-worker/src/client-reload";
 
 let uiWidth: number;
 
@@ -11,7 +12,6 @@ if (!navigator.serviceWorker.controller) {
   navigator.serviceWorker.register("/service-worker.js", {
     scope: "/",
   });
-  console.log("Waiting for service worker");
   navigator.serviceWorker.ready.then(() => {
     window.location.reload();
   });
@@ -36,17 +36,27 @@ if (!navigator.serviceWorker.controller) {
   }
   document.body.append(iframe);
   window.addEventListener("message", handleUICommand, false);
+  navigator.serviceWorker.addEventListener("message", handleUICommand);
+
+  (async () => {
+    await fetch("/register-client/reload");
+  })();
 }
 
 function handleUICommand(event: MessageEvent) {
   if (event.origin !== window.origin) {
     return;
   }
-  console.log("received command from UI", event.data);
   let command = event.data;
+  if (isReloadClientEvent(command)) {
+    window.location.reload();
+    return;
+  }
+
   if (!isUIManagerCommand(command)) {
     return;
   }
+
   let iframe = document.getElementById("catalogjs-ui");
   if (!iframe) {
     throw new Error("bug: cannot find the catalogjs ui iframe");

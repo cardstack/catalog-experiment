@@ -10,8 +10,16 @@ body {
   color: rgba(255, 255, 255, 0.75);
 }
 
+.buttons {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+}
+
 .close {
   margin: 0.5rem 0.25rem;
+  width: 38px;
   background: none;
   color: white;
   border: none;
@@ -20,13 +28,33 @@ body {
   cursor: pointer;
 }
 
+.restart-btn {
+  cursor: pointer;
+  opacity: 0.75;
+  height: 38px;
+  border: none;
+  border-radius: 5px;
+  padding: 0 15px;
+}
+
 .dashboard {
-  margin-top: 1rem;
   font-family: Arial, Helvetica, sans-serif;
+  display: flex;
+  flex-direction: column;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+}
+
+.container {
+  flex-grow: 1;
+
+  display: flex;
+  flex-direction: column;
 }
 
 .dashboard-section {
-  margin: 1rem 0;
   padding: 0.75rem;
 }
 
@@ -56,4 +84,51 @@ body {
   padding-left: 1rem;
   margin: 0.5rem 0;
   font-size: 12px;
+}
+
+.dashboard-section.log {
+  overflow: auto;
+  padding-right: 0;
+
+  display: flex;
+  flex-direction: column;
+}
+
+.log-container {
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.log-title {
+  padding: 0.75rem 0;
+}
+
+.message {
+  margin: 0.5rem 0;
+  font-size: 12px;
+}
+
+.message.warn {
+  color: yellow;
+}
+
+.message.error {
+  color: red;
+  font-weight: bold;
+}
+
+.timestamp {
+  opacity: 0.5;
+}
+
+.message:first-child {
+  margin-top: 0;
+}
+
+.message-text,
+.error-message,
+.error-stack {
+  margin: 0;
+  white-space: pre-wrap;
 }
