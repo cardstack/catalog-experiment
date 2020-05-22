@@ -13,7 +13,7 @@ import { Deferred } from "./deferred";
 import { assertNever } from "shared/util";
 import { Logger } from "./logger";
 
-const { debug } = Logger;
+const { debug, error } = Logger;
 
 type BoolForEach<T> = {
   [P in keyof T]: boolean;
@@ -363,7 +363,7 @@ export class Rebuilder<Input> {
               setTimeout(() => this.afterBuildFn!(), 0);
             }
           } catch (err) {
-            console.error(`Exception while building`, err);
+            error(`Exception while building`, err);
           }
           if (this.state.name === "working") {
             this.setState({ name: "idle" });
