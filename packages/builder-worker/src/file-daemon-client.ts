@@ -1,7 +1,7 @@
 import { WatchInfo, FileInfo } from "../../file-daemon/interfaces";
 import { FileSystem, FileSystemError } from "./filesystem";
 import { FileDescriptor } from "./filesystem-drivers/filesystem-driver";
-import { Logger } from "./logger";
+import { log, error } from "./logger";
 import { REGTYPE } from "tarstream/constants";
 //@ts-ignore
 import { UnTar } from "tarstream";
@@ -10,8 +10,6 @@ import { ClientEvent } from "./client-event";
 export const defaultOrigin = "http://localhost:4200";
 export const defaultWebsocketURL = "ws://localhost:3000";
 export const entrypointsPath = "/entrypoints.json";
-
-const { log, error } = Logger;
 
 export interface FileDaemonClientEvent extends ClientEvent<Event> {
   kind: "file-daemon-client-event";

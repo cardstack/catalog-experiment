@@ -4,7 +4,7 @@ import {
   Event as FileDaemonClientEvent,
 } from "./file-daemon-client";
 import { FileSystem } from "./filesystem";
-import { Logger, LogMessage } from "./logger";
+import { log, Logger, LogMessage } from "./logger";
 import { handleFileRequest } from "./request-handlers/file-request-handler";
 import { handleClientRegister } from "./request-handlers/client-register-handler";
 import { handleLogLevelRequest } from "./request-handlers/log-level-handler";
@@ -16,7 +16,6 @@ import { ReloadEvent } from "./client-reload";
 import { BuildManager } from "./build-manager";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
-const { log } = Logger;
 const fs = new FileSystem();
 const ourBackendEndpoint = "__alive__";
 const uiOrigin = "http://localhost:4300";
