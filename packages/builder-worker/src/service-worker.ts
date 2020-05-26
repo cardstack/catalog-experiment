@@ -13,7 +13,7 @@ import { ClientEventHandler } from "./client-event-handler";
 import { Handler } from "./request-handlers/request-handler";
 import { HttpFileSystemDriver } from "./filesystem-drivers/http-driver";
 import { ReloadEvent } from "./client-reload";
-import { BuildManager } from "./BuildManager";
+import { BuildManager } from "./build-manager";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 const { log } = Logger;

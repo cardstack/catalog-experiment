@@ -6,7 +6,7 @@ import {
 import { ClientEventHandler } from "../client-event-handler";
 import { LogMessage } from "../logger";
 import { ReloadEvent } from "../client-reload";
-import { BuildManager } from "../BuildManager";
+import { BuildManager } from "../build-manager";
 
 export type Handler = (
   request: Request,
