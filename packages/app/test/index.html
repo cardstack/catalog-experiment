@@ -15,8 +15,17 @@
     <script>
       window.testing = true;
     </script>
+    <!--
+      TODO we need to conditionally remove the main.js script in the node build
+    -->
     <script src="http://localhost:8080/main.js"></script>
     <script src="https://code.jquery.com/qunit/qunit-2.10.0.js"></script>
+    <!--
+      this is a 404 when you run qunit in the browser, but the tests still work.
+      It might be nice if we could conditionally add the testem script only in
+      the node build
+    -->
+    <script src="/testem.js"></script>
     <script type="module" src="index.js"></script>
   </body>
   <div id="test-container"></div>

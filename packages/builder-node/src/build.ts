@@ -8,14 +8,15 @@ import { ensureDirSync, removeSync } from "fs-extra";
 Logger.echoInConsole(true);
 Logger.setLogLevel("info");
 let inputURL = new URL("https://app-src/");
-let outputURL = new URL("https://build-output/");
-let projects: [URL, URL][] = [[inputURL, outputURL]];
+let outputURL = new URL("https://build-output");
 
 let appDir: string;
 let outputDir = join(process.cwd(), "dist");
 
 if (!process.argv[2]) {
-  error("Error: app directory not specified");
+  error(
+    "Error: must specify the app directory to be built as a commandline argument"
+  );
   process.exit(1);
 } else {
   appDir = resolve(process.argv[2]);
@@ -34,6 +35,9 @@ async function build() {
   let fs = new FileSystem();
   await fs.mount(inputURL, new NodeFileSystemDriver(appDir));
   await fs.mount(outputURL, new NodeFileSystemDriver(outputDir));
-  let builder = Builder.forProjects(fs, projects);
+  // this ensures that we can provide resource layering that emulates how our
+  // service worker web server works
+  await fs.copy(inputURL, outputURL);
+  let builder = Builder.forProjects(fs, [[outputURL, outputURL]]);
   await builder.build();
 }
