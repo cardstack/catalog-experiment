@@ -4,6 +4,22 @@ import { ClientEvent } from "./client-event";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
+export function error(message: string, error?: Error): void {
+  Logger.log(message, "error", error);
+}
+
+export function warn(message: string, error?: Error): void {
+  Logger.log(message, "warn", error);
+}
+
+export function debug(message: string, error?: Error): void {
+  Logger.log(message, "debug", error);
+}
+
+export function log(message: string, error?: Error): void {
+  Logger.log(message, "info", error);
+}
+
 const levelValue = {
   debug: 0,
   info: 1,
@@ -36,18 +52,6 @@ export class Logger {
 
   static reset() {
     Logger.instance = new Logger(echoInConsole);
-  }
-
-  static error(message: string, error?: Error): void {
-    Logger.log(message, "error", error);
-  }
-
-  static warn(message: string, error?: Error): void {
-    Logger.log(message, "warn", error);
-  }
-
-  static debug(message: string, error?: Error): void {
-    Logger.log(message, "debug", error);
   }
 
   static log(message: string): void;

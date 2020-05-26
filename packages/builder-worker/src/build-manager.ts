@@ -2,9 +2,7 @@ import { ClientEventHandler } from "./client-event-handler";
 import { ReloadEvent } from "./client-reload";
 import { Rebuilder } from "./builder";
 import { FileSystem } from "./filesystem";
-import { Logger } from "./logger";
-
-const { warn } = Logger;
+import { warn } from "./logger";
 
 export class BuildManager {
   private _rebuilder: Rebuilder<unknown>;

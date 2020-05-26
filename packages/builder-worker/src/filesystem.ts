@@ -17,9 +17,7 @@ import {
   DirectoryDescriptor,
   Stat,
 } from "./filesystem-drivers/filesystem-driver";
-import { Logger } from "./logger";
-
-const { log } = Logger;
+import { log } from "./logger";
 
 export class FileSystem {
   private listeners: Map<string, EventListener[]> = new Map();

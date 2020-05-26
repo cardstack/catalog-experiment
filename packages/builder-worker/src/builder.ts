@@ -11,9 +11,7 @@ import { MakeBundledModulesNode } from "./nodes/make";
 import { FileDescriptor } from "./filesystem-drivers/filesystem-driver";
 import { Deferred } from "./deferred";
 import { assertNever } from "shared/util";
-import { Logger } from "./logger";
-
-const { debug, error } = Logger;
+import { debug, error } from "./logger";
 
 type BoolForEach<T> = {
   [P in keyof T]: boolean;

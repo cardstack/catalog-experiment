@@ -6,13 +6,12 @@ import {
   DirectoryDescriptor,
   Stat,
 } from "../filesystem-drivers/filesystem-driver";
-import { Logger } from "../logger";
+import { log } from "../logger";
 import { HttpStat } from "../filesystem-drivers/http-driver";
 import { relativeURL } from "../path";
 
 const builderOrigin = "http://localhost:8080";
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
-const { log } = Logger;
 
 export const handleFileRequest: Handler = async function (req, context) {
   // turning this into a URL so we can normalize comparisons (trailing slashes
