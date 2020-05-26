@@ -1,4 +1,4 @@
-import { Logger } from "../src/logger";
+import { Logger, debug, log, warn, error } from "../src/logger";
 
 const { test } = QUnit;
 
@@ -22,25 +22,25 @@ QUnit.module("logger", function (hooks) {
   });
 
   test("can log a debug message", async function (assert) {
-    Logger.debug("message");
+    debug("message");
     let [message] = Logger.messages();
     assert.equal(message.level, "debug", "the log level is correct");
   });
 
   test("can log a warning message", async function (assert) {
-    Logger.warn("message");
+    warn("message");
     let [message] = Logger.messages();
     assert.equal(message.level, "warn", "the log level is correct");
   });
 
   test("can log an error  message", async function (assert) {
-    Logger.error("message");
+    error("message");
     let [message] = Logger.messages();
     assert.equal(message.level, "error", "the log level is correct");
   });
 
   test("can log a message with an error object", async function (assert) {
-    Logger.log("message", new Error("boom"));
+    log("message", new Error("boom"));
     let [message] = Logger.messages();
     assert.equal(message.error?.name, "Error", "the error name is correct");
     assert.equal(message.error?.message, "boom", "the error name is correct");
@@ -53,13 +53,13 @@ QUnit.module("logger", function (hooks) {
 
   test("does not log message at a lower log level that configured log level", async function (assert) {
     Logger.setLogLevel("warn");
-    Logger.log("should not log this");
+    log("should not log this");
     assert.equal(Logger.messages().length, 0, "no messages where logged");
   });
 
   test("does log a message at a higher log level that configured log level", async function (assert) {
     Logger.setLogLevel("warn");
-    Logger.error("should log this");
+    error("should log this");
     let [message] = Logger.messages();
     assert.equal(
       message.message,
@@ -70,7 +70,7 @@ QUnit.module("logger", function (hooks) {
 
   test("does log a message at the same log level that configured log level", async function (assert) {
     Logger.setLogLevel("warn");
-    Logger.warn("should log this");
+    warn("should log this");
     let [message] = Logger.messages();
     assert.equal(
       message.message,
