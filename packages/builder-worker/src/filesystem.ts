@@ -118,10 +118,6 @@ export class FileSystem {
     let sourcePath = urlToPath(sourceURL);
     let destPath = urlToPath(destURL);
     let source = await this.openPath(sourcePath);
-    let destParentDirName = dirName(destPath);
-    let destParent = destParentDirName
-      ? await this.openDirPath(destParentDirName, true)
-      : this.root;
 
     let name = baseName(destPath);
     if (source.type === "file") {
@@ -140,7 +136,6 @@ export class FileSystem {
       }
     }
     source.close();
-    destParent.close();
   }
 
   async remove(url: URL, autoClose = true): Promise<void> {
