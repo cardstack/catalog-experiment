@@ -161,7 +161,12 @@ export class Logger {
     Logger.getInstance().logLevel = level;
   }
 
+  static echoInConsole(echoInConsole: boolean) {
+    Logger.getInstance().echoInConsole = echoInConsole;
+  }
+
   logLevel: LogLevel = "debug";
+  echoInConsole: boolean;
   private _messages: LogMessage[] = [];
   private listeners: Set<LogListener> = new Set();
   private drainMessages?: Deferred<void>;
@@ -170,7 +175,9 @@ export class Logger {
     listener: LogListener;
   }[] = [];
 
-  private constructor(private echoInConsole: boolean = false) {}
+  private constructor(echoInConsole: boolean = false) {
+    this.echoInConsole = echoInConsole;
+  }
 
   private messagesFlushed(): Promise<void> {
     // if you await this and no messages have been logged, we should resolve
