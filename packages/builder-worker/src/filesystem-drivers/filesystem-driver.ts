@@ -1,5 +1,5 @@
 import { FileSystem } from "../filesystem";
-import { pathToURL } from "../path";
+import { ROOT, assertURLEndsInDir } from "../path";
 
 const textEncoder = new TextEncoder();
 const utf8 = new TextDecoder("utf8");
@@ -77,7 +77,6 @@ export class DefaultDriver implements FileSystemDriver {
 }
 
 export class DefaultVolume implements Volume {
-  static readonly ROOT = new URL("http://root");
   root: DefaultDirectoryDescriptor;
   readonly hasDirectoryAccess = true;
   readonly canCreateFiles = true;
@@ -91,8 +90,8 @@ export class DefaultVolume implements Volume {
     let url: URL;
     // The root folder is a special internal folder that only contains URL
     // origins. So we fashion URL's from these origin for the child dirs.
-    if (parent.url.href === DefaultVolume.ROOT.href) {
-      url = pathToURL(name);
+    if (parent.url.href === ROOT.href) {
+      url = new URL(name);
     } else {
       url = new URL(name, assertURLEndsInDir(parent.url));
     }
@@ -182,8 +181,8 @@ export class DefaultDirectoryDescriptor implements DirectoryDescriptor {
     }
     if (this.has(name)) {
       let url: URL;
-      if (this.url === DefaultVolume.ROOT) {
-        url = pathToURL(name);
+      if (this.url === ROOT) {
+        url = new URL(name);
       } else {
         url = new URL(name, assertURLEndsInDir(this.url));
       }
@@ -325,14 +324,4 @@ export async function readStream(stream: ReadableStream): Promise<Uint8Array> {
 
 function makeSerialNumber(): number {
   return Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
-}
-
-export function assertURLEndsInDir(url: URL) {
-  if (url.href.slice(-1) === "/") {
-    return url;
-  }
-  if (url.href.slice(-1) !== "/") {
-    return new URL(`${url.href}/`);
-  }
-  return;
 }

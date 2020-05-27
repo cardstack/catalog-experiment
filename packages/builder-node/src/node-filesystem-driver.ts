@@ -4,8 +4,8 @@ import {
   DirectoryDescriptor,
   Volume,
   Stat,
-  assertURLEndsInDir,
 } from "../../builder-worker/src/filesystem-drivers/filesystem-driver";
+import { assertURLEndsInDir } from "../../builder-worker/src/path";
 import { FileSystem } from "../../builder-worker/src/filesystem";
 import { DOMToNodeReadable, NodeReadableToDOM } from "file-daemon/stream-shims";
 import { Readable } from "stream";

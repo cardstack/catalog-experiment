@@ -4,10 +4,10 @@ import {
   Volume,
   DirectoryDescriptor,
   FileDescriptor,
-  assertURLEndsInDir,
   Stat,
   readStream,
 } from "./filesystem-driver";
+import { assertURLEndsInDir } from "../path";
 import moment from "moment";
 
 const textEncoder = new TextEncoder();
