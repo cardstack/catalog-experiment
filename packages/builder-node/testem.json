@@ -1,5 +1,6 @@
 {
-  "test_page": "./dist/test/index.html?hidepassed",
+  "cwd": "dist",
+  "test_page": "test/index.html?hidepassed",
   "disable_watching": true,
   "launch_in_ci": [
     "Chrome"
