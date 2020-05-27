@@ -19,6 +19,7 @@ import {
   readdirSync,
   writeFileSync,
   fstatSync,
+  ftruncateSync,
   statSync,
   createWriteStream,
   readSync,
@@ -236,6 +237,11 @@ export class NodeFileDescriptor implements FileDescriptor {
     } else {
       readableStream = new DOMToNodeReadable(streamOrBuffer);
     }
+
+    // need to trucate the file otherwise if we are overwriting a file and we
+    // happen to write less bytes than what was previously there, the extra
+    // bytes will still exist in the file
+    ftruncateSync(this.fd);
 
     if (buffer) {
       writeFileSync(this.fd, buffer);

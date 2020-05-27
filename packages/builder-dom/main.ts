@@ -3,7 +3,6 @@
 // thread context.
 
 import { assertNever } from "shared/util";
-import { isReloadClientEvent } from "../builder-worker/src/client-reload";
 
 let uiWidth: number;
 
@@ -48,7 +47,11 @@ function handleUICommand(event: MessageEvent) {
     return;
   }
   let command = event.data;
-  if (isReloadClientEvent(command)) {
+  if (
+    "kind" in command &&
+    command.kind === "reload" &&
+    "clientEvent" in command
+  ) {
     window.location.reload();
     return;
   }
