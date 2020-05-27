@@ -32,19 +32,6 @@ export function splitURL(url: URL): string[] {
   }
 }
 
-// TODO remove this
-export function isURL(possibleURL: string): boolean {
-  try {
-    new URL(possibleURL);
-    return true;
-  } catch (e) {
-    if (e.message.includes("Invalid URL")) {
-      return false;
-    }
-    throw e;
-  }
-}
-
 export function maybeURL(
   possibleURL: string,
   relativeTo?: string | URL | undefined
