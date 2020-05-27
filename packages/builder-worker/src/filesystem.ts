@@ -1,11 +1,5 @@
-import {
-  // join,
-  splitURL,
-  baseName,
-  dirName,
-  ROOT,
-  assertURLEndsInDir,
-} from "./path";
+import bind from "bind-decorator";
+import { splitURL, baseName, dirName, ROOT, assertURLEndsInDir } from "./path";
 import columnify from "columnify";
 import moment from "moment";
 import {
@@ -32,10 +26,7 @@ export class FileSystem {
   private volumes: Map<string, Volume> = new Map();
 
   constructor() {
-    let volume = new DefaultDriver().mountVolumeSync(
-      ROOT,
-      this.dispatchEvent.bind(this)
-    );
+    let volume = new DefaultDriver().mountVolumeSync(ROOT, this.dispatchEvent);
     this.root = volume.root;
     this.volumes.set(this.root.inode, volume);
   }
@@ -63,7 +54,7 @@ export class FileSystem {
   }
 
   async mount(url: URL, driver: FileSystemDriver): Promise<string> {
-    let volume = await driver.mountVolume(url, this.dispatchEvent.bind(this));
+    let volume = await driver.mountVolume(url, this.dispatchEvent);
     let dir = await this._open(splitURL(url), {
       createMode: "directory",
       isNewMountPoint: true,
@@ -394,6 +385,7 @@ export class FileSystem {
     }
   }
 
+  @bind
   private dispatchEvent(url: URL, type: EventType): void {
     if (url.href === ROOT.href) {
       return; // ignore this, it's an internal path (not an actual URL)
