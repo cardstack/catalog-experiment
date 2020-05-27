@@ -154,6 +154,7 @@ export class FileSystem {
       if (autoClose) {
         sourceDir.close();
       }
+      this.dispatchEvent(url, "remove");
     }
   }
 
@@ -229,6 +230,7 @@ export class FileSystem {
     return await this._open(splitURL(url), { createMode });
   }
 
+  // TODO we can use trailing slash in URL to open directories specifically--no need for this
   private async openDir(
     url: URL,
     create = false
@@ -297,12 +299,15 @@ export class FileSystem {
         (pathSegments.length && opts.createMode)
       ) {
         descriptor = await volume.createDirectory(parent, name);
+        this.dispatchEvent(descriptor.url, "create");
         return await this._open(pathSegments, opts, descriptor, initialHref);
       } else if (volume.canCreateFiles && opts.createMode === "file") {
         descriptor = await volume.createFile(parent, name);
+        this.dispatchEvent(descriptor.url, "create");
         return descriptor;
       } else if (volume.hasDirectoryAccess && opts.createMode === "directory") {
         descriptor = await volume.createDirectory(parent, name);
+        this.dispatchEvent(descriptor.url, "create");
         return descriptor;
       } else {
         throw new FileSystemError(

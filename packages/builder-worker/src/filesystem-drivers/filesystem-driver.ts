@@ -97,7 +97,6 @@ export class DefaultVolume implements Volume {
     }
     let descriptor = directory.getDescriptor(url, this.dispatchEvent);
     await parent.add(name, descriptor);
-    this.dispatchEvent(url, "create");
     return descriptor;
   }
 
@@ -106,7 +105,6 @@ export class DefaultVolume implements Volume {
     let url = new URL(name, assertURLEndsInDir(parent.url));
     let descriptor = file.getDescriptor(url, this.dispatchEvent);
     await parent.add(name, descriptor);
-    this.dispatchEvent(url, "create");
     return descriptor;
   }
 }
@@ -206,8 +204,6 @@ export class DefaultDirectoryDescriptor implements DirectoryDescriptor {
 
   async remove(name: string) {
     this.resource.files.delete(name);
-    let url = new URL(name, assertURLEndsInDir(this.url));
-    this.dispatchEvent(url, "remove");
   }
 
   async add(

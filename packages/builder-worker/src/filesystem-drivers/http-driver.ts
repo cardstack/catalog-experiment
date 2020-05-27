@@ -144,8 +144,6 @@ export class HttpDirectoryDescriptor implements DirectoryDescriptor {
     await fetch(underlyingURL.href, {
       method: "DELETE",
     });
-    let url = new URL(name, assertURLEndsInDir(this.url));
-    this.dispatchEvent(url, "remove");
   }
 
   async add(name: string, descriptor: HttpFileDescriptor): Promise<void>;

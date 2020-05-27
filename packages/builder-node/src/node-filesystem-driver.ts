@@ -69,7 +69,6 @@ export class NodeVolume implements Volume {
     let path = join(parentDir.path, name);
     ensureDirSync(path);
     let url = new URL(name, assertURLEndsInDir(parent.url));
-    this.dispatchEvent(url, "create");
     return new NodeDirectoryDescriptor(
       this,
       url,
@@ -87,7 +86,6 @@ export class NodeVolume implements Volume {
     }
     let path = join(parentDir.path, name);
     let url = new URL(name, assertURLEndsInDir(parent.url));
-    this.dispatchEvent(url, "create");
     return new NodeFileDescriptor(
       this,
       url,
@@ -158,8 +156,6 @@ export class NodeDirectoryDescriptor implements DirectoryDescriptor {
 
   async remove(name: string) {
     removeSync(join(this.dir.path, name));
-    let url = new URL(name, assertURLEndsInDir(this.url));
-    this.dispatchEvent(url, "remove");
   }
 
   async add(name: string, descriptor: NodeDirectoryDescriptor): Promise<void>;
