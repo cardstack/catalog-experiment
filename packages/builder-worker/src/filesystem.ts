@@ -328,7 +328,7 @@ export class FileSystem {
 
   async tempURL(): Promise<URL> {
     let tempURL: URL;
-    let tempOrigin = "http://tmp";
+    let tempOrigin = "https://tmp";
     while (true) {
       tempURL = new URL(
         `${tempOrigin}${Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)}`

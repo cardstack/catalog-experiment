@@ -1,4 +1,4 @@
-export const ROOT = Object.freeze(new URL("http://root"));
+export const ROOT = Object.freeze(new URL("https://root"));
 
 export function baseName(url: URL): string {
   let segments = splitURL(url);

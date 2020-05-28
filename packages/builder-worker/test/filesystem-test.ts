@@ -751,7 +751,7 @@ QUnit.module("filesystem", function (origHooks) {
     await assert.setupFiles();
     let tempURL = await assert.fs.tempURL();
     assert.ok(
-      /http:\/\/tmp\d+/.test(tempURL.origin),
+      /https:\/\/tmp\d+/.test(tempURL.origin),
       "temp origin looks correct"
     );
   });
