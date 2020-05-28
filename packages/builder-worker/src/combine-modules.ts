@@ -31,6 +31,8 @@ export function combineModules(
     bundle,
     usedNames: new Set(),
     assignedImportedNames: new Map(),
+    bindingDependsOn: new Map(),
+    bundleDependsOn: new Set(),
   };
   let appendedModules: Set<string> = new Set();
   let bundleBody = bundleAst.program.body;
@@ -139,6 +141,15 @@ interface State {
   // outer map is the href of the exported module. the inner map goes from
   // exported name to our name. our name also must appear in usedNames.
   assignedImportedNames: Map<string, Map<string | NamespaceMarker, string>>;
+
+  // keys are the module-scoped names within our bundle (same as usedNames).
+  // values are lists of other module-scoped names within our bundle that the
+  // given binding depends upon.
+  bindingDependsOn: Map<string, Set<string>>;
+
+  // similar to bindingDependsOn, these are bindings that are needed by the
+  // bundle's top-level module scope itself.
+  bundleDependsOn: Set<string>;
 }
 
 function appendToBundle(
@@ -253,7 +264,10 @@ class ModuleRewriter {
   }
 
   rewriteScope() {
-    for (let name of Object.keys(this.programPath.scope.bindings)) {
+    let bindingPaths: Map<NodePath, string> = new Map();
+    for (let [name, binding] of Object.entries(
+      this.programPath.scope.bindings
+    )) {
       let assignedName: string;
 
       // figure out which names in module scope are imports vs things that
@@ -279,6 +293,34 @@ class ModuleRewriter {
         }
       }
       this.claimAndRename(name, assignedName);
+      bindingPaths.set(binding.path, assignedName);
+    }
+
+    for (let binding of Object.values(this.programPath.scope.bindings)) {
+      let assignedName = bindingPaths.get(binding.path)!;
+      for (let refPath of binding.referencePaths) {
+        while (refPath.type !== "Program") {
+          // exports are already accounted for globally throughout the bundle.
+          // We're about to delete this export statement.
+          if (refPath.type === "ExportNamedDeclaration") {
+            break;
+          }
+          let otherName = bindingPaths.get(refPath);
+          if (otherName) {
+            let deps = this.sharedState.bindingDependsOn.get(otherName);
+            if (!deps) {
+              deps = new Set();
+              this.sharedState.bindingDependsOn.set(otherName, deps);
+            }
+            deps.add(assignedName);
+            break;
+          }
+          refPath = refPath.parentPath;
+        }
+        if (refPath.type === "Program") {
+          this.sharedState.bundleDependsOn.add(assignedName);
+        }
+      }
     }
   }
 

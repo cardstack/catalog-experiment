@@ -846,6 +846,114 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
+  test("strips unused exported function", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { a } from './lib.js';
+        console.log(a());
+      `,
+      "lib.js": `
+        export function a() { return 1; }
+        export function b() { return 2; }
+        `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined,
+      `
+      function a() { return 1; }
+      console.log(a);
+      `
+    );
+  });
+
+  test("a function that's consumed by the bundle itself is not stripped", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { a } from './lib.js';
+        console.log(a());
+      `,
+      "lib.js": `
+        export function a() { return 1; }
+        export function b() { return 2; }
+        b();
+        `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined,
+      `
+      function a() { return 1; }
+      function b() { return 2; }
+      b();
+      console.log(a);
+      `
+    );
+  });
+
+  test("strips function used only in removed function's body", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { a } from './lib.js';
+        console.log(a());
+      `,
+      "lib.js": `
+        export function a() { return 1; }
+        function helper() {
+          return 2;
+        }
+        export function b(options) { return helper(); }
+        `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined,
+      `
+      function a() { return 1; }
+      console.log(a);
+      `
+    );
+  });
+
+  test("strips imported function used only in removed function's body", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { a } from './lib.js';
+        console.log(a());
+      `,
+      "lib.js": `
+        import { helper } from './two.js';
+        export function a() { return 1; }
+        export function b() { return helper(); }
+        `,
+      "two.js": `
+        export function helper() {
+          return 2;
+        }
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined,
+      `
+      function a() { return 1; }
+      console.log(a);
+      `
+    );
+  });
+
   // Test ideas:
   // mulitple named imports: import { a, b, c} from './lib.js'
   // import default and variations on that theme
