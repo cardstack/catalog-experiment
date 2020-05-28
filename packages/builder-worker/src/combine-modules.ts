@@ -18,6 +18,7 @@ import { ModuleResolution } from "./nodes/resolution";
 import { NamespaceMarker, isNamespaceMarker } from "./describe-module";
 import { Memoize } from "typescript-memoize";
 import { maybeRelativeURL } from "./path";
+import { assertNever } from "shared/util";
 
 export function combineModules(
   bundle: URL,
@@ -35,15 +36,15 @@ export function combineModules(
     bundleDependsOn: new Set(),
   };
   let appendedModules: Set<string> = new Set();
-  let bundleBody = bundleAst.program.body;
   let ownAssignments = assignments.filter(
     (a) => a.bundleURL.href === bundle.href
   );
 
   // handle the exported names we must expose, if any
+  let potentialAppends: Statement[] = [];
   for (let assignment of ownAssignments) {
-    appendToBundle(
-      bundleBody,
+    gatherBundleStatements(
+      potentialAppends,
       assignment.module,
       state,
       assignments,
@@ -51,11 +52,45 @@ export function combineModules(
     );
   }
 
+  // iterate through the bundle's bindings and identify bindings that are not
+  // consumed:
+  //   - binding is not exported by bundle or part of an exported binding's
+  //     dependency graph
+  //   - binding is not consumed directly by the bundle's own module scope or
+  //     part of a consumed binding's dependency graph
+  let exports = assignedExports(ownAssignments, state);
+  for (let bindingName of state.usedNames) {
+    if (
+      [...exports.values()].some(
+        (exportedBinding) =>
+          exportedBinding === bindingName ||
+          isConsumedBy(exportedBinding, bindingName, state.bindingDependsOn)
+      ) ||
+      [...state.bundleDependsOn].some(
+        (usedByBundleBinding) =>
+          usedByBundleBinding === bindingName ||
+          isConsumedBy(usedByBundleBinding, bindingName, state.bindingDependsOn)
+      )
+    ) {
+      continue;
+    }
+
+    // the binding does not appear to be consumed--remove it
+    potentialAppends = removeStatementWithBindingName(
+      potentialAppends,
+      bindingName
+    );
+  }
+
+  let bundleBody = bundleAst.program.body;
+  for (let statement of potentialAppends) {
+    bundleBody.push(statement);
+  }
+
   // at this point we removed all export statements because our modules can
   // directly consume each other's renamed bindings. Here we re-add exports for
   // the things that are specifically configured to be exposed outside the
   // bundle.
-  let exports = assignedExports(ownAssignments, state);
   if (exports.size > 0) {
     bundleBody.push(
       exportNamedDeclaration(
@@ -86,6 +121,24 @@ export function combineModules(
 
   let { code } = generate(bundleAst);
   return code;
+}
+
+function isConsumedBy(
+  consumingBinding: string,
+  consumedBinding: string,
+  bindingDependencies: State["bindingDependsOn"]
+): boolean {
+  let deps = bindingDependencies.get(consumingBinding);
+  if (!deps) {
+    return false;
+  }
+  if (deps.has(consumedBinding)) {
+    return true;
+  }
+
+  return [...deps].some((dep) =>
+    isConsumedBy(dep, consumedBinding, bindingDependencies)
+  );
 }
 
 function assignedExports(assignments: BundleAssignment[], state: State) {
@@ -152,7 +205,7 @@ interface State {
   bundleDependsOn: Set<string>;
 }
 
-function appendToBundle(
+function gatherBundleStatements(
   bundleBody: Statement[],
   module: ModuleResolution,
   state: State,
@@ -172,7 +225,7 @@ function appendToBundle(
       throw new Error(`no bundle assignment for module ${resolution.url.href}`);
     }
     if (assignment.bundleURL.href === state.bundle.href) {
-      appendToBundle(
+      gatherBundleStatements(
         bundleBody,
         resolution,
         state,
@@ -418,6 +471,68 @@ function resolveReexport({
     });
   }
   return { remoteName, remoteModule };
+}
+
+function removeStatementWithBindingName(
+  statements: Statement[],
+  bindingName: string
+): Statement[] {
+  return statements.filter((node) => {
+    switch (node.type) {
+      case "FunctionDeclaration":
+      case "ClassDeclaration":
+      case "DeclareClass":
+      case "DeclareFunction":
+      case "DeclareVariable":
+        return node.id?.name !== bindingName;
+
+      case "VariableDeclaration":
+      case "ExpressionStatement":
+      case "BlockStatement":
+      case "BreakStatement":
+      case "ContinueStatement":
+      case "DebuggerStatement":
+      case "DoWhileStatement":
+      case "EmptyStatement":
+      case "ForStatement":
+      case "ForInStatement":
+      case "ForOfStatement":
+      case "IfStatement":
+      case "LabeledStatement":
+      case "ReturnStatement":
+      case "SwitchStatement":
+      case "ThrowStatement":
+      case "TryStatement":
+      case "WhileStatement":
+      case "WithStatement":
+      case "ExportAllDeclaration":
+      case "ExportDefaultDeclaration":
+      case "ExportNamedDeclaration":
+      case "ImportDeclaration":
+      case "DeclareModule":
+      case "DeclareModuleExports":
+      case "DeclareInterface":
+      case "DeclareTypeAlias":
+      case "DeclareOpaqueType":
+      case "DeclareExportDeclaration":
+      case "DeclareExportAllDeclaration":
+      case "InterfaceDeclaration":
+      case "OpaqueType":
+      case "TypeAlias":
+      case "EnumDeclaration":
+      case "TSDeclareFunction":
+      case "TSInterfaceDeclaration":
+      case "TSTypeAliasDeclaration":
+      case "TSEnumDeclaration":
+      case "TSModuleDeclaration":
+      case "TSImportEqualsDeclaration":
+      case "TSExportAssignment":
+      case "TSNamespaceExportDeclaration":
+        return true;
+      default:
+        assertNever(node);
+    }
+  });
 }
 
 /*

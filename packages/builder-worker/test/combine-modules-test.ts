@@ -865,7 +865,7 @@ QUnit.module("combine modules", function (origHooks) {
       combined,
       `
       function a() { return 1; }
-      console.log(a);
+      console.log(a());
       `
     );
   });
@@ -892,7 +892,7 @@ QUnit.module("combine modules", function (origHooks) {
       function a() { return 1; }
       function b() { return 2; }
       b();
-      console.log(a);
+      console.log(a());
       `
     );
   });
@@ -919,7 +919,7 @@ QUnit.module("combine modules", function (origHooks) {
       combined,
       `
       function a() { return 1; }
-      console.log(a);
+      console.log(a());
       `
     );
   });
@@ -949,7 +949,7 @@ QUnit.module("combine modules", function (origHooks) {
       combined,
       `
       function a() { return 1; }
-      console.log(a);
+      console.log(a());
       `
     );
   });
