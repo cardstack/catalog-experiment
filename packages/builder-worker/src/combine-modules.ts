@@ -41,10 +41,10 @@ export function combineModules(
   );
 
   // handle the exported names we must expose, if any
-  let potentialAppends: Statement[] = [];
+  let potentialBundleAppends: Statement[] = [];
   for (let assignment of ownAssignments) {
     gatherBundleStatements(
-      potentialAppends,
+      potentialBundleAppends,
       assignment.module,
       state,
       assignments,
@@ -76,14 +76,14 @@ export function combineModules(
     }
 
     // the binding does not appear to be consumed--remove it
-    potentialAppends = removeStatementWithBindingName(
-      potentialAppends,
+    potentialBundleAppends = removeStatementWithBindingName(
+      potentialBundleAppends,
       bindingName
     );
   }
 
   let bundleBody = bundleAst.program.body;
-  for (let statement of potentialAppends) {
+  for (let statement of potentialBundleAppends) {
     bundleBody.push(statement);
   }
 
