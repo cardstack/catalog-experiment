@@ -36,8 +36,6 @@ export class HttpFileSystemDriver implements FileSystemDriver {
 
 export class HttpVolume implements Volume {
   root: HttpFileDescriptor;
-  readonly hasDirectoryAccess = false;
-  readonly canCreateFiles = false;
 
   constructor(
     private httpURL: URL,
@@ -99,37 +97,40 @@ export class HttpDirectoryDescriptor implements DirectoryDescriptor {
     throw new Error(`directory stat is not supported for HTTP Volumes`);
   }
 
-  async get(name: string) {
+  async getDirectory(name: string) {
     let underlyingURL = new URL(name, assertURLEndsInDir(this.underlyingURL));
     let url = new URL(name, assertURLEndsInDir(this.url));
-    let response = await getOkResponse(underlyingURL);
-    // it's incredibly unlikely that we'll ever get a directory mime type, but
-    // such a thing actually exists, and handling it makes our types work out
-    // nicely
-    if (response.headers.get("Content-Type") === "text/directory") {
-      return new HttpDirectoryDescriptor(
-        this.volume,
-        url,
-        underlyingURL,
-        this.dispatchEvent
-      );
-    } else {
-      return new HttpFileDescriptor(
-        this.volume,
-        url,
-        underlyingURL,
-        this.dispatchEvent
-      );
-    }
+    return new HttpDirectoryDescriptor(
+      this.volume,
+      url,
+      underlyingURL,
+      this.dispatchEvent
+    );
+  }
+
+  async getFile(name: string) {
+    let underlyingURL = new URL(name, assertURLEndsInDir(this.underlyingURL));
+    let url = new URL(name, assertURLEndsInDir(this.url));
+    await getOkResponse(underlyingURL);
+    return new HttpFileDescriptor(
+      this.volume,
+      url,
+      underlyingURL,
+      this.dispatchEvent
+    );
   }
 
   async children(): Promise<string[]> {
     throw new Error(`directory listing is not supported for HTTP Volumes`);
   }
 
-  async has(name: string) {
+  async hasDirectory() {
+    return true;
+  }
+
+  async hasFile(name: string) {
     try {
-      this.get(name);
+      await this.getFile(name);
       return true;
     } catch (err) {
       if (err instanceof FileSystemError && err.code === "NOT_FOUND") {
@@ -141,9 +142,9 @@ export class HttpDirectoryDescriptor implements DirectoryDescriptor {
 
   async remove(name: string) {
     let underlyingURL = new URL(name, assertURLEndsInDir(this.underlyingURL));
-    await fetch(underlyingURL.href, {
-      method: "DELETE",
-    });
+    throw new Error(
+      `Unimplemented: HTTP volumes currently cant remove files. cannot remove ${underlyingURL}`
+    );
   }
 
   async add(name: string, descriptor: HttpFileDescriptor): Promise<void>;

@@ -2,6 +2,7 @@ import "qunit";
 import { Memoize } from "typescript-memoize";
 import { FileSystem } from "../../src/filesystem";
 import { assertURLEndsInDir } from "../../src/path";
+import { FileDescriptor } from "../../src/filesystem-drivers/filesystem-driver";
 
 export const origin = "http://localhost:4200";
 
@@ -188,7 +189,7 @@ export function installFileAssertions(hooks: NestedHooks) {
     baseURL = b;
     for (let [path, text] of Object.entries(scenario)) {
       let url = new URL(path, baseURL);
-      let file = await fs.open(url, "file");
+      let file = (await fs.open(url, true)) as FileDescriptor;
       file.write(text);
     }
   }

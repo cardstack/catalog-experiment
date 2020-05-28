@@ -64,7 +64,7 @@ async function activate() {
     fileDaemonEventHandler.handleEvent.bind(fileDaemonEventHandler)
   );
   let uiDriver = new HttpFileSystemDriver(new URL(`${uiOrigin}/catalogjs-ui/`));
-  let mounting = fs.mount(new URL(`/catalogjs-ui`, originURL), uiDriver);
+  let mounting = fs.mount(new URL(`/catalogjs-ui/`, originURL), uiDriver);
   buildManager = new BuildManager(fs, projects, reloadEventHandler);
   await Promise.all([client.ready, mounting]);
   await buildManager.rebuilder.start();

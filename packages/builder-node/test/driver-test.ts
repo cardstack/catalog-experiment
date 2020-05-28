@@ -60,7 +60,7 @@ QUnit.module("Node FileSystem", function (origHooks) {
       }
     });
 
-    test("can get an existing file when create mode is not specified", async function (assert) {
+    test("can get an existing file when create is not specified", async function (assert) {
       setup({
         "foo.txt": "hi",
       });
@@ -68,11 +68,11 @@ QUnit.module("Node FileSystem", function (origHooks) {
       assert.equal((await file.stat()).type, "file", "type is correct");
     });
 
-    test("can get an existing directory when create mode is not specified", async function (assert) {
+    test("can get an existing directory when create is not specified", async function (assert) {
       setup({
         "test/foo.txt": "hi",
       });
-      file = await assert.fs.open(url("/test"));
+      file = await assert.fs.open(url("/test/"));
       assert.equal((await file.stat()).type, "directory", "type is correct");
     });
 
@@ -87,7 +87,7 @@ QUnit.module("Node FileSystem", function (origHooks) {
 
     test("can create a file", async function (assert) {
       await assert.file("/foo.txt").doesNotExist();
-      file = await assert.fs.open(url("/foo.txt"), "file");
+      file = await assert.fs.open(url("/foo.txt"), true);
 
       await assert.file("/foo.txt").exists();
       await assert.equal(
@@ -99,9 +99,9 @@ QUnit.module("Node FileSystem", function (origHooks) {
 
     test("can create a directory", async function (assert) {
       await assert.file("/foo").doesNotExist();
-      file = await assert.fs.open(url("/foo"), "directory");
+      file = await assert.fs.open(url("/foo/"), true);
 
-      await assert.file("/foo").exists();
+      await assert.file("/foo/").exists();
       await assert.equal(
         (await file.stat()).type,
         "directory",
@@ -109,28 +109,28 @@ QUnit.module("Node FileSystem", function (origHooks) {
       );
     });
 
-    test("can get an existing file when create mode is 'file'", async function (assert) {
+    test("can get an existing file when create mode is 'true'", async function (assert) {
       setup({
         "/foo.txt": "hi",
       });
-      file = await assert.fs.open(url("/foo.txt"), "file");
+      file = await assert.fs.open(url("/foo.txt"), true);
       assert.equal((await file.stat()).type, "file", "type is correct");
     });
 
-    test("can get an existing directory when create mode is 'directory'", async function (assert) {
+    test("can get an existing directory when create mode is 'true'", async function (assert) {
       setup({
         "/test/foo.txt": "hi",
       });
-      file = await assert.fs.open(url("/test"), "directory");
+      file = await assert.fs.open(url("/test/"), true);
       assert.equal((await file.stat()).type, "directory", "type is correct");
     });
 
-    test("can create interior directories when create mode is 'file'", async function (assert) {
-      await assert.file("/foo").doesNotExist();
-      (await assert.fs.open(url("/foo/bar.txt"), "file")).close();
+    test("can create interior directories when creating a file", async function (assert) {
+      await assert.file("/foo/").doesNotExist();
+      (await assert.fs.open(url("/foo/bar.txt"), true)).close();
 
-      await assert.file("/foo").exists();
-      file = await assert.fs.open(url("/foo"));
+      await assert.file("/foo/").exists();
+      file = await assert.fs.open(url("/foo/"));
       await assert.equal(
         (await file.stat()).type,
         "directory",
@@ -138,53 +138,17 @@ QUnit.module("Node FileSystem", function (origHooks) {
       );
     });
 
-    test("can create interior directories when create mode is 'directory'", async function (assert) {
-      await assert.file("/foo").doesNotExist();
-      (await assert.fs.open(url("/foo/bar"), "directory")).close();
+    test("can create interior directories when creating a directory", async function (assert) {
+      await assert.file("/foo/").doesNotExist();
+      (await assert.fs.open(url("/foo/bar/"), true)).close();
 
-      await assert.file("/foo").exists();
-      file = await assert.fs.open(url("/foo"));
+      await assert.file("/foo/").exists();
+      file = await assert.fs.open(url("/foo/"));
       await assert.equal(
         (await file.stat()).type,
         "directory",
         "the stat type is correct"
       );
-    });
-
-    test("throws when path specifies a directory but create mode is 'file'", async function (assert) {
-      (await assert.fs.open(url("/test"), "directory")).close();
-
-      try {
-        await assert.fs.open(url("/test"), "file");
-        throw new Error(`should not be able to open file`);
-      } catch (e) {
-        assert.equal(e.code, "IS_NOT_A_FILE", "error code is correct");
-      }
-    });
-
-    test("throws when path specifies a file but create mode is 'directory'", async function (assert) {
-      setup({
-        "/test/foo": "hi",
-      });
-
-      try {
-        await assert.fs.open(url("/test/foo"), "directory");
-        throw new Error(`should not be able to open directory`);
-      } catch (e) {
-        assert.equal(e.code, "IS_NOT_A_DIRECTORY", "error code is correct");
-      }
-    });
-
-    test("throws when path specifies an interior directory that is actually a file when mode is 'file'", async function (assert) {
-      setup({
-        "/test/foo.txt": "hi",
-      });
-      try {
-        await assert.fs.open(url("/test"), "file");
-        throw new Error(`should not be able to open file`);
-      } catch (e) {
-        assert.equal(e.code, "IS_NOT_A_FILE", "error code is correct");
-      }
     });
   });
 
@@ -204,7 +168,7 @@ QUnit.module("Node FileSystem", function (origHooks) {
         test: "bye mars",
       });
       directory = (await fileAssert.fs.open(
-        url("/foo")
+        url("/foo/")
       )) as DirectoryDescriptor;
       file = (await fileAssert.fs.open(url("/foo/bar"))) as FileDescriptor;
     });
@@ -344,18 +308,12 @@ QUnit.module("Node FileSystem", function (origHooks) {
         "http://another-origin/blah.txt": "blah",
       });
 
-      let listing = (await assert.fs.list(url("/foo"))).map(
-        (fd) => `${fd.stat.type}::${fd.url.pathname}`
+      let listing = (await assert.fs.list(url("/foo/"))).map(
+        (fd) => fd.url.pathname
       );
       assert.deepEqual(
         listing,
-        [
-          "directory::/foo",
-          "file::/foo/a.txt",
-          "file::/foo/b.txt",
-          "directory::/foo/bar",
-          "file::/foo/c.txt",
-        ],
+        ["/foo/", "/foo/a.txt", "/foo/b.txt", "/foo/bar/", "/foo/c.txt"],
         "the listing is correct"
       );
     });
@@ -372,20 +330,20 @@ QUnit.module("Node FileSystem", function (origHooks) {
         "http://another-origin/blah.txt": "blah",
       });
 
-      let listing = (await assert.fs.list(url("/foo"), true)).map(
-        (fd) => `${fd.stat.type}::${fd.url.pathname}`
+      let listing = (await assert.fs.list(url("/foo/"), true)).map(
+        (fd) => fd.url.pathname
       );
       assert.deepEqual(
         listing,
         [
-          "directory::/foo",
-          "file::/foo/a.txt",
-          "file::/foo/b.txt",
-          "directory::/foo/bar",
-          "file::/foo/bar/a.txt",
-          "directory::/foo/bar/baz",
-          "file::/foo/bar/baz/a.txt",
-          "file::/foo/c.txt",
+          "/foo/",
+          "/foo/a.txt",
+          "/foo/b.txt",
+          "/foo/bar/",
+          "/foo/bar/a.txt",
+          "/foo/bar/baz/",
+          "/foo/bar/baz/a.txt",
+          "/foo/c.txt",
         ],
         "the listing is correct"
       );
@@ -416,7 +374,7 @@ QUnit.module("Node FileSystem", function (origHooks) {
         "/a.txt": "a",
       });
 
-      await assert.file("/foo").doesNotExist();
+      await assert.file("/foo/").doesNotExist();
       await assert.fs.move(url("/a.txt"), url("/foo/b.txt"));
 
       await assert.file("/a.txt").doesNotExist();
@@ -429,10 +387,10 @@ QUnit.module("Node FileSystem", function (origHooks) {
         "/foo/a.txt": "a",
       });
 
-      await assert.file("/bar").doesNotExist();
-      await assert.fs.move(url("/foo"), url("/bar"));
-      await assert.file("/foo").doesNotExist();
-      await assert.file("/bar").exists();
+      await assert.file("/bar/").doesNotExist();
+      await assert.fs.move(url("/foo/"), url("/bar/"));
+      await assert.file("/foo/").doesNotExist();
+      await assert.file("/bar/").exists();
       await assert.file("/bar/a.txt").exists();
       await assert.file("/bar/a.txt").matches(/a/);
     });
@@ -442,10 +400,10 @@ QUnit.module("Node FileSystem", function (origHooks) {
         "/foo/a.txt": "a",
       });
 
-      await assert.file("/bar").doesNotExist();
-      await assert.fs.move(url("/foo"), url("/bar/baz"));
-      await assert.file("/foo").doesNotExist();
-      await assert.file("/bar/baz").exists();
+      await assert.file("/bar/").doesNotExist();
+      await assert.fs.move(url("/foo/"), url("/bar/baz/"));
+      await assert.file("/foo/").doesNotExist();
+      await assert.file("/bar/baz/").exists();
       await assert.file("/bar/baz/a.txt").exists();
       await assert.file("/bar/baz/a.txt").matches(/a/);
     });
@@ -484,8 +442,8 @@ QUnit.module("Node FileSystem", function (origHooks) {
         "/foo/bar/a.txt": "a",
         "/foo/bar/b.txt": "b",
       });
-      await assert.file("/baz").doesNotExist();
-      await assert.fs.copy(url("/foo"), url("/baz"));
+      await assert.file("/baz/").doesNotExist();
+      await assert.fs.copy(url("/foo/"), url("/baz/"));
 
       await assert.file("/foo/bar/a.txt").exists();
       await assert.file("/foo/bar/b.txt").exists();
@@ -499,7 +457,7 @@ QUnit.module("Node FileSystem", function (origHooks) {
         "/foo/bar/a.txt": "a",
         "/foo/bar/b.txt": "b",
       });
-      await assert.fs.copy(url("/foo"), url("/foo"));
+      await assert.fs.copy(url("/foo/"), url("/foo/"));
 
       await assert.file("/foo/bar/a.txt").exists();
       await assert.file("/foo/bar/b.txt").exists();
@@ -510,7 +468,7 @@ QUnit.module("Node FileSystem", function (origHooks) {
       setup({
         "/a.txt": "a",
       });
-      await assert.file("/foo").doesNotExist();
+      await assert.file("/foo/").doesNotExist();
       await assert.fs.copy(url("/a.txt"), url("/foo/a.txt"));
 
       await assert.file("/a.txt").exists();
@@ -523,8 +481,8 @@ QUnit.module("Node FileSystem", function (origHooks) {
         "/foo/bar/a.txt": "a",
         "/foo/bar/b.txt": "b",
       });
-      await assert.file("/baz").doesNotExist();
-      await assert.fs.copy(url("/foo"), url("/baz/bloop"));
+      await assert.file("/baz/").doesNotExist();
+      await assert.fs.copy(url("/foo/"), url("/baz/bloop/"));
 
       await assert.file("/foo/bar/a.txt").exists();
       await assert.file("/foo/bar/b.txt").exists();
@@ -556,8 +514,8 @@ QUnit.module("Node FileSystem", function (origHooks) {
       });
 
       await assert.file("/foo/a.txt").exists();
-      await assert.fs.remove(url("/foo"));
-      await assert.file("/foo").doesNotExist();
+      await assert.fs.remove(url("/foo/"));
+      await assert.file("/foo/").doesNotExist();
     });
 
     test("does not complain when removing a non-existant file", async function (assert) {
@@ -582,11 +540,11 @@ QUnit.module("Node FileSystem", function (origHooks) {
 
       let driverA = new NodeFileSystemDriver(join(testDir, "a"));
       let driverB = new NodeFileSystemDriver(join(testDir, "b"));
-      await assert.fs.mount(url("/driverA"), driverA);
-      await assert.fs.mount(url("/driverA/foo/driverB"), driverB);
+      await assert.fs.mount(url("/driverA/"), driverA);
+      await assert.fs.mount(url("/driverA/foo/driverB/"), driverB);
 
-      await assert.fs.open(url("/driverA/blah"), "directory");
-      await assert.fs.open(url("/driverA/foo/driverB/bar"), "file");
+      await assert.fs.open(url("/driverA/blah/"), true);
+      await assert.fs.open(url("/driverA/foo/driverB/bar"), true);
 
       await assert.file("/a").doesNotExist();
       await assert.file("/b").doesNotExist();
@@ -622,10 +580,10 @@ QUnit.module("Node FileSystem", function (origHooks) {
       );
       assert.deepEqual(listing, [
         `${origin}/`,
-        `${origin}/driverA`,
-        `${origin}/driverA/blah`,
-        `${origin}/driverA/foo`,
-        `${origin}/driverA/foo/driverB`,
+        `${origin}/driverA/`,
+        `${origin}/driverA/blah/`,
+        `${origin}/driverA/foo/`,
+        `${origin}/driverA/foo/driverB/`,
         `${origin}/driverA/foo/driverB/bar`,
       ]);
     });
@@ -650,9 +608,9 @@ QUnit.module("Node FileSystem", function (origHooks) {
         assert.equal(e.url.href, `${origin}/test`, "the event url is correct");
         assert.equal(e.type, "create", "the event type is correct");
       };
-      await assert.fs.open(url("/"), "directory"); // ignore these events
+      await assert.fs.open(url("/"), true); // ignore these events
       await withListener(assert.fs, origin, listener, async () => {
-        await assert.fs.open(url("test"), "file");
+        await assert.fs.open(url("test"), true);
         await assert.fs.eventsFlushed();
       });
     });
@@ -660,19 +618,19 @@ QUnit.module("Node FileSystem", function (origHooks) {
     test("triggers a 'create' event when a new directory is opened", async function (assert) {
       assert.expect(2);
       let listener = (e: FSEvent) => {
-        assert.equal(e.url.href, `${origin}/test`, "the event url is correct");
+        assert.equal(e.url.href, `${origin}/test/`, "the event url is correct");
         assert.equal(e.type, "create", "the event type is correct");
       };
-      await assert.fs.open(url("/"), "directory"); // ignore these events
+      await assert.fs.open(url("/"), true); // ignore these events
       await withListener(assert.fs, origin, listener, async () => {
-        await assert.fs.open(url("test"), "directory");
+        await assert.fs.open(url("test/"), true);
         await assert.fs.eventsFlushed();
       });
     });
 
     test("triggers a 'remove' event for source of move", async function (assert) {
       assert.expect(2);
-      await assert.fs.open(url("src"), "file");
+      await assert.fs.open(url("src"), true);
       let listener = (e: FSEvent) => {
         if (e.type === "remove") {
           assert.equal(e.url.href, `${origin}/src`, "the event url is correct");
@@ -687,7 +645,7 @@ QUnit.module("Node FileSystem", function (origHooks) {
 
     test("triggers a 'create' and 'write' events for destination of copy", async function (assert) {
       assert.expect(4);
-      await assert.fs.open(url("src"), "file");
+      await assert.fs.open(url("src"), true);
       let listener = (e: FSEvent) => {
         if (e.type === "create") {
           assert.equal(
@@ -713,7 +671,7 @@ QUnit.module("Node FileSystem", function (origHooks) {
 
     test("triggers a 'remove' event when a resource is deleted", async function (assert) {
       assert.expect(2);
-      await assert.fs.open(url("test"), "file");
+      await assert.fs.open(url("test"), true);
       let listener = (e: FSEvent) => {
         assert.equal(e.url.href, `${origin}/test`, "the event url is correct");
         assert.equal(e.type, "remove", "the event type is correct");
@@ -726,7 +684,7 @@ QUnit.module("Node FileSystem", function (origHooks) {
 
     test("triggers a 'write' event when a file is written to", async function (assert) {
       assert.expect(2);
-      let file = await assert.fs.open(url("test"), "file");
+      let file = (await assert.fs.open(url("test"), true)) as FileDescriptor;
       let listener = (e: FSEvent) => {
         assert.equal(e.url.href, `${origin}/test`, "the event url is correct");
         assert.equal(e.type, "write", "the event type is correct");

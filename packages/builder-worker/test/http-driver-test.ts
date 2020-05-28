@@ -12,9 +12,11 @@ import { Event as FSEvent } from "../src/filesystem";
 import {
   HttpFileSystemDriver,
   HttpFileDescriptor,
+  HttpDirectoryDescriptor,
 } from "../src/filesystem-drivers/http-driver";
 import { FileSystem } from "../src/filesystem";
 import moment from "moment";
+import { FileDescriptor } from "../src/filesystem-drivers/filesystem-driver";
 
 const utf8 = new TextDecoder("utf8");
 const webServerHref = "http://test.com";
@@ -110,6 +112,14 @@ QUnit.module("filesystem - http driver", function (origHooks) {
         },
         {
           method: "GET",
+          url: `${webServerHref}/`,
+          response: {
+            status: 200,
+            body: "foo",
+          },
+        },
+        {
+          method: "GET",
           url: `${webServerHref}/test/foo.txt`,
           response: {
             status: 200,
@@ -124,6 +134,11 @@ QUnit.module("filesystem - http driver", function (origHooks) {
       assert.equal((await file.stat()).type, "file", "type is correct");
     });
 
+    test("can get the webserver root as a file", async function (assert) {
+      let file = await assert.fs.open(new URL(origin));
+      assert.equal((await file.stat()).type, "file", "type is correct");
+    });
+
     test("throws when path does not exist and create mode is not specified", async function (assert) {
       try {
         await assert.fs.open(url("/not-there"));
@@ -135,20 +150,29 @@ QUnit.module("filesystem - http driver", function (origHooks) {
 
     test("throws when trying to create a file", async function (assert) {
       try {
-        await assert.fs.open(url("/not-there"), "file");
+        await assert.fs.open(url("/not-there"), true);
         throw new Error(`should not be able to create a file`);
       } catch (e) {
-        assert.equal(e.code, "NOT_FOUND", "error code is correct");
+        assert.equal(
+          Boolean(e.message.match(/Unimplemented/)),
+          true,
+          "error message is correct"
+        );
       }
     });
 
-    test("throws when trying to create a directory", async function (assert) {
-      try {
-        await assert.fs.open(url("/not-there"), "directory");
-        throw new Error(`should not be able to create a directory`);
-      } catch (e) {
-        assert.equal(e.code, "NOT_FOUND", "error code is correct");
-      }
+    test("creates a directory in memory only", async function (assert) {
+      let dir = (await assert.fs.open(
+        url("/not-there/"),
+        true
+      )) as HttpDirectoryDescriptor;
+      assert.equal(dir.url.href, `${origin}/not-there/`);
+      assert.equal(dir.underlyingURL.href, `${webServerHref}/not-there/`);
+      assert.equal(
+        stubbedFetch.callCount,
+        0,
+        "no requests were made to the HTTP server"
+      );
     });
   });
 
@@ -159,6 +183,22 @@ QUnit.module("filesystem - http driver", function (origHooks) {
       testFileContents = "Hello World";
 
       stubbedFetch = stubFetch([
+        {
+          method: "GET",
+          url: `${webServerHref}`,
+          response: {
+            status: 200,
+            body: "foo",
+          },
+        },
+        {
+          method: "GET",
+          url: `${webServerHref}/`,
+          response: {
+            status: 200,
+            body: "foo",
+          },
+        },
         {
           method: "GET",
           url: `${webServerHref}/foo/bar`,
@@ -211,6 +251,17 @@ QUnit.module("filesystem - http driver", function (origHooks) {
         assert.equal(
           await file.readText(),
           "Hello World",
+          "the file was read correctly"
+        );
+      });
+
+      test("can read the web server root as a file", async function (assert) {
+        let file = (await await assert.fs.open(
+          new URL(origin)
+        )) as FileDescriptor;
+        assert.equal(
+          await file.readText(),
+          "foo",
           "the file was read correctly"
         );
       });
@@ -304,7 +355,7 @@ QUnit.module("filesystem - http driver", function (origHooks) {
       stubbedFetch = stubFetch([
         {
           method: "GET",
-          url: `${webServerHref}/a.txt`,
+          url: `${webServerHref}/test/a.txt`,
           async response() {
             return {
               status: isDeleted ? 404 : 200,
@@ -314,7 +365,7 @@ QUnit.module("filesystem - http driver", function (origHooks) {
         },
         {
           method: "DELETE",
-          url: `${webServerHref}/a.txt`,
+          url: `${webServerHref}/test/a.txt`,
           async response() {
             isDeleted = true;
             return {
@@ -325,15 +376,17 @@ QUnit.module("filesystem - http driver", function (origHooks) {
       ]);
     });
 
-    test("can remove a file", async function (assert) {
-      await assert.file("/a.txt").exists();
-      await assert.fs.remove(url("/a.txt"));
-      await assert.file("/a.txt").doesNotExist();
-    });
-
-    test("does not complain when removing a non-existant file", async function (assert) {
-      assert.expect(0);
-      await assert.fs.remove(url("does-not-exist"));
+    test("it throws when removing a file", async function (assert) {
+      try {
+        await assert.fs.remove(url("/test/a.txt"));
+      } catch (e) {
+        assert.equal(
+          Boolean(e.message.match(/Unimplemented/)),
+          true,
+          "error message is correct"
+        );
+      }
+      await assert.file("/test/a.txt").exists();
     });
   });
 
@@ -367,8 +420,8 @@ QUnit.module("filesystem - http driver", function (origHooks) {
 
       let driverA = new HttpFileSystemDriver(url(webA));
       let driverB = new HttpFileSystemDriver(url(webB));
-      await assert.fs.mount(url("/driverA"), driverA);
-      await assert.fs.mount(url("/driverA/foo/driverB"), driverB);
+      await assert.fs.mount(url("/driverA/"), driverA);
+      await assert.fs.mount(url("/driverA/foo/driverB/"), driverB);
 
       await assert.file("/driverA/foo/bar").matches("bar");
       await assert.file("/driverA/foo/driverB/bleep/blurp").matches("blurp");
@@ -438,22 +491,9 @@ QUnit.module("filesystem - http driver", function (origHooks) {
       ]);
     });
 
-    test("triggers a 'remove' event when a resource is deleted", async function (assert) {
-      assert.expect(2);
-      await assert.fs.open(url("test"), "file");
-      let listener = (e: FSEvent) => {
-        assert.equal(e.url.href, `${origin}/test`, "the event url is correct");
-        assert.equal(e.type, "remove", "the event type is correct");
-      };
-      await withListener(assert.fs, origin, listener, async () => {
-        await assert.fs.remove(url("test"));
-        await assert.fs.eventsFlushed();
-      });
-    });
-
     test("triggers a 'write' event when a file is written to", async function (assert) {
       assert.expect(2);
-      let file = await assert.fs.open(url("foo/bar"), "file");
+      let file = (await assert.fs.open(url("foo/bar"), true)) as FileDescriptor;
       let listener = (e: FSEvent) => {
         assert.equal(
           e.url.href,

@@ -2,11 +2,7 @@ export const ROOT = Object.freeze(new URL("http://root"));
 
 export function baseName(url: URL): string {
   let segments = splitURL(url);
-  let last = segments.pop()!;
-  if (last === "") {
-    return "/";
-  }
-  return last;
+  return segments.pop()!;
 }
 
 export function dirName(url: URL): string | undefined {
@@ -20,15 +16,22 @@ export function dirName(url: URL): string | undefined {
   }
 
   segments.pop();
-  return segments.join("/");
+  return [...segments].join("");
 }
 
 export function splitURL(url: URL): string[] {
   if ((url.pathname === "/") !== !url.pathname) {
-    return [url.origin];
+    return [`${url.origin}/`];
   } else {
-    // FYI trailing slashes will appear as empty strings in the array, unsure if that's ultimately what we want...
-    return [url.origin, ...url.pathname.slice(1).split("/")];
+    // make sure we faithfully represent directories with a trailing slash
+    let segments = url.pathname.slice(1).split("/");
+    if (segments[segments.length - 1] === "") {
+      segments.pop();
+      segments[segments.length - 1] = `${segments.slice(-1)}/`;
+    }
+    return [url.origin, ...segments].map((segment, i) =>
+      i < segments.length ? `${segment}/` : segment
+    );
   }
 }
 
