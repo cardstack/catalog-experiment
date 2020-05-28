@@ -1,5 +1,5 @@
 import bind from "bind-decorator";
-import { splitURL, baseName, dirName, ROOT, assertURLEndsInDir } from "./path";
+import { splitURL, baseName, dirName, ROOT } from "./path";
 import columnify from "columnify";
 import moment from "moment";
 import {
@@ -120,8 +120,8 @@ export class FileSystem {
     if (source.type === "directory") {
       for (let childName of [...(await source.children())]) {
         await this.copy(
-          new URL(childName, assertURLEndsInDir(sourceURL)),
-          new URL(childName, assertURLEndsInDir(destURL))
+          new URL(childName, sourceURL),
+          new URL(childName, destURL)
         );
       }
     }
@@ -198,21 +198,17 @@ export class FileSystem {
     for (let name of [...(await resource.children())].sort()) {
       if (await resource.hasFile(name)) {
         results.push({
-          url: new URL(name, assertURLEndsInDir(url)),
+          url: new URL(name, url),
           stat: await (await resource.getFile(name))!.stat(),
         });
       } else if (await resource.hasDirectory(name)) {
         results.push({
-          url: new URL(name, assertURLEndsInDir(url)),
+          url: new URL(name, url),
           stat: await (await resource.getDirectory(name))!.stat(),
         });
         if (recurse) {
           results.push(
-            ...(await this._list(
-              new URL(name, assertURLEndsInDir(url)),
-              true,
-              startingURL
-            ))
+            ...(await this._list(new URL(name, url), true, startingURL))
           );
         }
       }
