@@ -176,7 +176,7 @@ class BuildRunner<Input> {
     }
 
     if (WriteFileNode.isWriteFileNode(node)) {
-      let fd = await this.fs.open(node.url, "file");
+      let fd = (await this.fs.open(node.url, true)) as FileDescriptor;
       await fd.write(Object.values(inputs.values)[0]);
       fd.close();
       return { value: undefined, changed: true };

@@ -7,7 +7,7 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "Serve app",
+      "name": "Serve test-app",
       "cwd": "${workspaceRoot}/packages/app",
       "env": {},
       "program": "${workspaceRoot}/packages/file-daemon/index.js",
@@ -16,7 +16,7 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "Run QUnit (from webpack)",
+      "name": "Run builder-node QUnit (from webpack)",
       "cwd": "${workspaceRoot}/packages/builder-worker",
       "env": {},
       "program": "${workspaceRoot}/node_modules/.bin/qunit",
@@ -25,7 +25,7 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "Run QUnit (from tsc build)",
+      "name": "Run builder-node QUnit (from tsc build)",
       "cwd": "${workspaceRoot}/packages/builder-node",
       "env": {},
       "program": "${workspaceRoot}/node_modules/.bin/qunit",

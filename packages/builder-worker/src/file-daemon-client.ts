@@ -228,7 +228,10 @@ export class FileDaemonClient {
     let untar = new UnTar(stream, {
       async file(entry) {
         if (entry.type === REGTYPE) {
-          let file = await fs.open(new URL(entry.name, temp), "file");
+          let file = (await fs.open(
+            new URL(entry.name, temp),
+            true
+          )) as FileDescriptor;
           await file.write(entry.stream());
           file.close();
           files.push(entry.name);
@@ -290,7 +293,7 @@ export class FileDaemonClient {
       throw new Error(`Couldn't fetch ${path} from file server`);
     }
     let url = this.mountedPath(path);
-    let file = await this.fs.open(url, "file");
+    let file = (await this.fs.open(url, true)) as FileDescriptor;
     await file.write(stream);
     file.close();
     return url;

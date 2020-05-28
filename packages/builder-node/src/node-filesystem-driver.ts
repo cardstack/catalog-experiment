@@ -4,8 +4,8 @@ import {
   DirectoryDescriptor,
   Volume,
   Stat,
-  assertURLEndsInDir,
 } from "../../builder-worker/src/filesystem-drivers/filesystem-driver";
+import { assertURLEndsInDir } from "../../builder-worker/src/path";
 import { FileSystem } from "../../builder-worker/src/filesystem";
 import { DOMToNodeReadable, NodeReadableToDOM } from "file-daemon/stream-shims";
 import { Readable } from "stream";
@@ -43,8 +43,6 @@ let dirs: WeakMap<NodeDirectoryDescriptor, Dir> = new WeakMap();
 
 export class NodeVolume implements Volume {
   root: NodeDirectoryDescriptor;
-  readonly hasDirectoryAccess = true;
-  readonly canCreateFiles = true;
 
   constructor(
     rootPath: string,
@@ -69,7 +67,6 @@ export class NodeVolume implements Volume {
     let path = join(parentDir.path, name);
     ensureDirSync(path);
     let url = new URL(name, assertURLEndsInDir(parent.url));
-    this.dispatchEvent(url, "create");
     return new NodeDirectoryDescriptor(
       this,
       url,
@@ -87,7 +84,6 @@ export class NodeVolume implements Volume {
     }
     let path = join(parentDir.path, name);
     let url = new URL(name, assertURLEndsInDir(parent.url));
-    this.dispatchEvent(url, "create");
     return new NodeFileDescriptor(
       this,
       url,
@@ -128,8 +124,8 @@ export class NodeDirectoryDescriptor implements DirectoryDescriptor {
     };
   }
 
-  async get(name: string) {
-    let entry = this.entries().find((e) => e.name === name);
+  async getFile(name: string) {
+    let entry = this.entry(name);
     if (entry && entry.isFile()) {
       return new NodeFileDescriptor(
         this.volume,
@@ -137,7 +133,14 @@ export class NodeDirectoryDescriptor implements DirectoryDescriptor {
         openSync(join(this.dir.path, name), "r+"),
         this.dispatchEvent
       );
-    } else if (entry && entry.isDirectory()) {
+    }
+    return;
+  }
+
+  async getDirectory(name: string) {
+    name = name.slice(0, -1);
+    let entry = this.entry(name);
+    if (entry && entry.isDirectory()) {
       return new NodeDirectoryDescriptor(
         this.volume,
         new URL(name, assertURLEndsInDir(this.url)),
@@ -149,17 +152,25 @@ export class NodeDirectoryDescriptor implements DirectoryDescriptor {
   }
 
   async children() {
-    return this.entries().map((e) => e.name);
+    return this.entries().map((e) => (e.isDirectory() ? `${e.name}/` : e.name));
   }
 
-  async has(name: string) {
-    return Boolean(this.entries().find((e) => e.name === name));
+  private entry(name: string) {
+    return this.entries().find((e) => e.name === name);
+  }
+
+  async hasDirectory(name: string) {
+    let entry = this.entry(name.slice(0, -1));
+    return Boolean(entry && entry.isDirectory());
+  }
+
+  async hasFile(name: string) {
+    let entry = this.entry(name);
+    return Boolean(entry && entry.isFile());
   }
 
   async remove(name: string) {
     removeSync(join(this.dir.path, name));
-    let url = new URL(name, assertURLEndsInDir(this.url));
-    this.dispatchEvent(url, "remove");
   }
 
   async add(name: string, descriptor: NodeDirectoryDescriptor): Promise<void>;

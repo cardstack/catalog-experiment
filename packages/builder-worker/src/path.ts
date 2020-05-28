@@ -1,82 +1,37 @@
-export function urlToPath(url: URL): string {
-  return join(url.origin.replace(/\//g, "|"), url.pathname);
+export const ROOT = Object.freeze(new URL("http://root"));
+
+export function baseName(url: URL): string {
+  let segments = splitURL(url);
+  return segments.pop()!;
 }
 
-export function pathToURL(path: string): URL {
-  if (path.slice(0, 1) === "/") {
-    path = path.slice(1);
+export function dirName(url: URL): string | undefined {
+  if (url.href === ROOT.href) {
+    return;
   }
-  let [origin, ...pathParts] = splitPath(path);
-  if (pathParts.length === 0) {
-    pathParts = ["/"];
+
+  let segments = splitURL(url);
+  if (segments.length === 1) {
+    return ROOT.href;
   }
-  return new URL(join(...pathParts), origin.replace(/\|/g, "/"));
+
+  segments.pop();
+  return [...segments].join("");
 }
 
-export function baseName(path: string): string {
-  let segments = splitPath(path);
-  let last = segments.pop()!;
-  if (last === "") {
-    last = segments.pop()!;
-  }
-  return last;
-}
-
-export function dirName(path: string): string | undefined {
-  // the root dir '/' has no parent dir
-  if (path === "/" || !path.includes("/")) return;
-
-  let dirName = path.slice(0, -1 * baseName(path).length - 1);
-  if (path.charAt(0) === "/") {
-    return dirName || "/";
-  }
-  return dirName;
-}
-
-export function splitPath(path: string): string[] {
-  if (path === "/") {
-    return ["/"];
-  }
-  let segments = path.split("/");
-  if (segments[0] === "") {
-    segments[0] = "/";
-  }
-  if (segments[segments.length - 1] === "") {
-    segments.pop();
-  }
-  return segments;
-}
-
-export function join(...pathParts: string[]): string {
-  pathParts = pathParts.filter(Boolean);
-  if (pathParts.length === 0) {
-    throw new Error("Missing path parts");
-  }
-  if (pathParts.length === 1 && pathParts[0] === "/") {
-    return "/";
-  }
-
-  for (let part of pathParts) {
-    if (part.slice(0, 1) === "/") {
-      part = part.slice(1);
+export function splitURL(url: URL): string[] {
+  if ((url.pathname === "/") !== !url.pathname) {
+    return [`${url.origin}/`];
+  } else {
+    // make sure we faithfully represent directories with a trailing slash
+    let segments = url.pathname.slice(1).split("/");
+    if (segments[segments.length - 1] === "") {
+      segments.pop();
+      segments[segments.length - 1] = `${segments.slice(-1)}/`;
     }
-  }
-  pathParts = pathParts.map((part) =>
-    part.slice(0, 1) === "/" ? part.slice(1) : part
-  );
-
-  return `/${pathParts.filter(Boolean).join("/")}`;
-}
-
-export function isURL(possibleURL: string): boolean {
-  try {
-    new URL(possibleURL);
-    return true;
-  } catch (e) {
-    if (e.message.includes("Invalid URL")) {
-      return false;
-    }
-    throw e;
+    return [url.origin, ...segments].map((segment, i) =>
+      i < segments.length ? `${segment}/` : segment
+    );
   }
 }
 
@@ -131,4 +86,14 @@ export function maybeRelativeURL(url: URL, relativeTo: URL): string {
   } else {
     return url.href;
   }
+}
+
+export function assertURLEndsInDir(url: URL) {
+  if (url.href.slice(-1) === "/") {
+    return url;
+  }
+  if (url.href.slice(-1) !== "/") {
+    return new URL(`${url.href}/`);
+  }
+  return;
 }

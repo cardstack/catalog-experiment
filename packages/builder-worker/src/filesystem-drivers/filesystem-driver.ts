@@ -1,5 +1,5 @@
 import { FileSystem } from "../filesystem";
-import { pathToURL } from "../path";
+import { ROOT, assertURLEndsInDir } from "../path";
 
 const textEncoder = new TextEncoder();
 const utf8 = new TextDecoder("utf8");
@@ -13,9 +13,6 @@ export interface FileSystemDriver {
 
 export interface Volume {
   root: DirectoryDescriptor | FileDescriptor;
-  // TODO I think we can derive 'hasDirectoryAccess' from the Volume.root type...
-  hasDirectoryAccess: boolean;
-  canCreateFiles: boolean;
   createDirectory(
     parent: DirectoryDescriptor,
     name: string
@@ -36,9 +33,11 @@ interface Descriptor {
 export interface DirectoryDescriptor extends Descriptor {
   readonly type: "directory";
   readonly inode: string;
-  get(name: string): Promise<FileDescriptor | DirectoryDescriptor | undefined>;
+  getDirectory(name: string): Promise<DirectoryDescriptor | undefined>;
+  getFile(name: string): Promise<FileDescriptor | undefined>;
   children(): Promise<string[]>;
-  has(name: string): Promise<boolean>;
+  hasDirectory(name: string): Promise<boolean>;
+  hasFile(name: string): Promise<boolean>;
   remove(name: string): Promise<void>;
   add(name: string, resource: DirectoryDescriptor): Promise<void>;
   add(
@@ -77,10 +76,7 @@ export class DefaultDriver implements FileSystemDriver {
 }
 
 export class DefaultVolume implements Volume {
-  static readonly ROOT = new URL("http://root");
   root: DefaultDirectoryDescriptor;
-  readonly hasDirectoryAccess = true;
-  readonly canCreateFiles = true;
 
   constructor(url: URL, private dispatchEvent: FileSystem["dispatchEvent"]) {
     this.root = new Directory(this).getDescriptor(url, this.dispatchEvent);
@@ -91,14 +87,13 @@ export class DefaultVolume implements Volume {
     let url: URL;
     // The root folder is a special internal folder that only contains URL
     // origins. So we fashion URL's from these origin for the child dirs.
-    if (parent.url.href === DefaultVolume.ROOT.href) {
-      url = pathToURL(name);
+    if (parent.url.href === ROOT.href) {
+      url = new URL(name);
     } else {
       url = new URL(name, assertURLEndsInDir(parent.url));
     }
     let descriptor = directory.getDescriptor(url, this.dispatchEvent);
     await parent.add(name, descriptor);
-    this.dispatchEvent(url, "create");
     return descriptor;
   }
 
@@ -107,7 +102,6 @@ export class DefaultVolume implements Volume {
     let url = new URL(name, assertURLEndsInDir(parent.url));
     let descriptor = file.getDescriptor(url, this.dispatchEvent);
     await parent.add(name, descriptor);
-    this.dispatchEvent(url, "create");
     return descriptor;
   }
 }
@@ -176,20 +170,31 @@ export class DefaultDirectoryDescriptor implements DirectoryDescriptor {
     };
   }
 
-  async get(name: string) {
+  private async get(name: string): Promise<DefaultDescriptors> {
+    let url: URL;
+    if (this.url === ROOT) {
+      url = new URL(name);
+    } else {
+      url = new URL(name, assertURLEndsInDir(this.url));
+    }
+    return this.resource.files
+      .get(name)!
+      .getDescriptor(url, this.dispatchEvent);
+  }
+
+  async getFile(name: string) {
+    if (this.hasFile(name)) {
+      return (await this.get(name)) as DefaultFileDescriptor;
+    }
+    return;
+  }
+
+  async getDirectory(name: string) {
     if (name === "/") {
       return this.volume.root;
     }
-    if (this.has(name)) {
-      let url: URL;
-      if (this.url === DefaultVolume.ROOT) {
-        url = pathToURL(name);
-      } else {
-        url = new URL(name, assertURLEndsInDir(this.url));
-      }
-      return this.resource.files
-        .get(name)!
-        .getDescriptor(url, this.dispatchEvent);
+    if (this.hasDirectory(name)) {
+      return (await this.get(name)) as DefaultDirectoryDescriptor;
     }
     return;
   }
@@ -198,17 +203,27 @@ export class DefaultDirectoryDescriptor implements DirectoryDescriptor {
     return [...this.resource.files.keys()];
   }
 
-  async has(name: string) {
+  async hasDirectory(name: string) {
     if (name === "/") {
       return true;
     }
-    return this.resource.files.has(name);
+    let resource = this.resource.files.get(name);
+    if (!resource) {
+      return false;
+    }
+    return resource instanceof Directory;
+  }
+
+  async hasFile(name: string) {
+    let resource = this.resource.files.get(name);
+    if (!resource) {
+      return false;
+    }
+    return resource instanceof File;
   }
 
   async remove(name: string) {
     this.resource.files.delete(name);
-    let url = new URL(name, assertURLEndsInDir(this.url));
-    this.dispatchEvent(url, "remove");
   }
 
   async add(
@@ -325,14 +340,4 @@ export async function readStream(stream: ReadableStream): Promise<Uint8Array> {
 
 function makeSerialNumber(): number {
   return Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
-}
-
-export function assertURLEndsInDir(url: URL) {
-  if (url.href.slice(-1) === "/") {
-    return url;
-  }
-  if (url.href.slice(-1) !== "/") {
-    return new URL(`${url.href}/`);
-  }
-  return;
 }

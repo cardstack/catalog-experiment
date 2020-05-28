@@ -1,7 +1,8 @@
 import "qunit";
 import { Memoize } from "typescript-memoize";
 import { FileSystem } from "../../src/filesystem";
-import { isURL } from "../../src/path";
+import { assertURLEndsInDir } from "../../src/path";
+import { FileDescriptor } from "../../src/filesystem-drivers/filesystem-driver";
 
 export const origin = "http://localhost:4200";
 
@@ -33,10 +34,7 @@ export class BoundFileAssert {
 
   @Memoize()
   get fullURL(): URL {
-    if (this.assert.baseURL && !isURL(this.relativeURL)) {
-      return new URL(this.relativeURL, this.assert.baseURL);
-    }
-    return new URL(this.relativeURL);
+    return new URL(this.relativeURL, assertURLEndsInDir(this.assert.baseURL));
   }
 
   @Memoize()
@@ -191,7 +189,7 @@ export function installFileAssertions(hooks: NestedHooks) {
     baseURL = b;
     for (let [path, text] of Object.entries(scenario)) {
       let url = new URL(path, baseURL);
-      let file = await fs.open(url, "file");
+      let file = (await fs.open(url, true)) as FileDescriptor;
       file.write(text);
     }
   }

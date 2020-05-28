@@ -1,18 +1,11 @@
-import {
-  join,
-  splitPath,
-  baseName,
-  dirName,
-  urlToPath,
-  pathToURL,
-} from "./path";
+import bind from "bind-decorator";
+import { splitURL, baseName, dirName, ROOT } from "./path";
 import columnify from "columnify";
 import moment from "moment";
 import {
   FileSystemDriver,
   Volume,
   DefaultDriver,
-  DefaultVolume,
   FileDescriptor,
   DirectoryDescriptor,
   Stat,
@@ -33,10 +26,7 @@ export class FileSystem {
   private volumes: Map<string, Volume> = new Map();
 
   constructor() {
-    let volume = new DefaultDriver().mountVolumeSync(
-      DefaultVolume.ROOT,
-      this.dispatchEvent.bind(this)
-    );
+    let volume = new DefaultDriver().mountVolumeSync(ROOT, this.dispatchEvent);
     this.root = volume.root;
     this.volumes.set(this.root.inode, volume);
   }
@@ -64,11 +54,14 @@ export class FileSystem {
   }
 
   async mount(url: URL, driver: FileSystemDriver): Promise<string> {
-    let volume = await driver.mountVolume(url, this.dispatchEvent.bind(this));
-    let dir = await this._open(splitPath(urlToPath(url)), {
-      createMode: "directory",
-      isNewMountPoint: true,
-    });
+    if (url.href.slice(-1) !== "/") {
+      throw new FileSystemError(
+        "IS_NOT_A_DIRECTORY",
+        `'${url}' is not a directory (it's a file and we were expecting it to be a directory)`
+      );
+    }
+    let volume = await driver.mountVolume(url, this.dispatchEvent);
+    let dir = await this.open(url, true);
     this.volumes.set(dir.inode, volume);
     dir.close();
     return dir.inode;
@@ -87,18 +80,18 @@ export class FileSystem {
   }
 
   async move(sourceURL: URL, destURL: URL): Promise<void> {
-    let sourcePath = urlToPath(sourceURL);
-    let destPath = urlToPath(destURL);
-    let source = await this.openPath(sourcePath);
-    let destParentDirName = dirName(destPath);
-    let destParent = destParentDirName
-      ? await this.openDirPath(destParentDirName, true)
-      : this.root;
-    let name = baseName(destPath);
+    let source = await this.open(sourceURL);
+    let name = baseName(destURL);
+    let destParentDirName = dirName(destURL);
+    let destParent = (destParentDirName
+      ? await this.open(new URL(destParentDirName), true)
+      : this.root) as DirectoryDescriptor;
     if (source.type === "file") {
-      let sourceName = baseName(sourcePath);
-      let sourceParentDir = dirName(sourcePath) ?? "/";
-      let sourceParent = await this.openDirPath(sourceParentDir);
+      let sourceName = baseName(sourceURL);
+      let sourceParentDir = dirName(sourceURL);
+      let sourceParent = (await this.open(
+        sourceParentDir ? new URL(sourceParentDir) : ROOT
+      )) as DirectoryDescriptor;
       await destParent.add(name, source, sourceParent, sourceName);
       if (sourceParent.inode !== destParent.inode) {
         sourceParent.close();
@@ -115,23 +108,20 @@ export class FileSystem {
     if (sourceURL.href === destURL.href) {
       return; // nothing to do
     }
-    let sourcePath = urlToPath(sourceURL);
-    let destPath = urlToPath(destURL);
-    let source = await this.openPath(sourcePath);
+    let source = await this.open(sourceURL);
 
-    let name = baseName(destPath);
     if (source.type === "file") {
-      let clone = await this.open(pathToURL(destPath), "file");
+      let clone = (await this.open(destURL, true)) as FileDescriptor;
       await clone.write(await source.getReadbleStream());
       clone.close();
     } else {
-      (await this.open(pathToURL(destPath), "directory")).close();
+      (await this.open(destURL, true)).close();
     }
     if (source.type === "directory") {
       for (let childName of [...(await source.children())]) {
         await this.copy(
-          pathToURL(join(sourcePath, childName)),
-          pathToURL(destPath ? join(destPath, childName) : name)
+          new URL(childName, sourceURL),
+          new URL(childName, destURL)
         );
       }
     }
@@ -139,12 +129,12 @@ export class FileSystem {
   }
 
   async remove(url: URL, autoClose = true): Promise<void> {
-    await this._remove(urlToPath(url), autoClose);
+    await this._remove(url, autoClose);
   }
 
-  private async _remove(path: string, autoClose: boolean): Promise<void> {
-    let name = baseName(path);
-    let dir = dirName(path);
+  private async _remove(url: URL, autoClose: boolean): Promise<void> {
+    let name = baseName(url);
+    let dir = dirName(url);
     if (!dir) {
       // should we have a special event for clearing the entire file system?
       // this only happens in tests...
@@ -152,7 +142,7 @@ export class FileSystem {
     } else {
       let sourceDir: DirectoryDescriptor;
       try {
-        sourceDir = await this.openDirPath(dir);
+        sourceDir = (await this.open(new URL(dir))) as DirectoryDescriptor;
       } catch (err) {
         if (err.code !== "NOT_FOUND") {
           throw err;
@@ -163,26 +153,27 @@ export class FileSystem {
       if (autoClose) {
         sourceDir.close();
       }
+      this.dispatchEvent(url, "remove");
     }
   }
 
   async list(url: URL, recurse = false): Promise<ListingEntry[]> {
-    return await this._list(urlToPath(url), recurse);
+    return await this._list(url, recurse);
   }
 
   async listAllOrigins(recurse = false): Promise<ListingEntry[]> {
-    return await this._list("/", recurse);
+    return await this._list(ROOT, recurse);
   }
 
   private async _list(
-    path: string,
+    url: URL,
     recurse = false,
-    startingPath?: string
+    startingURL?: URL
   ): Promise<ListingEntry[]> {
-    if (!startingPath) {
-      startingPath = path;
+    if (!startingURL) {
+      startingURL = url;
     }
-    let resource = await this.openPath(path);
+    let resource = await this.open(url);
     if (this.volumes.has(resource.inode)) {
       let volumeRoot = this.volumes.get(resource.inode)!.root;
       if (volumeRoot.type === "directory") {
@@ -192,95 +183,72 @@ export class FileSystem {
         return [{ url: volumeRoot.url, stat: await volumeRoot.stat() }];
       }
     }
-    if (!resource.volume.hasDirectoryAccess) {
-      resource.close();
-      return [];
-    }
     if (resource.type === "file") {
       resource.close();
       return [{ url: resource.url, stat: await resource.stat() }];
     }
 
     let results: ListingEntry[] = [];
-    if (startingPath === path && path !== "/") {
+    if (startingURL.href === url.href && url.href !== ROOT.href) {
       results.push({
-        url: pathToURL(path),
+        url,
         stat: await resource.stat(),
       });
     }
     for (let name of [...(await resource.children())].sort()) {
-      let item = (await resource.get(name))!;
-      results.push({
-        url: pathToURL(join(path, name)),
-        stat: await item.stat(),
-      });
-      if (item.type === "directory" && recurse) {
-        results.push(
-          ...(await this._list(join(path, name), true, startingPath))
-        );
+      if (await resource.hasFile(name)) {
+        results.push({
+          url: new URL(name, url),
+          stat: await (await resource.getFile(name))!.stat(),
+        });
+      } else if (await resource.hasDirectory(name)) {
+        results.push({
+          url: new URL(name, url),
+          stat: await (await resource.getDirectory(name))!.stat(),
+        });
+        if (recurse) {
+          results.push(
+            ...(await this._list(new URL(name, url), true, startingURL))
+          );
+        }
       }
     }
     resource.close();
     return results;
   }
 
-  async open(url: URL, createMode: "file"): Promise<FileDescriptor>;
-  async open(url: URL, createMode: "directory"): Promise<DirectoryDescriptor>;
+  async open(
+    url: URL,
+    create: Options["create"]
+  ): Promise<DirectoryDescriptor | FileDescriptor>;
   async open(url: URL): Promise<DirectoryDescriptor | FileDescriptor>;
   async open(
     url: URL,
-    createMode?: Options["createMode"]
+    create?: Options["create"]
   ): Promise<FileDescriptor | DirectoryDescriptor> {
-    let path = urlToPath(url);
-    return await this._open(splitPath(path), { createMode });
-  }
-
-  private async openDirPath(
-    path: string,
-    create = false
-  ): Promise<DirectoryDescriptor> {
-    if (path === "/") {
-      return this.root;
-    }
-
-    let directory = await this._open(splitPath(path), {
-      createMode: create ? "directory" : undefined,
-      readMode: "directory",
-    });
-    if (directory.type === "file") {
-      throw new FileSystemError(
-        "IS_NOT_A_DIRECTORY",
-        `'${pathToURL(
-          path
-        )}' is not a directory (it's a file and we were expecting it to be a directory)`
-      );
-    }
-    return directory;
-  }
-
-  private async openPath(
-    path: string
-  ): Promise<FileDescriptor | DirectoryDescriptor> {
-    if (path === "/") {
-      return this.root;
-    }
-    return await this._open(splitPath(path));
+    return await this._open(splitURL(url), { create });
   }
 
   private async _open(
     pathSegments: string[],
     opts: Options = {},
     parent?: DirectoryDescriptor,
-    initialPath?: string
+    initialHref?: string
   ): Promise<FileDescriptor | DirectoryDescriptor> {
-    if (!initialPath) {
-      initialPath = join(...pathSegments);
+    if (!initialHref) {
+      initialHref = pathSegments.join("");
     }
     let name = pathSegments.shift()!;
+    let isDir = name.slice(-1) === "/";
 
     parent = parent || this.root;
     let descriptor: FileDescriptor | DirectoryDescriptor;
     let volume: Volume;
+
+    if (name === ROOT.href && pathSegments.length === 0) {
+      return this.root;
+    }
+
     if (this.volumes.has(parent.inode)) {
       // we have crossed a volume boundary, use the driver for this path and
       // the parent should be the root of the volume
@@ -296,94 +264,66 @@ export class FileSystem {
       volume = parent.volume;
     }
 
-    if (!name) {
-      return volume.root;
-    }
-
     if (
-      // for volumes that dont have directory access, just consume the entire path
-      // and only process leaf nodes
-      (!volume.hasDirectoryAccess &&
-        pathSegments.length > 0 &&
-        !opts.isNewMountPoint) ||
-      (volume.canCreateFiles && !(await parent.has(name)))
+      pathSegments.length > 0 &&
+      !(await parent.hasDirectory(name)) &&
+      opts.create
     ) {
-      if (
-        (!volume.hasDirectoryAccess && pathSegments.length > 0) ||
-        (pathSegments.length && opts.createMode)
-      ) {
-        descriptor = await volume.createDirectory(parent, name);
-        return await this._open(pathSegments, opts, descriptor, initialPath);
-      } else if (volume.canCreateFiles && opts.createMode === "file") {
+      // create interior directories and descend
+      descriptor = await volume.createDirectory(parent, name);
+      this.dispatchEvent(descriptor.url, "create");
+      return await this._open(pathSegments, opts, descriptor, initialHref);
+    } else if (pathSegments.length > 0 && (await parent.hasDirectory(name))) {
+      // descend into existing directory
+      descriptor = (await parent.getDirectory(name))!;
+      return await this._open(pathSegments, opts, descriptor, initialHref);
+    } else if (
+      pathSegments.length === 0 &&
+      !isDir &&
+      !(await parent.hasFile(name))
+    ) {
+      if (opts.create) {
         descriptor = await volume.createFile(parent, name);
-        return descriptor;
-      } else if (volume.hasDirectoryAccess && opts.createMode === "directory") {
-        descriptor = await volume.createDirectory(parent, name);
+        this.dispatchEvent(descriptor.url, "create");
         return descriptor;
       } else {
-        throw new FileSystemError(
-          "NOT_FOUND",
-          `'${pathToURL(initialPath)}' does not exist`
-        );
+        notFound(initialHref);
       }
+    } else if (
+      pathSegments.length === 0 &&
+      !isDir &&
+      (await parent.hasFile(name))
+    ) {
+      // the leaf is a file that exists
+      return (await parent.getFile(name))!;
+    } else if (
+      pathSegments.length === 0 &&
+      isDir &&
+      !(await parent.hasDirectory(name))
+    ) {
+      // the leaf is a directory that does not currently exist
+      if (opts.create) {
+        descriptor = await volume.createDirectory(parent, name);
+        this.dispatchEvent(descriptor.url, "create");
+        return descriptor;
+      } else {
+        notFound(initialHref);
+      }
+    } else if (
+      pathSegments.length === 0 &&
+      isDir &&
+      (await parent.hasDirectory(name))
+    ) {
+      // the leaf is a directory that exists
+      let descriptor = (await parent.getDirectory(name))!;
+      if (this.volumes.has(descriptor.inode)) {
+        return this.volumes.get(descriptor.inode)!.root;
+      }
+      return descriptor;
     } else {
-      if (opts.isNewMountPoint && !volume.hasDirectoryAccess) {
-        descriptor = await volume.createDirectory(parent, name);
-      } else {
-        descriptor = (await parent.get(name))!;
-      }
-
-      // resource is a file
-      if (
-        descriptor.type === "file" &&
-        pathSegments.length === 0 &&
-        opts.createMode !== "directory"
-      ) {
-        return descriptor;
-      } else if (
-        descriptor.type === "file" &&
-        pathSegments.length === 0 &&
-        opts.createMode === "directory"
-      ) {
-        // we asked for a directory and got a file back
-        throw new FileSystemError(
-          "IS_NOT_A_DIRECTORY",
-          `'${pathToURL(
-            initialPath
-          )}' is not a directory (it's a file and we were expecting it to be a directory)`
-        );
-      } else if (descriptor.type === "file") {
-        // there is unconsumed path left over...
-        throw new FileSystemError(
-          "NOT_FOUND",
-          `'${pathToURL(initialPath)}' does not exist`
-        );
-      }
-
-      // resource is a directory
-      if (pathSegments.length > 0) {
-        return await this._open(pathSegments, opts, descriptor, initialPath);
-      } else if (pathSegments.length === 0 && opts.createMode !== "file") {
-        if (this.volumes.has(descriptor.inode)) {
-          let childVolume = this.volumes.get(descriptor.inode)!;
-          let root = childVolume.root;
-          if (root.type === "file" && opts.readMode === "directory") {
-            return await childVolume.createDirectory(parent, "");
-          } else {
-            return root;
-          }
-        }
-        return descriptor;
-      } else {
-        // we asked for a file and got a directory back
-        throw new FileSystemError(
-          "IS_NOT_A_FILE",
-          `'${pathToURL(
-            initialPath
-          )}' is not a file (it's a directory and we were expecting it to be a file)`
-        );
-      }
+      notFound(initialHref);
     }
+    throw new Error("bug: should never get here");
   }
 
   async tempURL(): Promise<URL> {
@@ -405,18 +345,10 @@ export class FileSystem {
     }
   }
 
-  private dispatchEvent(url: URL, type: EventType): void;
-  private dispatchEvent(path: string, type: EventType): void;
-  private dispatchEvent(urlOrPath: URL | string, type: EventType): void {
-    let url: URL;
-    if (typeof urlOrPath === "string") {
-      if (urlOrPath === "/") {
-        return; // ignore this, it's an internal path (not an actual URL)
-      }
-
-      url = pathToURL(urlOrPath);
-    } else {
-      url = urlOrPath;
+  @bind
+  private dispatchEvent(url: URL, type: EventType): void {
+    if (url.href === ROOT.href) {
+      return; // ignore this, it's an internal path (not an actual URL)
     }
     let listeners = this.listeners.get(url.origin);
     if (!listeners || listeners.length === 0) {
@@ -491,9 +423,7 @@ interface ListingEntry {
 }
 
 interface Options {
-  createMode?: "file" | "directory";
-  readMode?: "file" | "directory";
-  isNewMountPoint?: true;
+  create?: true;
 }
 export interface Event {
   kind: "filesystem-event";
@@ -502,3 +432,7 @@ export interface Event {
 }
 export type EventListener = (event: Event) => void;
 export type EventType = "create" | "write" | "remove";
+
+function notFound(href: string) {
+  throw new FileSystemError("NOT_FOUND", `'${href}' does not exist`);
+}
