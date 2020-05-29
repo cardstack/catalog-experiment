@@ -60,6 +60,11 @@ export async function setFile(path: string, contents: string) {
   });
 }
 
+export async function getFile(path: string): Promise<Response> {
+  let url = new URL(path, testFileDaemonURL);
+  return await fetch(url.href);
+}
+
 export async function removeFile(path: string) {
   let url = new URL(path, testFileDaemonURL);
   await fetch(`${url}?key=${encodeURIComponent(fileDaemonKey)}`, {

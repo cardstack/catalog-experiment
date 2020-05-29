@@ -8,6 +8,7 @@ import {
   setFile,
   removeFile,
   resetFileSystem,
+  getFile,
 } from "./helpers/file-daemon-helpers";
 import { withListener } from "./helpers/event-helpers";
 
@@ -54,6 +55,16 @@ QUnit.module("file-daemon-client", function (origHooks) {
       fileAssert.fs.removeAllEventListeners();
       await client.close();
       await resetFileSystem();
+    });
+
+    test("file daemon can serve a file", async function (assert) {
+      let res = await getFile("blah/foo.txt");
+      assert.equal(await res.text(), "blah", "the file was returned");
+    });
+
+    test("file daemon returns 404 when file does not exist", async function (assert) {
+      let res = await getFile("does-not-exist");
+      assert.equal(res.status, 404, "the response status code is correct");
     });
 
     test("can perform a full sync", async function (assert) {
