@@ -4,8 +4,10 @@
   "license": "MIT",
   "dependencies": {
     "@types/fs-extra": "^8.1.0",
+    "@types/node-fetch": "^2.5.7",
     "file-daemon": "0.0.1",
-    "fs-extra": "^9.0.0"
+    "fs-extra": "^9.0.0",
+    "node-fetch": "^2.6.0"
   },
   "devDependencies": {
     "esm": "^3.2.25",

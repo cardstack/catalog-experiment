@@ -4,6 +4,11 @@ import { NodeFileSystemDriver } from "./node-filesystem-driver";
 import { FileSystem } from "../../builder-worker/src/filesystem";
 import { Builder } from "../../builder-worker/src/builder";
 import { ensureDirSync, removeSync } from "fs-extra";
+import fetch from "node-fetch";
+
+if (!globalThis.fetch) {
+  (globalThis.fetch as any) = fetch;
+}
 
 Logger.echoInConsole(true);
 Logger.setLogLevel("info");
