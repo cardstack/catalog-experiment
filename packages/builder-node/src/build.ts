@@ -31,7 +31,10 @@ if (!process.argv[2]) {
   await build();
   log(`build complete: ${outputDir}`);
   process.exit(0);
-})();
+})().catch((err) => {
+  error(`Unhandled error while building`, err);
+  process.exit(1);
+});
 
 async function build() {
   log(`building app: ${appDir}`);
