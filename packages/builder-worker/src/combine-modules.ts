@@ -484,7 +484,7 @@ function removeStatementWithBindingName(
       case "DeclareClass":
       case "DeclareFunction":
       case "DeclareVariable":
-        return node.id?.name !== bindingName;
+        return node.id.name !== bindingName;
 
       case "VariableDeclaration":
       case "ExpressionStatement":
@@ -507,8 +507,8 @@ function removeStatementWithBindingName(
       case "WithStatement":
       case "ExportAllDeclaration":
       case "ExportDefaultDeclaration":
-      case "ExportNamedDeclaration":
-      case "ImportDeclaration":
+      case "ExportNamedDeclaration": // this is intentionally ignored
+      case "ImportDeclaration": // this is intentionally ignored
       case "DeclareModule":
       case "DeclareModuleExports":
       case "DeclareInterface":
