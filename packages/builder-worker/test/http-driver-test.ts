@@ -180,9 +180,10 @@ QUnit.module("filesystem - http driver", function (origHooks) {
 
   QUnit.module("file descriptor", function (hooks) {
     let testFileContents: Uint8Array;
+    let readCount: number;
 
     hooks.beforeEach(async () => {
-      let entropy = 0;
+      readCount = 0;
       const initialValue = "Hello World";
       testFileContents = textEncoder.encode(initialValue);
 
@@ -228,12 +229,12 @@ QUnit.module("filesystem - http driver", function (origHooks) {
           method: "GET",
           url: `${webServerHref}/foo/volatile`,
           response() {
-            entropy++;
+            readCount++;
             return Promise.resolve({
               status: 200,
-              body: `fetch ${entropy}`,
+              body: `fetch ${readCount}`,
               headers: {
-                ETag: entropy,
+                ETag: readCount,
                 "Last-Modified": `${moment()
                   .utc()
                   .format("ddd, DD MMM YYYY HH:mm:ss")} GMT`,
@@ -314,39 +315,40 @@ QUnit.module("filesystem - http driver", function (origHooks) {
         assert.equal(
           (stubbedFetch as any).bodyReadCount,
           1,
-          "the file is never fetched more than once"
+          "the body is never read more than once"
         );
       });
 
       test("can return updated response when etag changes", async function (assert) {
         let file = await openVolatileFile(assert.fs);
+        let initialReadCount = readCount;
         assert.equal(
           await file.readText(),
-          "fetch 4",
+          `fetch ${initialReadCount + 1}`,
           "the file was read correctly"
         );
 
         // each fetch returns a different value
         assert.equal(
           await file.readText(),
-          "fetch 5",
+          `fetch ${initialReadCount + 2}`,
           "the file was read correctly"
         );
         assert.deepEqual(
           await file.read(),
-          new TextEncoder().encode("fetch 6"),
+          new TextEncoder().encode(`fetch ${initialReadCount + 3}`),
           "the file was read correctly"
         );
         let buffer = await readStream(await file.getReadbleStream());
         assert.deepEqual(
           buffer,
-          new TextEncoder().encode("fetch 7"),
+          new TextEncoder().encode(`fetch ${initialReadCount + 4}`),
           "the file was read correctly"
         );
         assert.equal(
           (stubbedFetch as any).bodyReadCount,
           4,
-          "the file is never fetched more than once"
+          "the file is read the correct amount of times"
         );
       });
 
