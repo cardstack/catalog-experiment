@@ -40,6 +40,18 @@ export class NodeFileSystemDriver implements FileSystemDriver {
 }
 
 let dirs: WeakMap<NodeDirectoryDescriptor, Dir> = new WeakMap();
+let openDescriptors: Set<number | Dir> = new Set();
+
+export function closeAll() {
+  for (let descriptor of openDescriptors) {
+    if (typeof descriptor === "number") {
+      closeSync(descriptor);
+    } else {
+      descriptor.closeSync();
+    }
+  }
+  openDescriptors.clear();
+}
 
 export class NodeVolume implements Volume {
   root: NodeDirectoryDescriptor;
@@ -105,6 +117,7 @@ export class NodeDirectoryDescriptor implements DirectoryDescriptor {
   ) {
     this.inode = String(statSync(dir.path).ino);
     dirs.set(this, dir);
+    openDescriptors.add(dir);
   }
 
   private entries(): Dirent[] {
@@ -112,6 +125,7 @@ export class NodeDirectoryDescriptor implements DirectoryDescriptor {
   }
 
   close() {
+    openDescriptors.delete(this.dir);
     this.dir.closeSync();
   }
 
@@ -217,9 +231,11 @@ export class NodeFileDescriptor implements FileDescriptor {
     private readonly dispatchEvent?: FileSystem["dispatchEvent"]
   ) {
     this.inode = String(fstatSync(fd).ino);
+    openDescriptors.add(fd);
   }
 
   close() {
+    openDescriptors.delete(this.fd);
     closeSync(this.fd);
   }
 

@@ -13,7 +13,7 @@ import {
   createReadStream,
   existsSync,
 } from "fs-extra";
-import { NodeFileSystemDriver } from "../src/node-filesystem-driver";
+import { NodeFileSystemDriver, closeAll } from "../src/node-filesystem-driver";
 import {
   FileDescriptor,
   DirectoryDescriptor,
@@ -33,31 +33,26 @@ QUnit.module("Node FileSystem", function (origHooks) {
     }
   }
 
-  async function resetAndMount(assert: FileAssert) {
-    await assert.setupFiles();
+  origHooks.beforeEach(async (assert) => {
+    let fileAssert = (assert as unknown) as FileAssert;
+    await fileAssert.setupFiles();
 
     removeSync(testDir);
     ensureDirSync(testDir);
 
-    volumeId = await assert.fs.mount(
+    volumeId = await fileAssert.fs.mount(
       url("/"),
       new NodeFileSystemDriver(testDir)
     );
-  }
+  });
 
-  QUnit.module("open", function () {
+  origHooks.afterEach(closeAll);
+
+  QUnit.module("open", function (hooks) {
     let file: FileDescriptor | DirectoryDescriptor | undefined;
 
-    origHooks.beforeEach(async (assert) => {
+    hooks.beforeEach(() => {
       file = undefined;
-      let fileAssert = (assert as unknown) as FileAssert;
-      await resetAndMount(fileAssert);
-    });
-
-    origHooks.afterEach(() => {
-      if (file) {
-        file.close();
-      }
     });
 
     test("can get an existing file when create is not specified", async function (assert) {
@@ -158,11 +153,6 @@ QUnit.module("Node FileSystem", function (origHooks) {
 
     origHooks.beforeEach(async (assert) => {
       let fileAssert = (assert as unknown) as FileAssert;
-      await fileAssert.setupFiles();
-      removeSync(testDir);
-      ensureDirSync(testDir);
-
-      await fileAssert.fs.mount(url("/"), new NodeFileSystemDriver(testDir));
       setup({
         "/foo/bar": "Hello World",
         test: "bye mars",
@@ -171,11 +161,6 @@ QUnit.module("Node FileSystem", function (origHooks) {
         url("/foo/")
       )) as DirectoryDescriptor;
       file = (await fileAssert.fs.open(url("/foo/bar"))) as FileDescriptor;
-    });
-
-    origHooks.afterEach(() => {
-      file.close();
-      directory.close();
     });
 
     QUnit.module("write", function () {
@@ -292,11 +277,6 @@ QUnit.module("Node FileSystem", function (origHooks) {
   });
 
   QUnit.module("list", function () {
-    origHooks.beforeEach(async (assert) => {
-      let fileAssert = (assert as unknown) as FileAssert;
-      await resetAndMount(fileAssert);
-    });
-
     test("can get a non-recursive directory listing", async function (assert) {
       setup({
         "/a.txt": "a",
@@ -351,11 +331,6 @@ QUnit.module("Node FileSystem", function (origHooks) {
   });
 
   QUnit.module("move", function () {
-    origHooks.beforeEach(async (assert) => {
-      let fileAssert = (assert as unknown) as FileAssert;
-      await resetAndMount(fileAssert);
-    });
-
     test("can use 'move' to rename a file", async function (assert) {
       setup({
         "/a.txt": "a",
@@ -410,11 +385,6 @@ QUnit.module("Node FileSystem", function (origHooks) {
   });
 
   QUnit.module("copy", function () {
-    origHooks.beforeEach(async (assert) => {
-      let fileAssert = (assert as unknown) as FileAssert;
-      await resetAndMount(fileAssert);
-    });
-
     test("can copy a file", async function (assert) {
       setup({
         "/a.txt": "a",
@@ -493,11 +463,6 @@ QUnit.module("Node FileSystem", function (origHooks) {
   });
 
   QUnit.module("remove", function () {
-    origHooks.beforeEach(async (assert) => {
-      let fileAssert = (assert as unknown) as FileAssert;
-      await resetAndMount(fileAssert);
-    });
-
     test("can remove a file", async function (assert) {
       setup({
         "/a.txt": "a",
@@ -525,14 +490,6 @@ QUnit.module("Node FileSystem", function (origHooks) {
   });
 
   QUnit.module("mounting", function () {
-    origHooks.beforeEach(async (assert) => {
-      let fileAssert = (assert as unknown) as FileAssert;
-      await fileAssert.setupFiles();
-
-      removeSync(testDir);
-      ensureDirSync(testDir);
-    });
-
     test("it can mount a volume within another volume", async function (assert) {
       await assert.fs.unmount(volumeId);
       ensureDirSync(join(testDir, "a"));
@@ -592,9 +549,7 @@ QUnit.module("Node FileSystem", function (origHooks) {
   QUnit.module("events", function () {
     origHooks.beforeEach(async (assert) => {
       let fileAssert = (assert as unknown) as FileAssert;
-      await fileAssert.setupFiles();
       fileAssert.fs.removeAllEventListeners();
-      await resetAndMount(fileAssert);
     });
 
     origHooks.afterEach((assert) => {
