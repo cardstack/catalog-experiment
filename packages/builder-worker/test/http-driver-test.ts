@@ -17,8 +17,10 @@ import {
 import { FileSystem } from "../src/filesystem";
 import moment from "moment";
 import { FileDescriptor } from "../src/filesystem-drivers/filesystem-driver";
+import isEqual from "lodash/isEqual";
 
 const utf8 = new TextDecoder("utf8");
+const textEncoder = new TextEncoder();
 const webServerHref = "http://test.com";
 
 QUnit.module("filesystem - http driver", function (origHooks) {
@@ -177,10 +179,12 @@ QUnit.module("filesystem - http driver", function (origHooks) {
   });
 
   QUnit.module("file descriptor", function (hooks) {
-    let testFileContents: string;
+    let testFileContents: Uint8Array;
 
     hooks.beforeEach(async () => {
-      testFileContents = "Hello World";
+      let entropy = 0;
+      const initialValue = "Hello World";
+      testFileContents = textEncoder.encode(initialValue);
 
       stubbedFetch = stubFetch([
         {
@@ -207,8 +211,30 @@ QUnit.module("filesystem - http driver", function (origHooks) {
               status: 200,
               body: testFileContents,
               headers: {
-                ETag: "abc123",
+                ETag: isEqual(
+                  testFileContents,
+                  textEncoder.encode(initialValue)
+                )
+                  ? "abc123"
+                  : "updated",
                 "Last-Modified": `${moment("2020-05-16T18:50:00 Z")
+                  .utc()
+                  .format("ddd, DD MMM YYYY HH:mm:ss")} GMT`,
+              },
+            });
+          },
+        },
+        {
+          method: "GET",
+          url: `${webServerHref}/foo/volatile`,
+          response() {
+            entropy++;
+            return Promise.resolve({
+              status: 200,
+              body: `fetch ${entropy}`,
+              headers: {
+                ETag: entropy,
+                "Last-Modified": `${moment()
                   .utc()
                   .format("ddd, DD MMM YYYY HH:mm:ss")} GMT`,
               },
@@ -222,8 +248,9 @@ QUnit.module("filesystem - http driver", function (origHooks) {
             if (!request?.body) {
               throw new Error(`request missing body`);
             }
-            let body = utf8.decode((request.body as unknown) as Uint8Array);
-            testFileContents = body;
+            let bodyBuffer = (request.body as unknown) as Uint8Array;
+            let body = utf8.decode(bodyBuffer);
+            testFileContents = bodyBuffer;
             return {
               status: 200,
               body,
@@ -245,6 +272,10 @@ QUnit.module("filesystem - http driver", function (origHooks) {
       return (await fs.open(url("/foo/bar"))) as HttpFileDescriptor;
     }
 
+    async function openVolatileFile(fs: FileSystem) {
+      return (await fs.open(url("/foo/volatile"))) as HttpFileDescriptor;
+    }
+
     QUnit.module("read", function () {
       test("can read a string from a file", async function (assert) {
         let file = await openFile(assert.fs);
@@ -252,6 +283,70 @@ QUnit.module("filesystem - http driver", function (origHooks) {
           await file.readText(),
           "Hello World",
           "the file was read correctly"
+        );
+      });
+
+      test("can use HTTP etag header caching when reading from a file", async function (assert) {
+        let file = await openFile(assert.fs);
+        assert.equal(
+          await file.readText(),
+          "Hello World",
+          "the file was read correctly"
+        );
+
+        // all the following reads will be from the cache
+        assert.equal(
+          await file.readText(),
+          "Hello World",
+          "the file was read correctly"
+        );
+        assert.deepEqual(
+          await file.read(),
+          new TextEncoder().encode("Hello World"),
+          "the file was read correctly"
+        );
+        let buffer = await readStream(await file.getReadbleStream());
+        assert.deepEqual(
+          buffer,
+          new TextEncoder().encode("Hello World"),
+          "the file was read correctly"
+        );
+        assert.equal(
+          (stubbedFetch as any).bodyReadCount,
+          1,
+          "the file is never fetched more than once"
+        );
+      });
+
+      test("can return updated response when etag changes", async function (assert) {
+        let file = await openVolatileFile(assert.fs);
+        assert.equal(
+          await file.readText(),
+          "fetch 4",
+          "the file was read correctly"
+        );
+
+        // each fetch returns a different value
+        assert.equal(
+          await file.readText(),
+          "fetch 5",
+          "the file was read correctly"
+        );
+        assert.deepEqual(
+          await file.read(),
+          new TextEncoder().encode("fetch 6"),
+          "the file was read correctly"
+        );
+        let buffer = await readStream(await file.getReadbleStream());
+        assert.deepEqual(
+          buffer,
+          new TextEncoder().encode("fetch 7"),
+          "the file was read correctly"
+        );
+        assert.equal(
+          (stubbedFetch as any).bodyReadCount,
+          4,
+          "the file is never fetched more than once"
         );
       });
 

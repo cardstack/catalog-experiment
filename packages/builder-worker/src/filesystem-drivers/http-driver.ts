@@ -11,6 +11,7 @@ import { assertURLEndsInDir } from "../path";
 import moment from "moment";
 
 const textEncoder = new TextEncoder();
+const utf8 = new TextDecoder("utf8");
 
 interface Options {
   useHttpPostForUpdate: boolean;
@@ -34,8 +35,11 @@ export class HttpFileSystemDriver implements FileSystemDriver {
   }
 }
 
+type HttpResponseCache = Map<string, Promise<Uint8Array>>;
+
 export class HttpVolume implements Volume {
   root: HttpFileDescriptor;
+  httpResponseCache: HttpResponseCache = new Map();
 
   constructor(
     private httpURL: URL,
@@ -224,22 +228,30 @@ export class HttpFileDescriptor implements FileDescriptor {
 
   async read(): Promise<Uint8Array> {
     let response = await getOkResponse(this.underlyingURL);
-    return new Uint8Array(await response.arrayBuffer());
+    return await getResponseBuffer(response, this.volume.httpResponseCache);
   }
 
   async readText(): Promise<string> {
     let response = await getOkResponse(this.underlyingURL);
-    return await response.text();
+    let buffer = await getResponseBuffer(
+      response,
+      this.volume.httpResponseCache
+    );
+    return utf8.decode(buffer);
   }
 
   async getReadbleStream(): Promise<ReadableStream> {
     let response = await getOkResponse(this.underlyingURL);
-    if (response.body == null) {
+    let stream = await getResponseReadableStream(
+      response,
+      this.volume.httpResponseCache
+    );
+    if (stream == null) {
       throw new Error(
         `Cannot load underlying URL stream ${this.underlyingURL} for file ${this.url}, stream is null`
       );
     }
-    return response.body;
+    return stream;
   }
 }
 
@@ -266,4 +278,87 @@ async function getOkResponse(url: URL): Promise<Response> {
 
 export interface HttpStat extends Stat {
   contentType: string;
+}
+
+async function getResponseBuffer(
+  response: Response,
+  cache: HttpResponseCache
+): Promise<Uint8Array> {
+  let etag = response.headers.get("ETag");
+  let cacheKey: string | undefined;
+  if (etag) {
+    cacheKey = `${response.url}_${etag}`;
+    if (cache.has(cacheKey)) {
+      return await cache.get(cacheKey)!;
+    }
+  }
+  let bufferPromise = new Promise<Uint8Array>(async (res) => {
+    res(new Uint8Array(await response.arrayBuffer()));
+  });
+  if (cacheKey) {
+    cache.set(cacheKey, bufferPromise);
+  }
+  return await bufferPromise;
+}
+
+async function getResponseReadableStream(
+  response: Response,
+  cache: HttpResponseCache
+): Promise<ReadableStream<Uint8Array> | null> {
+  let etag = response.headers.get("ETag");
+  let cacheKey: string | undefined;
+  if (etag) {
+    cacheKey = `${response.url}_${etag}`;
+    if (cache.has(cacheKey)) {
+      let buffer = await cache.get(cacheKey)!;
+      return new ReadableStream({
+        start(controller) {
+          controller.enqueue(buffer);
+          controller.close();
+        },
+      });
+    }
+  }
+
+  if (cacheKey) {
+    let reader = response.body?.getReader();
+    if (!reader) {
+      return null;
+    }
+
+    let stream: ReadableStream<Uint8Array>;
+    let bufferPromise = new Promise<Uint8Array>((res) => {
+      // listen to the stream in response.body and cache the buffer when the stream ends
+      let buffers: Uint8Array[] = [];
+      stream = new ReadableStream({
+        start(controller) {
+          function push() {
+            reader!.read().then(({ done, value }) => {
+              if (done) {
+                let size = buffers.reduce((a, b) => a + b.length, 0);
+                let result = new Uint8Array(size);
+                let offset = 0;
+                for (let buffer of buffers) {
+                  result.set(buffer, offset);
+                  offset += buffer.length;
+                }
+                res(result);
+                controller.close();
+                return;
+              } else if (value) {
+                controller.enqueue(value);
+                buffers.push(value);
+              }
+              push();
+            });
+          }
+
+          push();
+        },
+      });
+    });
+    cache.set(cacheKey, bufferPromise);
+    return stream!;
+  }
+  return response.body;
 }

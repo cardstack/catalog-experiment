@@ -23,7 +23,7 @@ interface MockRequest {
 export function stubFetch(mockConfigs: MockRequest[]): sinon.SinonStub {
   let urls = mockConfigs.filter((i) => typeof i.url === "string");
   let patterns = mockConfigs.filter((i) => typeof i.url !== "string");
-  return sinon
+  let stub = sinon
     .stub(win, "fetch")
     .callsFake(async (url: string, request?: Request) => {
       let method: string;
@@ -80,23 +80,29 @@ export function stubFetch(mockConfigs: MockRequest[]): sinon.SinonStub {
         body: buffer
           ? {
               getReader() {
+                (stub as any).bodyReadCount++;
                 return new SimpleReader(buffer!);
               },
             }
           : null,
         text() {
+          (stub as any).bodyReadCount++;
           return buffer ? new Promise((res) => res(utf8.decode(buffer))) : null;
         },
         arrayBuffer() {
+          (stub as any).bodyReadCount++;
           return buffer ? new Promise((res) => res(buffer!.buffer)) : null;
         },
         blob() {
+          (stub as any).bodyReadCount++;
           return buffer
             ? new Promise((res) => res(new Blob([buffer!.buffer])))
             : null;
         },
       };
     });
+  (stub as any).bodyReadCount = 0;
+  return stub;
 }
 
 class SimpleReader implements ReadableStreamDefaultReader<Uint8Array> {
