@@ -2,6 +2,7 @@ import { parse, transformFromAstSync } from "@babel/core";
 import generate from "@babel/generator";
 import {
   Statement,
+  Expression,
   ExportNamedDeclaration,
   exportNamedDeclaration,
   importDeclaration,
@@ -59,6 +60,7 @@ export function combineModules(
   //   - binding is not consumed directly by the bundle's own module scope or
   //     part of a consumed binding's dependency graph
   let exports = assignedExports(ownAssignments, state);
+  let removedBindings = new Set<string>();
   for (let bindingName of state.usedNames) {
     if (
       [...exports.values()].some(
@@ -74,25 +76,17 @@ export function combineModules(
     ) {
       continue;
     }
-
-    // the binding does not appear to be consumed--remove it
-    potentialBundleAppends = removeStatementWithBindingName(
-      potentialBundleAppends,
-      bindingName
-    );
+    removedBindings.add(bindingName);
   }
 
-  let bundleBody = bundleAst.program.body;
-  for (let statement of potentialBundleAppends) {
-    bundleBody.push(statement);
-  }
+  appendToBody(bundleAst.program.body, potentialBundleAppends, removedBindings);
 
   // at this point we removed all export statements because our modules can
   // directly consume each other's renamed bindings. Here we re-add exports for
   // the things that are specifically configured to be exposed outside the
   // bundle.
   if (exports.size > 0) {
-    bundleBody.push(
+    bundleAst.program.body.push(
       exportNamedDeclaration(
         undefined,
         [...exports].map(([outsideName, insideName]) => {
@@ -106,7 +100,7 @@ export function combineModules(
   }
 
   for (let [bundleHref, mapping] of assignedImports(assignments, state)) {
-    bundleBody.unshift(
+    bundleAst.program.body.unshift(
       importDeclaration(
         [...mapping].map(([exportedName, localName]) => {
           return importSpecifier(
@@ -123,6 +117,7 @@ export function combineModules(
   return code;
 }
 
+// TODO cache these answers so we never ask the same question twice
 function isConsumedBy(
   consumingBinding: string,
   consumedBinding: string,
@@ -473,20 +468,34 @@ function resolveReexport({
   return { remoteName, remoteModule };
 }
 
-function removeStatementWithBindingName(
+function appendToBody(
+  body: Statement[],
   statements: Statement[],
-  bindingName: string
-): Statement[] {
-  return statements.filter((node) => {
+  removedBindings: Set<string>
+): void {
+  for (let node of statements) {
     switch (node.type) {
       case "FunctionDeclaration":
       case "ClassDeclaration":
       case "DeclareClass":
       case "DeclareFunction":
       case "DeclareVariable":
-        return node.id.name !== bindingName;
-
+        if (!removedBindings.has(node.id.name)) {
+          body.push(node);
+        }
+        break;
       case "VariableDeclaration":
+        let filteredDeclarations = node.declarations.filter(
+          (d) =>
+            d.id.type !== "Identifier" ||
+            !removedBindings.has(d.id.name) ||
+            (d.init && !isSideEffectFree(d.init))
+        );
+        if (filteredDeclarations.length > 0) {
+          node.declarations = filteredDeclarations;
+          body.push(node);
+        }
+        break;
       case "ExpressionStatement":
       case "BlockStatement":
       case "BreakStatement":
@@ -528,11 +537,28 @@ function removeStatementWithBindingName(
       case "TSImportEqualsDeclaration":
       case "TSExportAssignment":
       case "TSNamespaceExportDeclaration":
-        return true;
+        body.push(node);
+        break;
       default:
         assertNever(node);
     }
-  });
+  }
+}
+
+function isSideEffectFree(node: Expression): boolean {
+  switch (node.type) {
+    case "BooleanLiteral":
+    case "NumericLiteral":
+    case "StringLiteral":
+    case "NullLiteral":
+    case "Identifier":
+    case "FunctionExpression":
+    case "ClassExpression":
+      return true;
+    // TODO consider ArrayLiteral and ObjectLiteral (which recurse--all members must be side effect free too)
+    default:
+      return false;
+  }
 }
 
 /*

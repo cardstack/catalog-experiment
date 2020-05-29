@@ -954,6 +954,96 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
+  test("strips unconsumed variable", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { a } from './lib.js';
+        console.log(a());
+      `,
+      "lib.js": `
+        export function a() { return 1; }
+        let cache;
+        function helper() {
+          if (cache) { return cache; }
+          return cache = 1;
+        }
+        export function b(options) { return helper(); }
+        `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined,
+      `
+      function a() { return 1; }
+      console.log(a());
+      `
+    );
+  });
+
+  test("strips unconsumed variable in a variable declaration that has more than 1 variable", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { a } from './lib.js';
+        console.log(a());
+      `,
+      "lib.js": `
+        let cache, aValue;
+        export function a() { return aValue; }
+        function helper() {
+          if (cache) { return cache; }
+          return cache = 1;
+        }
+        export function b(options) { return helper(); }
+        `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined,
+      `
+      let aValue;
+      function a() { return aValue; }
+      console.log(a());
+      `
+    );
+  });
+
+  test("preserves side-effectful right-hand side", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { i } from './lib.js';
+        console.log(i());
+      `,
+      "lib.js": `
+        export function i() { return 1; }
+        let a = initCache(), b = true, c = 1, d = 'd', e = null, f = undefined, g = function() {}, h = class foo {};
+        function helper() {
+          return [a , b, c, d, e, f, g, h];
+        }
+        export function j(options) { return helper(); }
+        `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined,
+      `
+      function i() { return 1; }
+      let a = initCache();
+      console.log(i());
+      `
+    );
+  });
+
+  // TODO need tree-shaking test for stripping out import from another bundle
+
   // Test ideas:
   // mulitple named imports: import { a, b, c} from './lib.js'
   // import default and variations on that theme
