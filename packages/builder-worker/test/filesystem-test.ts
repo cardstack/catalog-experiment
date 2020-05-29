@@ -585,6 +585,21 @@ QUnit.module("filesystem", function (origHooks) {
         "the listing is correct"
       );
     });
+
+    test("can get a listing of an empty filesystem", async function (assert) {
+      await assert.setupFiles({});
+
+      let listing = await assert.fs.listAllOrigins(true);
+      assert.deepEqual(listing, [], "the listing is correct");
+      try {
+        await assert.fs.list(new URL(origin));
+        throw new Error(
+          `should not be able to list a resource that doesn't exist`
+        );
+      } catch (e) {
+        assert.equal(e.code, "NOT_FOUND", "error code is correct");
+      }
+    });
   });
 
   QUnit.module("move", function () {
