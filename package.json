@@ -17,11 +17,10 @@
     "build:shared": "cd packages/shared && tsc",
     "build:tarstream": "cd packages/tarstream && tsc",
     "build:ui": "cd packages/ui && tsc",
-    "build:test-app": "node ./packages/builder-node/bin/build.js packages/app",
     "test": "npm-run-all test:*",
     "test:builder-worker": "cd packages/builder-worker && yarn test",
     "test:builder-node": "cd packages/builder-worker && yarn webpack && yarn qunit assets/node-test.js",
-    "test:test-app": "testem ci",
+    "test:test-app": "node ./packages/builder-node/bin/build.js packages/app && testem ci",
     "builder": "cd packages/builder-worker && yarn start",
     "serve": "cd packages/app && yarn start",
     "ui": "cd packages/ui && yarn start"
