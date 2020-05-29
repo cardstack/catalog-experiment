@@ -954,6 +954,42 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
+  test("strips out unconsumed binding that is imported from another bundle", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { b } from './lib.js';
+        console.log(b());
+      `,
+      "a.js": `
+        export const a = 1;
+      `,
+      "lib.js": `
+        import { a } from './a.js';
+        export function c() { return a; }
+        export function b() { return 1; }
+        `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs, {
+      assignments: [
+        {
+          module: "a.js",
+          assignedToBundle: "dist/2.js",
+          nameMapping: {
+            a: "lib_a",
+          },
+        },
+      ],
+    });
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined,
+      `function b() { return 1; }
+       console.log(b());`
+    );
+  });
+
   test("strips unconsumed variable", async function (assert) {
     await assert.setupFiles({
       "index.js": `
@@ -1041,8 +1077,6 @@ QUnit.module("combine modules", function (origHooks) {
       `
     );
   });
-
-  // TODO need tree-shaking test for stripping out import from another bundle
 
   // Test ideas:
   // mulitple named imports: import { a, b, c} from './lib.js'

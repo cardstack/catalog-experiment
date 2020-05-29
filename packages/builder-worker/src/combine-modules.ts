@@ -61,17 +61,28 @@ export function combineModules(
   //     part of a consumed binding's dependency graph
   let exports = assignedExports(ownAssignments, state);
   let removedBindings = new Set<string>();
+  let consumptionCache = new Map<string, Map<string, boolean>>();
   for (let bindingName of state.usedNames) {
     if (
       [...exports.values()].some(
         (exportedBinding) =>
           exportedBinding === bindingName ||
-          isConsumedBy(exportedBinding, bindingName, state.bindingDependsOn)
+          isConsumedBy(
+            exportedBinding,
+            bindingName,
+            state.bindingDependsOn,
+            consumptionCache
+          )
       ) ||
       [...state.bundleDependsOn].some(
         (usedByBundleBinding) =>
           usedByBundleBinding === bindingName ||
-          isConsumedBy(usedByBundleBinding, bindingName, state.bindingDependsOn)
+          isConsumedBy(
+            usedByBundleBinding,
+            bindingName,
+            state.bindingDependsOn,
+            consumptionCache
+          )
       )
     ) {
       continue;
@@ -99,7 +110,11 @@ export function combineModules(
     );
   }
 
-  for (let [bundleHref, mapping] of assignedImports(assignments, state)) {
+  for (let [bundleHref, mapping] of assignedImports(
+    assignments,
+    state,
+    removedBindings
+  )) {
     bundleAst.program.body.unshift(
       importDeclaration(
         [...mapping].map(([exportedName, localName]) => {
@@ -117,12 +132,20 @@ export function combineModules(
   return code;
 }
 
-// TODO cache these answers so we never ask the same question twice
 function isConsumedBy(
   consumingBinding: string,
   consumedBinding: string,
-  bindingDependencies: State["bindingDependsOn"]
+  bindingDependencies: State["bindingDependsOn"],
+  cache: Map<string, Map<string, boolean>>
 ): boolean {
+  if (!cache.has(consumingBinding)) {
+    cache.set(consumingBinding, new Map());
+  }
+  let consumesCache = cache.get(consumingBinding);
+  if (consumesCache?.has(consumedBinding)) {
+    return consumesCache.get(consumingBinding)!;
+  }
+
   let deps = bindingDependencies.get(consumingBinding);
   if (!deps) {
     return false;
@@ -131,9 +154,11 @@ function isConsumedBy(
     return true;
   }
 
-  return [...deps].some((dep) =>
-    isConsumedBy(dep, consumedBinding, bindingDependencies)
+  let result = [...deps].some((dep) =>
+    isConsumedBy(dep, consumedBinding, bindingDependencies, cache)
   );
+  consumesCache?.set(consumedBinding, result);
+  return result;
 }
 
 function assignedExports(assignments: BundleAssignment[], state: State) {
@@ -154,7 +179,8 @@ function assignedExports(assignments: BundleAssignment[], state: State) {
 
 function assignedImports(
   assignments: BundleAssignment[],
-  state: State
+  state: State,
+  removedBindings: Set<string>
 ): Map<string, Map<string, string>> {
   let imports: ReturnType<typeof assignedImports> = new Map();
   for (let [moduleHref, mappings] of state.assignedImportedNames) {
@@ -163,6 +189,14 @@ function assignedImports(
       // internal, no import needed
       continue;
     }
+    if (
+      [...mappings.values()].every((localName) =>
+        removedBindings.has(localName)
+      )
+    ) {
+      continue; // skip over this import--it's actually unconsumed
+    }
+
     let importsFromBundle = imports.get(assignment.bundleURL.href);
     if (!importsFromBundle) {
       importsFromBundle = new Map();
