@@ -20,19 +20,14 @@ async function makeModuleResolutions(
   if (parsed?.type !== "File") {
     throw new Error(`parsed js for ${moduleURL.href} is not a babel File type`);
   }
-  let imports: ModuleResolution["imports"] = {};
   let desc = describeModule(parsed);
-  let { exports } = desc;
-  await Promise.all(
+  let resolvedImports = await Promise.all(
     desc.imports.map(async (imp) => {
       let depURL = await resolver.resolve(imp.specifier, moduleURL);
-      imports[imp.specifier] = {
-        desc: imp,
-        resolution: await makeModuleResolutions(fs, depURL),
-      };
+      return makeModuleResolutions(fs, depURL);
     })
   );
-  return { url: moduleURL, parsed, imports, exports };
+  return { url: moduleURL, parsed, resolvedImports, desc };
 }
 
 async function makeBundleAssignments(

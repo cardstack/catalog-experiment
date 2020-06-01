@@ -17,7 +17,6 @@ import { BundleAssignment } from "./nodes/bundle";
 import { NodePath } from "@babel/traverse";
 import { ModuleResolution } from "./nodes/resolution";
 import { NamespaceMarker, isNamespaceMarker } from "./describe-module";
-import { Memoize } from "typescript-memoize";
 import { maybeRelativeURL } from "./path";
 import { assertNever } from "shared/util";
 
@@ -52,6 +51,8 @@ export function combineModules(
       appendedModules
     );
   }
+
+  debugger;
 
   // iterate through the bundle's bindings and identify bindings that are not
   // consumed:
@@ -169,6 +170,7 @@ function assignedExports(assignments: BundleAssignment[], state: State) {
         .get(assignment.module.url.href)
         ?.get(original);
       if (!insideName) {
+        debugger;
         throw new Error(`bug: no internal mapping for ${exposed}`);
       }
       exports.set(exposed, insideName);
@@ -246,7 +248,7 @@ function gatherBundleStatements(
   }
   appendedModules.add(module.url.href);
   let adjusted = adjustModule(module, state, assignments);
-  for (let { resolution } of Object.values(module.imports)) {
+  for (let resolution of module.resolvedImports) {
     let assignment = assignments.find(
       (a) => a.module.url.href === resolution.url.href
     );
@@ -305,35 +307,6 @@ class ModuleRewriter {
     this.rewriteScope();
   }
 
-  @Memoize()
-  private get importedNames(): Map<
-    string,
-    {
-      remoteName: string | typeof NamespaceMarker;
-      remoteModule: ModuleResolution;
-    }
-  > {
-    let output: Map<
-      string,
-      { remoteName: string; remoteModule: ModuleResolution }
-    > = new Map();
-    for (let imp of Object.values(this.module.imports)) {
-      for (let [localName, remoteName] of imp.desc.names) {
-        output.set(localName, { remoteName, remoteModule: imp.resolution });
-      }
-    }
-    return output;
-  }
-
-  @Memoize()
-  private get exportedLocalNames(): Map<string, string> {
-    let result = new Map();
-    for (let [outsideName, insideName] of this.module.exports.exportedNames) {
-      result.set(insideName, outsideName);
-    }
-    return result;
-  }
-
   rewriteExportNamedDeclaration(
     path: NodePath<ExportNamedDeclaration>,
     _context: PluginContext
@@ -354,20 +327,26 @@ class ModuleRewriter {
 
       // figure out which names in module scope are imports vs things that
       // live inside this module
-      let nameIsImported = this.importedNames.get(name);
-      if (nameIsImported) {
-        let { remoteName, remoteModule } = resolveReexport(nameIsImported);
+      let nameDesc = this.module.desc.names.get(name)!;
+      if (nameDesc.type === "import") {
+        debugger;
+        let { name: remoteName, module: remoteModule } = resolveReexport(
+          nameDesc.name,
+          this.module.resolvedImports[nameDesc.importIndex]
+        );
         assignedName = this.maybeAssignImportName(
           remoteModule,
           remoteName,
           name
         );
       } else {
-        let outsideName = this.exportedLocalNames.get(name);
-        if (outsideName) {
+        let entry = [...this.module.desc.exports].find(
+          ([_, desc]) => desc.type === "local" && desc.name === name
+        );
+        if (entry?.[0]) {
           assignedName = this.maybeAssignImportName(
             this.module,
-            outsideName,
+            entry[0],
             name
           );
         } else {
@@ -429,6 +408,7 @@ class ModuleRewriter {
     exportedName: string | NamespaceMarker,
     assignedName: string
   ) {
+    debugger;
     let mapping = this.sharedState.assignedImportedNames.get(module.url.href);
     if (!mapping) {
       mapping = new Map();
@@ -479,27 +459,21 @@ function adjustModulePlugin(): unknown {
   return { visitor };
 }
 
-function resolveReexport({
-  remoteName,
-  remoteModule,
-}: {
-  remoteName: string | NamespaceMarker;
-  remoteModule: ModuleResolution;
-}): { remoteName: string | NamespaceMarker; remoteModule: ModuleResolution } {
-  if (isNamespaceMarker(remoteName)) {
-    return { remoteName, remoteModule };
+function resolveReexport(
+  name: string | NamespaceMarker,
+  module: ModuleResolution
+): { name: string | NamespaceMarker; module: ModuleResolution } {
+  if (isNamespaceMarker(name)) {
+    return { name, module };
   }
-  if (remoteModule.exports.reexports.has(remoteName)) {
-    let reexportedFrom = Object.values(remoteModule.imports).find((m) =>
-      m.desc.reexports.has(remoteName!)
-    )!;
-
-    return resolveReexport({
-      remoteName: remoteModule.exports.reexports.get(remoteName)!,
-      remoteModule: reexportedFrom.resolution,
-    });
+  let remoteDesc = module.desc.exports.get(name)!;
+  if (remoteDesc.type === "reexport") {
+    return resolveReexport(
+      remoteDesc.name,
+      module.resolvedImports[remoteDesc.importIndex]
+    );
   }
-  return { remoteName, remoteModule };
+  return { name, module };
 }
 
 function appendToBody(

@@ -2,13 +2,8 @@ import { BuilderNode, Value, NextNode, AllNode } from "./common";
 import { EntrypointsJSONNode, HTMLEntrypoint } from "./html";
 import { FileNode } from "./file";
 import { JSParseNode } from "./js";
-import {
-  describeModule,
-  ImportDescription,
-  ExportDescription,
-} from "../describe-module";
+import { describeModule, ModuleDescription } from "../describe-module";
 import { File } from "@babel/types";
-import mapValues from "lodash/mapValues";
 
 export class ModuleResolutionsNode implements BuilderNode {
   cacheKey = this;
@@ -44,20 +39,8 @@ export class ModuleResolutionsNode implements BuilderNode {
 export interface ModuleResolution {
   url: URL;
   parsed: File;
-  exports: ExportDescription;
-  imports: {
-    [specifier: string]: {
-      desc: ImportDescription;
-      resolution: ModuleResolution;
-    };
-  };
-}
-
-interface SpecifierNodes {
-  [specifier: string]: {
-    desc: ImportDescription;
-    resolution: ModuleResolutionNode;
-  };
+  desc: ModuleDescription;
+  resolvedImports: ModuleResolution[];
 }
 
 export class Resolver {
@@ -75,19 +58,15 @@ export class ModuleResolutionNode implements BuilderNode {
     return { parsed: new JSParseNode(new FileNode(this.url)) };
   }
   async run({ parsed }: { parsed: File }): Promise<NextNode<ModuleResolution>> {
-    let imports: SpecifierNodes = {};
     let desc = describeModule(parsed);
-    await Promise.all(
+    let imports = await Promise.all(
       desc.imports.map(async (imp) => {
         let depURL = await this.resolver.resolve(imp.specifier, this.url);
-        imports[imp.specifier] = {
-          desc: imp,
-          resolution: new ModuleResolutionNode(depURL, this.resolver),
-        };
+        return new ModuleResolutionNode(depURL, this.resolver);
       })
     );
     return {
-      node: new FinishResolutionNode(this.url, imports, desc.exports, parsed),
+      node: new FinishResolutionNode(this.url, imports, desc, parsed),
     };
   }
 }
@@ -96,27 +75,24 @@ class FinishResolutionNode implements BuilderNode {
   cacheKey: FinishResolutionNode;
   constructor(
     private url: URL,
-    private imports: SpecifierNodes,
-    private exports: ExportDescription,
+    private imports: ModuleResolutionNode[],
+    private desc: ModuleDescription,
     private parsed: File
   ) {
     this.cacheKey = this;
   }
   deps() {
-    return mapValues(this.imports, ({ resolution }) => resolution);
+    return this.imports;
   }
   async run(resolutions: {
-    [specifier: string]: ModuleResolution;
+    [importIndex: number]: ModuleResolution;
   }): Promise<Value<ModuleResolution>> {
     return {
       value: {
         url: this.url,
         parsed: this.parsed,
-        exports: this.exports,
-        imports: mapValues(this.imports, ({ desc }, specifier) => ({
-          desc,
-          resolution: resolutions[specifier],
-        })),
+        desc: this.desc,
+        resolvedImports: this.imports.map((_, index) => resolutions[index]),
       },
     };
   }
