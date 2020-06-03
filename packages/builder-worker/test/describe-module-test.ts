@@ -149,13 +149,6 @@ QUnit.module("describe-module", function () {
     assert.equal(out?.type, "local");
     if (out?.type === "local") {
       assert.equal(out.usedByModule, true);
-      assert.equal(out.declaration.start, 0);
-      assert.equal(out.declaration.end, 15);
-      assert.equal(out.references.length, 2);
-      assert.equal(out.references[0].start, 9);
-      assert.equal(out.references[0].end, 10);
-      assert.equal(out.references[1].start, 22);
-      assert.equal(out.references[1].end, 23);
     }
   });
 
@@ -175,6 +168,21 @@ QUnit.module("describe-module", function () {
     }
   });
 
+  test("regions for function declaration", function (assert) {
+    let desc = describeModule(`
+      function x() {}
+      x();
+    `);
+    let out = desc.names.get("x")!;
+    assert.equal(out.declaration.start, 0);
+    assert.equal(out.declaration.end, 15);
+    assert.equal(out.references.length, 2);
+    assert.equal(out.references[0].start, 9);
+    assert.equal(out.references[0].end, 10);
+    assert.equal(out.references[1].start, 22);
+    assert.equal(out.references[1].end, 23);
+  });
+
   test("regions for variable declaration", function (assert) {
     let desc = describeModule(`
       const a = 1;
@@ -183,11 +191,214 @@ QUnit.module("describe-module", function () {
     let out = desc.names.get("a")!;
     assert.ok(out);
     assert.equal(out.declaration.start, 6);
-    assert.equal(out.declaration.end, 11);
+    assert.equal(out.declaration.end, 7);
     assert.equal(out.references.length, 2);
     assert.equal(out.references[0].start, 6);
     assert.equal(out.references[0].end, 7);
     assert.equal(out.references[1].start, 28);
     assert.equal(out.references[1].end, 29);
+  });
+
+  test("regions for class declaration", function (assert) {
+    let desc = describeModule(`
+      class A {};
+      export { A as B };
+    `);
+    let out = desc.names.get("A")!;
+    assert.ok(out);
+    assert.equal(out.declaration.start, 0);
+    assert.equal(out.declaration.end, 10);
+    assert.equal(out.references.length, 2);
+    assert.equal(out.references[0].start, 6);
+    assert.equal(out.references[0].end, 7);
+    assert.equal(out.references[1].start, 27);
+    assert.equal(out.references[1].end, 28);
+  });
+
+  test("regions for import specifier", function (assert) {
+    let desc = describeModule(`
+      import { x, y } from 'somewhere';
+      console.log(x);
+    `);
+    let out = desc.names.get("x")!;
+    assert.ok(out);
+    assert.equal(out.declaration.start, 9);
+    assert.equal(out.declaration.end, 10);
+    assert.equal(out.references.length, 2);
+    assert.equal(out.references[0].start, 9);
+    assert.equal(out.references[0].end, 10);
+    assert.equal(out.references[1].start, 52);
+    assert.equal(out.references[1].end, 53);
+  });
+
+  test("regions for renamed import specifier", function (assert) {
+    let desc = describeModule(`
+      import { blah as x, y } from 'somewhere';
+      console.log(x);
+    `);
+    let out = desc.names.get("x")!;
+    assert.ok(out);
+    assert.equal(out.declaration.start, 9);
+    assert.equal(out.declaration.end, 18);
+    assert.equal(out.references.length, 2);
+    assert.equal(out.references[0].start, 17);
+    assert.equal(out.references[0].end, 18);
+    assert.equal(out.references[1].start, 60);
+    assert.equal(out.references[1].end, 61);
+  });
+
+  test("regions for default import specifier", function (assert) {
+    let desc = describeModule(`
+      import X, { foo } from 'somewhere';
+      console.log(X.bar());
+    `);
+    let out = desc.names.get("X")!;
+    assert.ok(out);
+    assert.equal(out.declaration.start, 7);
+    assert.equal(out.declaration.end, 8);
+    assert.equal(out.references.length, 2);
+    assert.equal(out.references[0].start, 7);
+    assert.equal(out.references[0].end, 8);
+    assert.equal(out.references[1].start, 54);
+    assert.equal(out.references[1].end, 55);
+  });
+
+  test("regions for namespace import specifier", function (assert) {
+    let desc = describeModule(`
+      import * as foo from 'somewhere';
+      console.log(foo.bar());
+    `);
+    let out = desc.names.get("foo")!;
+    assert.ok(out);
+    assert.equal(out.declaration.start, 7);
+    assert.equal(out.declaration.end, 15);
+    assert.equal(out.references.length, 2);
+    assert.equal(out.references[0].start, 12);
+    assert.equal(out.references[0].end, 15);
+    assert.equal(out.references[1].start, 52);
+    assert.equal(out.references[1].end, 55);
+  });
+
+  test("region for default export declaration", function (assert) {
+    let desc = describeModule(`
+      export default function() {}
+    `);
+    let out = desc.names.get("default")!;
+    assert.ok(out);
+    assert.equal(out.declaration.start, 15);
+    assert.equal(out.declaration.end, 28);
+    assert.equal(out.references.length, 0);
+  });
+
+  test("regions for ObjectPattern LVal", function (assert) {
+    let desc = describeModule(`
+      let { a, b: { c } } = foo;
+      export { a as A };
+    `);
+    let out = desc.names.get("a")!;
+    assert.ok(out);
+    assert.equal(out.declaration.start, 6);
+    assert.equal(out.declaration.end, 7);
+    assert.equal(out.references.length, 2);
+    assert.equal(out.references[0].start, 6);
+    assert.equal(out.references[0].end, 7);
+    assert.equal(out.references[1].start, 42);
+    assert.equal(out.references[1].end, 43);
+  });
+
+  test("regions for nested ObjectPattern LVal", function (assert) {
+    let desc = describeModule(`
+      let { a, b: { c } } = foo;
+      export { c };
+    `);
+    let out = desc.names.get("c")!;
+    assert.ok(out);
+    assert.equal(out.declaration.start, 14);
+    assert.equal(out.declaration.end, 15);
+    assert.equal(out.references.length, 2);
+    assert.equal(out.references[0].start, 14);
+    assert.equal(out.references[0].end, 15);
+    assert.equal(out.references[1].start, 42);
+    assert.equal(out.references[1].end, 43);
+  });
+
+  test("regions for renamed ObjectPattern LVal", function (assert) {
+    let desc = describeModule(`
+      let { a: A, b: { c } } = foo;
+      export { A };
+    `);
+    let out = desc.names.get("A")!;
+    assert.ok(out);
+    assert.equal(out.declaration.start, 6);
+    assert.equal(out.declaration.end, 10);
+    assert.equal(out.references.length, 2);
+    assert.equal(out.references[0].start, 9);
+    assert.equal(out.references[0].end, 10);
+    assert.equal(out.references[1].start, 45);
+    assert.equal(out.references[1].end, 46);
+  });
+
+  test("regions for ArrayPattern LVal", function (assert) {
+    let desc = describeModule(`
+      let [ a, { b } ] = foo;
+      export { a };
+    `);
+    let out = desc.names.get("a")!;
+    assert.ok(out);
+    assert.equal(out.declaration.start, 6);
+    assert.equal(out.declaration.end, 7);
+    assert.equal(out.references.length, 2);
+    assert.equal(out.references[0].start, 6);
+    assert.equal(out.references[0].end, 7);
+    assert.equal(out.references[1].start, 39);
+    assert.equal(out.references[1].end, 40);
+  });
+
+  test("regions for nested ArrayPattern LVal", function (assert) {
+    let desc = describeModule(`
+      let [ a, [ b ] ] = foo;
+      export { b };
+    `);
+    let out = desc.names.get("b")!;
+    assert.ok(out);
+    assert.equal(out.declaration.start, 11);
+    assert.equal(out.declaration.end, 12);
+    assert.equal(out.references.length, 2);
+    assert.equal(out.references[0].start, 11);
+    assert.equal(out.references[0].end, 12);
+    assert.equal(out.references[1].start, 39);
+    assert.equal(out.references[1].end, 40);
+  });
+
+  test("regions for RestElement LVal", function (assert) {
+    let desc = describeModule(`
+      let [ a, ...b ] = foo;
+      export { b };
+    `);
+    let out = desc.names.get("b")!;
+    assert.ok(out);
+    assert.equal(out.declaration.start, 9);
+    assert.equal(out.declaration.end, 13);
+    assert.equal(out.references.length, 2);
+    assert.equal(out.references[0].start, 12);
+    assert.equal(out.references[0].end, 13);
+    assert.equal(out.references[1].start, 38);
+    assert.equal(out.references[1].end, 39);
+  });
+
+  test("regions for nested RestElement LVal", function (assert) {
+    let desc = describeModule(`
+      let [ a, ...[b, ...c] ] = foo;
+      export { c };
+    `);
+    let out = desc.names.get("c")!;
+    assert.ok(out);
+    assert.equal(out.declaration.start, 16);
+    assert.equal(out.declaration.end, 20);
+    assert.equal(out.references.length, 2);
+    assert.equal(out.references[0].start, 19);
+    assert.equal(out.references[0].end, 20);
+    assert.equal(out.references[1].start, 46);
+    assert.equal(out.references[1].end, 47);
   });
 });
