@@ -170,6 +170,9 @@ export function describeModule(ast: File): ModuleDescription {
         }
         let declarationPath: NodePath<Node>;
         if (["RestElement", "ObjectProperty"].includes(idPath.parent.type)) {
+          // in these scenarios we want to include the original and renamed
+          // property as part of the declaration path for object patterns or the
+          // "..." as part of the declaration for the RestElement
           declarationPath = idPath.parentPath;
         } else {
           declarationPath = idPath as NodePath<Node>;
