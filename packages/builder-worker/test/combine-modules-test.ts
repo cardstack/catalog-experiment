@@ -898,7 +898,7 @@ QUnit.module("combine modules", function (origHooks) {
         }
       `,
       "b.js": `
-        export default class B {
+        export default class {
           display() { console.log('b'); }
         }
       `,
@@ -914,8 +914,7 @@ QUnit.module("combine modules", function (origHooks) {
         display() { console.log('a'); }
       }
       class B {
-        console.log('a');
-          display() { console.log('b'); }
+        display() { console.log('b'); }
       }
       let a = new A();
       let b = new B();
