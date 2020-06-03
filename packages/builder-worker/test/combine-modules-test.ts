@@ -844,6 +844,124 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
+  test("can handle default exported function", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import a from './a.js';
+        import b from './b.js';
+        a();
+        b();
+      `,
+      "a.js": `
+        export default function A() {
+          console.log('a');
+        }
+      `,
+      "b.js": `
+        export default function() {
+          console.log('b');
+        }
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined,
+      `
+      function a() {
+        console.log('a');
+      }
+      function b() {
+        console.log('b');
+      }
+      a();
+      b();
+      `
+    );
+  });
+
+  test("can handle default exported class", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import A from './a.js';
+        import B from './b.js';
+        let a = new A();
+        let b = new B();
+        a.display();
+        b.display();
+      `,
+      "a.js": `
+        export default class ClassA {
+          display() { console.log('a'); }
+        }
+      `,
+      "b.js": `
+        export default class B {
+          display() { console.log('b'); }
+        }
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined,
+      `
+      class A {
+        display() { console.log('a'); }
+      }
+      class B {
+        console.log('a');
+          display() { console.log('b'); }
+      }
+      let a = new A();
+      let b = new B();
+      a.display();
+      b.display();
+      `
+    );
+  });
+
+  test("can handle both default and named imports", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import A, { a as b } from './lib.js';
+        let a = new A();
+        a.display();
+        console.log(b);
+      `,
+      "lib.js": `
+        import { b } from './b.js';
+        export default class ClassA {
+          display() { console.log(b); }
+        }
+        export const a = 'a';
+      `,
+      "b.js": `
+        export const b = 'b';
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+    assert.codeEqual(
+      combined,
+      `
+      const b0 = 'b';
+      class A {
+        display() { console.log(b0); }
+      }
+      const b = 'a';
+      let a = new A();
+      a.display();
+      console.log(b);
+      `
+    );
+  });
+
   test("preserves bundle imports from other modules", async function (assert) {
     await assert.setupFiles({
       "index.js": `
