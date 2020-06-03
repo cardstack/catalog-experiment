@@ -808,6 +808,42 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
+  test("can handle collisions in exported expressions", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import prop from './lib.js';
+        const a = 'a';
+        const b = 'b';
+        console.log(prop.propA + a + b);
+      `,
+      "lib.js": `
+        import { a, b } from "./a.js";
+        export default {
+          [a]: b + 1
+        };
+      `,
+      "a.js": `
+        export const a = 'propA';
+        export const b = 1;
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined,
+      `
+      const a0 = 'propA';
+      const b0 = 1;
+      const prop = { [a0]: b0 + 1 };
+      const a = 'a';
+      const b = 'b';
+      console.log(prop.propA + a + b);
+      `
+    );
+  });
+
   test("preserves bundle imports from other modules", async function (assert) {
     await assert.setupFiles({
       "index.js": `
