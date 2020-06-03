@@ -1,22 +1,41 @@
 // The purpose of a CodeRegion is to mark a region of source code that we may be
 // able to remove or replace. CodeRegions form a hierarchy, and by convention if
 // all the child regions of a region are removed, the region itself must be
+// removed.
 
 import { Identifier, Node } from "@babel/types";
+import { NodePath } from "@babel/traverse";
 
-type Region = CodeRegion | IdentifierRegion;
+export class RegionBuilder {
+  createCodeRegion(path: NodePath): CodeRegion {
+    let { start, end } = path.node;
+    if (start == null || end == null) {
+      throw new Error(
+        `bug: do not know how to create code region for ${path.node.type}: missing start/end character positions`
+      );
+    }
+    return {
+      start,
+      end,
+      parent: undefined,
+      children: [],
+    };
+  }
+  createIdentifierRegion(path: NodePath<Identifier>): IdentifierRegion {
+    let region = this.createCodeRegion(path as NodePath) as IdentifierRegion;
+    region.shorthand = false;
+    return region;
+  }
+}
 
-// removed.
 export interface CodeRegion {
   // these are character offsets relative to our parent's start. The topmost
   // Coderegion has no parent, so its start and end encompass the whole module,
   // so start always equals 0 and end always equal module length.
   start: number;
   end: number;
-
-  type: Node["type"];
-  parent?: CodeRegion;
-  children: Region[];
+  parent: CodeRegion | undefined;
+  children: CodeRegion[];
 }
 
 export interface IdentifierRegion extends CodeRegion {
@@ -137,7 +156,7 @@ export function createCodeRegion(
             ? createIdentifierRegion(element, region)
             : createCodeRegion(element, region)
         )
-        .filter(Boolean) as Region[];
+        .filter(Boolean) as CodeRegion[];
       return region;
 
     case "RestElement":

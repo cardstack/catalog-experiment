@@ -8,7 +8,7 @@ import { parse } from "@babel/core";
 const { test } = QUnit;
 
 function describeModule(js: string): ModuleDescription {
-  let parsed = parse(js);
+  let parsed = parse(js.trim());
   if (parsed?.type !== "File") {
     throw new Error(`unexpected babel output`);
   }
@@ -149,6 +149,13 @@ QUnit.module("describe-module", function () {
     assert.equal(out?.type, "local");
     if (out?.type === "local") {
       assert.equal(out.usedByModule, true);
+      assert.equal(out.declaration.start, 0);
+      assert.equal(out.declaration.end, 15);
+      assert.equal(out.references.length, 2);
+      assert.equal(out.references[0].start, 9);
+      assert.equal(out.references[0].end, 10);
+      assert.equal(out.references[1].start, 22);
+      assert.equal(out.references[1].end, 23);
     }
   });
 
@@ -166,5 +173,21 @@ QUnit.module("describe-module", function () {
     if (out?.type === "local") {
       assert.ok(out.dependsOn.has("x"));
     }
+  });
+
+  test("regions for variable declaration", function (assert) {
+    let desc = describeModule(`
+      const a = 1;
+      export { a as b };
+    `);
+    let out = desc.names.get("a")!;
+    assert.ok(out);
+    assert.equal(out.declaration.start, 6);
+    assert.equal(out.declaration.end, 11);
+    assert.equal(out.references.length, 2);
+    assert.equal(out.references[0].start, 6);
+    assert.equal(out.references[0].end, 7);
+    assert.equal(out.references[1].start, 28);
+    assert.equal(out.references[1].end, 29);
   });
 });

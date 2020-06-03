@@ -1,18 +1,26 @@
 import {
   File,
   ImportDeclaration,
+  ImportSpecifier,
+  ImportDefaultSpecifier,
+  ImportNamespaceSpecifier,
+  FunctionDeclaration,
+  VariableDeclarator,
+  Identifier,
+  Node,
   Import,
   ExportNamedDeclaration,
   ExportDefaultDeclaration,
   Program,
   CallExpression,
   StringLiteral,
+  LVal,
   isVariableDeclarator,
   isIdentifier,
 } from "@babel/types";
 import { assertNever } from "shared/util";
-import traverse, { NodePath } from "@babel/traverse";
-//import { CodeRegion, IdentifierRegion } from "./code-region";
+import traverse, { NodePath, Scope } from "@babel/traverse";
+import { CodeRegion, IdentifierRegion, RegionBuilder } from "./code-region";
 
 export const NamespaceMarker = { isNamespace: true };
 export type NamespaceMarker = typeof NamespaceMarker;
@@ -36,13 +44,6 @@ export interface ModuleDescription {
 
   // all the names in module scope
   names: Map<string, LocalNameDescription | ImportedNameDescription>;
-
-  // for each binding in module scope, these are the source ranges of
-  // identifiers that reference it. That lets us quickly rename the binding.
-  //references: Map<string, IdentifierRegion[]>;
-
-  // for each binding in module scope, these are where they are declared.
-  //bindingDeclarations: Map<string, CodeRegion>;
 }
 
 export interface NameDescription {
@@ -52,7 +53,8 @@ export interface NameDescription {
   // true if this name is consumed directly the module scope
   usedByModule: boolean;
 
-  //declaration: CodeRegion;
+  declaration: CodeRegion;
+  references: IdentifierRegion[];
 }
 
 export interface LocalNameDescription extends NameDescription {
@@ -71,6 +73,15 @@ export interface ImportDescription {
   specifier: string;
 }
 
+// @babel/traverse makes it very hard to talk about NodePath's generically,
+// because NodePath<AlmostAnything> is not a valid NodePath<Node>. Here we
+// duck-type our own generic thing that will probably only match NodePaths.
+interface DuckPath {
+  node: any;
+  scope: Scope;
+  isIdentifier(): this is NodePath<Identifier>;
+}
+
 export function describeModule(ast: File): ModuleDescription {
   let desc: ModuleDescription = {
     imports: [],
@@ -78,50 +89,47 @@ export function describeModule(ast: File): ModuleDescription {
     names: new Map(),
   };
 
-  let bindingPaths: Map<NodePath, string> = new Map();
+  let bindingPaths: Map<DuckPath, string> = new Map();
+  let builder = new RegionBuilder();
 
   traverse(ast, {
     Program: {
-      exit(programPath: NodePath<Program>) {
+      enter(programPath) {
+        for (let [name, binding] of Object.entries(
+          programPath.scope.bindings
+        )) {
+          bindingPaths.set(binding.path, name);
+        }
+      },
+      exit(programPath) {
         // we take two passes through all module-scoped names
 
         // first pass discovers them all and puts them into bindingPaths
         for (let [name, binding] of Object.entries(
           programPath.scope.bindings
         )) {
-          let { node } = binding.path;
-          bindingPaths.set(binding.path, name);
+          let { path } = binding;
+          let { node } = path;
+          bindingPaths.set(path, name);
           switch (node.type) {
-            case "ImportSpecifier":
-              addImportedName(
-                desc,
-                node.local.name,
-                node.imported.name,
-                binding.path.parent as ImportDeclaration
-              );
-              break;
-            case "ImportDefaultSpecifier":
-              addImportedName(
-                desc,
-                node.local.name,
-                "default",
-                binding.path.parent as ImportDeclaration
-              );
-              break;
-            case "ImportNamespaceSpecifier":
-              addImportedName(
-                desc,
-                node.local.name,
-                NamespaceMarker,
-                binding.path.parent as ImportDeclaration
+            case "FunctionDeclaration":
+            case "VariableDeclarator":
+              desc.names.set(
+                name,
+                localNameDescription(
+                  builder.createCodeRegion(path),
+                  builder.createIdentifierRegion(
+                    ensureIdentifierPath(
+                      (path as NodePath<
+                        FunctionDeclaration | VariableDeclarator
+                      >).get("id")
+                    )
+                  )
+                )
               );
               break;
             default:
-              desc.names.set(name, {
-                type: "local",
-                dependsOn: new Set(),
-                usedByModule: false,
-              });
+              throw new Error(`unimplemented: ${node.type}`);
           }
         }
 
@@ -130,6 +138,12 @@ export function describeModule(ast: File): ModuleDescription {
           programPath.scope.bindings
         )) {
           for (let refPath of binding.referencePaths) {
+            // at this point,  before we've started iterating upward, refPath is
+            // always a NodePath<Identifier>
+            desc.names
+              .get(name)!
+              .references.push(builder.createIdentifierRegion(refPath));
+
             while (refPath.type !== "Program") {
               let otherName = bindingPaths.get(refPath);
               if (otherName) {
@@ -150,7 +164,31 @@ export function describeModule(ast: File): ModuleDescription {
         }
       },
     },
-    ImportDeclaration(path: NodePath<ImportDeclaration>) {
+    FunctionDeclaration(path) {
+      addLocalIdDeclaration(desc, bindingPaths, path, builder);
+    },
+    VariableDeclarator(path) {
+      addLocalIdDeclaration(desc, bindingPaths, path, builder);
+    },
+    ClassDeclaration(path) {
+      addLocalIdDeclaration(desc, bindingPaths, path, builder);
+    },
+    ImportSpecifier(path) {
+      if (bindingPaths.has(path)) {
+        addImportedName(desc, path.node.imported.name, path, builder);
+      }
+    },
+    ImportDefaultSpecifier(path) {
+      if (bindingPaths.has(path)) {
+        addImportedName(desc, "default", path, builder);
+      }
+    },
+    ImportNamespaceSpecifier(path) {
+      if (bindingPaths.has(path)) {
+        addImportedName(desc, NamespaceMarker, path, builder);
+      }
+    },
+    ImportDeclaration(path) {
       let importDesc = desc.imports.find(
         (i) => i.specifier === path.node.source.value
       );
@@ -162,7 +200,7 @@ export function describeModule(ast: File): ModuleDescription {
         desc.imports.push(importDesc);
       }
     },
-    Import(path: NodePath<Import>) {
+    Import(path) {
       let callExpression = path.parentPath as NodePath<CallExpression>;
       let stringLiteral = callExpression.node.arguments[0] as StringLiteral;
       let importDesc = desc.imports.find(
@@ -178,7 +216,7 @@ export function describeModule(ast: File): ModuleDescription {
         importDesc.isDynamic = true;
       }
     },
-    ExportDefaultDeclaration(path: NodePath<ExportDefaultDeclaration>) {
+    ExportDefaultDeclaration(path) {
       // we're relying on the fact that default is a keyword so it can't be used
       // as a real local name
       let name = "default";
@@ -204,10 +242,12 @@ export function describeModule(ast: File): ModuleDescription {
         type: "local",
         dependsOn: new Set(),
         usedByModule: false,
+        declaration: builder.createCodeRegion(path.get("declaration")),
+        references: [], // default is never actually referenced internally
       });
       bindingPaths.set(path as NodePath, "default");
     },
-    ExportNamedDeclaration(path: NodePath<ExportNamedDeclaration>) {
+    ExportNamedDeclaration(path) {
       if (path.node.source) {
         // we are reexporting things
         let importIndex = ensureImportSpecifier(desc, path.node.source!.value);
@@ -324,11 +364,16 @@ function ensureImportSpecifier(
 
 function addImportedName(
   desc: ModuleDescription,
-  localName: string,
   remoteName: string | NamespaceMarker,
-  dec: ImportDeclaration
+  path:
+    | NodePath<ImportSpecifier>
+    | NodePath<ImportDefaultSpecifier>
+    | NodePath<ImportNamespaceSpecifier>,
+  builder: RegionBuilder
 ) {
-  desc.names.set(localName, {
+  let dec = path.parent as ImportDeclaration;
+  let identifierPath = path.get("local") as NodePath<Identifier>;
+  desc.names.set(identifierPath.node.name, {
     type: "import",
     importIndex: desc.imports.findIndex(
       (i) => i.specifier === dec.source.value
@@ -336,5 +381,45 @@ function addImportedName(
     name: remoteName,
     dependsOn: new Set(),
     usedByModule: false,
+    declaration: builder.createCodeRegion(path),
+    references: [builder.createIdentifierRegion(identifierPath)],
   });
+}
+
+function localNameDescription(
+  declaration: CodeRegion,
+  selfReference: IdentifierRegion
+): LocalNameDescription {
+  return {
+    type: "local",
+    dependsOn: new Set(),
+    usedByModule: false,
+    declaration,
+    references: [selfReference],
+  };
+}
+
+function ensureIdentifierPath(path: DuckPath): NodePath<Identifier> {
+  if (!path.isIdentifier()) {
+    throw new Error(`bug: expected a non-null identifier path`);
+  }
+  return path;
+}
+
+function addLocalIdDeclaration(
+  desc: ModuleDescription,
+  bindingPaths: Map<DuckPath, string>,
+  path: NodePath<FunctionDeclaration | VariableDeclarator>,
+  builder: RegionBuilder
+) {
+  let name = bindingPaths.get(path);
+  if (name) {
+    desc.names.set(
+      name,
+      localNameDescription(
+        builder.createCodeRegion(path as NodePath<Node>),
+        builder.createIdentifierRegion(ensureIdentifierPath(path.get("id")))
+      )
+    );
+  }
 }
