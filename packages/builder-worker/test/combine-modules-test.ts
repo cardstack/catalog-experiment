@@ -1052,7 +1052,7 @@ QUnit.module("combine modules", function (origHooks) {
       `,
       "lib.js": `
         export function a() { return 1; }
-        export default function b() { return 2; }
+        export default function () { return 2; }
         `,
     });
 
