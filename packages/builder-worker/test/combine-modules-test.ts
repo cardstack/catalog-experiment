@@ -814,7 +814,8 @@ QUnit.module("combine modules", function (origHooks) {
         import prop from './lib.js';
         const a = 'a';
         const b = 'b';
-        console.log(prop.propA + a + b);
+        const defaultLib = 'collide with me';
+        console.log(prop.propA + a + b + defaultLib);
       `,
       "lib.js": `
         import { a, b } from "./a.js";
@@ -836,10 +837,11 @@ QUnit.module("combine modules", function (origHooks) {
       `
       const a0 = 'propA';
       const b0 = 1;
-      const prop = { [a0]: b0 + 1 };
+      const defaultLib0 = { [a0]: b0 + 1 };
       const a = 'a';
       const b = 'b';
-      console.log(prop.propA + a + b);
+      const defaultLib = 'collide with me';
+      console.log(prop.propA + a + b + defaultLib);
       `
     );
   });
@@ -873,7 +875,7 @@ QUnit.module("combine modules", function (origHooks) {
       function a() {
         console.log('a');
       }
-      function b() {
+      function defaultB() {
         console.log('b');
       }
       a();
@@ -913,7 +915,7 @@ QUnit.module("combine modules", function (origHooks) {
       class A {
         display() { console.log('a'); }
       }
-      class B {
+      class defaultB {
         display() { console.log('b'); }
       }
       let a = new A();
@@ -1003,6 +1005,54 @@ QUnit.module("combine modules", function (origHooks) {
       "lib.js": `
         export function a() { return 1; }
         export function b() { return 2; }
+        `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined,
+      `
+      function a() { return 1; }
+      console.log(a());
+      `
+    );
+  });
+
+  test("strips unconsumed import", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { a, b } from './lib.js';
+        console.log(a());
+      `,
+      "lib.js": `
+        export function a() { return 1; }
+        export function b() { return 2; }
+        `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined,
+      `
+      function a() { return 1; }
+      console.log(a());
+      `
+    );
+  });
+
+  test("strips unconsumed default import", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import b, { a } from './lib.js';
+        console.log(a());
+      `,
+      "lib.js": `
+        export function a() { return 1; }
+        export default function b() { return 2; }
         `,
     });
 

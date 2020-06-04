@@ -9,6 +9,8 @@ import {
   importSpecifier,
   exportSpecifier,
   identifier,
+  variableDeclaration,
+  variableDeclarator,
   ImportDeclaration,
   Program,
   stringLiteral,
@@ -19,6 +21,7 @@ import { ModuleResolution } from "./nodes/resolution";
 import { NamespaceMarker, isNamespaceMarker } from "./describe-module";
 import { maybeRelativeURL } from "./path";
 import { assertNever } from "shared/util";
+import upperFirst from "lodash/upperFirst";
 
 export function combineModules(
   bundle: URL,
@@ -51,8 +54,6 @@ export function combineModules(
       appendedModules
     );
   }
-
-  debugger;
 
   // iterate through the bundle's bindings and identify bindings that are not
   // consumed:
@@ -170,7 +171,6 @@ function assignedExports(assignments: BundleAssignment[], state: State) {
         .get(assignment.module.url.href)
         ?.get(original);
       if (!insideName) {
-        debugger;
         throw new Error(`bug: no internal mapping for ${exposed}`);
       }
       exports.set(exposed, insideName);
@@ -318,6 +318,31 @@ class ModuleRewriter {
     }
   }
 
+  rewriteExportDefaultDeclaration(
+    path: NodePath<ExportNamedDeclaration>,
+    _context: PluginContext
+  ) {
+    let declaration = path.node.declaration;
+    if (declaration) {
+      let defaultName = this.unusedNameLike(
+        `default${upperFirst(
+          this.module.url.href.split("/").pop()!.split(".")[0]
+        )}`
+      );
+      if (declaration.type === "ObjectExpression") {
+        declaration = variableDeclaration("const", [
+          variableDeclarator(identifier(defaultName), declaration),
+        ]);
+      }
+      if (declaration.id == null) {
+        declaration.id = identifier(defaultName);
+      }
+      path.replaceWith(declaration);
+    } else {
+      path.remove();
+    }
+  }
+
   rewriteScope() {
     let bindingPaths: Map<NodePath, string> = new Map();
     for (let [name, binding] of Object.entries(
@@ -329,7 +354,6 @@ class ModuleRewriter {
       // live inside this module
       let nameDesc = this.module.desc.names.get(name)!;
       if (nameDesc.type === "import") {
-        debugger;
         let { name: remoteName, module: remoteModule } = resolveReexport(
           nameDesc.name,
           this.module.resolvedImports[nameDesc.importIndex]
@@ -408,7 +432,6 @@ class ModuleRewriter {
     exportedName: string | NamespaceMarker,
     assignedName: string
   ) {
-    debugger;
     let mapping = this.sharedState.assignedImportedNames.get(module.url.href);
     if (!mapping) {
       mapping = new Map();
@@ -450,6 +473,13 @@ function adjustModulePlugin(): unknown {
       context: PluginContext
     ) {
       context.rewriter.rewriteExportNamedDeclaration(path, context);
+    },
+
+    ExportDefaultDeclaration(
+      path: NodePath<ExportNamedDeclaration>,
+      context: PluginContext
+    ) {
+      context.rewriter.rewriteExportDefaultDeclaration(path, context);
     },
 
     ImportDeclaration(path: NodePath<ImportDeclaration>) {
