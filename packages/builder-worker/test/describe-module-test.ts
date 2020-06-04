@@ -81,6 +81,7 @@ QUnit.module("describe-module", function () {
       type: "local",
       name: "default",
     });
+    assert.ok(desc.names.get("default")?.dependsOn.has("foo"));
   });
 
   test("imported names are discovered", function (assert) {
@@ -155,17 +156,19 @@ QUnit.module("describe-module", function () {
   test("local function is used by default export", function (assert) {
     let desc = describeModule(`
       function x() {}
-      export default class {
+      export default class Q {
         constructor() {
           x();
         }
       }
     `);
-    let out = desc.names.get("default");
+    let out = desc.names.get("Q");
     assert.equal(out?.type, "local");
     if (out?.type === "local") {
       assert.ok(out.dependsOn.has("x"));
     }
+    assert.ok(desc.exports.get("default")?.type === "local");
+    assert.ok(desc.exports.get("default")?.name === "Q");
   });
 
   test("regions for function declaration", function (assert) {
@@ -191,7 +194,7 @@ QUnit.module("describe-module", function () {
     let out = desc.names.get("a")!;
     assert.ok(out);
     assert.equal(out.declaration.start, 6);
-    assert.equal(out.declaration.end, 7);
+    assert.equal(out.declaration.end, 11);
     assert.equal(out.references.length, 2);
     assert.equal(out.references[0].start, 6);
     assert.equal(out.references[0].end, 7);
@@ -221,6 +224,7 @@ QUnit.module("describe-module", function () {
       console.log(x);
     `);
     let out = desc.names.get("x")!;
+    debugger;
     assert.ok(out);
     assert.equal(out.declaration.start, 9);
     assert.equal(out.declaration.end, 10);
@@ -400,5 +404,21 @@ QUnit.module("describe-module", function () {
     assert.equal(out.references[0].end, 20);
     assert.equal(out.references[1].start, 46);
     assert.equal(out.references[1].end, 47);
+  });
+
+  test("pattern in function arguments doesn't create module scoped binding", function (assert) {
+    let desc = describeModule(`
+      function x({ a }) {}
+    `);
+    assert.ok(!desc.names.has("a"));
+  });
+
+  test("function default arguments consume other bindings", function (assert) {
+    let desc = describeModule(`
+      let a = 1;
+      function x(a=a) {}
+    `);
+    let out = desc.names.get("x");
+    assert.ok(out?.dependsOn.has("a"));
   });
 });

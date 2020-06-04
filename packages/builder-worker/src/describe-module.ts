@@ -11,12 +11,8 @@ import {
   Node,
   CallExpression,
   StringLiteral,
-  ObjectProperty,
-  RestElement,
-  LVal,
   isVariableDeclarator,
   isIdentifier,
-  isLVal,
 } from "@babel/types";
 import { assertNever } from "shared/util";
 import traverse, { NodePath, Scope } from "@babel/traverse";
@@ -79,6 +75,7 @@ export interface ImportDescription {
 interface DuckPath {
   node: any;
   scope: Scope;
+  parentPath: DuckPath;
   isIdentifier(): this is NodePath<Identifier>;
 }
 
@@ -89,119 +86,138 @@ export function describeModule(ast: File): ModuleDescription {
     names: new Map(),
   };
 
-  let bindingPaths: Map<DuckPath, string> = new Map();
+  let consumedByModule: Set<string> = new Set();
   let builder = new RegionBuilder();
+  let currentModuleScopedDeclaration:
+    | {
+        path: DuckPath;
+        defines: {
+          declaration: NodePath;
+          name: string;
+          // we track the default export along with all our local names, and
+          // it's the only one that has no identifier of its own
+          identifier?: NodePath<Identifier>;
+        }[];
+        consumes: Set<string>;
+        withinLVal: DuckPath | false;
+      }
+    | undefined;
+
+  function enterDeclaration(
+    path:
+      | NodePath<FunctionDeclaration>
+      | NodePath<ClassDeclaration>
+      | NodePath<VariableDeclarator>
+  ) {
+    let hasIdentifier = isIdentifier(path.node.id);
+    if (
+      isModuleScopedDeclaration(path as NodePath) &&
+      (path.node.type === "VariableDeclarator" || hasIdentifier)
+    ) {
+      currentModuleScopedDeclaration = {
+        path,
+        defines: [],
+        consumes: new Set(),
+        withinLVal: false,
+      };
+      if (hasIdentifier) {
+        currentModuleScopedDeclaration.defines.push({
+          name: path.node.id.name,
+          declaration: path as NodePath,
+          identifier: path.get("id") as NodePath<Identifier>,
+        });
+      }
+    }
+  }
+
+  function exitDeclaration(path: DuckPath) {
+    if (currentModuleScopedDeclaration?.path !== path) {
+      return;
+    }
+    let { defines, consumes } = currentModuleScopedDeclaration!;
+    currentModuleScopedDeclaration = undefined;
+    for (let { name, declaration, identifier } of defines) {
+      let references: IdentifierRegion[];
+      if (identifier) {
+        references = [
+          builder.createIdentifierRegion(identifier),
+          ...path.scope
+            .getBinding(name)!
+            .referencePaths.map((i) =>
+              builder.createIdentifierRegion(i as NodePath<Identifier>)
+            ),
+        ];
+      } else {
+        references = [];
+      }
+      desc.names.set(name, {
+        type: "local",
+        dependsOn: consumes,
+        usedByModule: false,
+        declaration: builder.createCodeRegion(declaration),
+        references,
+      });
+    }
+  }
+
+  const handlePossibleLVal = {
+    enter(path: DuckPath) {
+      if (
+        path.parentPath === currentModuleScopedDeclaration?.path &&
+        currentModuleScopedDeclaration.path.node.id === path.node
+      ) {
+        currentModuleScopedDeclaration.withinLVal = path;
+      }
+    },
+    exit(path: DuckPath) {
+      if (currentModuleScopedDeclaration?.withinLVal === path) {
+        currentModuleScopedDeclaration.withinLVal = false;
+      }
+    },
+  };
 
   traverse(ast, {
     Program: {
-      enter(programPath) {
-        for (let [name, binding] of Object.entries(
-          programPath.scope.bindings
-        )) {
-          // need to check the path to see if contains an LVal, if so, break it
-          // down farther because there could be mulitple bindings located at
-          // this path. We'll break the LVals down to the NodePath<Identifier>'s
-          // for each binding in the LVal.
-          if (
-            isVariableDeclarator(binding.path.node) &&
-            isLVal(binding.path.node.id)
-          ) {
-            let path = binding.path.get("id") as NodePath<LVal>;
-            let idPath = lvalToIdentifiers(path).find(
-              (idPath) => idPath.node.name === name
-            );
-            if (!idPath) {
-              throw new Error(
-                `bug: could not find path for lval binding ${name}`
-              );
-            }
-            bindingPaths.set(idPath, name);
-          } else {
-            bindingPaths.set(binding.path, name);
-          }
-        }
-      },
-      exit(programPath) {
-        // this pass figures out dependencies between bindings.
-        for (let [name, binding] of Object.entries(
-          programPath.scope.bindings
-        )) {
-          for (let refPath of binding.referencePaths) {
-            // at this point,  before we've started iterating upward, refPath is
-            // always a NodePath<Identifier>
-            desc.names
-              .get(name)!
-              .references.push(
-                builder.createIdentifierRegion(refPath as NodePath<Identifier>)
-              );
-
-            while (refPath.type !== "Program") {
-              let otherName = bindingPaths.get(refPath);
-              if (otherName) {
-                desc.names.get(otherName)!.dependsOn.add(name);
-                break;
-              }
-
-              if (refPath.type === "ExportNamedDeclaration") {
-                // named exports are already accounted for
-                break;
-              }
-              refPath = refPath.parentPath;
-            }
-            if (refPath.type === "Program") {
-              desc.names.get(name)!.usedByModule = true;
-            }
+      exit() {
+        for (let name of consumedByModule) {
+          let nameDesc = desc.names.get(name);
+          if (nameDesc) {
+            nameDesc.usedByModule = true;
           }
         }
       },
     },
-    FunctionDeclaration(path) {
-      addLocalIdDeclaration(desc, bindingPaths, path, builder);
+    FunctionDeclaration: {
+      enter: enterDeclaration,
+      exit: exitDeclaration,
     },
-    VariableDeclarator(path) {
-      let lvalPath = path.get("id");
-      if (lvalPath.type === "Identifier") {
-        addLocalIdDeclaration(desc, bindingPaths, path, builder);
+    ClassDeclaration: {
+      enter: enterDeclaration,
+      exit: exitDeclaration,
+    },
+    VariableDeclarator: {
+      enter: enterDeclaration,
+      exit: exitDeclaration,
+    },
+    ObjectPattern: handlePossibleLVal,
+    ArrayPattern: handlePossibleLVal,
+    Identifier(path) {
+      if (currentModuleScopedDeclaration?.withinLVal) {
+        let declaration = declarationForIdentifier(path);
+        if (declaration) {
+          currentModuleScopedDeclaration.defines.push({
+            name: path.node.name,
+            declaration,
+            identifier: path,
+          });
+        }
       }
-      let idPaths = lvalToIdentifiers(lvalPath);
-      for (let idPath of idPaths) {
-        if (!bindingPaths.has(idPath)) {
-          continue;
-        }
-        let declarationPath: NodePath<Node>;
-        if (["RestElement", "ObjectProperty"].includes(idPath.parent.type)) {
-          // in these scenarios we want to include the original and renamed
-          // property as part of the declaration path for object patterns or the
-          // "..." as part of the declaration for the RestElement
-          declarationPath = idPath.parentPath;
+      if (path.isReferencedIdentifier()) {
+        if (currentModuleScopedDeclaration) {
+          currentModuleScopedDeclaration.consumes.add(path.node.name);
         } else {
-          declarationPath = idPath as NodePath<Node>;
+          consumedByModule.add(path.node.name);
         }
-        desc.names.set(
-          idPath.node.name,
-          localNameDescription(
-            builder.createCodeRegion(declarationPath),
-            builder.createIdentifierRegion(idPath)
-          )
-        );
-      }
-    },
-    ClassDeclaration(path) {
-      addLocalIdDeclaration(desc, bindingPaths, path, builder);
-    },
-    ImportSpecifier(path) {
-      if (bindingPaths.has(path)) {
-        addImportedName(desc, path.node.imported.name, path, builder);
-      }
-    },
-    ImportDefaultSpecifier(path) {
-      if (bindingPaths.has(path)) {
-        addImportedName(desc, "default", path, builder);
-      }
-    },
-    ImportNamespaceSpecifier(path) {
-      if (bindingPaths.has(path)) {
-        addImportedName(desc, NamespaceMarker, path, builder);
       }
     },
     ImportDeclaration(path) {
@@ -216,6 +232,16 @@ export function describeModule(ast: File): ModuleDescription {
         desc.imports.push(importDesc);
       }
     },
+    ImportSpecifier(path) {
+      addImportedName(desc, path.node.imported.name, path, builder);
+    },
+    ImportDefaultSpecifier(path) {
+      addImportedName(desc, "default", path, builder);
+    },
+    ImportNamespaceSpecifier(path) {
+      addImportedName(desc, NamespaceMarker, path, builder);
+    },
+
     Import(path) {
       let callExpression = path.parentPath as NodePath<CallExpression>;
       let stringLiteral = callExpression.node.arguments[0] as StringLiteral;
@@ -232,38 +258,42 @@ export function describeModule(ast: File): ModuleDescription {
         importDesc.isDynamic = true;
       }
     },
-    ExportDefaultDeclaration(path) {
-      // we're relying on the fact that default is a keyword so it can't be used
-      // as a real local name
-      let name = "default";
+    ExportDefaultDeclaration: {
+      enter(path) {
+        // we're relying on the fact that default is a keyword so it can't be used
+        // as a real local name
+        let name = "default";
 
-      switch (path.node.declaration.type) {
-        case "ClassDeclaration":
-        case "FunctionDeclaration":
-          if (isIdentifier(path.node.declaration.id)) {
-            name = path.node.declaration.id.name;
-          }
-      }
-      desc.exports.set("default", {
-        type: "local",
-        name,
-      });
+        switch (path.node.declaration.type) {
+          case "ClassDeclaration":
+          case "FunctionDeclaration":
+            if (isIdentifier(path.node.declaration.id)) {
+              name = path.node.declaration.id.name;
+            }
+        }
+        desc.exports.set("default", {
+          type: "local",
+          name,
+        });
 
-      // we treat the value of the default export as if it were also a local
-      // binding named "default". This can't collide with a real one because
-      // it's a keyword. This is useful because we want the default export to
-      // participate in our dependsOn graph, and that is all in terms of local
-      // bindings.
-      desc.names.set("default", {
-        type: "local",
-        dependsOn: new Set(),
-        usedByModule: false,
-        declaration: builder.createCodeRegion(
-          path.get("declaration") as NodePath<Node>
-        ),
-        references: [], // default is never actually referenced internally
-      });
-      bindingPaths.set(path as NodePath, "default");
+        if (name !== "default") {
+          //  the next level down will track its own consumption of other names
+          return;
+        }
+
+        currentModuleScopedDeclaration = {
+          path,
+          defines: [
+            {
+              name: "default",
+              declaration: path.get("declaration") as NodePath,
+            },
+          ],
+          consumes: new Set(),
+          withinLVal: false,
+        };
+      },
+      exit: exitDeclaration,
     },
     ExportNamedDeclaration(path) {
       if (path.node.source) {
@@ -400,93 +430,54 @@ function addImportedName(
     dependsOn: new Set(),
     usedByModule: false,
     declaration: builder.createCodeRegion(path as NodePath<Node>),
-    references: [builder.createIdentifierRegion(identifierPath)],
+    references: [
+      builder.createIdentifierRegion(identifierPath),
+      ...path.scope
+        .getBinding(identifierPath.node.name)!
+        .referencePaths.map((i) =>
+          builder.createIdentifierRegion(i as NodePath<Identifier>)
+        ),
+    ],
   });
 }
 
-function localNameDescription(
-  declaration: CodeRegion,
-  selfReference: IdentifierRegion
-): LocalNameDescription {
-  return {
-    type: "local",
-    dependsOn: new Set(),
-    usedByModule: false,
-    declaration,
-    references: [selfReference],
-  };
+function isModuleScopedDeclaration(path: NodePath): boolean {
+  return (
+    ["ExportDefaultDeclaration", "ExportNamedDeclaration", "Program"].includes(
+      path.parent.type
+    ) ||
+    (path.parent.type === "VariableDeclaration" &&
+      isModuleScopedDeclaration(path.parentPath))
+  );
 }
 
-function ensureIdentifierPath(
-  path: DuckPath | DuckPath[]
-): NodePath<Identifier> {
-  if (Array.isArray(path)) {
-    throw new Error(`bug: expected identifier path to not be an array`);
-  }
-  if (!path.isIdentifier()) {
-    throw new Error(`bug: expected a non-null identifier path`);
-  }
-  return path;
-}
-
-function addLocalIdDeclaration(
-  desc: ModuleDescription,
-  bindingPaths: Map<DuckPath, string>,
-  path:
-    | NodePath<FunctionDeclaration>
-    | NodePath<VariableDeclarator>
-    | NodePath<ClassDeclaration>,
-  builder: RegionBuilder
-) {
-  let name = bindingPaths.get(path);
-  if (name) {
-    desc.names.set(
-      name,
-      localNameDescription(
-        builder.createCodeRegion(path as NodePath<Node>),
-        builder.createIdentifierRegion(ensureIdentifierPath(path.get("id")))
-      )
-    );
-  }
-}
-
-function lvalToIdentifiers(
-  path: NodePath<LVal> | NodePath<ObjectProperty>
-): NodePath<Identifier>[] {
-  let results: NodePath<Identifier>[] = [];
-  switch (path.node.type) {
-    case "ObjectPattern":
-      for (let propPath of path.get("properties") as NodePath<
-        ObjectProperty
-      >[]) {
-        results = [...results, ...lvalToIdentifiers(propPath)];
+function declarationForIdentifier(
+  path: NodePath<Identifier>
+): NodePath | false {
+  switch (path.parent.type) {
+    case "FunctionDeclaration":
+    case "ClassDeclaration":
+    case "VariableDeclarator":
+      if (path.parent.id === path.node) {
+        return path.parentPath;
       }
-      break;
+      return false;
     case "ObjectProperty":
-      results = [
-        ...results,
-        ...lvalToIdentifiers(path.get("key") as NodePath<LVal>),
-        ...lvalToIdentifiers(path.get("value") as NodePath<LVal>),
-      ];
-      break;
-    case "ArrayPattern":
-      for (let elPath of path.get("elements") as NodePath<LVal>[]) {
-        results = [...results, ...lvalToIdentifiers(elPath)];
+      if (path.parent.value === path.node) {
+        return path.parentPath;
       }
-      break;
+      return false;
     case "RestElement":
-      let restPath = path as NodePath<RestElement>; // ugh
-      results = lvalToIdentifiers(restPath.get("argument"));
-      break;
-    case "Identifier":
-      results = [path as NodePath<Identifier>];
-      break;
-    case "MemberExpression":
-    case "AssignmentPattern":
-    case "TSParameterProperty":
-      throw new Error("unimplemented");
+      if (path.parent.argument === path.node) {
+        return path.parentPath;
+      }
+      return false;
+    case "ArrayPattern":
+      if (path.parent.elements.includes(path.node)) {
+        return path as NodePath;
+      }
+      return false;
     default:
-      assertNever(path.node);
+      return false;
   }
-  return results;
 }
