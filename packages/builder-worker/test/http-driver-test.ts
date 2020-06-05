@@ -207,22 +207,32 @@ QUnit.module("filesystem - http driver", function (origHooks) {
         {
           method: "GET",
           url: `${webServerHref}/foo/bar`,
-          response() {
-            return Promise.resolve({
-              status: 200,
-              body: testFileContents,
-              headers: {
-                ETag: isEqual(
-                  testFileContents,
-                  textEncoder.encode(initialValue)
-                )
-                  ? "abc123"
-                  : "updated",
-                "Last-Modified": `${moment("2020-05-16T18:50:00 Z")
-                  .utc()
-                  .format("ddd, DD MMM YYYY HH:mm:ss")} GMT`,
-              },
-            });
+          response(_url, init) {
+            let isUpdated = !isEqual(
+              testFileContents,
+              textEncoder.encode(initialValue)
+            );
+            let ifNoneMatch = init?.headers?.["If-None-Match"];
+            if (
+              ifNoneMatch &&
+              ((ifNoneMatch === "abc123" && !isUpdated) ||
+                (ifNoneMatch === "updated" && isUpdated))
+            ) {
+              return Promise.resolve({
+                status: 304,
+              });
+            } else {
+              return Promise.resolve({
+                status: 200,
+                body: testFileContents,
+                headers: {
+                  ETag: isUpdated ? "updated" : "abc123",
+                  "Last-Modified": `${moment("2020-05-16T18:50:00 Z")
+                    .utc()
+                    .format("ddd, DD MMM YYYY HH:mm:ss")} GMT`,
+                },
+              });
+            }
           },
         },
         {
@@ -321,6 +331,9 @@ QUnit.module("filesystem - http driver", function (origHooks) {
 
       test("can return updated response when etag changes", async function (assert) {
         let file = await openVolatileFile(assert.fs);
+        // our logic to test if a file exists results in some initial HTTP
+        // GET's. there is opportunity for improvement where we can collapse
+        // "has file" with "get file".
         let initialReadCount = readCount;
         assert.equal(
           await file.readText(),

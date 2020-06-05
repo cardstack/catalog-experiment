@@ -12,7 +12,7 @@ interface MockResponse {
   headers?: { [header: string]: string };
 }
 
-type MockResponseFn = (url: string, request?: Request) => Promise<MockResponse>;
+type MockResponseFn = (url: string, init?: FetchInit) => Promise<MockResponse>;
 
 interface MockRequest {
   method: string;
@@ -20,18 +20,19 @@ interface MockRequest {
   response: MockResponse | MockResponseFn;
 }
 
+interface FetchInit {
+  method?: string;
+  headers?: { [header: string]: string };
+  body?: Uint8Array;
+}
+
 export function stubFetch(mockConfigs: MockRequest[]): sinon.SinonStub {
   let urls = mockConfigs.filter((i) => typeof i.url === "string");
   let patterns = mockConfigs.filter((i) => typeof i.url !== "string");
   let stub = sinon
     .stub(win, "fetch")
-    .callsFake(async (url: string, request?: Request) => {
-      let method: string;
-      if (request) {
-        method = request.method;
-      } else {
-        method = "GET";
-      }
+    .callsFake(async (url: string, init?: FetchInit) => {
+      let method: string = init?.method || "GET";
 
       let response = urls.find((i) => i.method === method && i.url === url)
         ?.response;
@@ -48,7 +49,7 @@ export function stubFetch(mockConfigs: MockRequest[]): sinon.SinonStub {
       }
 
       if (typeof response === "function") {
-        response = await response(url, request);
+        response = await response(url, init);
       }
 
       let buffer =
@@ -75,7 +76,7 @@ export function stubFetch(mockConfigs: MockRequest[]): sinon.SinonStub {
       return {
         status,
         url,
-        ok: status >= 200 && status <= 299,
+        ok: status >= 200 && status <= 399,
         headers: responseHeaders,
         body: buffer
           ? {
