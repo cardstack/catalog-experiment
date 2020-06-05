@@ -35,7 +35,11 @@ export class HttpFileSystemDriver implements FileSystemDriver {
   }
 }
 
-type HttpResponseCache = Map<string, Promise<Uint8Array>>;
+interface CacheEntry {
+  headers: Headers;
+  buffer: Uint8Array;
+}
+type HttpResponseCache = Map<string, Promise<CacheEntry>>;
 
 export class HttpVolume implements Volume {
   root: HttpFileDescriptor;
@@ -115,7 +119,9 @@ export class HttpDirectoryDescriptor implements DirectoryDescriptor {
   async getFile(name: string) {
     let underlyingURL = new URL(name, assertURLEndsInDir(this.underlyingURL));
     let url = new URL(name, assertURLEndsInDir(this.url));
-    await getOkResponse(underlyingURL);
+    // we're doing this for the side effect of a 404 being thrown if the
+    // URL does not exist.
+    await getIfNoneMatch(underlyingURL, undefined);
     return new HttpFileDescriptor(
       this.volume,
       url,
@@ -166,6 +172,7 @@ export class HttpDirectoryDescriptor implements DirectoryDescriptor {
 export class HttpFileDescriptor implements FileDescriptor {
   readonly type = "file";
   readonly inode: string;
+  private lastEtag: string | undefined;
 
   constructor(
     readonly volume: HttpVolume,
@@ -179,22 +186,30 @@ export class HttpFileDescriptor implements FileDescriptor {
   close() {}
 
   async stat(): Promise<HttpStat> {
-    let response = await getOkResponse(this.underlyingURL);
-    let etag = response.headers.get("ETag") ?? undefined;
-    let modified = response.headers.get("Last-Modified");
+    let response = await this.getIfNoneMatch();
+    let headers: Headers;
+    if (response.status === 304) {
+      // the only reason we would get a 304 is if this.lastEtag existed and
+      // corresponded to a cached response
+      headers = (await this.volume.httpResponseCache.get(this.lastEtag!))!
+        .headers;
+    } else {
+      headers = response.headers;
+    }
+    let etag = headers.get("ETag") ?? undefined;
+    let modified = headers.get("Last-Modified");
     let mtime = modified ? moment(modified).valueOf() : Date.now();
     // there is no guarantee that the webserver is populating this (e.g.
     // ember-cli), we could read this file to see its length, but that seems
     // wasteful.
-    let sizeStr = response.headers.get("Content-Length");
+    let sizeStr = headers.get("Content-Length");
     let size = sizeStr ? Number(sizeStr) : undefined;
 
     return {
       etag,
       mtime,
       size,
-      contentType:
-        response.headers.get("Content-Type") || "application/octet-stream",
+      contentType: headers.get("Content-Type") || "application/octet-stream",
       type: "file",
     };
   }
@@ -227,24 +242,30 @@ export class HttpFileDescriptor implements FileDescriptor {
   }
 
   async read(): Promise<Uint8Array> {
-    let response = await getOkResponse(this.underlyingURL);
-    return await getResponseBuffer(response, this.volume.httpResponseCache);
+    let response = await this.getIfNoneMatch();
+    return await getResponseBuffer(
+      response,
+      this.volume.httpResponseCache,
+      this.lastEtag
+    );
   }
 
   async readText(): Promise<string> {
-    let response = await getOkResponse(this.underlyingURL);
+    let response = await this.getIfNoneMatch();
     let buffer = await getResponseBuffer(
       response,
-      this.volume.httpResponseCache
+      this.volume.httpResponseCache,
+      this.lastEtag
     );
     return utf8.decode(buffer);
   }
 
   async getReadbleStream(): Promise<ReadableStream> {
-    let response = await getOkResponse(this.underlyingURL);
+    let response = await this.getIfNoneMatch();
     let stream = await getResponseReadableStream(
       response,
-      this.volume.httpResponseCache
+      this.volume.httpResponseCache,
+      this.lastEtag
     );
     if (stream == null) {
       throw new Error(
@@ -253,10 +274,31 @@ export class HttpFileDescriptor implements FileDescriptor {
     }
     return stream;
   }
+
+  private async getIfNoneMatch(): Promise<Response> {
+    let response = await getIfNoneMatch(this.underlyingURL, this.lastEtag);
+    let etag = response.headers.get("ETag");
+    if (etag) {
+      this.lastEtag = etag;
+    }
+    // consume the body so we have it handy in our cache for later
+    if (etag && response.status !== 304) {
+      await getResponseBuffer(response, this.volume.httpResponseCache, etag);
+    }
+    return response;
+  }
 }
 
-async function getOkResponse(url: URL): Promise<Response> {
-  let response = await fetch(url.href);
+async function getIfNoneMatch(
+  url: URL,
+  etag: string | undefined
+): Promise<Response> {
+  let response = etag
+    ? await fetch(url.href, {
+        method: "GET",
+        headers: { "If-None-Match": etag },
+      })
+    : await fetch(url.href);
   if (!response.ok) {
     if (response.status === 404) {
       throw new FileSystemError(
@@ -282,35 +324,38 @@ export interface HttpStat extends Stat {
 
 async function getResponseBuffer(
   response: Response,
-  cache: HttpResponseCache
+  cache: HttpResponseCache,
+  etag: string | undefined
 ): Promise<Uint8Array> {
-  let etag = response.headers.get("ETag");
   let cacheKey: string | undefined;
   if (etag) {
     cacheKey = `${response.url}_${etag}`;
     if (cache.has(cacheKey)) {
-      return await cache.get(cacheKey)!;
+      return (await cache.get(cacheKey)!).buffer;
     }
   }
-  let bufferPromise = new Promise<Uint8Array>(async (res) => {
-    res(new Uint8Array(await response.arrayBuffer()));
+  let cacheEntryPromise = new Promise<CacheEntry>(async (res) => {
+    res({
+      headers: response.headers,
+      buffer: new Uint8Array(await response.arrayBuffer()),
+    });
   });
   if (cacheKey) {
-    cache.set(cacheKey, bufferPromise);
+    cache.set(cacheKey, cacheEntryPromise);
   }
-  return await bufferPromise;
+  return (await cacheEntryPromise).buffer;
 }
 
 async function getResponseReadableStream(
   response: Response,
-  cache: HttpResponseCache
+  cache: HttpResponseCache,
+  etag: string | undefined
 ): Promise<ReadableStream<Uint8Array> | null> {
-  let etag = response.headers.get("ETag");
   let cacheKey: string | undefined;
   if (etag) {
     cacheKey = `${response.url}_${etag}`;
     if (cache.has(cacheKey)) {
-      let buffer = await cache.get(cacheKey)!;
+      let buffer = (await cache.get(cacheKey)!).buffer;
       return new ReadableStream({
         start(controller) {
           controller.enqueue(buffer);
@@ -327,7 +372,7 @@ async function getResponseReadableStream(
     }
 
     let stream: ReadableStream<Uint8Array>;
-    let bufferPromise = new Promise<Uint8Array>((res) => {
+    let cacheEntryPromise = new Promise<CacheEntry>((res) => {
       // listen to the stream in response.body and cache the buffer when the stream ends
       let buffers: Uint8Array[] = [];
       stream = new ReadableStream({
@@ -342,7 +387,7 @@ async function getResponseReadableStream(
                   result.set(buffer, offset);
                   offset += buffer.length;
                 }
-                res(result);
+                res({ buffer: result, headers: response.headers });
                 controller.close();
                 return;
               } else if (value) {
@@ -357,7 +402,7 @@ async function getResponseReadableStream(
         },
       });
     });
-    cache.set(cacheKey, bufferPromise);
+    cache.set(cacheKey, cacheEntryPromise);
     return stream!;
   }
   return response.body;
