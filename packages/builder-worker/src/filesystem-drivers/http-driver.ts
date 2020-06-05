@@ -1,4 +1,4 @@
-import { FileSystem, FileSystemError } from "../filesystem";
+import { FileSystem, FileSystemError, eventCategory } from "../filesystem";
 import {
   FileSystemDriver,
   Volume,
@@ -245,7 +245,7 @@ export class HttpFileDescriptor implements FileDescriptor {
       );
     }
 
-    this.dispatchEvent!(this.url, "write"); // all descriptors created for files have this dispatcher
+    this.dispatchEvent!(eventCategory, this.url, "write"); // all descriptors created for files have this dispatcher
   }
 
   async read(): Promise<Uint8Array> {

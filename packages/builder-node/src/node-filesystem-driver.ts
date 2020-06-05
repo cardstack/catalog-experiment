@@ -6,7 +6,7 @@ import {
   Stat,
 } from "../../builder-worker/src/filesystem-drivers/filesystem-driver";
 import { assertURLEndsInDir } from "../../builder-worker/src/path";
-import { FileSystem } from "../../builder-worker/src/filesystem";
+import { FileSystem, eventCategory } from "../../builder-worker/src/filesystem";
 import { DOMToNodeReadable, NodeReadableToDOM } from "file-daemon/stream-shims";
 import { Readable } from "stream";
 import { ensureDirSync, removeSync, move } from "fs-extra";
@@ -294,7 +294,7 @@ export class NodeFileDescriptor implements FileDescriptor {
         `bug: should never have a situation where you dont have a buffer or a readable stream when writing to a file`
       );
     }
-    this.dispatchEvent!(this.url, "write"); // all descriptors created for files have this dispatcher
+    this.dispatchEvent!(eventCategory, this.url, "write"); // all descriptors created for files have this dispatcher
   }
 
   async read() {

@@ -10,45 +10,13 @@ import { log, error } from "../logger";
 import { REGTYPE } from "tarstream/constants";
 //@ts-ignore
 import { UnTar } from "tarstream";
-import { ClientEvent } from "../client-event";
 import { WatchInfo, FileInfo } from "../../../file-daemon/interfaces";
 
 export const defaultOrigin = "http://localhost:4200";
 export const defaultWebsocketURL = "ws://localhost:3000";
 export const entrypointsPath = "/entrypoints.json";
 
-// TODO move all this event stuff into the file system itself...
-export interface FileDaemonClientEvent extends ClientEvent<Event> {
-  kind: "file-daemon-client-event";
-}
-
-export interface ConnectedEvent {
-  type: "connected";
-}
-export interface DisconnectedEvent {
-  type: "disconnected";
-}
-export interface SyncStartedEvent {
-  type: "sync-started";
-}
-export interface SyncFinishedEvent {
-  type: "sync-finished";
-  files: string[];
-}
-
-export interface FilesChangedEvent {
-  type: "files-changed";
-  modified: string[];
-  removed: string[];
-}
-
-export type Event =
-  | ConnectedEvent
-  | DisconnectedEvent
-  | SyncStartedEvent
-  | SyncFinishedEvent
-  | FilesChangedEvent;
-export type EventListener = (event: Event) => void;
+export const eventCategory = "file-daemon-client";
 
 export class FileDaemonClientDirectoryDescriptor extends DefaultDirectoryDescriptor {}
 
@@ -91,12 +59,6 @@ export class FileDaemonClientVolume extends DefaultVolume {
   private queue: WatchInfo[] = [];
   private resolveQueuePromise: undefined | (() => void);
   private running: Promise<void>;
-  private listeners: Set<EventListener> = new Set();
-  private drainEvents?: Promise<void>;
-  private eventQueue: {
-    event: Event;
-    listener: EventListener;
-  }[] = [];
 
   constructor(
     private fileServerURL: URL,
@@ -122,22 +84,6 @@ export class FileDaemonClientVolume extends DefaultVolume {
     await this.running;
     this.socket = undefined;
     log("file daemon client performed user-requested close");
-  }
-
-  addEventListener(fn: EventListener) {
-    this.listeners.add(fn);
-  }
-
-  removeEventListener(fn: EventListener) {
-    this.listeners.delete(fn);
-  }
-
-  removeAllEventListeners() {
-    this.listeners.clear();
-  }
-
-  eventsFlushed(): Promise<void> {
-    return this.drainEvents ?? Promise.resolve();
   }
 
   private async run() {
@@ -190,15 +136,11 @@ export class FileDaemonClientVolume extends DefaultVolume {
       log(`websocket close: ${JSON.stringify(event)}`);
       socketIsClosed();
       this.connected = false;
-      this.dispatchFileDaemonClientEvent({
-        type: "disconnected",
-      });
+      this.dispatchEvent(eventCategory, this.mountURL, "disconnected");
     };
     socket.onopen = (event) => {
       log(`websocket open: ${JSON.stringify(event)}`);
-      this.dispatchFileDaemonClientEvent({
-        type: "connected",
-      });
+      this.dispatchEvent(eventCategory, this.mountURL, "connected");
       this.backoffInterval = 0;
       this.connected = true;
 
@@ -245,9 +187,7 @@ export class FileDaemonClientVolume extends DefaultVolume {
   }
 
   private async startFullSync() {
-    this.dispatchFileDaemonClientEvent({
-      type: "sync-started",
-    });
+    this.dispatchEvent(eventCategory, this.mountURL, "sync-started");
     let stream = (
       await fetch(`${this.fileServerURL}/`, {
         headers: {
@@ -276,8 +216,7 @@ export class FileDaemonClientVolume extends DefaultVolume {
     await fs.move(temp, this.mountURL);
     await fs.remove(temp);
     log("completed full sync");
-    this.dispatchFileDaemonClientEvent({
-      type: "sync-finished",
+    this.dispatchEvent(eventCategory, this.mountURL, "sync-finished", {
       files: files.map((f) => this.mountedPath(f).href),
     });
     this.doneSyncing();
@@ -311,8 +250,7 @@ export class FileDaemonClientVolume extends DefaultVolume {
       removed.push(url.href);
     }
 
-    this.dispatchFileDaemonClientEvent({
-      type: "files-changed",
+    this.dispatchEvent(eventCategory, this.mountURL, "sync-finished", {
       removed,
       modified,
     });
@@ -364,47 +302,4 @@ export class FileDaemonClientVolume extends DefaultVolume {
     );
     return changed.filter(Boolean) as FileInfo[];
   }
-
-  private dispatchFileDaemonClientEvent(event: Event): void {
-    if (this.listeners.size === 0) {
-      return;
-    }
-
-    for (let listener of this.listeners) {
-      this.eventQueue.push({ event, listener });
-    }
-    (async () => await this.drainEventQueue())();
-  }
-
-  private async drainEventQueue(): Promise<void> {
-    await this.drainEvents;
-
-    let eventsDrained: () => void;
-    this.drainEvents = new Promise((res) => (eventsDrained = res));
-
-    while (this.eventQueue.length > 0) {
-      let eventArgs = this.eventQueue.shift();
-      if (eventArgs) {
-        let { event, listener } = eventArgs;
-        let dispatched: () => void;
-        let waitForDispatch = new Promise((res) => (dispatched = res));
-        setTimeout(() => {
-          listener(event);
-          dispatched();
-        }, 0);
-        await waitForDispatch;
-      }
-    }
-    eventsDrained!();
-  }
-}
-
-export function isFileDaemonClientEvent(
-  data: any
-): data is FileDaemonClientEvent {
-  return (
-    "kind" in data &&
-    data.kind === "file-daemon-client-event" &&
-    "clientEvent" in data
-  );
 }

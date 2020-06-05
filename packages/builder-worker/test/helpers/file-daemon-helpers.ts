@@ -1,6 +1,5 @@
 import {
   Event as FSEvent,
-  EventType as FSEventType,
   EventListener as FSEventListener,
 } from "../../src/filesystem";
 
@@ -10,7 +9,8 @@ let fileDaemonKey = FILE_DAEMON_KEY;
 
 export function makeListener(
   origin: string,
-  eventType?: FSEventType,
+  category: string,
+  eventType?: string,
   path?: string,
   timeoutMs: number = 2000
 ): { listener: FSEventListener; wait: () => Promise<FSEvent> } {
@@ -21,19 +21,22 @@ export function makeListener(
     if (
       path &&
       e.type === eventType &&
-      e.url.href === new URL(path, origin).href
+      e.category === category &&
+      e.href === new URL(path, origin).href
     ) {
       change(e);
-    } else if (!path && e.type === eventType) {
+    } else if (!path && e.type === eventType && e.category === category) {
       change(e);
-    } else if (!path && !eventType) {
+    } else if (!path && !eventType && e.category === category) {
       change(e);
     }
   };
   let wait = async () => {
     let event = await Promise.race([fsUpdated, timeout]);
     if (!event) {
-      throw new Error(`timeout waiting for ${eventType} event of '${path}'`);
+      throw new Error(
+        `timeout waiting for ${category}:${eventType} event of '${path}'`
+      );
     }
     return event;
   };

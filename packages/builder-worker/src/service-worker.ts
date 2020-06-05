@@ -1,10 +1,13 @@
 import {
   FileDaemonClientVolume,
   defaultWebsocketURL,
-  Event as FileDaemonClientEvent,
   FileDaemonClientDriver,
 } from "./filesystem-drivers/file-daemon-client-driver";
-import { FileSystem } from "./filesystem";
+import {
+  FileSystem,
+  Event as FSEvent,
+  eventCategory as fsEventCategory,
+} from "./filesystem";
 import { log, Logger, LogMessage } from "./logger";
 import { handleFileRequest } from "./request-handlers/file-request-handler";
 import { handleClientRegister } from "./request-handlers/client-register-handler";
@@ -24,7 +27,7 @@ const uiOrigin = "http://localhost:4300";
 let websocketURL: URL;
 let isDisabled = false;
 let volume: FileDaemonClientVolume | undefined;
-let fileDaemonEventHandler: ClientEventHandler<FileDaemonClientEvent>;
+let fsEventHandler: ClientEventHandler<FSEvent>;
 let logEventHandler: ClientEventHandler<LogMessage[]>;
 let reloadEventHandler: ClientEventHandler<ReloadEvent>;
 
@@ -59,7 +62,7 @@ worker.addEventListener("activate", () => {
 
 async function activate() {
   reloadEventHandler = new ClientEventHandler("reload");
-  fileDaemonEventHandler = new ClientEventHandler("file-daemon-client-event");
+  fsEventHandler = new ClientEventHandler(fsEventCategory);
   buildManager = new BuildManager(fs, projects, reloadEventHandler);
 
   await Promise.all([
@@ -72,8 +75,9 @@ async function activate() {
     (async () => {
       let driver = new FileDaemonClientDriver(originURL, websocketURL);
       volume = (await fs.mount(inputURL, driver)) as FileDaemonClientVolume;
-      volume.addEventListener(
-        fileDaemonEventHandler.handleEvent.bind(fileDaemonEventHandler)
+      fs.addEventListener(
+        inputURL,
+        fsEventHandler.handleEvent.bind(fsEventHandler)
       );
     })(),
   ]);
@@ -82,6 +86,9 @@ async function activate() {
   await buildManager.rebuilder.isIdle();
   await fs.displayListing();
 }
+
+// TODO it looks like there is a bug where the browser displays 404 if you visit
+// the page while the service worker is installing/activating...
 
 worker.addEventListener("fetch", (event: FetchEvent) => {
   let url = new URL(event.request.url);
@@ -107,7 +114,7 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
           fs,
           event,
           fileDaemonVolume: volume,
-          fileDaemonEventHandler,
+          fsEventHandler,
           logEventHandler,
           reloadEventHandler,
           buildManager,

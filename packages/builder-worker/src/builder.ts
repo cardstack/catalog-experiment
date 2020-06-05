@@ -1,4 +1,4 @@
-import { FileSystem, Event } from "./filesystem";
+import { FileSystem, Event, eventCategory } from "./filesystem";
 import bind from "bind-decorator";
 import {
   OutputTypes,
@@ -225,15 +225,17 @@ class BuildRunner<Input> {
 
   private ensureWatching(url: URL) {
     if (!this.watchedOrigins.has(url.origin)) {
-      this.fs.addEventListener(url.origin, this.fileDidChange);
+      this.fs.addEventListener(url, this.fileDidChange);
       this.watchedOrigins.add(url.origin);
     }
   }
 
   @bind
   private fileDidChange(event: Event) {
-    this.recentlyChangedFiles.add(event.url.href);
-    this.inputDidChange?.();
+    if (event.category === eventCategory) {
+      this.recentlyChangedFiles.add(event.href);
+      this.inputDidChange?.();
+    }
   }
 
   handleUnchanged(

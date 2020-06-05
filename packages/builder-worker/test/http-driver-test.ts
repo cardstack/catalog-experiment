@@ -605,14 +605,10 @@ QUnit.module("filesystem - http driver", function (origHooks) {
       assert.expect(2);
       let file = (await assert.fs.open(url("foo/bar"), true)) as FileDescriptor;
       let listener = (e: FSEvent) => {
-        assert.equal(
-          e.url.href,
-          `${origin}/foo/bar`,
-          "the event url is correct"
-        );
+        assert.equal(e.href, `${origin}/foo/bar`, "the event url is correct");
         assert.equal(e.type, "write", "the event type is correct");
       };
-      await withListener(assert.fs, origin, listener, async () => {
+      await withListener(assert.fs, url("/"), listener, async () => {
         await file.write("blah");
         await assert.fs.eventsFlushed();
       });

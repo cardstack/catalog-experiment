@@ -1,4 +1,4 @@
-import { FileSystem } from "../filesystem";
+import { FileSystem, eventCategory } from "../filesystem";
 import { ROOT, assertURLEndsInDir } from "../path";
 
 const textEncoder = new TextEncoder();
@@ -94,7 +94,7 @@ export class DefaultVolume implements Volume {
   constructor(
     id: string | undefined,
     url: URL,
-    private dispatchEvent: FileSystem["dispatchEvent"]
+    protected dispatchEvent: FileSystem["dispatchEvent"]
   ) {
     this.root = new Directory(this).getDescriptor(url, this.dispatchEvent);
     if (!id) {
@@ -302,7 +302,7 @@ export class DefaultFileDescriptor implements FileDescriptor {
       this.resource.buffer = await readStream(streamOrBuffer);
     }
     this.resource.mtime = Math.floor(Date.now());
-    this.dispatchEvent!(this.url, "write"); // all descriptors created for files have this dispatcher
+    this.dispatchEvent!(eventCategory, this.url, "write"); // all descriptors created for files have this dispatcher
   }
 
   close() {}
