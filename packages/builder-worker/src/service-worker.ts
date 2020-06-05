@@ -1,8 +1,9 @@
 import {
-  FileDaemonClient,
+  FileDaemonClientVolume,
   defaultWebsocketURL,
   Event as FileDaemonClientEvent,
-} from "./file-daemon-client";
+  FileDaemonClientDriver,
+} from "./filesystem-drivers/file-daemon-client-driver";
 import { FileSystem } from "./filesystem";
 import { log, Logger, LogMessage } from "./logger";
 import { handleFileRequest } from "./request-handlers/file-request-handler";
@@ -22,7 +23,7 @@ const uiOrigin = "http://localhost:4300";
 
 let websocketURL: URL;
 let isDisabled = false;
-let client: FileDaemonClient | undefined;
+let volume: FileDaemonClientVolume | undefined;
 let fileDaemonEventHandler: ClientEventHandler<FileDaemonClientEvent>;
 let logEventHandler: ClientEventHandler<LogMessage[]>;
 let reloadEventHandler: ClientEventHandler<ReloadEvent>;
@@ -59,14 +60,24 @@ worker.addEventListener("activate", () => {
 async function activate() {
   reloadEventHandler = new ClientEventHandler("reload");
   fileDaemonEventHandler = new ClientEventHandler("file-daemon-client-event");
-  client = new FileDaemonClient(originURL, websocketURL, fs, inputURL);
-  client.addEventListener(
-    fileDaemonEventHandler.handleEvent.bind(fileDaemonEventHandler)
-  );
-  let uiDriver = new HttpFileSystemDriver(new URL(`${uiOrigin}/catalogjs-ui/`));
-  let mounting = fs.mount(new URL(`/catalogjs-ui/`, originURL), uiDriver);
   buildManager = new BuildManager(fs, projects, reloadEventHandler);
-  await Promise.all([client.ready, mounting]);
+
+  await Promise.all([
+    (async () => {
+      let uiDriver = new HttpFileSystemDriver(
+        new URL(`${uiOrigin}/catalogjs-ui/`)
+      );
+      await fs.mount(new URL(`/catalogjs-ui/`, originURL), uiDriver);
+    })(),
+    (async () => {
+      let driver = new FileDaemonClientDriver(originURL, websocketURL);
+      volume = (await fs.mount(inputURL, driver)) as FileDaemonClientVolume;
+      volume.addEventListener(
+        fileDaemonEventHandler.handleEvent.bind(fileDaemonEventHandler)
+      );
+    })(),
+  ]);
+
   await buildManager.rebuilder.start();
   await buildManager.rebuilder.isIdle();
   await fs.displayListing();
@@ -82,7 +93,7 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
 
   event.respondWith(
     (async () => {
-      if (client) {
+      if (volume) {
         await buildManager.rebuilder.isIdle();
 
         let stack: Handler[] = [
@@ -95,7 +106,7 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
         let context = {
           fs,
           event,
-          fileDaemonClient: client,
+          fileDaemonVolume: volume,
           fileDaemonEventHandler,
           logEventHandler,
           reloadEventHandler,

@@ -1,16 +1,23 @@
-import { WatchInfo, FileInfo } from "../../file-daemon/interfaces";
-import { FileSystem, FileSystemError } from "./filesystem";
-import { FileDescriptor } from "./filesystem-drivers/filesystem-driver";
-import { log, error } from "./logger";
+import { FileSystem, FileSystemError } from "../filesystem";
+import {
+  FileSystemDriver,
+  FileDescriptor,
+  DefaultVolume,
+  DefaultFileDescriptor,
+  DefaultDirectoryDescriptor,
+} from "./filesystem-driver";
+import { log, error } from "../logger";
 import { REGTYPE } from "tarstream/constants";
 //@ts-ignore
 import { UnTar } from "tarstream";
-import { ClientEvent } from "./client-event";
+import { ClientEvent } from "../client-event";
+import { WatchInfo, FileInfo } from "../../../file-daemon/interfaces";
 
 export const defaultOrigin = "http://localhost:4200";
 export const defaultWebsocketURL = "ws://localhost:3000";
 export const entrypointsPath = "/entrypoints.json";
 
+// TODO move all this event stuff into the file system itself...
 export interface FileDaemonClientEvent extends ClientEvent<Event> {
   kind: "file-daemon-client-event";
 }
@@ -43,7 +50,35 @@ export type Event =
   | FilesChangedEvent;
 export type EventListener = (event: Event) => void;
 
-export class FileDaemonClient {
+export class FileDaemonClientDirectoryDescriptor extends DefaultDirectoryDescriptor {}
+
+export class FileDaemonClientFileDescriptor extends DefaultFileDescriptor {}
+
+export class FileDaemonClientDriver implements FileSystemDriver {
+  constructor(private fileServerURL: URL, private websocketServerURL: URL) {}
+
+  async mountVolume(
+    fs: FileSystem,
+    id: string,
+    url: URL,
+    dispatchEvent: FileSystem["dispatchEvent"]
+  ) {
+    let volume = new FileDaemonClientVolume(
+      this.fileServerURL,
+      this.websocketServerURL,
+      fs,
+      id,
+      url,
+      dispatchEvent
+    );
+
+    await volume.ready;
+
+    return volume;
+  }
+}
+
+export class FileDaemonClientVolume extends DefaultVolume {
   ready: Promise<void>;
   connected = false;
 
@@ -67,15 +102,14 @@ export class FileDaemonClient {
     private fileServerURL: URL,
     private websocketServerURL: URL,
     private fs: FileSystem,
-    private mount: URL
+    id: string,
+    private mountURL: URL,
+    dispatchEvent: FileSystem["dispatchEvent"]
   ) {
+    super(id, mountURL, dispatchEvent);
+
     this.ready = new Promise((res) => (this.doneSyncing = res));
     this.running = this.run();
-    if (!mount.href.endsWith("/")) {
-      throw new Error(
-        `file daemon client should be mounted on a directory with a trailing slash`
-      );
-    }
   }
 
   async close() {
@@ -156,13 +190,13 @@ export class FileDaemonClient {
       log(`websocket close: ${JSON.stringify(event)}`);
       socketIsClosed();
       this.connected = false;
-      this.dispatchEvent({
+      this.dispatchFileDaemonClientEvent({
         type: "disconnected",
       });
     };
     socket.onopen = (event) => {
       log(`websocket open: ${JSON.stringify(event)}`);
-      this.dispatchEvent({
+      this.dispatchFileDaemonClientEvent({
         type: "connected",
       });
       this.backoffInterval = 0;
@@ -211,7 +245,7 @@ export class FileDaemonClient {
   }
 
   private async startFullSync() {
-    this.dispatchEvent({
+    this.dispatchFileDaemonClientEvent({
       type: "sync-started",
     });
     let stream = (
@@ -239,10 +273,10 @@ export class FileDaemonClient {
       },
     });
     await untar.done;
-    await fs.move(temp, this.mount);
+    await fs.move(temp, this.mountURL);
     await fs.remove(temp);
     log("completed full sync");
-    this.dispatchEvent({
+    this.dispatchFileDaemonClientEvent({
       type: "sync-finished",
       files: files.map((f) => this.mountedPath(f).href),
     });
@@ -277,7 +311,7 @@ export class FileDaemonClient {
       removed.push(url.href);
     }
 
-    this.dispatchEvent({
+    this.dispatchFileDaemonClientEvent({
       type: "files-changed",
       removed,
       modified,
@@ -300,7 +334,7 @@ export class FileDaemonClient {
   }
 
   private mountedPath(path: string): URL {
-    return new URL(path, this.mount);
+    return new URL(path, this.mountURL);
   }
 
   private async pruneChanges(changes: FileInfo[]): Promise<FileInfo[]> {
@@ -331,7 +365,7 @@ export class FileDaemonClient {
     return changed.filter(Boolean) as FileInfo[];
   }
 
-  private dispatchEvent(event: Event): void {
+  private dispatchFileDaemonClientEvent(event: Event): void {
     if (this.listeners.size === 0) {
       return;
     }

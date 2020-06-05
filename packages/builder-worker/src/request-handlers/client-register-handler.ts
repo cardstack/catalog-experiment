@@ -11,7 +11,7 @@ export const handleClientRegister: Handler = async function (
   const {
     event,
     fileDaemonEventHandler,
-    fileDaemonClient,
+    fileDaemonVolume,
     logEventHandler,
     reloadEventHandler,
   } = context;
@@ -25,7 +25,7 @@ export const handleClientRegister: Handler = async function (
     switch (registrationType) {
       case "file-daemon-client":
         fileDaemonEventHandler.addClient(event.clientId);
-        if (fileDaemonClient.connected) {
+        if (fileDaemonVolume.connected) {
           await fileDaemonEventHandler.sendEvent(event.clientId, {
             type: "connected",
           });

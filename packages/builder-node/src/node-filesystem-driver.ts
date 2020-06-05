@@ -34,8 +34,13 @@ const utf8 = new TextDecoder("utf8");
 export class NodeFileSystemDriver implements FileSystemDriver {
   constructor(private path: string) {}
 
-  async mountVolume(url: URL, dispatchEvent: FileSystem["dispatchEvent"]) {
-    return new NodeVolume(this.path, url, dispatchEvent);
+  async mountVolume(
+    _fs: FileSystem,
+    id: string,
+    url: URL,
+    dispatchEvent: FileSystem["dispatchEvent"]
+  ) {
+    return new NodeVolume(id, this.path, url, dispatchEvent);
   }
 }
 
@@ -57,6 +62,7 @@ export class NodeVolume implements Volume {
   root: NodeDirectoryDescriptor;
 
   constructor(
+    readonly id: string,
     rootPath: string,
     url: URL,
     private dispatchEvent: FileSystem["dispatchEvent"]

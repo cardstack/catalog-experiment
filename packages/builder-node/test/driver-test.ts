@@ -40,10 +40,10 @@ QUnit.module("Node FileSystem", function (origHooks) {
     removeSync(testDir);
     ensureDirSync(testDir);
 
-    volumeId = await fileAssert.fs.mount(
+    ({ id: volumeId } = await fileAssert.fs.mount(
       url("/"),
       new NodeFileSystemDriver(testDir)
-    );
+    ));
   });
 
   origHooks.afterEach(closeAll);

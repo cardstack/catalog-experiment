@@ -26,7 +26,11 @@ export class FileSystem {
   private volumes: Map<string, Volume> = new Map();
 
   constructor() {
-    let volume = new DefaultDriver().mountVolumeSync(ROOT, this.dispatchEvent);
+    let volume = new DefaultDriver().mountVolumeSync(
+      undefined,
+      ROOT,
+      this.dispatchEvent
+    );
     this.root = volume.root;
     this.volumes.set(this.root.inode, volume);
   }
@@ -53,28 +57,34 @@ export class FileSystem {
     this.listeners = new Map();
   }
 
-  async mount(url: URL, driver: FileSystemDriver): Promise<string> {
+  async mount(url: URL, driver: FileSystemDriver): Promise<Volume> {
     if (url.href.slice(-1) !== "/") {
       throw new FileSystemError(
         "IS_NOT_A_DIRECTORY",
         `'${url}' is not a directory (it's a file and we were expecting it to be a directory)`
       );
     }
-    let volume = await driver.mountVolume(url, this.dispatchEvent);
     let dir = await this.open(url, true);
-    this.volumes.set(dir.inode, volume);
+    let volume = await driver.mountVolume(
+      this,
+      dir.inode,
+      url,
+      this.dispatchEvent
+    );
+    this.volumes.set(volume.id, volume);
     dir.close();
-    return dir.inode;
+
+    return volume;
   }
 
-  async unmount(volumeKey: string): Promise<void> {
-    if (volumeKey === this.root.inode) {
+  async unmount(volumeId: string): Promise<void> {
+    if (volumeId === this.root.inode) {
       throw new Error("Cannot unmount the root volume");
     }
-    let volume = this.volumes.get(volumeKey);
+    let volume = this.volumes.get(volumeId);
     if (volume) {
       let url = volume.root.url;
-      this.volumes.delete(volumeKey);
+      this.volumes.delete(volumeId);
       await this.remove(url);
     }
   }

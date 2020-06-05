@@ -63,7 +63,7 @@ QUnit.module("filesystem", function (origHooks) {
       await assert.fs.open(url("/driverA/blah/"), true);
       await assert.fs.open(url("/driverA/foo/driverB/bar"), true);
 
-      await assert.fs.unmount(volumeA);
+      await assert.fs.unmount(volumeA.id);
 
       await assert.file("/driverA/").doesNotExist();
       await assert.file("/driverA/foo/").doesNotExist();

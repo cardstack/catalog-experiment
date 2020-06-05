@@ -20,8 +20,14 @@ interface Options {
 export class HttpFileSystemDriver implements FileSystemDriver {
   constructor(private httpURL: URL, private opts: Partial<Options> = {}) {}
 
-  async mountVolume(url: URL, dispatchEvent: FileSystem["dispatchEvent"]) {
+  async mountVolume(
+    _fs: FileSystem,
+    id: string,
+    url: URL,
+    dispatchEvent: FileSystem["dispatchEvent"]
+  ) {
     return new HttpVolume(
+      id,
       this.httpURL,
       url,
       dispatchEvent,
@@ -46,6 +52,7 @@ export class HttpVolume implements Volume {
   httpResponseCache: HttpResponseCache = new Map();
 
   constructor(
+    readonly id: string,
     private httpURL: URL,
     private mountURL: URL,
     private dispatchEvent: FileSystem["dispatchEvent"],

@@ -39,10 +39,10 @@ QUnit.module("filesystem - http driver", function (origHooks) {
     await fileAssert.setupFiles();
     fileAssert.fs.removeAllEventListeners();
 
-    volumeId = await fileAssert.fs.mount(
+    ({ id: volumeId } = await fileAssert.fs.mount(
       url("/"),
       new HttpFileSystemDriver(url(webServerHref))
-    );
+    ));
   });
 
   QUnit.module("mock fetch", function (hooks) {

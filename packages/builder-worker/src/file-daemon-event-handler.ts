@@ -1,4 +1,4 @@
-import { Event as ClientEvent } from "./file-daemon-client";
+import { Event as ClientEvent } from "./filesystem-drivers/file-daemon-client-driver";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 export class FileDaemonEventHandler {

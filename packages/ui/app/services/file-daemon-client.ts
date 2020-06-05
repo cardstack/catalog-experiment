@@ -5,7 +5,7 @@ import {
   Event as FileDaemonEvent,
   FilesChangedEvent,
   isFileDaemonClientEvent,
-} from "builder-worker/src/file-daemon-client";
+} from "builder-worker/src/filesystem-drivers/file-daemon-client-driver";
 //@ts-ignore
 import { task, timeout } from "ember-concurrency";
 import { assertNever } from "shared/util";

@@ -1,12 +1,10 @@
-import { FileDaemonClient } from "../../src/file-daemon-client";
 import {
-  FileSystem,
   Event as FSEvent,
   EventType as FSEventType,
   EventListener as FSEventListener,
 } from "../../src/filesystem";
 
-import { testFileDaemonURL, testWebsocketURL } from "../origins";
+import { testFileDaemonURL } from "../origins";
 //@ts-ignore: webpack will set this macro
 let fileDaemonKey = FILE_DAEMON_KEY;
 
@@ -41,15 +39,6 @@ export function makeListener(
   };
 
   return { listener, wait };
-}
-
-export function makeClient(fs: FileSystem, mountpoint = testFileDaemonURL) {
-  return new FileDaemonClient(
-    testFileDaemonURL,
-    testWebsocketURL,
-    fs,
-    mountpoint
-  );
 }
 
 export async function setFile(path: string, contents: string) {
