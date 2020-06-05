@@ -1,5 +1,6 @@
 import { Handler } from "./request-handler";
 import { Logger } from "../logger";
+import { eventCategory as fileDaemonClientEventCategory } from "../filesystem-drivers/file-daemon-client-driver";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 
@@ -10,8 +11,8 @@ export const handleClientRegister: Handler = async function (
   let requestURL = new URL(req.url);
   const {
     event,
-    fileDaemonEventHandler,
-    fileDaemonClient,
+    fsEventHandler,
+    fileDaemonVolume,
     logEventHandler,
     reloadEventHandler,
   } = context;
@@ -23,14 +24,18 @@ export const handleClientRegister: Handler = async function (
   if (requestURL.pathname.startsWith("/register-client/")) {
     let registrationType = requestURL.pathname.split("/").pop();
     switch (registrationType) {
-      case "file-daemon-client":
-        fileDaemonEventHandler.addClient(event.clientId);
-        if (fileDaemonClient.connected) {
-          await fileDaemonEventHandler.sendEvent(event.clientId, {
+      case "fs":
+        fsEventHandler.addClient(event.clientId);
+        if (fileDaemonVolume.connected) {
+          await fsEventHandler.sendEvent(event.clientId, {
+            href: worker.origin,
+            category: fileDaemonClientEventCategory,
             type: "connected",
           });
         } else {
-          await fileDaemonEventHandler.sendEvent(event.clientId, {
+          await fsEventHandler.sendEvent(event.clientId, {
+            href: worker.origin,
+            category: fileDaemonClientEventCategory,
             type: "disconnected",
           });
         }
@@ -52,7 +57,7 @@ export const handleClientRegister: Handler = async function (
     let unregistrationType = requestURL.pathname.split("/").pop();
     switch (unregistrationType) {
       case "file-daemon-client":
-        fileDaemonEventHandler.removeClient(event.clientId);
+        fsEventHandler.removeClient(event.clientId);
         return new Response("client unregistered", { status: 200 });
       case "log-messages":
         logEventHandler.removeClient(event.clientId);

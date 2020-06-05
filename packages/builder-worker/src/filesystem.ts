@@ -12,12 +12,16 @@ import {
 } from "./filesystem-drivers/filesystem-driver";
 import { log } from "./logger";
 
+export const eventCategory = "fs";
+
 export class FileSystem {
   private listeners: Map<string, EventListener[]> = new Map();
   private drainEvents?: Promise<void>;
   private eventQueue: {
-    type: EventType;
+    category: string;
+    type: string;
     url: URL;
+    args: any;
     listener: EventListener;
   }[] = [];
   private root: DirectoryDescriptor;
@@ -26,25 +30,29 @@ export class FileSystem {
   private volumes: Map<string, Volume> = new Map();
 
   constructor() {
-    let volume = new DefaultDriver().mountVolumeSync(ROOT, this.dispatchEvent);
+    let volume = new DefaultDriver().mountVolumeSync(
+      undefined,
+      ROOT,
+      this.dispatchEvent
+    );
     this.root = volume.root;
     this.volumes.set(this.root.inode, volume);
   }
 
-  addEventListener(origin: string, fn: EventListener) {
-    let normalizedOrigin = new URL(origin).origin;
-    if (this.listeners.has(normalizedOrigin)) {
-      this.listeners.get(normalizedOrigin)!.push(fn);
+  addEventListener(origin: URL, fn: EventListener) {
+    let href = origin.origin;
+    if (this.listeners.has(href)) {
+      this.listeners.get(href)!.push(fn);
     } else {
-      this.listeners.set(normalizedOrigin, [fn]);
+      this.listeners.set(href, [fn]);
     }
   }
 
-  removeEventListener(origin: string, fn: EventListener) {
-    let normalizedOrigin = new URL(origin).origin;
-    if (this.listeners.has(normalizedOrigin)) {
-      this.listeners.set(normalizedOrigin, [
-        ...this.listeners.get(normalizedOrigin)!.filter((l) => l !== fn),
+  removeEventListener(origin: URL, fn: EventListener) {
+    let href = origin.origin;
+    if (this.listeners.has(href)) {
+      this.listeners.set(href, [
+        ...this.listeners.get(href)!.filter((l) => l !== fn),
       ]);
     }
   }
@@ -53,28 +61,34 @@ export class FileSystem {
     this.listeners = new Map();
   }
 
-  async mount(url: URL, driver: FileSystemDriver): Promise<string> {
+  async mount(url: URL, driver: FileSystemDriver): Promise<Volume> {
     if (url.href.slice(-1) !== "/") {
       throw new FileSystemError(
         "IS_NOT_A_DIRECTORY",
         `'${url}' is not a directory (it's a file and we were expecting it to be a directory)`
       );
     }
-    let volume = await driver.mountVolume(url, this.dispatchEvent);
     let dir = await this.open(url, true);
-    this.volumes.set(dir.inode, volume);
+    let volume = await driver.mountVolume(
+      this,
+      dir.inode,
+      url,
+      this.dispatchEvent
+    );
+    this.volumes.set(volume.id, volume);
     dir.close();
-    return dir.inode;
+
+    return volume;
   }
 
-  async unmount(volumeKey: string): Promise<void> {
-    if (volumeKey === this.root.inode) {
+  async unmount(volumeId: string): Promise<void> {
+    if (volumeId === this.root.inode) {
       throw new Error("Cannot unmount the root volume");
     }
-    let volume = this.volumes.get(volumeKey);
+    let volume = this.volumes.get(volumeId);
     if (volume) {
       let url = volume.root.url;
-      this.volumes.delete(volumeKey);
+      this.volumes.delete(volumeId);
       await this.remove(url);
     }
   }
@@ -153,7 +167,7 @@ export class FileSystem {
       if (autoClose) {
         sourceDir.close();
       }
-      this.dispatchEvent(url, "remove");
+      this.dispatchEvent(eventCategory, url, "remove");
     }
   }
 
@@ -271,7 +285,7 @@ export class FileSystem {
     ) {
       // create interior directories and descend
       descriptor = await volume.createDirectory(parent, name);
-      this.dispatchEvent(descriptor.url, "create");
+      this.dispatchEvent(eventCategory, descriptor.url, "create");
       return await this._open(pathSegments, opts, descriptor, initialHref);
     } else if (pathSegments.length > 0 && (await parent.hasDirectory(name))) {
       // descend into existing directory
@@ -284,7 +298,7 @@ export class FileSystem {
     ) {
       if (opts.create) {
         descriptor = await volume.createFile(parent, name);
-        this.dispatchEvent(descriptor.url, "create");
+        this.dispatchEvent(eventCategory, descriptor.url, "create");
         return descriptor;
       } else {
         notFound(initialHref);
@@ -304,7 +318,7 @@ export class FileSystem {
       // the leaf is a directory that does not currently exist
       if (opts.create) {
         descriptor = await volume.createDirectory(parent, name);
-        this.dispatchEvent(descriptor.url, "create");
+        this.dispatchEvent(eventCategory, descriptor.url, "create");
         return descriptor;
       } else {
         notFound(initialHref);
@@ -346,7 +360,12 @@ export class FileSystem {
   }
 
   @bind
-  private dispatchEvent(url: URL, type: EventType): void {
+  private dispatchEvent(
+    category: string,
+    url: URL,
+    type: string,
+    args?: any
+  ): void {
     if (url.href === ROOT.href) {
       return; // ignore this, it's an internal path (not an actual URL)
     }
@@ -357,8 +376,10 @@ export class FileSystem {
 
     for (let listener of listeners) {
       this.eventQueue.push({
+        category,
         type,
         url,
+        args,
         listener,
       });
     }
@@ -374,11 +395,11 @@ export class FileSystem {
     while (this.eventQueue.length > 0) {
       let event = this.eventQueue.shift();
       if (event) {
-        let { url, type, listener } = event;
+        let { category, url, type, args, listener } = event;
         let dispatched: () => void;
         let waitForDispatch = new Promise((res) => (dispatched = res));
         setTimeout(() => {
-          listener({ url, type, kind: "filesystem-event" });
+          listener({ href: url.href, type, args, category });
           dispatched();
         }, 0);
         await waitForDispatch;
@@ -426,12 +447,12 @@ interface Options {
   create?: true;
 }
 export interface Event {
-  kind: "filesystem-event";
-  url: URL;
-  type: EventType;
+  category: string;
+  href: string; // this will eventually go over a postMessage boundary so we've downgraded the URL to a string
+  type: string;
+  args?: any;
 }
 export type EventListener = (event: Event) => void;
-export type EventType = "create" | "write" | "remove";
 
 function notFound(href: string) {
   throw new FileSystemError("NOT_FOUND", `'${href}' does not exist`);

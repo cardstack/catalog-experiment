@@ -1,4 +1,4 @@
-import { FileSystem, FileSystemError } from "../filesystem";
+import { FileSystem, FileSystemError, eventCategory } from "../filesystem";
 import {
   FileSystemDriver,
   Volume,
@@ -20,8 +20,14 @@ interface Options {
 export class HttpFileSystemDriver implements FileSystemDriver {
   constructor(private httpURL: URL, private opts: Partial<Options> = {}) {}
 
-  async mountVolume(url: URL, dispatchEvent: FileSystem["dispatchEvent"]) {
+  async mountVolume(
+    _fs: FileSystem,
+    id: string,
+    url: URL,
+    dispatchEvent: FileSystem["dispatchEvent"]
+  ) {
     return new HttpVolume(
+      id,
       this.httpURL,
       url,
       dispatchEvent,
@@ -46,6 +52,7 @@ export class HttpVolume implements Volume {
   httpResponseCache: HttpResponseCache = new Map();
 
   constructor(
+    readonly id: string,
     private httpURL: URL,
     private mountURL: URL,
     private dispatchEvent: FileSystem["dispatchEvent"],
@@ -238,7 +245,7 @@ export class HttpFileDescriptor implements FileDescriptor {
       );
     }
 
-    this.dispatchEvent!(this.url, "write"); // all descriptors created for files have this dispatcher
+    this.dispatchEvent!(eventCategory, this.url, "write"); // all descriptors created for files have this dispatcher
   }
 
   async read(): Promise<Uint8Array> {

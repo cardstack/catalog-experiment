@@ -5,7 +5,7 @@ import {
 
 export async function withListener(
   fs: FileSystem,
-  origin: string,
+  origin: URL,
   listener: FSEventListener,
   fn: () => Promise<unknown>
 ) {

@@ -1,4 +1,4 @@
-import { FileSystem } from "../filesystem";
+import { FileSystem, eventCategory } from "../filesystem";
 import { ROOT, assertURLEndsInDir } from "../path";
 
 const textEncoder = new TextEncoder();
@@ -6,12 +6,15 @@ const utf8 = new TextDecoder("utf8");
 
 export interface FileSystemDriver {
   mountVolume(
+    fs: FileSystem,
+    id: string,
     url: URL,
     dispatchEvent: FileSystem["dispatchEvent"]
   ): Promise<Volume>;
 }
 
 export interface Volume {
+  id: string;
   root: DirectoryDescriptor | FileDescriptor;
   createDirectory(
     parent: DirectoryDescriptor,
@@ -64,22 +67,41 @@ type DefaultResources = File | Directory;
 let descriptors: Map<string, DefaultResources> = new Map();
 
 export class DefaultDriver implements FileSystemDriver {
-  async mountVolume(url: URL, dispatchEvent: FileSystem["dispatchEvent"]) {
-    return this.mountVolumeSync(url, dispatchEvent);
+  async mountVolume(
+    _fs: FileSystem,
+    id: string,
+    url: URL,
+    dispatchEvent: FileSystem["dispatchEvent"]
+  ) {
+    return this.mountVolumeSync(id, url, dispatchEvent);
   }
 
   // it's adventageous to leverage the synchronous nature of the default driver
   // for mounting a default volume in the FileSystem constructor
-  mountVolumeSync(url: URL, dispatchEvent: FileSystem["dispatchEvent"]) {
-    return new DefaultVolume(url, dispatchEvent);
+  mountVolumeSync(
+    id: string | undefined,
+    url: URL,
+    dispatchEvent: FileSystem["dispatchEvent"]
+  ) {
+    return new DefaultVolume(id, url, dispatchEvent);
   }
 }
 
 export class DefaultVolume implements Volume {
+  readonly id: string;
   root: DefaultDirectoryDescriptor;
 
-  constructor(url: URL, private dispatchEvent: FileSystem["dispatchEvent"]) {
+  constructor(
+    id: string | undefined,
+    url: URL,
+    protected dispatchEvent: FileSystem["dispatchEvent"]
+  ) {
     this.root = new Directory(this).getDescriptor(url, this.dispatchEvent);
+    if (!id) {
+      this.id = this.root.inode;
+    } else {
+      this.id = id;
+    }
   }
 
   async createDirectory(parent: DirectoryDescriptor, name: string) {
@@ -280,7 +302,7 @@ export class DefaultFileDescriptor implements FileDescriptor {
       this.resource.buffer = await readStream(streamOrBuffer);
     }
     this.resource.mtime = Math.floor(Date.now());
-    this.dispatchEvent!(this.url, "write"); // all descriptors created for files have this dispatcher
+    this.dispatchEvent!(eventCategory, this.url, "write"); // all descriptors created for files have this dispatcher
   }
 
   close() {}

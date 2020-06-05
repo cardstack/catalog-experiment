@@ -1,9 +1,13 @@
 import {
-  FileDaemonClient,
+  FileDaemonClientVolume,
   defaultWebsocketURL,
-  Event as FileDaemonClientEvent,
-} from "./file-daemon-client";
-import { FileSystem } from "./filesystem";
+  FileDaemonClientDriver,
+} from "./filesystem-drivers/file-daemon-client-driver";
+import {
+  FileSystem,
+  Event as FSEvent,
+  eventCategory as fsEventCategory,
+} from "./filesystem";
 import { log, Logger, LogMessage } from "./logger";
 import { handleFileRequest } from "./request-handlers/file-request-handler";
 import { handleClientRegister } from "./request-handlers/client-register-handler";
@@ -22,8 +26,8 @@ const uiOrigin = "http://localhost:4300";
 
 let websocketURL: URL;
 let isDisabled = false;
-let client: FileDaemonClient | undefined;
-let fileDaemonEventHandler: ClientEventHandler<FileDaemonClientEvent>;
+let volume: FileDaemonClientVolume | undefined;
+let fsEventHandler: ClientEventHandler<FSEvent>;
 let logEventHandler: ClientEventHandler<LogMessage[]>;
 let reloadEventHandler: ClientEventHandler<ReloadEvent>;
 
@@ -58,19 +62,33 @@ worker.addEventListener("activate", () => {
 
 async function activate() {
   reloadEventHandler = new ClientEventHandler("reload");
-  fileDaemonEventHandler = new ClientEventHandler("file-daemon-client-event");
-  client = new FileDaemonClient(originURL, websocketURL, fs, inputURL);
-  client.addEventListener(
-    fileDaemonEventHandler.handleEvent.bind(fileDaemonEventHandler)
-  );
-  let uiDriver = new HttpFileSystemDriver(new URL(`${uiOrigin}/catalogjs-ui/`));
-  let mounting = fs.mount(new URL(`/catalogjs-ui/`, originURL), uiDriver);
+  fsEventHandler = new ClientEventHandler(fsEventCategory);
   buildManager = new BuildManager(fs, projects, reloadEventHandler);
-  await Promise.all([client.ready, mounting]);
+
+  await Promise.all([
+    (async () => {
+      let uiDriver = new HttpFileSystemDriver(
+        new URL(`${uiOrigin}/catalogjs-ui/`)
+      );
+      await fs.mount(new URL(`/catalogjs-ui/`, originURL), uiDriver);
+    })(),
+    (async () => {
+      let driver = new FileDaemonClientDriver(originURL, websocketURL);
+      volume = (await fs.mount(inputURL, driver)) as FileDaemonClientVolume;
+      fs.addEventListener(
+        inputURL,
+        fsEventHandler.handleEvent.bind(fsEventHandler)
+      );
+    })(),
+  ]);
+
   await buildManager.rebuilder.start();
   await buildManager.rebuilder.isIdle();
   await fs.displayListing();
 }
+
+// TODO it looks like there is a bug where the browser displays 404 if you visit
+// the page while the service worker is installing/activating...
 
 worker.addEventListener("fetch", (event: FetchEvent) => {
   let url = new URL(event.request.url);
@@ -82,7 +100,7 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
 
   event.respondWith(
     (async () => {
-      if (client) {
+      if (volume) {
         await buildManager.rebuilder.isIdle();
 
         let stack: Handler[] = [
@@ -95,8 +113,8 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
         let context = {
           fs,
           event,
-          fileDaemonClient: client,
-          fileDaemonEventHandler,
+          fileDaemonVolume: volume,
+          fsEventHandler,
           logEventHandler,
           reloadEventHandler,
           buildManager,

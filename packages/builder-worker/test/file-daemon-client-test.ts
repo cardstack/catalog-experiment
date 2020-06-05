@@ -1,8 +1,6 @@
 import { installFileAssertions, FileAssert } from "./helpers/file-assertions";
-import { FileDaemonClient } from "../src/file-daemon-client";
-import { testFileDaemonURL as origin } from "./origins";
+import { testFileDaemonURL as origin, testWebsocketURL } from "./origins";
 import {
-  makeClient,
   makeListener,
   setupScenario,
   setFile,
@@ -11,6 +9,11 @@ import {
   getFile,
 } from "./helpers/file-daemon-helpers";
 import { withListener } from "./helpers/event-helpers";
+import {
+  FileDaemonClientVolume,
+  FileDaemonClientDriver,
+} from "../src/filesystem-drivers/file-daemon-client-driver";
+import { eventCategory } from "../src/filesystem";
 
 let scenario = Object.freeze({
   "entrypoints.json": `["index.html"]`,
@@ -34,11 +37,11 @@ let scenario = Object.freeze({
   "blah/bleep/blurp.txt": `hi guys`,
 });
 
-QUnit.module("file-daemon-client", function (origHooks) {
+QUnit.module("filesystem - file daemon client driver", function (origHooks) {
   let { test } = installFileAssertions(origHooks);
 
   QUnit.module("readonly tests", function (origHooks) {
-    let client: FileDaemonClient;
+    let volume: FileDaemonClientVolume;
 
     origHooks.beforeEach(async (assert) => {
       await setupScenario(scenario);
@@ -46,14 +49,17 @@ QUnit.module("file-daemon-client", function (origHooks) {
       let fileAssert = (assert as unknown) as FileAssert;
       await fileAssert.setupFiles({}, origin);
 
-      client = makeClient(fileAssert.fs);
-      await client.ready;
+      let driver = new FileDaemonClientDriver(origin, testWebsocketURL);
+      volume = (await fileAssert.fs.mount(
+        origin,
+        driver
+      )) as FileDaemonClientVolume;
     });
 
     origHooks.afterEach(async (assert) => {
       let fileAssert = (assert as unknown) as FileAssert;
       fileAssert.fs.removeAllEventListeners();
-      await client.close();
+      await volume.close();
       await resetFileSystem();
     });
 
@@ -79,7 +85,7 @@ QUnit.module("file-daemon-client", function (origHooks) {
   });
 
   QUnit.module("readonly mount tests", function (origHooks) {
-    let client: FileDaemonClient;
+    let volume: FileDaemonClientVolume;
 
     origHooks.beforeEach(async (assert) => {
       await setupScenario(scenario);
@@ -87,14 +93,17 @@ QUnit.module("file-daemon-client", function (origHooks) {
       let fileAssert = (assert as unknown) as FileAssert;
       await fileAssert.setupFiles({}, origin);
 
-      client = makeClient(fileAssert.fs, new URL("/mount/", origin));
-      await client.ready;
+      let driver = new FileDaemonClientDriver(origin, testWebsocketURL);
+      volume = (await fileAssert.fs.mount(
+        new URL("/mount/", origin),
+        driver
+      )) as FileDaemonClientVolume;
     });
 
     origHooks.afterEach(async (assert) => {
       let fileAssert = (assert as unknown) as FileAssert;
       fileAssert.fs.removeAllEventListeners();
-      await client.close();
+      await volume.close();
       await resetFileSystem();
     });
 
@@ -108,15 +117,18 @@ QUnit.module("file-daemon-client", function (origHooks) {
   });
 
   QUnit.module("mutable tests", function (origHooks) {
-    let client: FileDaemonClient;
+    let volume: FileDaemonClientVolume;
 
     origHooks.beforeEach(async (assert) => {
       let fileAssert = (assert as unknown) as FileAssert;
       await setupScenario(scenario);
       await fileAssert.setupFiles({}, origin);
 
-      client = makeClient(fileAssert.fs);
-      await client.ready;
+      let driver = new FileDaemonClientDriver(origin, testWebsocketURL);
+      volume = (await fileAssert.fs.mount(
+        origin,
+        driver
+      )) as FileDaemonClientVolume;
       await fileAssert.fs.eventsFlushed();
     });
 
@@ -124,17 +136,18 @@ QUnit.module("file-daemon-client", function (origHooks) {
       let fileAssert = (assert as unknown) as FileAssert;
       fileAssert.fs.removeAllEventListeners();
       await fileAssert.fs.eventsFlushed();
-      await client.close();
+      await volume.close();
       await resetFileSystem();
     });
 
     test("can handle an added file", async function (assert) {
       let { listener, wait } = makeListener(
         origin.href,
+        eventCategory,
         "write",
         "one/two/foo.txt"
       );
-      await withListener(assert.fs, origin.href, listener, async () => {
+      await withListener(assert.fs, origin, listener, async () => {
         await setFile("one/two/foo.txt", "bar");
         await wait();
 
@@ -147,10 +160,11 @@ QUnit.module("file-daemon-client", function (origHooks) {
     test("can handle an updated file", async function (assert) {
       let { listener, wait } = makeListener(
         origin.href,
+        eventCategory,
         "write",
         "blah/bleep/blurp.txt"
       );
-      await withListener(assert.fs, origin.href, listener, async () => {
+      await withListener(assert.fs, origin, listener, async () => {
         await setFile("blah/bleep/blurp.txt", "bye guys");
         await wait();
 
@@ -163,10 +177,11 @@ QUnit.module("file-daemon-client", function (origHooks) {
     test("can handle a deleted file", async function (assert) {
       let { listener, wait } = makeListener(
         origin.href,
+        eventCategory,
         "remove",
         "blah/bleep/blurp.txt"
       );
-      await withListener(assert.fs, origin.href, listener, async () => {
+      await withListener(assert.fs, origin, listener, async () => {
         await removeFile("blah/bleep/blurp.txt");
         await wait();
 
