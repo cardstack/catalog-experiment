@@ -3,6 +3,7 @@ import {
   ModuleDescription,
   NamespaceMarker,
 } from "../src/describe-module";
+import { CodeRegion, RegionPointer, RegionEditor } from "../src/code-region";
 import { parse } from "@babel/core";
 
 const { test } = QUnit;
@@ -13,6 +14,66 @@ function describeModule(js: string): ModuleDescription {
     throw new Error(`unexpected babel output`);
   }
   return astDescribeModule(parsed);
+}
+
+function codeRegionAbsoluteRange(
+  this: Assert,
+  regions: CodeRegion[],
+  regionPointer: RegionPointer,
+  expectedStart: number,
+  expectedEnd: number,
+  label = "region"
+) {
+  let actualStart = absoluteStart(regions, regionPointer);
+  let actualEnd = absoluteEnd(regions, regionPointer);
+  this.pushResult({
+    result: actualStart === expectedStart,
+    actual: actualStart,
+    expected: expectedStart,
+    message: `${label} start`,
+  });
+  this.pushResult({
+    result: actualEnd === expectedEnd,
+    actual: actualEnd,
+    expected: expectedEnd,
+    message: `${label} end`,
+  });
+}
+QUnit.assert.codeRegionAbsoluteRange = codeRegionAbsoluteRange;
+
+function absoluteStart(
+  regions: CodeRegion[],
+  regionPointer: RegionPointer
+): number {
+  let region = regions[regionPointer];
+  if (region.previousSibling) {
+    return absoluteStart(regions, region.previousSibling) + region.start;
+  }
+  if (region.parent) {
+    return absoluteStart(regions, region.parent) + region.start;
+  }
+  return region.start;
+}
+
+function absoluteEnd(
+  regions: CodeRegion[],
+  regionPointer: RegionPointer
+): number {
+  let region = regions[regionPointer];
+  if (region.children.length > 0) {
+    return (
+      absoluteEnd(regions, region.children[region.children.length - 1]) +
+      region.end
+    );
+  } else {
+    return absoluteStart(regions, regionPointer) + region.end;
+  }
+}
+
+declare global {
+  interface Assert {
+    codeRegionAbsoluteRange: typeof codeRegionAbsoluteRange;
+  }
 }
 
 QUnit.module("describe-module", function () {
@@ -173,17 +234,33 @@ QUnit.module("describe-module", function () {
 
   test("regions for function declaration", function (assert) {
     let desc = describeModule(`
+      console.log(1);
       function x() {}
       x();
     `);
     let out = desc.names.get("x")!;
-    assert.equal(out.declaration.start, 0);
-    assert.equal(out.declaration.end, 15);
+    assert.codeRegionAbsoluteRange(
+      desc.regions,
+      out.declaration,
+      22,
+      37,
+      "declaration"
+    );
     assert.equal(out.references.length, 2);
-    assert.equal(out.references[0].start, 9);
-    assert.equal(out.references[0].end, 10);
-    assert.equal(out.references[1].start, 22);
-    assert.equal(out.references[1].end, 23);
+    assert.codeRegionAbsoluteRange(
+      desc.regions,
+      out.references[0],
+      31,
+      32,
+      "from declaration"
+    );
+    assert.codeRegionAbsoluteRange(
+      desc.regions,
+      out.references[1],
+      44,
+      45,
+      "from invocation"
+    );
   });
 
   test("regions for variable declaration", function (assert) {
@@ -193,13 +270,10 @@ QUnit.module("describe-module", function () {
     `);
     let out = desc.names.get("a")!;
     assert.ok(out);
-    assert.equal(out.declaration.start, 6);
-    assert.equal(out.declaration.end, 11);
+    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 6, 11);
     assert.equal(out.references.length, 2);
-    assert.equal(out.references[0].start, 6);
-    assert.equal(out.references[0].end, 7);
-    assert.equal(out.references[1].start, 28);
-    assert.equal(out.references[1].end, 29);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 6, 7);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 28, 29);
   });
 
   test("regions for class declaration", function (assert) {
@@ -209,13 +283,10 @@ QUnit.module("describe-module", function () {
     `);
     let out = desc.names.get("A")!;
     assert.ok(out);
-    assert.equal(out.declaration.start, 0);
-    assert.equal(out.declaration.end, 10);
+    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 0, 10);
     assert.equal(out.references.length, 2);
-    assert.equal(out.references[0].start, 6);
-    assert.equal(out.references[0].end, 7);
-    assert.equal(out.references[1].start, 27);
-    assert.equal(out.references[1].end, 28);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 6, 7);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 27, 28);
   });
 
   test("regions for import specifier", function (assert) {
@@ -224,15 +295,11 @@ QUnit.module("describe-module", function () {
       console.log(x);
     `);
     let out = desc.names.get("x")!;
-    debugger;
     assert.ok(out);
-    assert.equal(out.declaration.start, 9);
-    assert.equal(out.declaration.end, 10);
+    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 9, 10);
     assert.equal(out.references.length, 2);
-    assert.equal(out.references[0].start, 9);
-    assert.equal(out.references[0].end, 10);
-    assert.equal(out.references[1].start, 52);
-    assert.equal(out.references[1].end, 53);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 9, 10);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 52, 53);
   });
 
   test("regions for renamed import specifier", function (assert) {
@@ -242,13 +309,10 @@ QUnit.module("describe-module", function () {
     `);
     let out = desc.names.get("x")!;
     assert.ok(out);
-    assert.equal(out.declaration.start, 9);
-    assert.equal(out.declaration.end, 18);
+    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 9, 18);
     assert.equal(out.references.length, 2);
-    assert.equal(out.references[0].start, 17);
-    assert.equal(out.references[0].end, 18);
-    assert.equal(out.references[1].start, 60);
-    assert.equal(out.references[1].end, 61);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 17, 18);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 60, 61);
   });
 
   test("regions for default import specifier", function (assert) {
@@ -258,13 +322,10 @@ QUnit.module("describe-module", function () {
     `);
     let out = desc.names.get("X")!;
     assert.ok(out);
-    assert.equal(out.declaration.start, 7);
-    assert.equal(out.declaration.end, 8);
+    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 7, 8);
     assert.equal(out.references.length, 2);
-    assert.equal(out.references[0].start, 7);
-    assert.equal(out.references[0].end, 8);
-    assert.equal(out.references[1].start, 54);
-    assert.equal(out.references[1].end, 55);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 7, 8);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 54, 55);
   });
 
   test("regions for namespace import specifier", function (assert) {
@@ -274,13 +335,10 @@ QUnit.module("describe-module", function () {
     `);
     let out = desc.names.get("foo")!;
     assert.ok(out);
-    assert.equal(out.declaration.start, 7);
-    assert.equal(out.declaration.end, 15);
+    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 7, 15);
     assert.equal(out.references.length, 2);
-    assert.equal(out.references[0].start, 12);
-    assert.equal(out.references[0].end, 15);
-    assert.equal(out.references[1].start, 52);
-    assert.equal(out.references[1].end, 55);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 12, 15);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 52, 55);
   });
 
   test("region for default export declaration", function (assert) {
@@ -289,8 +347,7 @@ QUnit.module("describe-module", function () {
     `);
     let out = desc.names.get("default")!;
     assert.ok(out);
-    assert.equal(out.declaration.start, 15);
-    assert.equal(out.declaration.end, 28);
+    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 15, 28);
     assert.equal(out.references.length, 0);
   });
 
@@ -301,13 +358,10 @@ QUnit.module("describe-module", function () {
     `);
     let out = desc.names.get("a")!;
     assert.ok(out);
-    assert.equal(out.declaration.start, 6);
-    assert.equal(out.declaration.end, 7);
+    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 6, 7);
     assert.equal(out.references.length, 2);
-    assert.equal(out.references[0].start, 6);
-    assert.equal(out.references[0].end, 7);
-    assert.equal(out.references[1].start, 42);
-    assert.equal(out.references[1].end, 43);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 6, 7);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 42, 43);
   });
 
   test("regions for nested ObjectPattern LVal", function (assert) {
@@ -317,13 +371,10 @@ QUnit.module("describe-module", function () {
     `);
     let out = desc.names.get("c")!;
     assert.ok(out);
-    assert.equal(out.declaration.start, 14);
-    assert.equal(out.declaration.end, 15);
+    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 14, 15);
     assert.equal(out.references.length, 2);
-    assert.equal(out.references[0].start, 14);
-    assert.equal(out.references[0].end, 15);
-    assert.equal(out.references[1].start, 42);
-    assert.equal(out.references[1].end, 43);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 14, 15);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 42, 43);
   });
 
   test("regions for renamed ObjectPattern LVal", function (assert) {
@@ -333,13 +384,10 @@ QUnit.module("describe-module", function () {
     `);
     let out = desc.names.get("A")!;
     assert.ok(out);
-    assert.equal(out.declaration.start, 6);
-    assert.equal(out.declaration.end, 10);
+    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 6, 10);
     assert.equal(out.references.length, 2);
-    assert.equal(out.references[0].start, 9);
-    assert.equal(out.references[0].end, 10);
-    assert.equal(out.references[1].start, 45);
-    assert.equal(out.references[1].end, 46);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 9, 10);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 45, 46);
   });
 
   test("regions for ArrayPattern LVal", function (assert) {
@@ -349,13 +397,10 @@ QUnit.module("describe-module", function () {
     `);
     let out = desc.names.get("a")!;
     assert.ok(out);
-    assert.equal(out.declaration.start, 6);
-    assert.equal(out.declaration.end, 7);
+    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 6, 7);
     assert.equal(out.references.length, 2);
-    assert.equal(out.references[0].start, 6);
-    assert.equal(out.references[0].end, 7);
-    assert.equal(out.references[1].start, 39);
-    assert.equal(out.references[1].end, 40);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 6, 7);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 39, 40);
   });
 
   test("regions for nested ArrayPattern LVal", function (assert) {
@@ -365,13 +410,10 @@ QUnit.module("describe-module", function () {
     `);
     let out = desc.names.get("b")!;
     assert.ok(out);
-    assert.equal(out.declaration.start, 11);
-    assert.equal(out.declaration.end, 12);
+    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 11, 12);
     assert.equal(out.references.length, 2);
-    assert.equal(out.references[0].start, 11);
-    assert.equal(out.references[0].end, 12);
-    assert.equal(out.references[1].start, 39);
-    assert.equal(out.references[1].end, 40);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 11, 12);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 39, 40);
   });
 
   test("regions for RestElement LVal", function (assert) {
@@ -381,13 +423,10 @@ QUnit.module("describe-module", function () {
     `);
     let out = desc.names.get("b")!;
     assert.ok(out);
-    assert.equal(out.declaration.start, 9);
-    assert.equal(out.declaration.end, 13);
+    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 9, 13);
     assert.equal(out.references.length, 2);
-    assert.equal(out.references[0].start, 12);
-    assert.equal(out.references[0].end, 13);
-    assert.equal(out.references[1].start, 38);
-    assert.equal(out.references[1].end, 39);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 12, 13);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 38, 39);
   });
 
   test("regions for nested RestElement LVal", function (assert) {
@@ -397,13 +436,10 @@ QUnit.module("describe-module", function () {
     `);
     let out = desc.names.get("c")!;
     assert.ok(out);
-    assert.equal(out.declaration.start, 16);
-    assert.equal(out.declaration.end, 20);
+    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 16, 20);
     assert.equal(out.references.length, 2);
-    assert.equal(out.references[0].start, 19);
-    assert.equal(out.references[0].end, 20);
-    assert.equal(out.references[1].start, 46);
-    assert.equal(out.references[1].end, 47);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 19, 20);
+    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 46, 47);
   });
 
   test("pattern in function arguments doesn't create module scoped binding", function (assert) {
@@ -420,5 +456,30 @@ QUnit.module("describe-module", function () {
     `);
     let out = desc.names.get("x");
     assert.ok(out?.dependsOn.has("a"));
+  });
+
+  test("code regions for a local name can be used to replace it", function (assert) {
+    let src = `
+      import { a } from "lib";
+      export default function(a) {
+        console.log(a);
+      }
+      console.log(a);
+    `.trim();
+    let desc = describeModule(src);
+    let editor = new RegionEditor(src, desc.regions, desc.topRegion);
+    for (let region of desc.names.get("a")!.references) {
+      editor.replace(region, "alpha");
+    }
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      import { alpha } from "lib";
+      export default function(a) {
+        console.log(a);
+      }
+      console.log(alpha);
+    `
+    );
   });
 });

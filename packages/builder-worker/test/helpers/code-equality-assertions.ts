@@ -36,7 +36,7 @@ function codeEqual(
     result: standardize(actual) === standardize(expected),
     actual: actual,
     expected: expected,
-    message: message ?? "Unexpected source code",
+    message: message ?? "source code comparison",
   });
 }
 

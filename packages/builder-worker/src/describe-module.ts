@@ -16,7 +16,7 @@ import {
 } from "@babel/types";
 import { assertNever } from "shared/util";
 import traverse, { NodePath, Scope } from "@babel/traverse";
-import { CodeRegion, IdentifierRegion, RegionBuilder } from "./code-region";
+import { CodeRegion, RegionPointer, RegionBuilder } from "./code-region";
 
 export const NamespaceMarker = { isNamespace: true };
 export type NamespaceMarker = typeof NamespaceMarker;
@@ -40,6 +40,11 @@ export interface ModuleDescription {
 
   // all the names in module scope
   names: Map<string, LocalNameDescription | ImportedNameDescription>;
+
+  // storage of all the included CodeRegions. The order is always stable. Other
+  // places refer to a code region by its index in this list.
+  regions: CodeRegion[];
+  topRegion: RegionPointer;
 }
 
 export interface NameDescription {
@@ -49,8 +54,8 @@ export interface NameDescription {
   // true if this name is consumed directly the module scope
   usedByModule: boolean;
 
-  declaration: CodeRegion;
-  references: IdentifierRegion[];
+  declaration: RegionPointer;
+  references: RegionPointer[];
 }
 
 export interface LocalNameDescription extends NameDescription {
@@ -80,14 +85,15 @@ interface DuckPath {
 }
 
 export function describeModule(ast: File): ModuleDescription {
+  let builder = new RegionBuilder();
   let desc: ModuleDescription = {
     imports: [],
     exports: new Map(),
     names: new Map(),
+    regions: builder.regions,
+    topRegion: -1, // todo: this is just here to satisfy TS, we set the real value at the bottom of the function
   };
-
   let consumedByModule: Set<string> = new Set();
-  let builder = new RegionBuilder();
   let currentModuleScopedDeclaration:
     | {
         path: DuckPath;
@@ -137,15 +143,13 @@ export function describeModule(ast: File): ModuleDescription {
     let { defines, consumes } = currentModuleScopedDeclaration!;
     currentModuleScopedDeclaration = undefined;
     for (let { name, declaration, identifier } of defines) {
-      let references: IdentifierRegion[];
+      let references: RegionPointer[];
       if (identifier) {
         references = [
-          builder.createIdentifierRegion(identifier),
+          builder.createCodeRegion(identifier as NodePath),
           ...path.scope
             .getBinding(name)!
-            .referencePaths.map((i) =>
-              builder.createIdentifierRegion(i as NodePath<Identifier>)
-            ),
+            .referencePaths.map((i) => builder.createCodeRegion(i)),
         ];
       } else {
         references = [];
@@ -390,6 +394,7 @@ export function describeModule(ast: File): ModuleDescription {
     },
   });
 
+  desc.topRegion = builder.top;
   return desc;
 }
 
@@ -431,12 +436,10 @@ function addImportedName(
     usedByModule: false,
     declaration: builder.createCodeRegion(path as NodePath<Node>),
     references: [
-      builder.createIdentifierRegion(identifierPath),
+      builder.createCodeRegion(identifierPath as NodePath),
       ...path.scope
         .getBinding(identifierPath.node.name)!
-        .referencePaths.map((i) =>
-          builder.createIdentifierRegion(i as NodePath<Identifier>)
-        ),
+        .referencePaths.map((i) => builder.createCodeRegion(i)),
     ],
   });
 }
