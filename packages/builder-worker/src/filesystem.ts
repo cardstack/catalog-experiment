@@ -1,4 +1,4 @@
-import bind from "bind-decorator";
+import { dispatchEvent as _dispatchEvent } from "./event-bus";
 import { splitURL, baseName, dirName, ROOT } from "./path";
 import columnify from "columnify";
 import moment from "moment";
@@ -12,53 +12,19 @@ import {
 } from "./filesystem-drivers/filesystem-driver";
 import { log } from "./logger";
 
+export const eventGroup = "fs";
 export const eventCategory = "fs";
 
 export class FileSystem {
-  private listeners: Map<string, EventListener[]> = new Map();
-  private drainEvents?: Promise<void>;
-  private eventQueue: {
-    category: string;
-    type: string;
-    url: URL;
-    args: any;
-    listener: EventListener;
-  }[] = [];
   private root: DirectoryDescriptor;
   // the key for the volumes map is actually the inode (aka "serial number") of
   // the underlying directory
   private volumes: Map<string, Volume> = new Map();
 
   constructor() {
-    let volume = new DefaultDriver().mountVolumeSync(
-      undefined,
-      ROOT,
-      this.dispatchEvent
-    );
+    let volume = new DefaultDriver().mountVolumeSync(undefined, ROOT);
     this.root = volume.root;
     this.volumes.set(this.root.inode, volume);
-  }
-
-  addEventListener(origin: URL, fn: EventListener) {
-    let href = origin.origin;
-    if (this.listeners.has(href)) {
-      this.listeners.get(href)!.push(fn);
-    } else {
-      this.listeners.set(href, [fn]);
-    }
-  }
-
-  removeEventListener(origin: URL, fn: EventListener) {
-    let href = origin.origin;
-    if (this.listeners.has(href)) {
-      this.listeners.set(href, [
-        ...this.listeners.get(href)!.filter((l) => l !== fn),
-      ]);
-    }
-  }
-
-  removeAllEventListeners() {
-    this.listeners = new Map();
   }
 
   async mount(url: URL, driver: FileSystemDriver): Promise<Volume> {
@@ -69,12 +35,7 @@ export class FileSystem {
       );
     }
     let dir = await this.open(url, true);
-    let volume = await driver.mountVolume(
-      this,
-      dir.inode,
-      url,
-      this.dispatchEvent
-    );
+    let volume = await driver.mountVolume(this, dir.inode, url);
     this.volumes.set(volume.id, volume);
     dir.close();
 
@@ -167,7 +128,11 @@ export class FileSystem {
       if (autoClose) {
         sourceDir.close();
       }
-      this.dispatchEvent(eventCategory, url, "remove");
+      dispatchEvent({
+        category: eventCategory,
+        href: url.href,
+        type: "remove",
+      });
     }
   }
 
@@ -285,7 +250,11 @@ export class FileSystem {
     ) {
       // create interior directories and descend
       descriptor = await volume.createDirectory(parent, name);
-      this.dispatchEvent(eventCategory, descriptor.url, "create");
+      dispatchEvent({
+        category: eventCategory,
+        href: descriptor.url.href,
+        type: "create",
+      });
       return await this._open(pathSegments, opts, descriptor, initialHref);
     } else if (pathSegments.length > 0 && (await parent.hasDirectory(name))) {
       // descend into existing directory
@@ -298,7 +267,11 @@ export class FileSystem {
     ) {
       if (opts.create) {
         descriptor = await volume.createFile(parent, name);
-        this.dispatchEvent(eventCategory, descriptor.url, "create");
+        dispatchEvent({
+          category: eventCategory,
+          href: descriptor.url.href,
+          type: "create",
+        });
         return descriptor;
       } else {
         notFound(initialHref);
@@ -318,7 +291,11 @@ export class FileSystem {
       // the leaf is a directory that does not currently exist
       if (opts.create) {
         descriptor = await volume.createDirectory(parent, name);
-        this.dispatchEvent(eventCategory, descriptor.url, "create");
+        dispatchEvent({
+          category: eventCategory,
+          href: descriptor.url.href,
+          type: "create",
+        });
         return descriptor;
       } else {
         notFound(initialHref);
@@ -357,59 +334,6 @@ export class FileSystem {
         throw err;
       }
     }
-  }
-
-  @bind
-  private dispatchEvent(
-    category: string,
-    url: URL,
-    type: string,
-    args?: any
-  ): void {
-    if (url.href === ROOT.href) {
-      return; // ignore this, it's an internal path (not an actual URL)
-    }
-    let listeners = this.listeners.get(url.origin);
-    if (!listeners || listeners.length === 0) {
-      return;
-    }
-
-    for (let listener of listeners) {
-      this.eventQueue.push({
-        category,
-        type,
-        url,
-        args,
-        listener,
-      });
-    }
-    (async () => await this.drainEventQueue())();
-  }
-
-  private async drainEventQueue(): Promise<void> {
-    await this.drainEvents;
-
-    let eventsDrained: () => void;
-    this.drainEvents = new Promise((res) => (eventsDrained = res));
-
-    while (this.eventQueue.length > 0) {
-      let event = this.eventQueue.shift();
-      if (event) {
-        let { category, url, type, args, listener } = event;
-        let dispatched: () => void;
-        let waitForDispatch = new Promise((res) => (dispatched = res));
-        setTimeout(() => {
-          listener({ href: url.href, type, args, category });
-          dispatched();
-        }, 0);
-        await waitForDispatch;
-      }
-    }
-    eventsDrained!();
-  }
-
-  eventsFlushed(): Promise<void> {
-    return this.drainEvents ?? Promise.resolve();
   }
 
   async displayListing(): Promise<void> {
@@ -456,4 +380,8 @@ export type EventListener = (event: Event) => void;
 
 function notFound(href: string) {
   throw new FileSystemError("NOT_FOUND", `'${href}' does not exist`);
+}
+
+function dispatchEvent(event: Event) {
+  _dispatchEvent(eventGroup, event);
 }

@@ -1,7 +1,5 @@
-import {
-  Event as FSEvent,
-  EventListener as FSEventListener,
-} from "../../src/filesystem";
+import { Event as FSEvent, eventGroup } from "../../src/filesystem";
+import { EventListener, Event } from "../../src/event-bus";
 
 import { testFileDaemonURL } from "../origins";
 //@ts-ignore: webpack will set this macro
@@ -13,22 +11,28 @@ export function makeListener(
   eventType?: string,
   path?: string,
   timeoutMs: number = 2000
-): { listener: FSEventListener; wait: () => Promise<FSEvent> } {
+): { listener: EventListener<FSEvent>; wait: () => Promise<Event<FSEvent>> } {
   let timeout = new Promise<void>((res) => setTimeout(() => res(), timeoutMs));
-  let change: (e: FSEvent) => void;
-  let fsUpdated = new Promise<FSEvent>((res) => (change = res));
-  let listener = (e: FSEvent) => {
-    if (
-      path &&
-      e.type === eventType &&
-      e.category === category &&
-      e.href === new URL(path, origin).href
-    ) {
-      change(e);
-    } else if (!path && e.type === eventType && e.category === category) {
-      change(e);
-    } else if (!path && !eventType && e.category === category) {
-      change(e);
+  let change: (e: Event<FSEvent>) => void;
+  let fsUpdated = new Promise<Event<FSEvent>>((res) => (change = res));
+  let listener = (e: Event<FSEvent>) => {
+    if (e.group === eventGroup) {
+      if (
+        path &&
+        e.args!.type === eventType &&
+        e.args!.category === category &&
+        e.args!.href === new URL(path, origin).href
+      ) {
+        change(e);
+      } else if (
+        !path &&
+        e.args!.type === eventType &&
+        e.args!.category === category
+      ) {
+        change(e);
+      } else if (!path && !eventType && e.args!.category === category) {
+        change(e);
+      }
     }
   };
   let wait = async () => {

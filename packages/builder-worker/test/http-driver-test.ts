@@ -8,13 +8,13 @@ import {
 } from "./helpers/file-assertions";
 import { readStream } from "./filesystem-test";
 import { withListener } from "./helpers/event-helpers";
-import { Event as FSEvent } from "../src/filesystem";
 import {
   HttpFileSystemDriver,
   HttpFileDescriptor,
   HttpDirectoryDescriptor,
 } from "../src/filesystem-drivers/http-driver";
-import { FileSystem } from "../src/filesystem";
+import { FileSystem, Event as FSEvent, eventGroup } from "../src/filesystem";
+import { flushEvents, removeAllEventListeners, Event } from "../src/event-bus";
 import moment from "moment";
 import { FileDescriptor } from "../src/filesystem-drivers/filesystem-driver";
 import isEqual from "lodash/isEqual";
@@ -28,16 +28,15 @@ QUnit.module("filesystem - http driver", function (origHooks) {
   let stubbedFetch: sinon.SinonStub;
   let volumeId: string;
 
-  origHooks.afterEach(async (assert) => {
-    let fileAssert = (assert as unknown) as FileAssert;
-    fileAssert.fs.removeAllEventListeners();
+  origHooks.afterEach(async () => {
+    removeAllEventListeners();
     stubbedFetch.restore();
   });
 
   origHooks.beforeEach(async (assert) => {
     let fileAssert = (assert as unknown) as FileAssert;
     await fileAssert.setupFiles();
-    fileAssert.fs.removeAllEventListeners();
+    removeAllEventListeners();
 
     ({ id: volumeId } = await fileAssert.fs.mount(
       url("/"),
@@ -604,13 +603,19 @@ QUnit.module("filesystem - http driver", function (origHooks) {
     test("triggers a 'write' event when a file is written to", async function (assert) {
       assert.expect(2);
       let file = (await assert.fs.open(url("foo/bar"), true)) as FileDescriptor;
-      let listener = (e: FSEvent) => {
-        assert.equal(e.href, `${origin}/foo/bar`, "the event url is correct");
-        assert.equal(e.type, "write", "the event type is correct");
+      let listener = (e: Event<FSEvent>) => {
+        if (e.group === eventGroup) {
+          assert.equal(
+            e.args!.href,
+            `${origin}/foo/bar`,
+            "the event url is correct"
+          );
+          assert.equal(e.args!.type, "write", "the event type is correct");
+        }
       };
-      await withListener(assert.fs, url("/"), listener, async () => {
+      await withListener(listener, async () => {
         await file.write("blah");
-        await assert.fs.eventsFlushed();
+        await flushEvents();
       });
     });
   });

@@ -14,6 +14,7 @@ import {
   FileDaemonClientDriver,
 } from "../src/filesystem-drivers/file-daemon-client-driver";
 import { eventCategory } from "../src/filesystem";
+import { flushEvents, removeAllEventListeners } from "../src/event-bus";
 
 let scenario = Object.freeze({
   "entrypoints.json": `["index.html"]`,
@@ -56,9 +57,8 @@ QUnit.module("filesystem - file daemon client driver", function (origHooks) {
       )) as FileDaemonClientVolume;
     });
 
-    origHooks.afterEach(async (assert) => {
-      let fileAssert = (assert as unknown) as FileAssert;
-      fileAssert.fs.removeAllEventListeners();
+    origHooks.afterEach(async () => {
+      removeAllEventListeners();
       await volume.close();
       await resetFileSystem();
     });
@@ -100,9 +100,8 @@ QUnit.module("filesystem - file daemon client driver", function (origHooks) {
       )) as FileDaemonClientVolume;
     });
 
-    origHooks.afterEach(async (assert) => {
-      let fileAssert = (assert as unknown) as FileAssert;
-      fileAssert.fs.removeAllEventListeners();
+    origHooks.afterEach(async () => {
+      removeAllEventListeners();
       await volume.close();
       await resetFileSystem();
     });
@@ -129,13 +128,12 @@ QUnit.module("filesystem - file daemon client driver", function (origHooks) {
         origin,
         driver
       )) as FileDaemonClientVolume;
-      await fileAssert.fs.eventsFlushed();
+      await flushEvents();
     });
 
-    origHooks.afterEach(async (assert) => {
-      let fileAssert = (assert as unknown) as FileAssert;
-      fileAssert.fs.removeAllEventListeners();
-      await fileAssert.fs.eventsFlushed();
+    origHooks.afterEach(async () => {
+      removeAllEventListeners();
+      await flushEvents();
       await volume.close();
       await resetFileSystem();
     });
@@ -147,7 +145,7 @@ QUnit.module("filesystem - file daemon client driver", function (origHooks) {
         "write",
         "one/two/foo.txt"
       );
-      await withListener(assert.fs, origin, listener, async () => {
+      await withListener(listener, async () => {
         await setFile("one/two/foo.txt", "bar");
         await wait();
 
@@ -164,7 +162,7 @@ QUnit.module("filesystem - file daemon client driver", function (origHooks) {
         "write",
         "blah/bleep/blurp.txt"
       );
-      await withListener(assert.fs, origin, listener, async () => {
+      await withListener(listener, async () => {
         await setFile("blah/bleep/blurp.txt", "bye guys");
         await wait();
 
@@ -181,7 +179,7 @@ QUnit.module("filesystem - file daemon client driver", function (origHooks) {
         "remove",
         "blah/bleep/blurp.txt"
       );
-      await withListener(assert.fs, origin, listener, async () => {
+      await withListener(listener, async () => {
         await removeFile("blah/bleep/blurp.txt");
         await wait();
 

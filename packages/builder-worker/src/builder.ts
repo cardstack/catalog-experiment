@@ -1,4 +1,10 @@
-import { FileSystem, Event, eventCategory } from "./filesystem";
+import {
+  FileSystem,
+  Event as FSEvent,
+  eventCategory,
+  eventGroup,
+} from "./filesystem";
+import { addEventListener, Event } from "./event-bus";
 import bind from "bind-decorator";
 import {
   OutputTypes,
@@ -52,7 +58,7 @@ class CurrentContext {
 
 class BuildRunner<Input> {
   private nodeStates: Map<CacheKey, CompleteState> = new Map();
-  private watchedOrigins: Set<string> = new Set();
+  private watchedFiles: Set<string> = new Set();
   private recentlyChangedFiles: Set<string> = new Set();
 
   constructor(
@@ -224,16 +230,20 @@ class BuildRunner<Input> {
   }
 
   private ensureWatching(url: URL) {
-    if (!this.watchedOrigins.has(url.origin)) {
-      this.fs.addEventListener(url, this.fileDidChange);
-      this.watchedOrigins.add(url.origin);
+    if (!this.watchedFiles.has(url.href)) {
+      addEventListener(this.fileDidChange);
+      this.watchedFiles.add(url.href);
     }
   }
 
   @bind
-  private fileDidChange(event: Event) {
-    if (event.category === eventCategory) {
-      this.recentlyChangedFiles.add(event.href);
+  private fileDidChange(event: Event<FSEvent>) {
+    if (
+      event.group === eventGroup &&
+      event.args!.category === eventCategory &&
+      this.watchedFiles.has(event.args!.href)
+    ) {
+      this.recentlyChangedFiles.add(event.args!.href);
       this.inputDidChange?.();
     }
   }

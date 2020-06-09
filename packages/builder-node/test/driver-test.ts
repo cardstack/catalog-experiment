@@ -19,7 +19,15 @@ import {
   DirectoryDescriptor,
 } from "../../builder-worker/src/filesystem-drivers/filesystem-driver";
 import { withListener } from "../../builder-worker/test/helpers/event-helpers";
-import { Event as FSEvent } from "../../builder-worker/src/filesystem";
+import {
+  eventGroup,
+  Event as FSEvent,
+} from "../../builder-worker/src/filesystem";
+import {
+  Event,
+  removeAllEventListeners,
+  flushEvents,
+} from "../../builder-worker/src/event-bus";
 
 const testDir = join(__dirname, "testing");
 
@@ -547,98 +555,136 @@ QUnit.module("Node FileSystem", function (origHooks) {
   });
 
   QUnit.module("events", function () {
-    origHooks.beforeEach(async (assert) => {
-      let fileAssert = (assert as unknown) as FileAssert;
-      fileAssert.fs.removeAllEventListeners();
+    origHooks.beforeEach(async () => {
+      removeAllEventListeners();
     });
 
-    origHooks.afterEach((assert) => {
-      let fileAssert = (assert as unknown) as FileAssert;
-      fileAssert.fs.removeAllEventListeners();
+    origHooks.afterEach(() => {
+      removeAllEventListeners();
     });
 
     test("triggers a 'create' event when a new file is opened", async function (assert) {
       assert.expect(2);
-      let listener = (e: FSEvent) => {
-        assert.equal(e.href, `${origin}/test`, "the event url is correct");
-        assert.equal(e.type, "create", "the event type is correct");
+      let listener = (e: Event<FSEvent>) => {
+        if (e.group === eventGroup) {
+          assert.equal(
+            e.args!.href,
+            `${origin}/test`,
+            "the event url is correct"
+          );
+          assert.equal(e.args!.type, "create", "the event type is correct");
+        }
       };
       await assert.fs.open(url("/"), true); // ignore these events
-      await withListener(assert.fs, url("/"), listener, async () => {
+      await withListener(listener, async () => {
         await assert.fs.open(url("test"), true);
-        await assert.fs.eventsFlushed();
+        await flushEvents();
       });
     });
 
     test("triggers a 'create' event when a new directory is opened", async function (assert) {
       assert.expect(2);
-      let listener = (e: FSEvent) => {
-        assert.equal(e.href, `${origin}/test/`, "the event url is correct");
-        assert.equal(e.type, "create", "the event type is correct");
+      let listener = (e: Event<FSEvent>) => {
+        if (e.group === eventGroup) {
+          assert.equal(
+            e.args!.href,
+            `${origin}/test/`,
+            "the event url is correct"
+          );
+          assert.equal(e.args!.type, "create", "the event type is correct");
+        }
       };
       await assert.fs.open(url("/"), true); // ignore these events
-      await withListener(assert.fs, url("/"), listener, async () => {
+      await withListener(listener, async () => {
         await assert.fs.open(url("test/"), true);
-        await assert.fs.eventsFlushed();
+        await flushEvents();
       });
     });
 
     test("triggers a 'remove' event for source of move", async function (assert) {
       assert.expect(2);
       await assert.fs.open(url("src"), true);
-      let listener = (e: FSEvent) => {
-        if (e.type === "remove") {
-          assert.equal(e.href, `${origin}/src`, "the event url is correct");
-          assert.equal(e.type, "remove", "the event type is correct");
+      let listener = (e: Event<FSEvent>) => {
+        if (e.group === eventGroup) {
+          if (e.args!.type === "remove") {
+            assert.equal(
+              e.args!.href,
+              `${origin}/src`,
+              "the event url is correct"
+            );
+            assert.equal(e.args!.type, "remove", "the event type is correct");
+          }
         }
       };
-      await withListener(assert.fs, url("/"), listener, async () => {
+      await withListener(listener, async () => {
         await assert.fs.move(url("src"), url("dest"));
-        await assert.fs.eventsFlushed();
+        await flushEvents();
       });
     });
 
     test("triggers a 'create' and 'write' events for destination of copy", async function (assert) {
       assert.expect(4);
       await assert.fs.open(url("src"), true);
-      let listener = (e: FSEvent) => {
-        if (e.type === "create") {
-          assert.equal(e.href, `${origin}/dest`, "the event url is correct");
-          assert.equal(e.type, "create", "the event type is correct");
-        } else if (e.type === "write") {
-          assert.equal(e.href, `${origin}/dest`, "the event url is correct");
-          assert.equal(e.type, "write", "the event type is correct");
+      let listener = (e: Event<FSEvent>) => {
+        if (e.group === eventGroup) {
+          if (e.args!.type === "create") {
+            assert.equal(
+              e.args!.href,
+              `${origin}/dest`,
+              "the event url is correct"
+            );
+            assert.equal(e.args!.type, "create", "the event type is correct");
+          } else if (e.args!.type === "write") {
+            assert.equal(
+              e.args!.href,
+              `${origin}/dest`,
+              "the event url is correct"
+            );
+            assert.equal(e.args!.type, "write", "the event type is correct");
+          }
         }
       };
-      await withListener(assert.fs, url("/"), listener, async () => {
+      await withListener(listener, async () => {
         await assert.fs.copy(url("src"), url("dest"));
-        await assert.fs.eventsFlushed();
+        await flushEvents();
       });
     });
 
     test("triggers a 'remove' event when a resource is deleted", async function (assert) {
       assert.expect(2);
       await assert.fs.open(url("test"), true);
-      let listener = (e: FSEvent) => {
-        assert.equal(e.href, `${origin}/test`, "the event url is correct");
-        assert.equal(e.type, "remove", "the event type is correct");
+      let listener = (e: Event<FSEvent>) => {
+        if (e.group === eventGroup) {
+          assert.equal(
+            e.args!.href,
+            `${origin}/test`,
+            "the event url is correct"
+          );
+          assert.equal(e.args!.type, "remove", "the event type is correct");
+        }
       };
-      await withListener(assert.fs, url("/"), listener, async () => {
+      await withListener(listener, async () => {
         await assert.fs.remove(url("test"));
-        await assert.fs.eventsFlushed();
+        await flushEvents();
       });
     });
 
     test("triggers a 'write' event when a file is written to", async function (assert) {
       assert.expect(2);
       let file = (await assert.fs.open(url("test"), true)) as FileDescriptor;
-      let listener = (e: FSEvent) => {
-        assert.equal(e.href, `${origin}/test`, "the event url is correct");
-        assert.equal(e.type, "write", "the event type is correct");
+      let listener = (e: Event<FSEvent>) => {
+        if (e.group === eventGroup) {
+          assert.equal(
+            e.args!.href,
+            `${origin}/test`,
+            "the event url is correct"
+          );
+          assert.equal(e.args!.type, "write", "the event type is correct");
+        }
       };
-      await withListener(assert.fs, url("/"), listener, async () => {
+      await withListener(listener, async () => {
         await file.write("blah");
-        await assert.fs.eventsFlushed();
+        await flushEvents();
       });
     });
   });

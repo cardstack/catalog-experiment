@@ -1,4 +1,11 @@
-import { FileSystem, FileSystemError, eventCategory } from "../filesystem";
+import { dispatchEvent } from "../event-bus";
+import {
+  FileSystem,
+  eventCategory as category,
+  eventGroup,
+  FileSystemError,
+  Event as FSEvent,
+} from "../filesystem";
 import {
   FileSystemDriver,
   Volume,
@@ -20,17 +27,11 @@ interface Options {
 export class HttpFileSystemDriver implements FileSystemDriver {
   constructor(private httpURL: URL, private opts: Partial<Options> = {}) {}
 
-  async mountVolume(
-    _fs: FileSystem,
-    id: string,
-    url: URL,
-    dispatchEvent: FileSystem["dispatchEvent"]
-  ) {
+  async mountVolume(_fs: FileSystem, id: string, url: URL) {
     return new HttpVolume(
       id,
       this.httpURL,
       url,
-      dispatchEvent,
       Object.assign(
         {
           useHttpPostForUpdate: false,
@@ -55,10 +56,9 @@ export class HttpVolume implements Volume {
     readonly id: string,
     private httpURL: URL,
     private mountURL: URL,
-    private dispatchEvent: FileSystem["dispatchEvent"],
     readonly opts: Options
   ) {
-    this.root = new HttpFileDescriptor(this, mountURL, httpURL, dispatchEvent);
+    this.root = new HttpFileDescriptor(this, mountURL, httpURL);
   }
 
   async createDirectory(parent: DirectoryDescriptor, name: string) {
@@ -71,12 +71,7 @@ export class HttpVolume implements Volume {
       underlyingURL = new URL(name, assertURLEndsInDir(parent.underlyingURL));
       url = new URL(name, assertURLEndsInDir(parent.url));
     }
-    return new HttpDirectoryDescriptor(
-      this,
-      url,
-      underlyingURL,
-      this.dispatchEvent
-    );
+    return new HttpDirectoryDescriptor(this, url, underlyingURL);
   }
 
   async createFile(
@@ -100,8 +95,7 @@ export class HttpDirectoryDescriptor implements DirectoryDescriptor {
   constructor(
     readonly volume: HttpVolume,
     readonly url: URL,
-    readonly underlyingURL: URL,
-    private dispatchEvent: FileSystem["dispatchEvent"]
+    readonly underlyingURL: URL
   ) {
     this.inode = underlyingURL.href;
   }
@@ -115,12 +109,7 @@ export class HttpDirectoryDescriptor implements DirectoryDescriptor {
   async getDirectory(name: string) {
     let underlyingURL = new URL(name, assertURLEndsInDir(this.underlyingURL));
     let url = new URL(name, assertURLEndsInDir(this.url));
-    return new HttpDirectoryDescriptor(
-      this.volume,
-      url,
-      underlyingURL,
-      this.dispatchEvent
-    );
+    return new HttpDirectoryDescriptor(this.volume, url, underlyingURL);
   }
 
   async getFile(name: string) {
@@ -129,12 +118,7 @@ export class HttpDirectoryDescriptor implements DirectoryDescriptor {
     // we're doing this for the side effect of a 404 being thrown if the
     // URL does not exist.
     await getIfNoneMatch(underlyingURL, undefined);
-    return new HttpFileDescriptor(
-      this.volume,
-      url,
-      underlyingURL,
-      this.dispatchEvent
-    );
+    return new HttpFileDescriptor(this.volume, url, underlyingURL);
   }
 
   async children(): Promise<string[]> {
@@ -184,8 +168,7 @@ export class HttpFileDescriptor implements FileDescriptor {
   constructor(
     readonly volume: HttpVolume,
     readonly url: URL,
-    readonly underlyingURL: URL,
-    private readonly dispatchEvent?: FileSystem["dispatchEvent"]
+    readonly underlyingURL: URL
   ) {
     this.inode = underlyingURL.href;
   }
@@ -245,7 +228,11 @@ export class HttpFileDescriptor implements FileDescriptor {
       );
     }
 
-    this.dispatchEvent!(eventCategory, this.url, "write"); // all descriptors created for files have this dispatcher
+    dispatchEvent<FSEvent>(eventGroup, {
+      category,
+      href: this.url.href,
+      type: "write",
+    });
   }
 
   async read(): Promise<Uint8Array> {
