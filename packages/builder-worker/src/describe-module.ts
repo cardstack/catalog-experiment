@@ -44,7 +44,7 @@ export interface ModuleDescription {
   // storage of all the included CodeRegions. The order is always stable. Other
   // places refer to a code region by its index in this list.
   regions: CodeRegion[];
-  topRegion: RegionPointer;
+  topRegion: RegionPointer | undefined;
 }
 
 export interface NameDescription {

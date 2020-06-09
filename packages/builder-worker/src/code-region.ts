@@ -8,168 +8,261 @@ import { assertNever } from "shared/util";
 
 export type RegionPointer = number;
 
+const DocumentPointer = { isDocumentPointer: true };
+type InternalRegionPointer = RegionPointer | typeof DocumentPointer;
+
+// the parts of a CodeRegion that we can determine independent of its location,
+// based only on its own NodePath.
+type PathFacts = Pick<CodeRegion, "shorthand">;
+
+interface NewRegion {
+  absoluteStart: number;
+  absoluteEnd: number;
+  index: number;
+  pathFacts: PathFacts;
+}
+
+type Position = "before" | "within" | "around" | "after";
+
 export class RegionBuilder {
   regions: CodeRegion[] = [];
-  top: RegionPointer = 0;
+  get top(): RegionPointer | undefined {
+    return this.documentRegion.firstChild;
+  }
+
+  private documentRegion: CodeRegion;
+
   private absoluteRanges: Map<
-    number,
+    InternalRegionPointer,
     { start: number; end: number }
   > = new Map();
 
+  constructor() {
+    this.documentRegion = {
+      start: 0,
+      get end(): number {
+        throw new Error(`not supposed to need document's end`);
+      },
+      firstChild: undefined,
+      nextSibling: undefined,
+      shorthand: false,
+    };
+    this.absoluteRanges.set(DocumentPointer, {
+      start: 0,
+      get end(): number {
+        throw new Error(`not supposed to need document's absolute end`);
+      },
+    });
+  }
+
   createCodeRegion(path: NodePath): RegionPointer {
-    let { start, end } = path.node;
-    if (start == null || end == null) {
+    let { start: absoluteStart, end: absoluteEnd } = path.node;
+    if (absoluteStart == null || absoluteEnd == null) {
       throw new Error(
         `bug: do not know how to create code region for ${path.node.type}: missing start/end character positions`
       );
     }
-    let index = this.regions.length;
-    this.absoluteRanges.set(index, { start, end });
-
-    if (this.regions.length === 0) {
-      // special case for the very first region created
-      let newRegion: CodeRegion = {
-        start: start,
-        end: end - start,
-        parent: undefined,
-        firstChild: undefined,
-        nextSibling: undefined,
-        shorthand: false,
-      };
-      this.regions.push(newRegion);
-    } else {
-      this.insert(index, start, end, path, this.top);
-    }
-    return index;
+    let newRegion: NewRegion = {
+      absoluteStart,
+      absoluteEnd,
+      index: this.regions.length,
+      pathFacts: { shorthand: false },
+    };
+    this.absoluteRanges.set(newRegion.index, {
+      start: absoluteStart,
+      end: absoluteEnd,
+    });
+    debugger;
+    this.insertWithin(DocumentPointer, newRegion);
+    return newRegion.index;
   }
 
-  private insert(
-    index: number,
-    start: number,
-    end: number,
-    path: NodePath,
-    initialCandidate: RegionPointer
-  ) {
-    let candidatePointer: RegionPointer | undefined = initialCandidate;
-    let candidate: CodeRegion | undefined = this.regions[candidatePointer];
-    let firstTime = true;
+  private getRegion(pointer: InternalRegionPointer): CodeRegion {
+    if (typeof pointer === "number") {
+      return this.regions[pointer]!;
+    } else {
+      return this.documentRegion;
+    }
+  }
 
-    while (candidatePointer != null && candidate) {
-      let {
-        start: candidateStart,
-        end: candidateEnd,
-      } = this.absoluteRanges.get(candidatePointer)!;
+  private getAbsolute(
+    pointer: InternalRegionPointer
+  ): { start: number; end: number } {
+    return this.absoluteRanges.get(pointer)!;
+  }
 
-      if (firstTime) {
-        if (end <= candidateStart) {
-          // we come before the very first candidate
-          if (candidate.parent != null) {
-            let newRegion: CodeRegion = {
-              start: start - this.absoluteRanges.get(candidate.parent)!.start,
-              end: end - start,
-              parent: candidate.parent,
-              firstChild: undefined,
-              nextSibling: candidatePointer,
-              shorthand: false,
-            };
-            this.regions.push(newRegion);
-            let parentRegion = this.regions[candidate.parent];
-            parentRegion.firstChild = index;
-          } else {
-            let newRegion: CodeRegion = {
-              start,
-              end: end - start,
-              parent: undefined,
-              firstChild: undefined,
-              nextSibling: candidatePointer,
-              shorthand: false,
-            };
-            this.regions.push(newRegion);
-            this.top = index;
-          }
-          candidate.start -= end - start;
-        }
-        firstTime = false;
-      }
-
-      // first we're checking to see if we are enclosed in this candidate
-      if (
-        candidateStart <= start &&
-        start < candidateEnd &&
-        end <= candidateEnd &&
-        candidateStart < end
-      ) {
-        // we fit entirely inside the candidate
-        if (candidate.firstChild != null) {
-          // find my place among existing children
-          this.insert(index, start, end, path, candidate.firstChild);
-        } else {
-          // i am the first child to be created
-          let newRegion: CodeRegion = {
-            start: start - candidateStart,
-            end: end - start,
-            parent: candidatePointer,
-            firstChild: undefined,
-            nextSibling: undefined,
-            shorthand: false,
-          };
-          this.regions.push(newRegion);
-          candidate.end -= newRegion.end;
-          candidate.firstChild = index;
-        }
-        return;
-      }
-
-      // next check if we come after the candidate but before
-      // candidate.nextSibling (if any).
-      if (
-        candidateEnd <= start &&
-        (!candidate.nextSibling ||
-          end <= this.absoluteRanges.get(candidate.nextSibling)!.start)
-      ) {
-        // insert after the candidate
-        let newRegion: CodeRegion = {
-          start: start - candidateEnd,
-          end: end - start,
-          parent: candidate.parent,
-          firstChild: undefined,
-          nextSibling: undefined,
-          shorthand: false,
-        };
-        this.regions.push(newRegion);
-        if (candidate.nextSibling != null) {
-          newRegion.nextSibling = candidate.nextSibling;
-          let nextSiblingRegion = this.regions[candidate.nextSibling];
-          nextSiblingRegion.start -= newRegion.end + newRegion.start;
-        } else if (candidate.parent != null) {
-          let parentRegion = this.regions[candidate.parent];
-          parentRegion.end -= newRegion.end;
-        }
-        candidate.nextSibling = index;
-        return;
-      }
-
-      candidatePointer = candidate.nextSibling;
-      if (candidatePointer != null) {
-        candidate = this.regions[candidatePointer];
-      } else {
-        candidate = undefined;
+  private insertWithin(parent: InternalRegionPointer, newRegion: NewRegion) {
+    let child = this.getRegion(parent).firstChild;
+    let prevChild: RegionPointer | undefined;
+    while (child != null) {
+      let position = this.compare(newRegion, child);
+      switch (position) {
+        case "before":
+          this.insertBefore(child, parent, prevChild, newRegion);
+          return;
+        case "around":
+          this.insertAround(child, parent, prevChild, newRegion);
+          return;
+        case "within":
+          this.insertWithin(child, newRegion);
+          return;
+        case "after":
+          prevChild = child;
+          child = this.getRegion(child).nextSibling;
+          continue;
+        default:
+          throw assertNever(position);
       }
     }
-    // if we get here, we didn't find a candidate to hold us
+    this.insertLast(prevChild, parent, newRegion);
+  }
+
+  // given the parent and previous sibling (if any) of the spot at which we want
+  // to insert newRegion, set the appropriate firstChild or nextSibling link and
+  // return the absolute basis from which we should measure our start.
+  private linkToNewRegion(
+    targetParent: InternalRegionPointer,
+    targetPrevious: InternalRegionPointer | undefined,
+    newRegion: NewRegion
+  ): number {
+    if (targetPrevious != null) {
+      this.getRegion(targetPrevious).nextSibling = newRegion.index;
+      return this.getAbsolute(targetPrevious).end;
+    } else {
+      this.getRegion(targetParent).firstChild = newRegion.index;
+      return this.getAbsolute(targetParent).start;
+    }
+  }
+
+  // insert newRegion before target. We also need to know the two "backward"
+  // relationships from the target: its parent (which always exists) and its
+  // previous sibling (which may or may not exist)
+  private insertBefore(
+    target: RegionPointer,
+    targetParent: InternalRegionPointer,
+    targetPrevious: InternalRegionPointer | undefined,
+    newRegion: NewRegion
+  ) {
+    let basis = this.linkToNewRegion(targetParent, targetPrevious, newRegion);
+    this.adjustStartRelativeTo(target, newRegion.absoluteEnd);
+    this.regions.push({
+      start: newRegion.absoluteStart - basis,
+      end: newRegion.absoluteEnd - newRegion.absoluteStart,
+      firstChild: undefined,
+      nextSibling: target,
+      ...newRegion.pathFacts,
+    });
+  }
+
+  // insert newRegion around target. We also need to know the two "backward"
+  // relationships from the target: its parent (which always exists) and its
+  // previous sibling (which may or may not exist)
+  private insertAround(
+    target: RegionPointer,
+    targetParent: InternalRegionPointer,
+    targetPrevious: InternalRegionPointer | undefined,
+    newRegion: NewRegion
+  ) {
+    let basis = this.linkToNewRegion(targetParent, targetPrevious, newRegion);
+    this.adjustStartRelativeTo(target, newRegion.absoluteStart);
+    let cursor: RegionPointer = target;
+    let nextSibling: RegionPointer | undefined;
+    while (cursor != null) {
+      let nextRegion = this.getRegion(cursor).nextSibling;
+      if (
+        nextRegion == null ||
+        this.compare(newRegion, nextRegion) !== "around"
+      ) {
+        nextSibling = nextRegion;
+        if (nextRegion == null) {
+          // we are becoming the last child in targetParent, so adjust its end relative to us
+          this.adjustEndRelativeTo(targetParent, newRegion.absoluteEnd);
+        }
+        break;
+      }
+      cursor = nextRegion;
+    }
+    // at this point, cursor is the last region that we surround
+    this.getRegion(cursor).nextSibling = undefined;
+    this.regions.push({
+      start: newRegion.absoluteStart - basis,
+      end: newRegion.absoluteEnd - this.getAbsolute(cursor).end,
+      firstChild: target,
+      nextSibling,
+      ...newRegion.pathFacts,
+    });
+  }
+
+  // add newRegion as the final sibling after target, beneath targetParent.
+  private insertLast(
+    target: RegionPointer | undefined,
+    targetParent: InternalRegionPointer,
+    newRegion: NewRegion
+  ) {
+    let basis = this.linkToNewRegion(targetParent, target, newRegion);
+    this.regions.push({
+      start: newRegion.absoluteStart - basis,
+      end: newRegion.absoluteEnd - newRegion.absoluteStart,
+      firstChild: undefined,
+      nextSibling: undefined,
+      ...newRegion.pathFacts,
+    });
+    this.adjustEndRelativeTo(targetParent, newRegion.absoluteEnd);
+  }
+
+  private adjustStartRelativeTo(
+    subject: InternalRegionPointer,
+    absoluteBasis: number
+  ) {
+    this.getRegion(subject).start =
+      this.getAbsolute(subject).start - absoluteBasis;
+  }
+
+  private adjustEndRelativeTo(
+    subject: InternalRegionPointer,
+    absoluteBasis: number
+  ) {
+    // we only need to adjust real regions, not the document region.
+    if (typeof subject === "number") {
+      this.getRegion(subject).end =
+        this.getAbsolute(subject).end - absoluteBasis;
+    }
+  }
+
+  private compare(newRegion: NewRegion, other: RegionPointer): Position {
+    let { start: otherStart, end: otherEnd } = this.absoluteRanges.get(other)!;
+
+    if (newRegion.absoluteEnd <= otherStart) {
+      return "before";
+    }
+
+    if (
+      otherStart <= newRegion.absoluteStart &&
+      newRegion.absoluteEnd <= otherEnd
+    ) {
+      return "within";
+    }
+
+    if (
+      newRegion.absoluteStart <= otherStart &&
+      otherEnd <= newRegion.absoluteEnd
+    ) {
+      return "around";
+    }
+
+    return "after";
   }
 }
 
 export interface CodeRegion {
-  // starting position relative to start of previousSibling, or start of parent
-  // when no previousSibling.
+  // starting position relative to start of parent (if we're the firstChild) or
+  // end of previous sibling (if we are the nextSibling)
   start: number;
 
   // ending position relative to the last child's end, or relative to our start
   // if no children
   end: number;
 
-  parent: RegionPointer | undefined;
   firstChild: RegionPointer | undefined;
   nextSibling: RegionPointer | undefined;
 
@@ -203,7 +296,7 @@ export class RegionEditor {
   constructor(
     private src: string,
     private regions: CodeRegion[],
-    private topRegion: RegionPointer
+    private topRegion: RegionPointer | undefined
   ) {
     this.dispositions = regions.map(() => ({
       state: "unchanged",
@@ -213,6 +306,7 @@ export class RegionEditor {
     this.dispositions[region] = { state: "replaced", replacement };
   }
   serialize(): string {
+    debugger;
     if (this.regions.length === 0) {
       return this.src;
     }
@@ -243,7 +337,7 @@ export class RegionEditor {
         this.output.push(disposition.replacement);
         break;
       case "unchanged":
-        if (region.firstChild) {
+        if (region.firstChild != null) {
           this.forAllSiblings(region.firstChild, (r) => this.innerSerialize(r));
         }
         this.output.push(this.src.slice(this.cursor, this.cursor + region.end));
@@ -256,16 +350,19 @@ export class RegionEditor {
 
   private skip(regionPointer: RegionPointer) {
     let region = this.regions[regionPointer];
-    if (region.firstChild) {
+    if (region.firstChild != null) {
       this.forAllSiblings(region.firstChild, (r) => this.skip(r));
     }
     this.cursor += region.end;
   }
 
   private forAllSiblings(
-    regionPointer: RegionPointer,
+    regionPointer: RegionPointer | undefined,
     fn: (r: RegionPointer) => void
   ) {
+    if (regionPointer == null) {
+      return;
+    }
     let current: number | undefined = regionPointer;
     while (current != null) {
       fn(current);
