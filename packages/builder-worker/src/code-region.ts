@@ -242,7 +242,7 @@ export class RegionBuilder {
       otherEnd === newRegion.absoluteEnd
     ) {
       // for exactly equal regions, we need to break ties based on the original
-      // types of the nodes. For example, and ObjectProperty in shorthand form
+      // types of the nodes. For example, an ObjectProperty in shorthand form
       // is coextensive with the Identifier it contains, but it's important that
       // we say the ObjectProperty is "around" the Identifier and not "within".
       let newType = this.types.get(newRegion.index);
@@ -405,7 +405,6 @@ function shorthandMode(path: NodePath): PathFacts["shorthand"] {
     path.parent.type === "ImportSpecifier" &&
     path.parent.imported.start === path.node.start
   ) {
-    debugger;
     return " as ";
   }
   if (
@@ -413,7 +412,6 @@ function shorthandMode(path: NodePath): PathFacts["shorthand"] {
     path.parent.type === "ObjectProperty" &&
     path.parent.shorthand
   ) {
-    debugger;
     return ":";
   }
   return false;

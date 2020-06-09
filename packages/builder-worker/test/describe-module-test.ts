@@ -527,7 +527,6 @@ QUnit.module("describe-module", function () {
       console.log(a, c);
     `.trim();
     let desc = describeModule(src);
-    debugger;
     let editor = new RegionEditor(src, desc.regions, desc.topRegion);
     for (let region of desc.names.get("a")!.references) {
       editor.replace(region, "alpha");
