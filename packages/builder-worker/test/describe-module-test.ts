@@ -467,25 +467,31 @@ QUnit.module("describe-module", function () {
 
   test("code regions for an imported name can be used to replace it", function (assert) {
     let src = `
-      import { a } from "lib";
+      import { a, b as c, d as d } from "lib";
       export default function(a) {
         console.log(a);
       }
-      console.log(a);
+      console.log(a, c, d);
     `.trim();
     let desc = describeModule(src);
     let editor = new RegionEditor(src, desc.regions, desc.topRegion);
     for (let region of desc.names.get("a")!.references) {
       editor.replace(region, "alpha");
     }
+    for (let region of desc.names.get("c")!.references) {
+      editor.replace(region, "charlie");
+    }
+    for (let region of desc.names.get("d")!.references) {
+      editor.replace(region, "delta");
+    }
     assert.codeEqual(
       editor.serialize(),
       `
-      import { a as alpha } from "lib";
+      import { a as alpha, b as charlie, d as delta } from "lib";
       export default function(a) {
         console.log(a);
       }
-      console.log(alpha);
+      console.log(alpha, charlie, delta);
     `
     );
   });
@@ -521,6 +527,7 @@ QUnit.module("describe-module", function () {
       console.log(a, c);
     `.trim();
     let desc = describeModule(src);
+    debugger;
     let editor = new RegionEditor(src, desc.regions, desc.topRegion);
     for (let region of desc.names.get("a")!.references) {
       editor.replace(region, "alpha");

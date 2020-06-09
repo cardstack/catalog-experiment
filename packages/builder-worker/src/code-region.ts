@@ -31,11 +31,11 @@ export class RegionBuilder {
   }
 
   private documentRegion: CodeRegion;
-
   private absoluteRanges: Map<
     InternalRegionPointer,
     { start: number; end: number }
   > = new Map();
+  private types: Map<InternalRegionPointer, string> = new Map();
 
   constructor() {
     this.documentRegion = {
@@ -53,6 +53,7 @@ export class RegionBuilder {
         throw new Error(`not supposed to need document's absolute end`);
       },
     });
+    this.types.set(DocumentPointer, "Program");
   }
 
   createCodeRegion(path: NodePath): RegionPointer {
@@ -66,13 +67,13 @@ export class RegionBuilder {
       absoluteStart,
       absoluteEnd,
       index: this.regions.length,
-      pathFacts: { shorthand: false },
+      pathFacts: { shorthand: shorthandMode(path) },
     };
     this.absoluteRanges.set(newRegion.index, {
       start: absoluteStart,
       end: absoluteEnd,
     });
-    debugger;
+    this.types.set(newRegion.index, path.type);
     this.insertWithin(DocumentPointer, newRegion);
     return newRegion.index;
   }
@@ -237,6 +238,26 @@ export class RegionBuilder {
     }
 
     if (
+      otherStart === newRegion.absoluteStart &&
+      otherEnd === newRegion.absoluteEnd
+    ) {
+      // for exactly equal regions, we need to break ties based on the original
+      // types of the nodes. For example, and ObjectProperty in shorthand form
+      // is coextensive with the Identifier it contains, but it's important that
+      // we say the ObjectProperty is "around" the Identifier and not "within".
+      let newType = this.types.get(newRegion.index);
+      let otherType = this.types.get(other);
+      if (newType === "Identifier") {
+        return "within";
+      } else if (otherType === "Identifier") {
+        return "around";
+      }
+      throw new Error(
+        `don't know how to break ties between ${newType} and ${otherType}`
+      );
+    }
+
+    if (
       otherStart <= newRegion.absoluteStart &&
       newRegion.absoluteEnd <= otherEnd
     ) {
@@ -278,7 +299,7 @@ export interface CodeRegion {
   //
   // "as" means we're in an import or export context, ":" means object
   // shorthand, false is a plain identifier with no shorthand.
-  shorthand: "as" | ":" | false;
+  shorthand: " as " | ":" | false;
 }
 
 export class RegionEditor {
@@ -306,7 +327,6 @@ export class RegionEditor {
     this.dispositions[region] = { state: "replaced", replacement };
   }
   serialize(): string {
-    debugger;
     if (this.regions.length === 0) {
       return this.src;
     }
@@ -333,8 +353,16 @@ export class RegionEditor {
         this.skip(regionPointer);
         break;
       case "replaced":
+        if (region.shorthand) {
+          this.output.push(
+            this.src.slice(this.cursor, this.cursor + region.end)
+          );
+          this.output.push(region.shorthand);
+          this.output.push(disposition.replacement);
+        } else {
+          this.output.push(disposition.replacement);
+        }
         this.skip(regionPointer);
-        this.output.push(disposition.replacement);
         break;
       case "unchanged":
         if (region.firstChild != null) {
@@ -369,4 +397,24 @@ export class RegionEditor {
       current = this.regions[current].nextSibling;
     }
   }
+}
+
+function shorthandMode(path: NodePath): PathFacts["shorthand"] {
+  if (
+    path.type === "Identifier" &&
+    path.parent.type === "ImportSpecifier" &&
+    path.parent.imported.start === path.node.start
+  ) {
+    debugger;
+    return " as ";
+  }
+  if (
+    path.type === "Identifier" &&
+    path.parent.type === "ObjectProperty" &&
+    path.parent.shorthand
+  ) {
+    debugger;
+    return ":";
+  }
+  return false;
 }
