@@ -606,11 +606,11 @@ QUnit.module("filesystem - http driver", function (origHooks) {
       let listener = (e: Event<FSEvent>) => {
         if (e.group === eventGroup) {
           assert.equal(
-            e.args!.href,
+            e.args.href,
             `${origin}/foo/bar`,
             "the event url is correct"
           );
-          assert.equal(e.args!.type, "write", "the event type is correct");
+          assert.equal(e.args.type, "write", "the event type is correct");
         }
       };
       await withListener(listener, async () => {

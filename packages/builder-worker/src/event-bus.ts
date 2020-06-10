@@ -1,4 +1,6 @@
 import bind from "bind-decorator";
+import { Event } from "./event"; // this is split out so that it can be consumed in from the packages in the DOM context
+export { Event }; // for convenience
 
 export function dispatchEvent<T>(group: string, args: T) {
   EventBus.getInstance().dispatchEvent(group, args);
@@ -20,10 +22,6 @@ export function flushEvents(): Promise<void> {
   return EventBus.getInstance().eventsFlushed();
 }
 
-export interface Event<T> {
-  group: string;
-  args?: T;
-}
 export type EventListener<T> = (event: Event<T>) => void;
 
 export class EventBus<T> {
@@ -42,7 +40,7 @@ export class EventBus<T> {
   private drainEvents?: Promise<void>;
   private eventQueue: {
     group: string;
-    args: T | undefined;
+    args: T;
     listener: EventListener<T>;
   }[] = [];
 
@@ -59,7 +57,7 @@ export class EventBus<T> {
   }
 
   @bind
-  dispatchEvent(group: string, args?: T): void {
+  dispatchEvent(group: string, args: T): void {
     if (this.listeners.size === 0) {
       return;
     }

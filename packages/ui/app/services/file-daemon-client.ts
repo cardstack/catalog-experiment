@@ -9,7 +9,6 @@ import {
   isFileDaemonEvent,
   FileDaemonClientEvent,
 } from "builder-worker/src/filesystem-drivers/file-daemon-client-driver";
-import { eventGroup } from "builder-worker/src/filesystem";
 
 export default class FileDaemonClientService extends Service {
   @service uiManager!: UIManagerService;
@@ -18,25 +17,14 @@ export default class FileDaemonClientService extends Service {
   @tracked syncedFiles: string[] = [];
   @tracked lastChange?: FilesChangedEvent;
 
-  constructor(...args: any[]) {
-    super(...args);
-
+  startListening() {
     navigator.serviceWorker.addEventListener("message", (event) => {
       let { data } = event;
-      if (!("clientEvent" in data)) {
-        return;
-      }
-      let { clientEvent } = data;
-      if (isFileDaemonEvent(clientEvent)) {
-        this.handleEvent.perform(clientEvent.args);
+      if (isFileDaemonEvent(data)) {
+        this.handleEvent.perform(data.args);
       }
     });
-    this.register.perform();
   }
-
-  register = task(function* () {
-    yield fetch(`/register-client/${eventGroup}`);
-  });
 
   handleEvent = task(function* (
     this: FileDaemonClientService,

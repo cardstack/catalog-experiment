@@ -1,11 +1,8 @@
-import { ClientEvent } from "./client-event";
-
-export interface ReloadClientEvent extends ClientEvent<ReloadEvent> {
-  kind: "reload";
-}
+import { Event } from "./event";
+export const eventGroup = "reload";
 
 export interface ReloadEvent {}
 
-export function isReloadClientEvent(data: any): data is ReloadEvent {
-  return "kind" in data && data.kind === "reload" && "clientEvent" in data;
+export function isReloadEvent(event: any): event is Event<ReloadEvent> {
+  return "group" in event && event.group === eventGroup && "args" in event;
 }

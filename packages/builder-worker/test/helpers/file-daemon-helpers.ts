@@ -19,18 +19,18 @@ export function makeListener(
     if (e.group === eventGroup) {
       if (
         path &&
-        e.args!.type === eventType &&
-        e.args!.category === category &&
-        e.args!.href === new URL(path, origin).href
+        e.args.type === eventType &&
+        e.args.category === category &&
+        e.args.href === new URL(path, origin).href
       ) {
         change(e);
       } else if (
         !path &&
-        e.args!.type === eventType &&
-        e.args!.category === category
+        e.args.type === eventType &&
+        e.args.category === category
       ) {
         change(e);
-      } else if (!path && !eventType && e.args!.category === category) {
+      } else if (!path && !eventType && e.args.category === category) {
         change(e);
       }
     }

@@ -568,11 +568,11 @@ QUnit.module("Node FileSystem", function (origHooks) {
       let listener = (e: Event<FSEvent>) => {
         if (e.group === eventGroup) {
           assert.equal(
-            e.args!.href,
+            e.args.href,
             `${origin}/test`,
             "the event url is correct"
           );
-          assert.equal(e.args!.type, "create", "the event type is correct");
+          assert.equal(e.args.type, "create", "the event type is correct");
         }
       };
       await assert.fs.open(url("/"), true); // ignore these events
@@ -587,11 +587,11 @@ QUnit.module("Node FileSystem", function (origHooks) {
       let listener = (e: Event<FSEvent>) => {
         if (e.group === eventGroup) {
           assert.equal(
-            e.args!.href,
+            e.args.href,
             `${origin}/test/`,
             "the event url is correct"
           );
-          assert.equal(e.args!.type, "create", "the event type is correct");
+          assert.equal(e.args.type, "create", "the event type is correct");
         }
       };
       await assert.fs.open(url("/"), true); // ignore these events
@@ -606,13 +606,13 @@ QUnit.module("Node FileSystem", function (origHooks) {
       await assert.fs.open(url("src"), true);
       let listener = (e: Event<FSEvent>) => {
         if (e.group === eventGroup) {
-          if (e.args!.type === "remove") {
+          if (e.args.type === "remove") {
             assert.equal(
-              e.args!.href,
+              e.args.href,
               `${origin}/src`,
               "the event url is correct"
             );
-            assert.equal(e.args!.type, "remove", "the event type is correct");
+            assert.equal(e.args.type, "remove", "the event type is correct");
           }
         }
       };
@@ -627,20 +627,20 @@ QUnit.module("Node FileSystem", function (origHooks) {
       await assert.fs.open(url("src"), true);
       let listener = (e: Event<FSEvent>) => {
         if (e.group === eventGroup) {
-          if (e.args!.type === "create") {
+          if (e.args.type === "create") {
             assert.equal(
-              e.args!.href,
+              e.args.href,
               `${origin}/dest`,
               "the event url is correct"
             );
-            assert.equal(e.args!.type, "create", "the event type is correct");
-          } else if (e.args!.type === "write") {
+            assert.equal(e.args.type, "create", "the event type is correct");
+          } else if (e.args.type === "write") {
             assert.equal(
-              e.args!.href,
+              e.args.href,
               `${origin}/dest`,
               "the event url is correct"
             );
-            assert.equal(e.args!.type, "write", "the event type is correct");
+            assert.equal(e.args.type, "write", "the event type is correct");
           }
         }
       };
@@ -656,11 +656,11 @@ QUnit.module("Node FileSystem", function (origHooks) {
       let listener = (e: Event<FSEvent>) => {
         if (e.group === eventGroup) {
           assert.equal(
-            e.args!.href,
+            e.args.href,
             `${origin}/test`,
             "the event url is correct"
           );
-          assert.equal(e.args!.type, "remove", "the event type is correct");
+          assert.equal(e.args.type, "remove", "the event type is correct");
         }
       };
       await withListener(listener, async () => {
@@ -675,11 +675,11 @@ QUnit.module("Node FileSystem", function (origHooks) {
       let listener = (e: Event<FSEvent>) => {
         if (e.group === eventGroup) {
           assert.equal(
-            e.args!.href,
+            e.args.href,
             `${origin}/test`,
             "the event url is correct"
           );
-          assert.equal(e.args!.type, "write", "the event type is correct");
+          assert.equal(e.args.type, "write", "the event type is correct");
         }
       };
       await withListener(listener, async () => {
