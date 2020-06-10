@@ -130,6 +130,21 @@ QUnit.module("describe-module", function () {
     assert.ok(desc.names.get("default")?.dependsOn.has("foo"));
   });
 
+  test("renaming local side of export", function (assert) {
+    let { editor } = describeModule(`
+      function x() {}
+      export { x };
+    `);
+    editor.rename("x", "y");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      function y() {}
+      export { y as x };
+    `
+    );
+  });
+
   test("imported names are discovered", function (assert) {
     let { desc } = describeModule(`
       import { x } from 'somewhere';
@@ -217,34 +232,42 @@ QUnit.module("describe-module", function () {
     assert.ok(desc.exports.get("default")?.name === "Q");
   });
 
-  test("regions for function declaration", function (assert) {
-    let { desc } = describeModule(`
+  test("identifier regions for function declaration", function (assert) {
+    let { editor } = describeModule(`
       console.log(1);
       function x() {}
       x();
     `);
-    let out = desc.names.get("x")!;
-    assert.codeRegionAbsoluteRange(
-      desc.regions,
-      out.declaration,
-      22,
-      37,
-      "declaration"
+    editor.rename("x", "y");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      console.log(1);
+      function y() {}
+      y();
+    `
     );
-    assert.equal(out.references.length, 2);
-    assert.codeRegionAbsoluteRange(
-      desc.regions,
-      out.references[0],
-      31,
-      32,
-      "from declaration"
-    );
-    assert.codeRegionAbsoluteRange(
-      desc.regions,
-      out.references[1],
-      44,
-      45,
-      "from invocation"
+  });
+
+  test("declaration region for function declaration", function (assert) {
+    let { editor } = describeModule(`
+      console.log(1);
+      function a() {}
+      function x() {}
+      function y() {}
+      a();
+      y();
+    `);
+    editor.removeDeclaration("x");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      console.log(1);
+      function a() {}
+      function y() {}
+      a();
+      y();
+    `
     );
   });
 

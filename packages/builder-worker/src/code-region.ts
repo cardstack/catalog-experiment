@@ -184,6 +184,11 @@ export class RegionBuilder {
       }
       cursor = nextRegion;
     }
+
+    if (nextSibling != null) {
+      this.adjustStartRelativeTo(nextSibling, newRegion.absoluteEnd);
+    }
+
     // at this point, cursor is the last region that we surround
     this.getRegion(cursor).nextSibling = undefined;
     this.regions.push({
@@ -298,9 +303,7 @@ export interface CodeRegion {
   //
   //    let { x: x0 } = foo();
   //
-  // "as" means we're in an import or export context, ":" means object
-  // shorthand, false is a plain identifier with no shorthand.
-  shorthand: " as " | ":" | false;
+  shorthand: "import" | "export" | "object" | false;
 }
 
 export class RegionEditor {
@@ -319,6 +322,13 @@ export class RegionEditor {
     this.dispositions = desc.regions.map(() => ({
       state: "unchanged",
     }));
+  }
+  removeDeclaration(name: string) {
+    let nameDesc = this.desc.names.get(name);
+    if (!nameDesc) {
+      throw new Error(`tried to remove unknown declaration ${name}`);
+    }
+    this.dispositions[nameDesc.declaration] = { state: "removed" };
   }
   rename(oldName: string, newName: string) {
     let nameDesc = this.desc.names.get(oldName);
@@ -359,15 +369,7 @@ export class RegionEditor {
         this.skip(regionPointer);
         break;
       case "replaced":
-        if (region.shorthand) {
-          this.output.push(
-            this.src.slice(this.cursor, this.cursor + region.end)
-          );
-          this.output.push(region.shorthand);
-          this.output.push(disposition.replacement);
-        } else {
-          this.output.push(disposition.replacement);
-        }
+        this.handleReplace(region, disposition.replacement);
         this.skip(regionPointer);
         break;
       case "unchanged":
@@ -382,10 +384,40 @@ export class RegionEditor {
     }
   }
 
+  private handleReplace(region: CodeRegion, replacement: string) {
+    if (!region.shorthand) {
+      this.output.push(replacement);
+      return;
+    }
+    let original = this.src.slice(this.cursor, this.cursor + region.end);
+    switch (region.shorthand) {
+      case "import":
+        this.output.push(original);
+        this.output.push(" as ");
+        this.output.push(replacement);
+        break;
+      case "object":
+        this.output.push(original);
+        this.output.push(":");
+        this.output.push(replacement);
+        break;
+      case "export":
+        this.output.push(replacement);
+        this.output.push(" as ");
+        this.output.push(original);
+        break;
+      default:
+        throw assertNever(region.shorthand);
+    }
+  }
+
   private skip(regionPointer: RegionPointer) {
     let region = this.desc.regions[regionPointer];
     if (region.firstChild != null) {
-      this.forAllSiblings(region.firstChild, (r) => this.skip(r));
+      this.forAllSiblings(region.firstChild, (r) => {
+        this.cursor += this.desc.regions[r].start;
+        this.skip(r);
+      });
     }
     this.cursor += region.end;
   }
@@ -409,16 +441,25 @@ function shorthandMode(path: NodePath): PathFacts["shorthand"] {
   if (
     path.type === "Identifier" &&
     path.parent.type === "ImportSpecifier" &&
-    path.parent.imported.start === path.node.start
+    path.parent.imported.start === path.parent.local.start
   ) {
-    return " as ";
+    return "import";
   }
   if (
     path.type === "Identifier" &&
     path.parent.type === "ObjectProperty" &&
     path.parent.shorthand
   ) {
-    return ":";
+    return "object";
   }
+
+  if (
+    path.type == "Identifier" &&
+    path.parent.type === "ExportSpecifier" &&
+    path.parent.exported.start === path.parent.local.start
+  ) {
+    return "export";
+  }
+
   return false;
 }

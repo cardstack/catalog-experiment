@@ -52,9 +52,16 @@
     {
       "type": "chrome",
       "request": "launch",
-      "name": "Launch Chrome against localhost",
+      "name": "Launch Chrome against the app",
       "url": "http://localhost:4200",
       "webRoot": "${workspaceFolder}/packages/app"
+    },
+    {
+      "type": "chrome",
+      "request": "launch",
+      "name": "Launch Chrome against builder tests",
+      "url": "http://localhost:8080",
+      "webRoot": "${workspaceFolder}/packages/builder-worker"
     }
   ]
 }
