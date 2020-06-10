@@ -2,7 +2,7 @@ import { installFileAssertions, origin, url } from "./helpers/file-assertions";
 import { Builder, Rebuilder } from "../src/builder";
 import { FileSystem } from "../src/filesystem";
 import { FileDescriptor } from "../src/filesystem-drivers/filesystem-driver";
-import { flushEvents } from "../src/event-bus";
+import { flushEvents, removeAllEventListeners } from "../src/event-bus";
 
 const outputOrigin = `http://output`;
 
@@ -42,6 +42,8 @@ QUnit.module("module builder", function (origHooks) {
   });
 
   origHooks.afterEach(async () => {
+    removeAllEventListeners();
+    await flushEvents();
     if (rebuilder) {
       await rebuilder.shutdown();
     }
