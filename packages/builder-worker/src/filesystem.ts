@@ -370,12 +370,25 @@ interface ListingEntry {
 interface Options {
   create?: true;
 }
-export interface Event {
-  category: string;
+export interface BaseEvent {
   href: string; // this will eventually go over a postMessage boundary so we've downgraded the URL to a string
-  type: string;
-  args?: any;
 }
+export interface BaseFSEvent extends BaseEvent {
+  category: "fs";
+}
+
+export interface CreateEvent extends BaseFSEvent {
+  type: "create";
+}
+export interface RemoveEvent extends BaseFSEvent {
+  type: "remove";
+}
+export interface WriteEvent extends BaseFSEvent {
+  type: "write";
+}
+
+export type Event = CreateEvent | RemoveEvent | WriteEvent;
+
 export type EventListener = (event: Event) => void;
 
 function notFound(href: string) {

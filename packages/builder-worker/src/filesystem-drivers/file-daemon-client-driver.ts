@@ -1,9 +1,10 @@
-import { dispatchEvent as _dispatchEvent } from "../event-bus";
+import { Event, dispatchEvent as _dispatchEvent } from "../event-bus";
 import {
   FileSystem,
   eventGroup,
   FileSystemError,
   Event as FSEvent,
+  BaseEvent as FSBaseEvent,
 } from "../filesystem";
 import {
   FileSystemDriver,
@@ -231,9 +232,7 @@ export class FileDaemonClientVolume extends DefaultVolume {
       category: eventCategory,
       href: this.mountURL.href,
       type: "sync-finished",
-      args: {
-        files: files.map((f) => this.mountedPath(f).href),
-      },
+      files: files.map((f) => this.mountedPath(f).href),
     });
     this.doneSyncing();
   }
@@ -270,10 +269,8 @@ export class FileDaemonClientVolume extends DefaultVolume {
       category: eventCategory,
       href: this.mountURL.href,
       type: "files-changed",
-      args: {
-        removed,
-        modified,
-      },
+      removed,
+      modified,
     });
 
     await this.fs.displayListing();
@@ -336,31 +333,39 @@ export type FileDaemonClientEvent =
   | SyncCompleteEvent
   | FilesChangedEvent;
 
-interface BaseEvent extends FSEvent {
+interface BaseEvent extends FSBaseEvent {
   category: "file-daemon-client";
 }
 
-interface ConnectedEvent extends BaseEvent {
+export interface ConnectedEvent extends BaseEvent {
   type: "connected";
 }
-interface DisconnectedEvent extends BaseEvent {
+export interface DisconnectedEvent extends BaseEvent {
   type: "disconnected";
 }
-interface SyncStartedEvent extends BaseEvent {
+export interface SyncStartedEvent extends BaseEvent {
   type: "sync-started";
 }
 
-interface FilesChangedEvent extends BaseEvent {
+export interface FilesChangedEvent extends BaseEvent {
   type: "files-changed";
-  args: {
-    modified: string[];
-    removed: string[];
-  };
+  modified: string[];
+  removed: string[];
 }
 
 interface SyncCompleteEvent extends BaseEvent {
   type: "sync-finished";
-  args: {
-    files: string[];
-  };
+  files: string[];
+}
+
+export function isFileDaemonEvent(
+  event: any
+): event is Event<FileDaemonClientEvent> {
+  return (
+    "group" in event &&
+    event.group === eventGroup &&
+    "args" in event &&
+    "category" in event.args &&
+    event.args.category === eventCategory
+  );
 }

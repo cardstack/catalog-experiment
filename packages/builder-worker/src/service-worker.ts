@@ -2,12 +2,10 @@ import {
   FileDaemonClientVolume,
   defaultWebsocketURL,
   FileDaemonClientDriver,
+  FileDaemonClientEvent,
 } from "./filesystem-drivers/file-daemon-client-driver";
-import {
-  FileSystem,
-  Event as FSEvent,
-  eventCategory as fsEventCategory,
-} from "./filesystem";
+import { FileSystem, eventCategory as fsEventCategory } from "./filesystem";
+import { addEventListener, Event } from "./event-bus";
 import { log, Logger, LogMessage } from "./logger";
 import { handleFileRequest } from "./request-handlers/file-request-handler";
 import { handleClientRegister } from "./request-handlers/client-register-handler";
@@ -27,7 +25,7 @@ const uiOrigin = "http://localhost:4300";
 let websocketURL: URL;
 let isDisabled = false;
 let volume: FileDaemonClientVolume | undefined;
-let fsEventHandler: ClientEventHandler<FSEvent>;
+let fsEventHandler: ClientEventHandler<Event<FileDaemonClientEvent>>;
 let logEventHandler: ClientEventHandler<LogMessage[]>;
 let reloadEventHandler: ClientEventHandler<ReloadEvent>;
 
@@ -75,8 +73,7 @@ async function activate() {
     (async () => {
       let driver = new FileDaemonClientDriver(originURL, websocketURL);
       volume = (await fs.mount(inputURL, driver)) as FileDaemonClientVolume;
-      fs.addEventListener(
-        inputURL,
+      addEventListener<FileDaemonClientEvent>(
         fsEventHandler.handleEvent.bind(fsEventHandler)
       );
     })(),

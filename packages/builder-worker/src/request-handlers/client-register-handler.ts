@@ -1,5 +1,6 @@
 import { Handler } from "./request-handler";
 import { Logger } from "../logger";
+import { eventGroup as fsGroup } from "../filesystem";
 import { eventCategory as fileDaemonClientEventCategory } from "../filesystem-drivers/file-daemon-client-driver";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
@@ -24,19 +25,25 @@ export const handleClientRegister: Handler = async function (
   if (requestURL.pathname.startsWith("/register-client/")) {
     let registrationType = requestURL.pathname.split("/").pop();
     switch (registrationType) {
-      case "fs":
+      case fsGroup:
         fsEventHandler.addClient(event.clientId);
         if (fileDaemonVolume.connected) {
           await fsEventHandler.sendEvent(event.clientId, {
-            href: worker.origin,
-            category: fileDaemonClientEventCategory,
-            type: "connected",
+            group: fsGroup,
+            args: {
+              href: worker.origin,
+              category: fileDaemonClientEventCategory,
+              type: "connected",
+            },
           });
         } else {
           await fsEventHandler.sendEvent(event.clientId, {
-            href: worker.origin,
-            category: fileDaemonClientEventCategory,
-            type: "disconnected",
+            group: fsGroup,
+            args: {
+              href: worker.origin,
+              category: fileDaemonClientEventCategory,
+              type: "disconnected",
+            },
           });
         }
         return new Response("client registered", { status: 200 });

@@ -1,5 +1,9 @@
-import { FileSystem, Event as FSEvent } from "../filesystem";
-import { FileDaemonClientVolume } from "../filesystem-drivers/file-daemon-client-driver";
+import { FileSystem } from "../filesystem";
+import { Event } from "../event-bus";
+import {
+  FileDaemonClientVolume,
+  FileDaemonClientEvent,
+} from "../filesystem-drivers/file-daemon-client-driver";
 import { ClientEventHandler } from "../client-event-handler";
 import { LogMessage } from "../logger";
 import { ReloadEvent } from "../client-reload";
@@ -13,7 +17,7 @@ export type Handler = (
 export interface Context {
   fs: FileSystem;
   fileDaemonVolume: FileDaemonClientVolume;
-  fsEventHandler: ClientEventHandler<FSEvent>;
+  fsEventHandler: ClientEventHandler<Event<FileDaemonClientEvent>>;
   logEventHandler: ClientEventHandler<LogMessage[]>;
   reloadEventHandler: ClientEventHandler<ReloadEvent>;
   buildManager: BuildManager;
