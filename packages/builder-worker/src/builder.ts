@@ -1,4 +1,11 @@
-import { FileSystem, Event, eventCategory } from "./filesystem";
+import {
+  FileSystem,
+  Event as FSEvent,
+  eventCategory,
+  eventGroup,
+} from "./filesystem";
+import { addEventListener, Event, dispatchEvent } from "./event-bus";
+import { ReloadEvent, eventGroup as reloadEventGroup } from "./client-reload";
 import bind from "bind-decorator";
 import {
   OutputTypes,
@@ -52,7 +59,7 @@ class CurrentContext {
 
 class BuildRunner<Input> {
   private nodeStates: Map<CacheKey, CompleteState> = new Map();
-  private watchedOrigins: Set<string> = new Set();
+  private watchedFiles: Set<string> = new Set();
   private recentlyChangedFiles: Set<string> = new Set();
 
   constructor(
@@ -224,16 +231,20 @@ class BuildRunner<Input> {
   }
 
   private ensureWatching(url: URL) {
-    if (!this.watchedOrigins.has(url.origin)) {
-      this.fs.addEventListener(url, this.fileDidChange);
-      this.watchedOrigins.add(url.origin);
+    if (!this.watchedFiles.has(url.href)) {
+      addEventListener(this.fileDidChange);
+      this.watchedFiles.add(url.href);
     }
   }
 
   @bind
-  private fileDidChange(event: Event) {
-    if (event.category === eventCategory) {
-      this.recentlyChangedFiles.add(event.href);
+  private fileDidChange(event: Event<FSEvent>) {
+    if (
+      event.group === eventGroup &&
+      event.args.category === eventCategory &&
+      this.watchedFiles.has(event.args.href)
+    ) {
+      this.recentlyChangedFiles.add(event.args.href);
       this.inputDidChange?.();
     }
   }
@@ -292,8 +303,6 @@ type RebuilderState =
       name: "shutdown";
     };
 
-type afterBuildFn = () => void;
-
 export class Rebuilder<Input> {
   private runner: BuildRunner<Input>;
   private state: RebuilderState = {
@@ -301,20 +310,12 @@ export class Rebuilder<Input> {
   };
   private nextState: Deferred<RebuilderState> = new Deferred();
 
-  constructor(
-    fs: FileSystem,
-    roots: Input,
-    private afterBuildFn?: afterBuildFn
-  ) {
+  constructor(fs: FileSystem, roots: Input) {
     this.runner = new BuildRunner(fs, roots, this.inputDidChange);
   }
 
   // roots lists [inputRoot, outputRoot]
-  static forProjects(
-    fs: FileSystem,
-    roots: [URL, URL][],
-    afterBuildFn?: afterBuildFn
-  ) {
+  static forProjects(fs: FileSystem, roots: [URL, URL][]) {
     for (let [input, output] of roots) {
       if (input.origin === output.origin) {
         throw new Error(
@@ -322,7 +323,7 @@ export class Rebuilder<Input> {
         );
       }
     }
-    return new this(fs, [new MakeBundledModulesNode(roots)], afterBuildFn);
+    return new this(fs, [new MakeBundledModulesNode(roots)]);
   }
 
   start() {
@@ -359,9 +360,7 @@ export class Rebuilder<Input> {
         case "working":
           try {
             await this.runner.build();
-            if (typeof this.afterBuildFn === "function") {
-              setTimeout(() => this.afterBuildFn!(), 0);
-            }
+            dispatchEvent<ReloadEvent>(reloadEventGroup, {});
           } catch (err) {
             error(`Exception while building`, err);
           }

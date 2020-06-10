@@ -3,12 +3,9 @@ import {
   defaultWebsocketURL,
   FileDaemonClientDriver,
 } from "./filesystem-drivers/file-daemon-client-driver";
-import {
-  FileSystem,
-  Event as FSEvent,
-  eventCategory as fsEventCategory,
-} from "./filesystem";
-import { log, Logger, LogMessage } from "./logger";
+import { FileSystem } from "./filesystem";
+import { addEventListener } from "./event-bus";
+import { log } from "./logger";
 import { handleFileRequest } from "./request-handlers/file-request-handler";
 import { handleClientRegister } from "./request-handlers/client-register-handler";
 import { handleLogLevelRequest } from "./request-handlers/log-level-handler";
@@ -16,7 +13,6 @@ import { handleBuilderRestartRequest } from "./request-handlers/builder-restart-
 import { ClientEventHandler } from "./client-event-handler";
 import { Handler } from "./request-handlers/request-handler";
 import { HttpFileSystemDriver } from "./filesystem-drivers/http-driver";
-import { ReloadEvent } from "./client-reload";
 import { BuildManager } from "./build-manager";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
@@ -27,10 +23,7 @@ const uiOrigin = "http://localhost:4300";
 let websocketURL: URL;
 let isDisabled = false;
 let volume: FileDaemonClientVolume | undefined;
-let fsEventHandler: ClientEventHandler<FSEvent>;
-let logEventHandler: ClientEventHandler<LogMessage[]>;
-let reloadEventHandler: ClientEventHandler<ReloadEvent>;
-
+let eventHandler: ClientEventHandler;
 let originURL = new URL(worker.origin);
 let inputURL = new URL("https://local-disk/");
 let projects: [URL, URL][] = [[inputURL, originURL]];
@@ -39,8 +32,8 @@ let buildManager: BuildManager;
 console.log(`service worker evaluated`);
 
 worker.addEventListener("install", () => {
-  logEventHandler = new ClientEventHandler("log-messages");
-  Logger.addListener(logEventHandler.handleEvent.bind(logEventHandler));
+  eventHandler = new ClientEventHandler();
+  addEventListener(eventHandler.handleEvent.bind(eventHandler));
 
   log(`installing`);
   websocketURL = new URL(defaultWebsocketURL);
@@ -61,10 +54,6 @@ worker.addEventListener("activate", () => {
 });
 
 async function activate() {
-  reloadEventHandler = new ClientEventHandler("reload");
-  fsEventHandler = new ClientEventHandler(fsEventCategory);
-  buildManager = new BuildManager(fs, projects, reloadEventHandler);
-
   await Promise.all([
     (async () => {
       let uiDriver = new HttpFileSystemDriver(
@@ -75,13 +64,10 @@ async function activate() {
     (async () => {
       let driver = new FileDaemonClientDriver(originURL, websocketURL);
       volume = (await fs.mount(inputURL, driver)) as FileDaemonClientVolume;
-      fs.addEventListener(
-        inputURL,
-        fsEventHandler.handleEvent.bind(fsEventHandler)
-      );
     })(),
   ]);
 
+  buildManager = new BuildManager(fs, projects);
   await buildManager.rebuilder.start();
   await buildManager.rebuilder.isIdle();
   await fs.displayListing();
@@ -114,9 +100,7 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
           fs,
           event,
           fileDaemonVolume: volume,
-          fsEventHandler,
-          logEventHandler,
-          reloadEventHandler,
+          eventHandler,
           buildManager,
         };
         for (let handler of stack) {

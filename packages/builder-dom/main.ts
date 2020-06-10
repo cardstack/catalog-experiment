@@ -3,6 +3,8 @@
 // thread context.
 
 import { assertNever } from "shared/util";
+import { isUIManagerEvent } from "../builder-worker/src/ui-manager";
+import { isReloadEvent } from "../builder-worker/src/client-reload";
 
 let uiWidth: number;
 
@@ -46,17 +48,13 @@ function handleUICommand(event: MessageEvent) {
   if (event.origin !== window.origin) {
     return;
   }
-  let command = event.data;
-  if (
-    "kind" in command &&
-    command.kind === "reload" &&
-    "clientEvent" in command
-  ) {
+  let { data } = event;
+  if (isReloadEvent(data)) {
     window.location.reload();
     return;
   }
 
-  if (!isUIManagerCommand(command)) {
+  if (!isUIManagerEvent(data)) {
     return;
   }
 
@@ -65,6 +63,7 @@ function handleUICommand(event: MessageEvent) {
     throw new Error("bug: cannot find the catalogjs ui iframe");
   }
 
+  let command = data.args;
   switch (command.type) {
     case "ready":
       uiWidth = command.width;
@@ -80,27 +79,4 @@ function handleUICommand(event: MessageEvent) {
     default:
       assertNever(command);
   }
-}
-
-// TODO this should all be imported from the ui package
-interface BaseUIManagerCommand {
-  kind: "ui-manager";
-}
-
-interface Ready extends BaseUIManagerCommand {
-  type: "ready";
-  width: number;
-}
-
-interface Show extends BaseUIManagerCommand {
-  type: "show";
-}
-
-interface Hide extends BaseUIManagerCommand {
-  type: "hide";
-}
-
-type UIManagerCommand = Ready | Show | Hide;
-function isUIManagerCommand(data: any): data is UIManagerCommand {
-  return "kind" in data && data.kind === "ui-manager";
 }

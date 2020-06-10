@@ -1,16 +1,17 @@
-import { FileSystem, eventCategory } from "../filesystem";
+import { dispatchEvent } from "../event-bus";
+import {
+  FileSystem,
+  eventCategory as category,
+  eventGroup,
+  Event as FSEvent,
+} from "../filesystem";
 import { ROOT, assertURLEndsInDir } from "../path";
 
 const textEncoder = new TextEncoder();
 const utf8 = new TextDecoder("utf8");
 
 export interface FileSystemDriver {
-  mountVolume(
-    fs: FileSystem,
-    id: string,
-    url: URL,
-    dispatchEvent: FileSystem["dispatchEvent"]
-  ): Promise<Volume>;
+  mountVolume(fs: FileSystem, id: string, url: URL): Promise<Volume>;
 }
 
 export interface Volume {
@@ -67,23 +68,14 @@ type DefaultResources = File | Directory;
 let descriptors: Map<string, DefaultResources> = new Map();
 
 export class DefaultDriver implements FileSystemDriver {
-  async mountVolume(
-    _fs: FileSystem,
-    id: string,
-    url: URL,
-    dispatchEvent: FileSystem["dispatchEvent"]
-  ) {
-    return this.mountVolumeSync(id, url, dispatchEvent);
+  async mountVolume(_fs: FileSystem, id: string, url: URL) {
+    return this.mountVolumeSync(id, url);
   }
 
   // it's adventageous to leverage the synchronous nature of the default driver
   // for mounting a default volume in the FileSystem constructor
-  mountVolumeSync(
-    id: string | undefined,
-    url: URL,
-    dispatchEvent: FileSystem["dispatchEvent"]
-  ) {
-    return new DefaultVolume(id, url, dispatchEvent);
+  mountVolumeSync(id: string | undefined, url: URL) {
+    return new DefaultVolume(id, url);
   }
 }
 
@@ -91,12 +83,8 @@ export class DefaultVolume implements Volume {
   readonly id: string;
   root: DefaultDirectoryDescriptor;
 
-  constructor(
-    id: string | undefined,
-    url: URL,
-    protected dispatchEvent: FileSystem["dispatchEvent"]
-  ) {
-    this.root = new Directory(this).getDescriptor(url, this.dispatchEvent);
+  constructor(id: string | undefined, url: URL) {
+    this.root = new Directory(this).getDescriptor(url);
     if (!id) {
       this.id = this.root.inode;
     } else {
@@ -114,7 +102,7 @@ export class DefaultVolume implements Volume {
     } else {
       url = new URL(name, assertURLEndsInDir(parent.url));
     }
-    let descriptor = directory.getDescriptor(url, this.dispatchEvent);
+    let descriptor = directory.getDescriptor(url);
     await parent.add(name, descriptor);
     return descriptor;
   }
@@ -122,7 +110,7 @@ export class DefaultVolume implements Volume {
   async createFile(parent: DefaultDirectoryDescriptor, name: string) {
     let file = new File(this);
     let url = new URL(name, assertURLEndsInDir(parent.url));
-    let descriptor = file.getDescriptor(url, this.dispatchEvent);
+    let descriptor = file.getDescriptor(url);
     await parent.add(name, descriptor);
     return descriptor;
   }
@@ -138,8 +126,8 @@ class Directory {
     this.mtime = Date.now();
   }
 
-  getDescriptor(url: URL, dispatchEvent: FileSystem["dispatchEvent"]) {
-    return new DefaultDirectoryDescriptor(this, url, dispatchEvent);
+  getDescriptor(url: URL) {
+    return new DefaultDirectoryDescriptor(this, url);
   }
 }
 
@@ -152,8 +140,8 @@ class File {
     this.mtime = Date.now();
   }
 
-  getDescriptor(url: URL, dispatchEvent: FileSystem["dispatchEvent"]) {
-    return new DefaultFileDescriptor(this, url, dispatchEvent);
+  getDescriptor(url: URL) {
+    return new DefaultFileDescriptor(this, url);
   }
 }
 
@@ -161,11 +149,7 @@ export class DefaultDirectoryDescriptor implements DirectoryDescriptor {
   readonly type = "directory";
   readonly volume: DefaultVolume;
 
-  constructor(
-    resource: Directory,
-    readonly url: URL,
-    private dispatchEvent: FileSystem["dispatchEvent"]
-  ) {
+  constructor(resource: Directory, readonly url: URL) {
     descriptors.set(this.url.href, resource);
     this.volume = resource.volume;
   }
@@ -199,9 +183,7 @@ export class DefaultDirectoryDescriptor implements DirectoryDescriptor {
     } else {
       url = new URL(name, assertURLEndsInDir(this.url));
     }
-    return this.resource.files
-      .get(name)!
-      .getDescriptor(url, this.dispatchEvent);
+    return this.resource.files.get(name)!.getDescriptor(url);
   }
 
   async getFile(name: string) {
@@ -262,11 +244,7 @@ export class DefaultFileDescriptor implements FileDescriptor {
   readonly type = "file";
   readonly volume: DefaultVolume;
 
-  constructor(
-    resource: File,
-    readonly url: URL,
-    private dispatchEvent: FileSystem["dispatchEvent"]
-  ) {
+  constructor(resource: File, readonly url: URL) {
     descriptors.set(this.url.href, resource);
     this.volume = resource.volume;
   }
@@ -302,7 +280,11 @@ export class DefaultFileDescriptor implements FileDescriptor {
       this.resource.buffer = await readStream(streamOrBuffer);
     }
     this.resource.mtime = Math.floor(Date.now());
-    this.dispatchEvent!(eventCategory, this.url, "write"); // all descriptors created for files have this dispatcher
+    dispatchEvent<FSEvent>(eventGroup, {
+      category,
+      href: this.url.href,
+      type: "write",
+    });
   }
 
   close() {}

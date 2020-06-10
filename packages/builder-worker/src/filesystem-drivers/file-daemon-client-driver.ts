@@ -1,4 +1,11 @@
-import { FileSystem, FileSystemError } from "../filesystem";
+import { Event, dispatchEvent as _dispatchEvent } from "../event-bus";
+import {
+  FileSystem,
+  eventGroup,
+  FileSystemError,
+  Event as FSEvent,
+  BaseEvent as FSBaseEvent,
+} from "../filesystem";
 import {
   FileSystemDriver,
   FileDescriptor,
@@ -25,19 +32,13 @@ export class FileDaemonClientFileDescriptor extends DefaultFileDescriptor {}
 export class FileDaemonClientDriver implements FileSystemDriver {
   constructor(private fileServerURL: URL, private websocketServerURL: URL) {}
 
-  async mountVolume(
-    fs: FileSystem,
-    id: string,
-    url: URL,
-    dispatchEvent: FileSystem["dispatchEvent"]
-  ) {
+  async mountVolume(fs: FileSystem, id: string, url: URL) {
     let volume = new FileDaemonClientVolume(
       this.fileServerURL,
       this.websocketServerURL,
       fs,
       id,
-      url,
-      dispatchEvent
+      url
     );
 
     await volume.ready;
@@ -65,10 +66,9 @@ export class FileDaemonClientVolume extends DefaultVolume {
     private websocketServerURL: URL,
     private fs: FileSystem,
     id: string,
-    private mountURL: URL,
-    dispatchEvent: FileSystem["dispatchEvent"]
+    private mountURL: URL
   ) {
-    super(id, mountURL, dispatchEvent);
+    super(id, mountURL);
 
     this.ready = new Promise((res) => (this.doneSyncing = res));
     this.running = this.run();
@@ -136,11 +136,19 @@ export class FileDaemonClientVolume extends DefaultVolume {
       log(`websocket close: ${JSON.stringify(event)}`);
       socketIsClosed();
       this.connected = false;
-      this.dispatchEvent(eventCategory, this.mountURL, "disconnected");
+      dispatchEvent({
+        category: eventCategory,
+        href: this.mountURL.href,
+        type: "disconnected",
+      });
     };
     socket.onopen = (event) => {
       log(`websocket open: ${JSON.stringify(event)}`);
-      this.dispatchEvent(eventCategory, this.mountURL, "connected");
+      dispatchEvent({
+        category: eventCategory,
+        href: this.mountURL.href,
+        type: "connected",
+      });
       this.backoffInterval = 0;
       this.connected = true;
 
@@ -187,7 +195,11 @@ export class FileDaemonClientVolume extends DefaultVolume {
   }
 
   private async startFullSync() {
-    this.dispatchEvent(eventCategory, this.mountURL, "sync-started");
+    dispatchEvent({
+      category: eventCategory,
+      href: this.mountURL.href,
+      type: "sync-started",
+    });
     let stream = (
       await fetch(`${this.fileServerURL}/`, {
         headers: {
@@ -216,7 +228,10 @@ export class FileDaemonClientVolume extends DefaultVolume {
     await fs.move(temp, this.mountURL);
     await fs.remove(temp);
     log("completed full sync");
-    this.dispatchEvent(eventCategory, this.mountURL, "sync-finished", {
+    dispatchEvent({
+      category: eventCategory,
+      href: this.mountURL.href,
+      type: "sync-finished",
       files: files.map((f) => this.mountedPath(f).href),
     });
     this.doneSyncing();
@@ -250,7 +265,10 @@ export class FileDaemonClientVolume extends DefaultVolume {
       removed.push(url.href);
     }
 
-    this.dispatchEvent(eventCategory, this.mountURL, "sync-finished", {
+    dispatchEvent({
+      category: eventCategory,
+      href: this.mountURL.href,
+      type: "files-changed",
       removed,
       modified,
     });
@@ -302,4 +320,52 @@ export class FileDaemonClientVolume extends DefaultVolume {
     );
     return changed.filter(Boolean) as FileInfo[];
   }
+}
+
+function dispatchEvent(event: FileDaemonClientEvent) {
+  _dispatchEvent<FileDaemonClientEvent | FSEvent>(eventGroup, event);
+}
+
+export type FileDaemonClientEvent =
+  | ConnectedEvent
+  | DisconnectedEvent
+  | SyncStartedEvent
+  | SyncCompleteEvent
+  | FilesChangedEvent;
+
+interface BaseEvent extends FSBaseEvent {
+  category: "file-daemon-client";
+}
+
+export interface ConnectedEvent extends BaseEvent {
+  type: "connected";
+}
+export interface DisconnectedEvent extends BaseEvent {
+  type: "disconnected";
+}
+export interface SyncStartedEvent extends BaseEvent {
+  type: "sync-started";
+}
+
+export interface FilesChangedEvent extends BaseEvent {
+  type: "files-changed";
+  modified: string[];
+  removed: string[];
+}
+
+interface SyncCompleteEvent extends BaseEvent {
+  type: "sync-finished";
+  files: string[];
+}
+
+export function isFileDaemonEvent(
+  event: any
+): event is Event<FileDaemonClientEvent> {
+  return (
+    "group" in event &&
+    event.group === eventGroup &&
+    "args" in event &&
+    "category" in event.args &&
+    event.args.category === eventCategory
+  );
 }

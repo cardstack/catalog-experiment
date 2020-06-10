@@ -4,6 +4,11 @@ import UIManagerService from "./ui-manager";
 //@ts-ignore
 import { task, timeout } from "ember-concurrency";
 import { assertNever } from "shared/util";
+import {
+  FilesChangedEvent,
+  isFileDaemonEvent,
+  FileDaemonClientEvent,
+} from "builder-worker/src/filesystem-drivers/file-daemon-client-driver";
 
 export default class FileDaemonClientService extends Service {
   @service uiManager!: UIManagerService;
@@ -12,26 +17,18 @@ export default class FileDaemonClientService extends Service {
   @tracked syncedFiles: string[] = [];
   @tracked lastChange?: FilesChangedEvent;
 
-  constructor(...args: any[]) {
-    super(...args);
-
+  startListening() {
     navigator.serviceWorker.addEventListener("message", (event) => {
-      if (!isFileDaemonEvent(event.data)) {
-        return;
+      let { data } = event;
+      if (isFileDaemonEvent(data)) {
+        this.handleEvent.perform(data.args);
       }
-      let clientEvent = event.data.clientEvent;
-      this.handleEvent.perform(clientEvent);
     });
-    this.register.perform();
   }
-
-  register = task(function* () {
-    yield fetch("/register-client/fs");
-  });
 
   handleEvent = task(function* (
     this: FileDaemonClientService,
-    event: FileDaemonEvent["clientEvent"]
+    event: FileDaemonClientEvent
   ) {
     switch (event.type) {
       case "connected":
@@ -52,7 +49,7 @@ export default class FileDaemonClientService extends Service {
         break;
       case "sync-finished":
         this.isSyncing = false;
-        this.syncedFiles = event.args.files;
+        this.syncedFiles = event.files;
         this.uiManager.show();
         yield timeout(10000);
         this.syncedFiles = [];
@@ -67,54 +64,4 @@ export default class FileDaemonClientService extends Service {
         assertNever(event);
     }
   }).drop();
-}
-
-// TODO need to rework these into the builder-worker
-interface FileDaemonEvent {
-  kind: "fs";
-  clientEvent:
-    | ConnectedEvent
-    | DisconnectedEvent
-    | SyncStartedEvent
-    | SyncCompleteEvent
-    | FilesChangedEvent;
-}
-
-interface BaseEvent {
-  category: "file-daemon-client";
-}
-
-interface ConnectedEvent extends BaseEvent {
-  type: "connected";
-}
-interface DisconnectedEvent extends BaseEvent {
-  type: "disconnected";
-}
-interface SyncStartedEvent extends BaseEvent {
-  type: "sync-started";
-}
-
-interface FilesChangedEvent extends BaseEvent {
-  type: "files-changed";
-  args: {
-    modified: string[];
-    removed: string[];
-  };
-}
-
-interface SyncCompleteEvent extends BaseEvent {
-  type: "sync-finished";
-  args: {
-    files: string[];
-  };
-}
-
-function isFileDaemonEvent(data: any): data is FileDaemonEvent {
-  return (
-    "kind" in data &&
-    "clientEvent" in data &&
-    "category" in data.clientEvent &&
-    data.kind === "fs" &&
-    data.clientEvent.category === "file-daemon-client"
-  );
 }

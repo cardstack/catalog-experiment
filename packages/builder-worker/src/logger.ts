@@ -1,7 +1,7 @@
-import { Deferred } from "./deferred";
 import { assertNever } from "shared/util";
-import { ClientEvent } from "./client-event";
+import { Event, dispatchEvent } from "./event-bus";
 
+export const eventGroup = "log-messages";
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
 export function error(message: string, error?: Error): void {
@@ -29,9 +29,6 @@ const levelValue = {
 
 const echoInConsole = false;
 
-export interface LogMessagesClientEvent extends ClientEvent<LogMessage[]> {
-  kind: "log-messages";
-}
 export interface LogMessage {
   level: LogLevel;
   message: string;
@@ -44,8 +41,6 @@ interface LogError {
   message: string;
   stack?: string;
 }
-
-export type LogListener = (messages: LogMessage[]) => void;
 
 export class Logger {
   private static instance: Logger;
@@ -92,7 +87,7 @@ export class Logger {
       };
 
       logger._messages.push(logMessage);
-      logger.dispatchMessage(logMessage);
+      dispatchEvent<LogMessage[]>(eventGroup, [logMessage]);
 
       if (logger.echoInConsole) {
         switch (level) {
@@ -141,22 +136,6 @@ export class Logger {
     return [...Logger.getInstance()._messages]; // prevent mutation of internal state
   }
 
-  static addListener(fn: LogListener) {
-    Logger.getInstance().listeners.add(fn);
-  }
-
-  static removeListener(fn: LogListener) {
-    Logger.getInstance().listeners.delete(fn);
-  }
-
-  static removeAllListeners() {
-    Logger.getInstance().listeners.clear();
-  }
-
-  static messagesFlushed(): Promise<void> {
-    return Logger.getInstance().messagesFlushed();
-  }
-
   static setLogLevel(level: LogLevel) {
     Logger.getInstance().logLevel = level;
   }
@@ -168,59 +147,17 @@ export class Logger {
   logLevel: LogLevel = "debug";
   echoInConsole: boolean;
   private _messages: LogMessage[] = [];
-  private listeners: Set<LogListener> = new Set();
-  private drainMessages?: Deferred<void>;
-  private messageQueue: {
-    message: LogMessage;
-    listener: LogListener;
-  }[] = [];
 
   private constructor(echoInConsole: boolean = false) {
     this.echoInConsole = echoInConsole;
   }
-
-  private messagesFlushed(): Promise<void> {
-    // if you await this and no messages have been logged, we should resolve
-    // immeidately instead of waiting for a message to occur.
-    return this.drainMessages ? this.drainMessages.promise : Promise.resolve();
-  }
-
-  private dispatchMessage(message: LogMessage): void {
-    if (this.listeners.size === 0) {
-      return;
-    }
-
-    for (let listener of this.listeners) {
-      this.messageQueue.push({ message, listener });
-    }
-    (async () => await this.drainMessageQueue())();
-  }
-
-  private async drainMessageQueue(): Promise<void> {
-    await this.messagesFlushed();
-
-    this.drainMessages = new Deferred();
-
-    while (this.messageQueue.length > 0) {
-      let eventArgs = this.messageQueue.shift();
-      if (eventArgs) {
-        let { message, listener } = eventArgs;
-        let dispatched = new Deferred<void>();
-        setTimeout(() => {
-          listener([message]);
-          dispatched.resolve();
-        }, 0);
-        await dispatched.promise;
-      }
-    }
-    this.drainMessages.resolve();
-  }
 }
 
-export function isLogMessagesClientEvent(
-  data: any
-): data is LogMessagesClientEvent {
+export function isLogMessagesEvent(event: any): event is Event<LogMessage[]> {
   return (
-    "kind" in data && data.kind === "log-messages" && "clientEvent" in data
+    "group" in event &&
+    event.group === eventGroup &&
+    "args" in event &&
+    Array.isArray(event.args)
   );
 }

@@ -6,7 +6,13 @@ import {
   Stat,
 } from "../../builder-worker/src/filesystem-drivers/filesystem-driver";
 import { assertURLEndsInDir } from "../../builder-worker/src/path";
-import { FileSystem, eventCategory } from "../../builder-worker/src/filesystem";
+import { dispatchEvent } from "../../builder-worker/src/event-bus";
+import {
+  FileSystem,
+  eventCategory as category,
+  eventGroup,
+  Event as FSEvent,
+} from "../../builder-worker/src/filesystem";
 import { DOMToNodeReadable, NodeReadableToDOM } from "file-daemon/stream-shims";
 import { Readable } from "stream";
 import { ensureDirSync, removeSync, move } from "fs-extra";
@@ -34,13 +40,8 @@ const utf8 = new TextDecoder("utf8");
 export class NodeFileSystemDriver implements FileSystemDriver {
   constructor(private path: string) {}
 
-  async mountVolume(
-    _fs: FileSystem,
-    id: string,
-    url: URL,
-    dispatchEvent: FileSystem["dispatchEvent"]
-  ) {
-    return new NodeVolume(id, this.path, url, dispatchEvent);
+  async mountVolume(_fs: FileSystem, id: string, url: URL) {
+    return new NodeVolume(id, this.path, url);
   }
 }
 
@@ -61,18 +62,8 @@ export function closeAll() {
 export class NodeVolume implements Volume {
   root: NodeDirectoryDescriptor;
 
-  constructor(
-    readonly id: string,
-    rootPath: string,
-    url: URL,
-    private dispatchEvent: FileSystem["dispatchEvent"]
-  ) {
-    this.root = new NodeDirectoryDescriptor(
-      this,
-      url,
-      opendirSync(rootPath),
-      dispatchEvent
-    );
+  constructor(readonly id: string, rootPath: string, url: URL) {
+    this.root = new NodeDirectoryDescriptor(this, url, opendirSync(rootPath));
   }
 
   async createDirectory(parent: NodeDirectoryDescriptor, name: string) {
@@ -85,12 +76,7 @@ export class NodeVolume implements Volume {
     let path = join(parentDir.path, name);
     ensureDirSync(path);
     let url = new URL(name, assertURLEndsInDir(parent.url));
-    return new NodeDirectoryDescriptor(
-      this,
-      url,
-      opendirSync(path),
-      this.dispatchEvent
-    );
+    return new NodeDirectoryDescriptor(this, url, opendirSync(path));
   }
 
   async createFile(parent: NodeDirectoryDescriptor, name: string) {
@@ -102,12 +88,7 @@ export class NodeVolume implements Volume {
     }
     let path = join(parentDir.path, name);
     let url = new URL(name, assertURLEndsInDir(parent.url));
-    return new NodeFileDescriptor(
-      this,
-      url,
-      openSync(path, "w+"),
-      this.dispatchEvent
-    );
+    return new NodeFileDescriptor(this, url, openSync(path, "w+"));
   }
 }
 
@@ -118,8 +99,7 @@ export class NodeDirectoryDescriptor implements DirectoryDescriptor {
   constructor(
     readonly volume: NodeVolume,
     readonly url: URL,
-    private dir: Dir,
-    private dispatchEvent: FileSystem["dispatchEvent"]
+    private dir: Dir
   ) {
     this.inode = String(statSync(dir.path).ino);
     dirs.set(this, dir);
@@ -150,8 +130,7 @@ export class NodeDirectoryDescriptor implements DirectoryDescriptor {
       return new NodeFileDescriptor(
         this.volume,
         new URL(name, assertURLEndsInDir(this.url)),
-        openSync(join(this.dir.path, name), "r+"),
-        this.dispatchEvent
+        openSync(join(this.dir.path, name), "r+")
       );
     }
     return;
@@ -164,8 +143,7 @@ export class NodeDirectoryDescriptor implements DirectoryDescriptor {
       return new NodeDirectoryDescriptor(
         this.volume,
         new URL(name, assertURLEndsInDir(this.url)),
-        opendirSync(join(this.dir.path, name)),
-        this.dispatchEvent
+        opendirSync(join(this.dir.path, name))
       );
     }
     return;
@@ -233,8 +211,7 @@ export class NodeFileDescriptor implements FileDescriptor {
   constructor(
     readonly volume: NodeVolume,
     readonly url: URL,
-    readonly fd: number,
-    private readonly dispatchEvent?: FileSystem["dispatchEvent"]
+    readonly fd: number
   ) {
     this.inode = String(fstatSync(fd).ino);
     openDescriptors.add(fd);
@@ -294,7 +271,11 @@ export class NodeFileDescriptor implements FileDescriptor {
         `bug: should never have a situation where you dont have a buffer or a readable stream when writing to a file`
       );
     }
-    this.dispatchEvent!(eventCategory, this.url, "write"); // all descriptors created for files have this dispatcher
+    dispatchEvent<FSEvent>(eventGroup, {
+      category,
+      href: this.url.href,
+      type: "write",
+    });
   }
 
   async read() {

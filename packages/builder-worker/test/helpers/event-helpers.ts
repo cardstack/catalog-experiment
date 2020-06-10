@@ -1,18 +1,18 @@
+import { Event as FsEvent } from "../../src/filesystem";
 import {
-  FileSystem,
-  EventListener as FSEventListener,
-} from "../../src/filesystem";
+  addEventListener,
+  EventListener,
+  removeEventListener,
+} from "../../src/event-bus";
 
 export async function withListener(
-  fs: FileSystem,
-  origin: URL,
-  listener: FSEventListener,
-  fn: () => Promise<unknown>
+  listener: EventListener<FsEvent>,
+  fn: () => Promise<void>
 ) {
   try {
-    fs.addEventListener(origin, listener);
+    addEventListener(listener);
     await fn();
   } finally {
-    fs.removeEventListener(origin, listener);
+    removeEventListener(listener);
   }
 }

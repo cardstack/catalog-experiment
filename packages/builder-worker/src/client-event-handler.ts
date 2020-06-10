@@ -1,13 +1,11 @@
-import { ClientEvent } from "./client-event";
+import { Event } from "./event-bus";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 
-export class ClientEventHandler<T> {
+export class ClientEventHandler {
   private clientIds: Set<string> = new Set();
 
-  // we use the "kind" property on the client to disambiguate between the
-  // different post message types
-  constructor(private kind: string) {}
+  constructor() {}
 
   addClient(clientId: string) {
     this.clientIds.add(clientId);
@@ -16,16 +14,15 @@ export class ClientEventHandler<T> {
     this.clientIds.delete(clientId);
   }
 
-  async sendEvent(clientId: string, event: T) {
+  async sendEvent<T>(clientId: string, event: Event<T>) {
     let client = await worker.clients.get(clientId);
     if (!client) {
       return;
     }
-    let clientEvent: ClientEvent<T> = { kind: this.kind, clientEvent: event };
-    client.postMessage(clientEvent);
+    client.postMessage(event);
   }
 
-  handleEvent(event: T) {
+  handleEvent(event: Event<unknown>) {
     let self = this;
     (async () => {
       for (let clientId of self.clientIds) {
