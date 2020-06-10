@@ -4,6 +4,7 @@
 // removed.
 
 import { NodePath } from "@babel/traverse";
+import { VariableDeclaration } from "@babel/types";
 import { assertNever } from "shared/util";
 import { ModuleDescription } from "./describe-module";
 
@@ -58,12 +59,7 @@ export class RegionBuilder {
   }
 
   createCodeRegion(path: NodePath): RegionPointer {
-    let { start: absoluteStart, end: absoluteEnd } = path.node;
-    if (absoluteStart == null || absoluteEnd == null) {
-      throw new Error(
-        `bug: do not know how to create code region for ${path.node.type}: missing start/end character positions`
-      );
-    }
+    let { absoluteStart, absoluteEnd } = this.pathAbsoluteRange(path);
     let newRegion: NewRegion = {
       absoluteStart,
       absoluteEnd,
@@ -77,6 +73,30 @@ export class RegionBuilder {
     this.types.set(newRegion.index, path.type);
     this.insertWithin(DocumentPointer, newRegion);
     return newRegion.index;
+  }
+
+  private pathAbsoluteRange(
+    path: NodePath
+  ): { absoluteStart: number; absoluteEnd: number } {
+    let { start: absoluteStart, end: absoluteEnd } = path.node;
+    if (absoluteStart == null || absoluteEnd == null) {
+      throw new Error(
+        `bug: do not know how to create code region for ${path.node.type}: missing start/end character positions`
+      );
+    }
+    // our code regions want to include some "gaps" that babel doesn't.
+    if (path.type === "VariableDeclarator") {
+      let parent = path.parent as VariableDeclaration;
+      let us = parent.declarations.findIndex((n) => n === path.node);
+      if (us === -1) {
+        throw new Error(`bug: couldn't find ourselves`);
+      }
+      let nextSibling = parent.declarations[us + 1];
+      if (nextSibling) {
+        absoluteEnd = nextSibling.start! - 1;
+      }
+    }
+    return { absoluteStart, absoluteEnd };
   }
 
   private getRegion(pointer: InternalRegionPointer): CodeRegion {

@@ -199,6 +199,11 @@ export function describeModule(ast: File): ModuleDescription {
       enter: enterDeclaration,
       exit: exitDeclaration,
     },
+    VariableDeclaration(path) {
+      if (isModuleScopedDeclaration(path as NodePath)) {
+        builder.createCodeRegion(path as NodePath);
+      }
+    },
     VariableDeclarator: {
       enter: enterDeclaration,
       exit: exitDeclaration,

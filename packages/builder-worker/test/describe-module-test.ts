@@ -232,7 +232,7 @@ QUnit.module("describe-module", function () {
     assert.ok(desc.exports.get("default")?.name === "Q");
   });
 
-  test("identifier regions for function declaration", function (assert) {
+  test("renaming a function declaration", function (assert) {
     let { editor } = describeModule(`
       console.log(1);
       function x() {}
@@ -249,7 +249,7 @@ QUnit.module("describe-module", function () {
     );
   });
 
-  test("declaration region for function declaration", function (assert) {
+  test("removing a function declaration", function (assert) {
     let { editor } = describeModule(`
       console.log(1);
       function a() {}
@@ -269,185 +269,6 @@ QUnit.module("describe-module", function () {
       y();
     `
     );
-  });
-
-  test("regions for variable declaration", function (assert) {
-    let { desc } = describeModule(`
-      const a = 1;
-      export { a as b };
-    `);
-    let out = desc.names.get("a")!;
-    assert.ok(out);
-    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 6, 11);
-    assert.equal(out.references.length, 2);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 6, 7);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 28, 29);
-  });
-
-  test("regions for class declaration", function (assert) {
-    let { desc } = describeModule(`
-      class A {};
-      export { A as B };
-    `);
-    let out = desc.names.get("A")!;
-    assert.ok(out);
-    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 0, 10);
-    assert.equal(out.references.length, 2);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 6, 7);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 27, 28);
-  });
-
-  test("regions for import specifier", function (assert) {
-    let { desc } = describeModule(`
-      import { x, y } from 'somewhere';
-      console.log(x);
-    `);
-    let out = desc.names.get("x")!;
-    assert.ok(out);
-    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 9, 10);
-    assert.equal(out.references.length, 2);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 9, 10);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 52, 53);
-  });
-
-  test("regions for renamed import specifier", function (assert) {
-    let { desc } = describeModule(`
-      import { blah as x, y } from 'somewhere';
-      console.log(x);
-    `);
-    let out = desc.names.get("x")!;
-    assert.ok(out);
-    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 9, 18);
-    assert.equal(out.references.length, 2);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 17, 18);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 60, 61);
-  });
-
-  test("regions for default import specifier", function (assert) {
-    let { desc } = describeModule(`
-      import X, { foo } from 'somewhere';
-      console.log(X.bar());
-    `);
-    let out = desc.names.get("X")!;
-    assert.ok(out);
-    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 7, 8);
-    assert.equal(out.references.length, 2);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 7, 8);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 54, 55);
-  });
-
-  test("regions for namespace import specifier", function (assert) {
-    let { desc } = describeModule(`
-      import * as foo from 'somewhere';
-      console.log(foo.bar());
-    `);
-    let out = desc.names.get("foo")!;
-    assert.ok(out);
-    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 7, 15);
-    assert.equal(out.references.length, 2);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 12, 15);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 52, 55);
-  });
-
-  test("region for default export declaration", function (assert) {
-    let { desc } = describeModule(`
-      export default function() {}
-    `);
-    let out = desc.names.get("default")!;
-    assert.ok(out);
-    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 15, 28);
-    assert.equal(out.references.length, 0);
-  });
-
-  test("regions for ObjectPattern LVal", function (assert) {
-    let { desc } = describeModule(`
-      let { a, b: { c } } = foo;
-      export { a as A };
-    `);
-    let out = desc.names.get("a")!;
-    assert.ok(out);
-    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 6, 7);
-    assert.equal(out.references.length, 2);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 6, 7);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 42, 43);
-  });
-
-  test("regions for nested ObjectPattern LVal", function (assert) {
-    let { desc } = describeModule(`
-      let { a, b: { c } } = foo;
-      export { c };
-    `);
-    let out = desc.names.get("c")!;
-    assert.ok(out);
-    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 14, 15);
-    assert.equal(out.references.length, 2);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 14, 15);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 42, 43);
-  });
-
-  test("regions for renamed ObjectPattern LVal", function (assert) {
-    let { desc } = describeModule(`
-      let { a: A, b: { c } } = foo;
-      export { A };
-    `);
-    let out = desc.names.get("A")!;
-    assert.ok(out);
-    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 6, 10);
-    assert.equal(out.references.length, 2);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 9, 10);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 45, 46);
-  });
-
-  test("regions for ArrayPattern LVal", function (assert) {
-    let { desc } = describeModule(`
-      let [ a, { b } ] = foo;
-      export { a };
-    `);
-    let out = desc.names.get("a")!;
-    assert.ok(out);
-    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 6, 7);
-    assert.equal(out.references.length, 2);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 6, 7);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 39, 40);
-  });
-
-  test("regions for nested ArrayPattern LVal", function (assert) {
-    let { desc } = describeModule(`
-      let [ a, [ b ] ] = foo;
-      export { b };
-    `);
-    let out = desc.names.get("b")!;
-    assert.ok(out);
-    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 11, 12);
-    assert.equal(out.references.length, 2);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 11, 12);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 39, 40);
-  });
-
-  test("regions for RestElement LVal", function (assert) {
-    let { desc } = describeModule(`
-      let [ a, ...b ] = foo;
-      export { b };
-    `);
-    let out = desc.names.get("b")!;
-    assert.ok(out);
-    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 9, 13);
-    assert.equal(out.references.length, 2);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 12, 13);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 38, 39);
-  });
-
-  test("regions for nested RestElement LVal", function (assert) {
-    let { desc } = describeModule(`
-      let [ a, ...[b, ...c] ] = foo;
-      export { c };
-    `);
-    let out = desc.names.get("c")!;
-    assert.ok(out);
-    assert.codeRegionAbsoluteRange(desc.regions, out.declaration, 16, 20);
-    assert.equal(out.references.length, 2);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[0], 19, 20);
-    assert.codeRegionAbsoluteRange(desc.regions, out.references[1], 46, 47);
   });
 
   test("pattern in function arguments doesn't create module scoped binding", function (assert) {
@@ -522,6 +343,35 @@ QUnit.module("describe-module", function () {
       `
       const { a: alpha, b: charlie } = foo();
       console.log(alpha, charlie);
+    `
+    );
+  });
+
+  test("removing one variable declaration from a list", function (assert) {
+    let { editor } = describeModule(`
+      let a = 1, b = 2;
+      console.log(b);
+    `);
+    editor.removeDeclaration("a");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let b = 2;
+      console.log(b);
+    `
+    );
+  });
+
+  test("removing all variable declarations", function (assert) {
+    let { editor } = describeModule(`
+      let a = 1;
+      console.log(2);
+    `);
+    editor.removeDeclaration("a");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      console.log(2);
     `
     );
   });
