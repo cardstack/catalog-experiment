@@ -29,7 +29,7 @@ export function isNamespaceMarker(
 export interface ModuleDescription {
   imports: ImportDescription[];
 
-  // all the names we export, and where they come fromn
+  // all the names we export, and where they come from
   exports: Map<
     string,
     // comes from a local binding with this name. You can look it up in `names`.

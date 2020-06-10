@@ -5,6 +5,7 @@
 
 import { NodePath } from "@babel/traverse";
 import { assertNever } from "shared/util";
+import { ModuleDescription } from "./describe-module";
 
 export type RegionPointer = number;
 
@@ -314,25 +315,30 @@ export class RegionEditor {
   private cursor = 0;
   private output: string[] = [];
 
-  constructor(
-    private src: string,
-    private regions: CodeRegion[],
-    private topRegion: RegionPointer | undefined
-  ) {
-    this.dispositions = regions.map(() => ({
+  constructor(private src: string, private desc: ModuleDescription) {
+    this.dispositions = desc.regions.map(() => ({
       state: "unchanged",
     }));
   }
-  replace(region: RegionPointer, replacement: string): void {
+  rename(oldName: string, newName: string) {
+    let nameDesc = this.desc.names.get(oldName);
+    if (!nameDesc) {
+      throw new Error(`tried to rename unknown name ${oldName}`);
+    }
+    for (let region of nameDesc.references) {
+      this.replace(region, newName);
+    }
+  }
+  private replace(region: RegionPointer, replacement: string): void {
     this.dispositions[region] = { state: "replaced", replacement };
   }
   serialize(): string {
-    if (this.regions.length === 0) {
+    if (this.desc.regions.length === 0) {
       return this.src;
     }
     this.cursor = 0;
     this.output = [];
-    this.forAllSiblings(this.topRegion, (region) => {
+    this.forAllSiblings(this.desc.topRegion, (region) => {
       this.innerSerialize(region);
     });
     this.output.push(this.src.slice(this.cursor));
@@ -340,7 +346,7 @@ export class RegionEditor {
   }
 
   private innerSerialize(regionPointer: RegionPointer) {
-    let region = this.regions[regionPointer];
+    let region = this.desc.regions[regionPointer];
 
     // we're responsible for emitting the piece of our parent that falls before
     // us and after the previous child.
@@ -377,7 +383,7 @@ export class RegionEditor {
   }
 
   private skip(regionPointer: RegionPointer) {
-    let region = this.regions[regionPointer];
+    let region = this.desc.regions[regionPointer];
     if (region.firstChild != null) {
       this.forAllSiblings(region.firstChild, (r) => this.skip(r));
     }
@@ -394,7 +400,7 @@ export class RegionEditor {
     let current: number | undefined = regionPointer;
     while (current != null) {
       fn(current);
-      current = this.regions[current].nextSibling;
+      current = this.desc.regions[current].nextSibling;
     }
   }
 }

@@ -8,12 +8,19 @@ import { parse } from "@babel/core";
 
 const { test } = QUnit;
 
-function describeModule(js: string): ModuleDescription {
-  let parsed = parse(js.trim());
+function describeModule(
+  js: string
+): { desc: ModuleDescription; editor: RegionEditor } {
+  js = js.trim();
+  let parsed = parse(js);
   if (parsed?.type !== "File") {
     throw new Error(`unexpected babel output`);
   }
-  return astDescribeModule(parsed);
+  let desc = astDescribeModule(parsed);
+  return {
+    desc,
+    editor: new RegionEditor(js, desc),
+  };
 }
 
 function codeRegionAbsoluteRange(
@@ -48,35 +55,6 @@ function codeRegionAbsoluteRange(
 }
 QUnit.assert.codeRegionAbsoluteRange = codeRegionAbsoluteRange;
 
-function absoluteStart(
-  regions: CodeRegion[],
-  regionPointer: RegionPointer
-): number {
-  let region = regions[regionPointer];
-  if (region.previousSibling) {
-    return absoluteStart(regions, region.previousSibling) + region.start;
-  }
-  if (region.parent) {
-    return absoluteStart(regions, region.parent) + region.start;
-  }
-  return region.start;
-}
-
-function absoluteEnd(
-  regions: CodeRegion[],
-  regionPointer: RegionPointer
-): number {
-  let region = regions[regionPointer];
-  if (region.children.length > 0) {
-    return (
-      absoluteEnd(regions, region.children[region.children.length - 1]) +
-      region.end
-    );
-  } else {
-    return absoluteStart(regions, regionPointer) + region.end;
-  }
-}
-
 declare global {
   interface Assert {
     codeRegionAbsoluteRange: typeof codeRegionAbsoluteRange;
@@ -85,7 +63,7 @@ declare global {
 
 QUnit.module("describe-module", function () {
   test("pure reexport examples", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       export { foo } from './bar';
       export { x as y } from './baz';
       function bar() {};
@@ -112,7 +90,7 @@ QUnit.module("describe-module", function () {
   });
 
   test("export name is different than module-scoped name", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       const a = 1;
       export { a as b };
     `);
@@ -126,7 +104,7 @@ QUnit.module("describe-module", function () {
   });
 
   test("default export function", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
     export default function x() {}
   `);
     assert.deepEqual(desc.exports.get("default"), { type: "local", name: "x" });
@@ -134,7 +112,7 @@ QUnit.module("describe-module", function () {
   });
 
   test("default export class", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
     export default class x {}
   `);
     assert.deepEqual(desc.exports.get("default"), { type: "local", name: "x" });
@@ -142,7 +120,7 @@ QUnit.module("describe-module", function () {
   });
 
   test("default export with no local name", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
     export default foo();
   `);
     assert.deepEqual(desc.exports.get("default"), {
@@ -153,7 +131,7 @@ QUnit.module("describe-module", function () {
   });
 
   test("imported names are discovered", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       import { x } from 'somewhere';
     `);
     let out = desc.names.get("x");
@@ -165,7 +143,7 @@ QUnit.module("describe-module", function () {
   });
 
   test("imported namespace are discovered", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       import * as x from 'somewhere';
     `);
     let out = desc.names.get("x");
@@ -177,7 +155,7 @@ QUnit.module("describe-module", function () {
   });
 
   test("default imported names are discovered", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       import x from 'somewhere';
     `);
     let out = desc.names.get("x");
@@ -189,14 +167,14 @@ QUnit.module("describe-module", function () {
   });
 
   test("local names are discovered", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       function x() {}
     `);
     assert.equal(desc.names.get("x")?.type, "local");
   });
 
   test("local function is used by export", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       function x() {}
       export function y() {
         return x();
@@ -210,7 +188,7 @@ QUnit.module("describe-module", function () {
   });
 
   test("local function is used by module", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       function x() {}
       x();
     `);
@@ -222,7 +200,7 @@ QUnit.module("describe-module", function () {
   });
 
   test("local function is used by default export", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       function x() {}
       export default class Q {
         constructor() {
@@ -240,7 +218,7 @@ QUnit.module("describe-module", function () {
   });
 
   test("regions for function declaration", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       console.log(1);
       function x() {}
       x();
@@ -271,7 +249,7 @@ QUnit.module("describe-module", function () {
   });
 
   test("regions for variable declaration", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       const a = 1;
       export { a as b };
     `);
@@ -284,7 +262,7 @@ QUnit.module("describe-module", function () {
   });
 
   test("regions for class declaration", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       class A {};
       export { A as B };
     `);
@@ -297,7 +275,7 @@ QUnit.module("describe-module", function () {
   });
 
   test("regions for import specifier", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       import { x, y } from 'somewhere';
       console.log(x);
     `);
@@ -310,7 +288,7 @@ QUnit.module("describe-module", function () {
   });
 
   test("regions for renamed import specifier", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       import { blah as x, y } from 'somewhere';
       console.log(x);
     `);
@@ -323,7 +301,7 @@ QUnit.module("describe-module", function () {
   });
 
   test("regions for default import specifier", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       import X, { foo } from 'somewhere';
       console.log(X.bar());
     `);
@@ -336,7 +314,7 @@ QUnit.module("describe-module", function () {
   });
 
   test("regions for namespace import specifier", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       import * as foo from 'somewhere';
       console.log(foo.bar());
     `);
@@ -349,7 +327,7 @@ QUnit.module("describe-module", function () {
   });
 
   test("region for default export declaration", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       export default function() {}
     `);
     let out = desc.names.get("default")!;
@@ -359,7 +337,7 @@ QUnit.module("describe-module", function () {
   });
 
   test("regions for ObjectPattern LVal", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       let { a, b: { c } } = foo;
       export { a as A };
     `);
@@ -372,7 +350,7 @@ QUnit.module("describe-module", function () {
   });
 
   test("regions for nested ObjectPattern LVal", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       let { a, b: { c } } = foo;
       export { c };
     `);
@@ -385,7 +363,7 @@ QUnit.module("describe-module", function () {
   });
 
   test("regions for renamed ObjectPattern LVal", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       let { a: A, b: { c } } = foo;
       export { A };
     `);
@@ -398,7 +376,7 @@ QUnit.module("describe-module", function () {
   });
 
   test("regions for ArrayPattern LVal", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       let [ a, { b } ] = foo;
       export { a };
     `);
@@ -411,7 +389,7 @@ QUnit.module("describe-module", function () {
   });
 
   test("regions for nested ArrayPattern LVal", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       let [ a, [ b ] ] = foo;
       export { b };
     `);
@@ -424,7 +402,7 @@ QUnit.module("describe-module", function () {
   });
 
   test("regions for RestElement LVal", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       let [ a, ...b ] = foo;
       export { b };
     `);
@@ -437,7 +415,7 @@ QUnit.module("describe-module", function () {
   });
 
   test("regions for nested RestElement LVal", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       let [ a, ...[b, ...c] ] = foo;
       export { c };
     `);
@@ -450,14 +428,14 @@ QUnit.module("describe-module", function () {
   });
 
   test("pattern in function arguments doesn't create module scoped binding", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       function x({ a }) {}
     `);
     assert.ok(!desc.names.has("a"));
   });
 
   test("function default arguments consume other bindings", function (assert) {
-    let desc = describeModule(`
+    let { desc } = describeModule(`
       let a = 1;
       function x(a=a) {}
     `);
@@ -466,24 +444,16 @@ QUnit.module("describe-module", function () {
   });
 
   test("code regions for an imported name can be used to replace it", function (assert) {
-    let src = `
+    let { editor } = describeModule(`
       import { a, b as c, d as d } from "lib";
       export default function(a) {
         console.log(a);
       }
       console.log(a, c, d);
-    `.trim();
-    let desc = describeModule(src);
-    let editor = new RegionEditor(src, desc.regions, desc.topRegion);
-    for (let region of desc.names.get("a")!.references) {
-      editor.replace(region, "alpha");
-    }
-    for (let region of desc.names.get("c")!.references) {
-      editor.replace(region, "charlie");
-    }
-    for (let region of desc.names.get("d")!.references) {
-      editor.replace(region, "delta");
-    }
+    `);
+    editor.rename("a", "alpha");
+    editor.rename("c", "charlie");
+    editor.rename("d", "delta");
     assert.codeEqual(
       editor.serialize(),
       `
@@ -497,18 +467,14 @@ QUnit.module("describe-module", function () {
   });
 
   test("code regions for a local variable can be used to replace it", function (assert) {
-    let src = `
+    let { editor } = describeModule(`
       const a = 1;
       export default function(a) {
         console.log(a);
       }
       console.log(a);
-    `.trim();
-    let desc = describeModule(src);
-    let editor = new RegionEditor(src, desc.regions, desc.topRegion);
-    for (let region of desc.names.get("a")!.references) {
-      editor.replace(region, "alpha");
-    }
+    `);
+    editor.rename("a", "alpha");
     assert.codeEqual(
       editor.serialize(),
       `
@@ -522,18 +488,12 @@ QUnit.module("describe-module", function () {
   });
 
   test("code regions for a variable declared within an object pattern can be used to replace it", function (assert) {
-    let src = `
+    let { editor } = describeModule(`
       const { a, b: c } = foo();
       console.log(a, c);
-    `.trim();
-    let desc = describeModule(src);
-    let editor = new RegionEditor(src, desc.regions, desc.topRegion);
-    for (let region of desc.names.get("a")!.references) {
-      editor.replace(region, "alpha");
-    }
-    for (let region of desc.names.get("c")!.references) {
-      editor.replace(region, "charlie");
-    }
+    `);
+    editor.rename("a", "alpha");
+    editor.rename("c", "charlie");
     assert.codeEqual(
       editor.serialize(),
       `
