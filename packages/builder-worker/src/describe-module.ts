@@ -210,6 +210,7 @@ export function describeModule(ast: File): ModuleDescription {
       enter: enterDeclaration,
       exit: exitDeclaration,
     },
+    AssignmentPattern: handlePossibleLVal,
     ObjectPattern: handlePossibleLVal,
     ArrayPattern: handlePossibleLVal,
     RestElement: handlePossibleLVal,
@@ -488,6 +489,11 @@ function declarationForIdentifier(
       return false;
     case "RestElement":
       if (path.parent.argument === path.node) {
+        return path.parentPath;
+      }
+      return false;
+    case "AssignmentPattern":
+      if (path.parent.left === path.node) {
         return path.parentPath;
       }
       return false;

@@ -309,6 +309,39 @@ QUnit.module("describe-module", function () {
     );
   });
 
+  test("code regions for a variable assign via an LVal AssignmentPattern can be used to replace it", function (assert) {
+    let { editor } = describeModule(`
+      const { a, b = a } = foo();
+      console.log(a, b);
+    `);
+    editor.rename("a", "alpha");
+    editor.rename("b", "bravo");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      const { a: alpha, b: bravo = alpha } = foo();
+      console.log(alpha, bravo);
+    `
+    );
+  });
+
+  test("code regions for a MemberExpression can be used to replace it", function (assert) {
+    let { editor } = describeModule(`
+      const bar = makeBar();
+      const { a, b = bar.blah } = foo();
+      console.log(a, bar.blurb);
+    `);
+    editor.rename("bar", "bleep");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      const bleep = makeBar();
+      const { a, b = bleep.blah } = foo();
+      console.log(a, bleep.blurb);
+    `
+    );
+  });
+
   test("removing one variable declaration from a list", function (assert) {
     let { editor } = describeModule(`
       let a = 1, b = 2;
@@ -442,8 +475,33 @@ QUnit.module("describe-module", function () {
     );
   });
 
-  // TODO removing all variable declarations does not remove side effectful right side (or maybe that is better handled in combine modules?)
+  test("removing a variable declaration in an AssignmentPattern LVal", function (assert) {
+    let { editor } = describeModule(`
+      let { x, y = 1 } = foo;
+      console.log(2);
+    `);
+    editor.removeDeclaration("y");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let { x } = foo;
+      console.log(2);
+    `
+    );
+  });
 
-  // TODO AssignmentPattern LVal tests:
-  //   const { name, nickname = name } = person; // LVal declares and consumes a binding
+  test("removing a variable declaration in a nested AssignmentPattern LVal", function (assert) {
+    let { editor } = describeModule(`
+      let { x, b: [ y = 1 ] } = foo;
+      console.log(2);
+    `);
+    editor.removeDeclaration("y");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let { x } = foo;
+      console.log(2);
+    `
+    );
+  });
 });
