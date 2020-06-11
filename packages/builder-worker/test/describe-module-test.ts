@@ -325,6 +325,21 @@ QUnit.module("describe-module", function () {
     );
   });
 
+  test("code regions for a variable assign via an LVal AssignmentPattern with shorthand can be used to replace it", function (assert) {
+    let { editor } = describeModule(`
+      const { a, b: bravo = a } = foo();
+      console.log(a, bravo);
+    `);
+    editor.rename("bravo", "b");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      const { a, b = a } = foo();
+      console.log(a, b);
+    `
+    );
+  });
+
   test("code regions for a MemberExpression can be used to replace it", function (assert) {
     let { editor } = describeModule(`
       const bar = makeBar();

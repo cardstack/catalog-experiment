@@ -496,13 +496,12 @@ function shorthandMode(path: NodePath): PathFacts["shorthand"] {
     return "import";
   }
   if (
-    (path.type === "Identifier" &&
-      path.parent.type === "ObjectProperty" &&
-      path.parent.shorthand) ||
-    (path.parent.type === "AssignmentPattern" &&
-      path.parent.left === path.node &&
-      path.parentPath.parent.type === "ObjectProperty" &&
-      path.parentPath.parent.shorthand)
+    path.type === "Identifier" &&
+    ((path.parent.type === "ObjectProperty" && path.parent.shorthand) ||
+      (path.parent.type === "AssignmentPattern" &&
+        path.parent.left === path.node &&
+        path.parentPath.parent.type === "ObjectProperty" &&
+        path.parentPath.parent.shorthand))
   ) {
     return "object";
   }
