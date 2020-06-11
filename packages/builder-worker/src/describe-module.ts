@@ -167,10 +167,12 @@ export function describeModule(ast: File): ModuleDescription {
   const handlePossibleLVal = {
     enter(path: DuckPath) {
       if (
-        path.parentPath === currentModuleScopedDeclaration?.path &&
-        currentModuleScopedDeclaration.path.node.id === path.node
+        (path.parentPath === currentModuleScopedDeclaration?.path &&
+          currentModuleScopedDeclaration?.path.node.id === path.node) ||
+        currentModuleScopedDeclaration?.withinLVal === path.parentPath
       ) {
-        currentModuleScopedDeclaration.withinLVal = path;
+        currentModuleScopedDeclaration!.withinLVal = path;
+        builder.createCodeRegion(path as NodePath);
       }
     },
     exit(path: DuckPath) {
@@ -210,6 +212,15 @@ export function describeModule(ast: File): ModuleDescription {
     },
     ObjectPattern: handlePossibleLVal,
     ArrayPattern: handlePossibleLVal,
+    RestElement: handlePossibleLVal,
+    // ObjectProperty is not an LVal, so we don't want to use
+    // handlePossibleLVal, but we are interested in making a code region for it,
+    // since it composes an LVal
+    ObjectProperty(path) {
+      if (currentModuleScopedDeclaration?.withinLVal === path.parentPath) {
+        builder.createCodeRegion(path as NodePath);
+      }
+    },
     Identifier(path) {
       if (currentModuleScopedDeclaration?.withinLVal) {
         let declaration = declarationForIdentifier(path);

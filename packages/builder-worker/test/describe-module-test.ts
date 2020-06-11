@@ -3,7 +3,7 @@ import {
   ModuleDescription,
   NamespaceMarker,
 } from "../src/describe-module";
-import { CodeRegion, RegionPointer, RegionEditor } from "../src/code-region";
+import { RegionEditor } from "../src/code-region";
 import { parse } from "@babel/core";
 
 const { test } = QUnit;
@@ -21,44 +21,6 @@ function describeModule(
     desc,
     editor: new RegionEditor(js, desc),
   };
-}
-
-function codeRegionAbsoluteRange(
-  this: Assert,
-  regions: CodeRegion[],
-  regionPointer: RegionPointer,
-  expectedStart: number,
-  expectedEnd: number,
-  label = "region"
-) {
-  this.pushResult({
-    result: true,
-    message: "skipped",
-    actual: 1,
-    expected: 1,
-  });
-  return;
-  let actualStart = absoluteStart(regions, regionPointer);
-  let actualEnd = absoluteEnd(regions, regionPointer);
-  this.pushResult({
-    result: actualStart === expectedStart,
-    actual: actualStart,
-    expected: expectedStart,
-    message: `${label} start`,
-  });
-  this.pushResult({
-    result: actualEnd === expectedEnd,
-    actual: actualEnd,
-    expected: expectedEnd,
-    message: `${label} end`,
-  });
-}
-QUnit.assert.codeRegionAbsoluteRange = codeRegionAbsoluteRange;
-
-declare global {
-  interface Assert {
-    codeRegionAbsoluteRange: typeof codeRegionAbsoluteRange;
-  }
 }
 
 QUnit.module("describe-module", function () {
@@ -375,4 +337,113 @@ QUnit.module("describe-module", function () {
     `
     );
   });
+
+  test("removing all variable declarations in an LVal", function (assert) {
+    let { editor } = describeModule(`
+      let [ ...{ ...a } ] = foo;
+      console.log(2);
+    `);
+    editor.removeDeclaration("a");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      console.log(2);
+    `
+    );
+  });
+
+  test("removing a renamed variable declaration in an ObjectPattern LVal", function (assert) {
+    let { editor } = describeModule(`
+      let { x, y: a } = foo;
+      console.log(2);
+    `);
+    editor.removeDeclaration("a");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let { x } = foo;
+      console.log(2);
+    `
+    );
+  });
+
+  test("removing a variable declaration in a nested ObjectPattern LVal", function (assert) {
+    let { editor } = describeModule(`
+      let { x, y: { a } } = foo;
+      console.log(2);
+    `);
+    editor.removeDeclaration("a");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let { x } = foo;
+      console.log(2);
+    `
+    );
+  });
+
+  test("removing a variable declaration in an ArrayPattern LVal", function (assert) {
+    let { editor } = describeModule(`
+      let [ x, y ] = foo;
+      console.log(2);
+    `);
+    editor.removeDeclaration("x");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let [ , y ] = foo;
+      console.log(2);
+    `
+    );
+  });
+
+  test("removing a variable declaration in a nested ArrayPattern LVal", function (assert) {
+    let { editor } = describeModule(`
+      let [ x, [ a ] ] = foo;
+      console.log(2);
+    `);
+    editor.removeDeclaration("a");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let [ x ] = foo;
+      console.log(2);
+    `
+    );
+  });
+
+  test("removing a variable declaration in a RestElement LVal", function (assert) {
+    let { editor } = describeModule(`
+      let [ x, ...y ] = foo;
+      console.log(2);
+    `);
+    editor.removeDeclaration("y");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let [ x ] = foo;
+      console.log(2);
+    `
+    );
+  });
+
+  test("removing a variable declaration in a nested RestElement LVal", function (assert) {
+    let { editor } = describeModule(`
+      let [ x, ...[ ...y ]] = foo;
+      console.log(2);
+    `);
+    editor.removeDeclaration("y");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let [ x ] = foo;
+      console.log(2);
+    `
+    );
+  });
+
+  // TODO removing all variable declarations does not remove side effectful right side (or maybe that is better handled in combine modules?)
+
+  // TODO AssignmentPattern LVal tests:
+  //   const { name, nickname = name } = person; // LVal declares and consumes a binding
 });

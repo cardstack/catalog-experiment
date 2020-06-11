@@ -24,7 +24,7 @@ interface NewRegion {
   pathFacts: PathFacts;
 }
 
-type Position = "before" | "within" | "around" | "after";
+type Position = "before" | "within" | "around" | "after" | "same";
 
 export class RegionBuilder {
   regions: CodeRegion[] = [];
@@ -127,6 +127,9 @@ export class RegionBuilder {
           return;
         case "within":
           this.insertWithin(child, newRegion);
+          return;
+        case "same":
+          newRegion.index = child;
           return;
         case "after":
           prevChild = child;
@@ -273,7 +276,9 @@ export class RegionBuilder {
       // we say the ObjectProperty is "around" the Identifier and not "within".
       let newType = this.types.get(newRegion.index);
       let otherType = this.types.get(other);
-      if (newType === "Identifier") {
+      if (newType === otherType) {
+        return "same";
+      } else if (newType === "Identifier") {
         return "within";
       } else if (otherType === "Identifier") {
         return "around";
@@ -326,14 +331,15 @@ export interface CodeRegion {
   shorthand: "import" | "export" | "object" | false;
 }
 
+type Disposition =
+  | {
+      state: "unchanged";
+    }
+  | { state: "removed" }
+  | { state: "replaced"; replacement: string };
+
 export class RegionEditor {
-  private dispositions: (
-    | {
-        state: "unchanged";
-      }
-    | { state: "removed" }
-    | { state: "replaced"; replacement: string }
-  )[];
+  private dispositions: Disposition[];
 
   private cursor = 0;
   private output: string[] = [];
@@ -375,7 +381,7 @@ export class RegionEditor {
     return this.output.join("");
   }
 
-  private innerSerialize(regionPointer: RegionPointer) {
+  private innerSerialize(regionPointer: RegionPointer): Disposition["state"] {
     let region = this.desc.regions[regionPointer];
 
     // we're responsible for emitting the piece of our parent that falls before
@@ -387,18 +393,29 @@ export class RegionEditor {
     switch (disposition.state) {
       case "removed":
         this.skip(regionPointer);
-        break;
+        return disposition.state;
       case "replaced":
         this.handleReplace(region, disposition.replacement);
         this.skip(regionPointer);
-        break;
+        return disposition.state;
       case "unchanged":
         if (region.firstChild != null) {
-          this.forAllSiblings(region.firstChild, (r) => this.innerSerialize(r));
+          let childDispositions: Disposition["state"][] = [];
+          this.forAllSiblings(region.firstChild, (r) =>
+            childDispositions.push(this.innerSerialize(r))
+          );
+          if (childDispositions.every((d) => d === "removed")) {
+            // need to remove our code that was pushed by our removed children
+            // (removed children push their parent's code up to the their start)
+            // and advance the cursor to the end of this region.
+            this.output.pop();
+            this.cursor += region.end;
+            return "removed";
+          }
         }
         this.output.push(this.src.slice(this.cursor, this.cursor + region.end));
         this.cursor += region.end;
-        break;
+        return disposition.state;
       default:
         throw assertNever(disposition);
     }
