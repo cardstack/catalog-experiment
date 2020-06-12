@@ -6,7 +6,7 @@ import {
 import { RegionEditor } from "../src/code-region";
 import { parse } from "@babel/core";
 
-const { test } = QUnit;
+const { test, skip } = QUnit;
 
 function describeModule(
   js: string
@@ -194,6 +194,19 @@ QUnit.module("describe-module", function () {
     assert.ok(desc.exports.get("default")?.name === "Q");
   });
 
+  skip("variables consumed in LVal", function (assert) {
+    let { desc } = describeModule(`
+      let a = foo();
+      let { x = a, y = x } = bar();
+    `);
+    let out = desc.names.get("x")!;
+    assert.ok(out.dependsOn.has("a"));
+
+    out = desc.names.get("y")!;
+    assert.ok(out.dependsOn.has("x"));
+    assert.notOk(out.dependsOn.has("a"));
+  });
+
   test("renaming a function declaration", function (assert) {
     let { editor } = describeModule(`
       console.log(1);
@@ -305,6 +318,69 @@ QUnit.module("describe-module", function () {
       `
       const { a: alpha, b: charlie } = foo();
       console.log(alpha, charlie);
+    `
+    );
+  });
+
+  test("code regions for a variable assign via an LVal AssignmentPattern can be used to replace it", function (assert) {
+    let { editor } = describeModule(`
+      const { a, b = a } = foo();
+      console.log(a, b);
+    `);
+    editor.rename("a", "alpha");
+    editor.rename("b", "bravo");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      const { a: alpha, b: bravo = alpha } = foo();
+      console.log(alpha, bravo);
+    `
+    );
+  });
+
+  test("code regions for a variable assign via an LVal AssignmentPattern with shorthand can be used to replace it", function (assert) {
+    let { editor } = describeModule(`
+      const { a, b: bravo = a } = foo();
+      console.log(a, bravo);
+    `);
+    editor.rename("bravo", "b");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      const { a, b = a } = foo();
+      console.log(a, b);
+    `
+    );
+  });
+
+  test("code regions for a MemberExpression can be used to replace it", function (assert) {
+    let { editor } = describeModule(`
+      const bar = makeBar();
+      const { a, b = bar.blah } = foo();
+      console.log(a, bar.blurb);
+    `);
+    editor.rename("bar", "bleep");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      const bleep = makeBar();
+      const { a, b = bleep.blah } = foo();
+      console.log(a, bleep.blurb);
+    `
+    );
+  });
+
+  test("code regions for nested ObjectPattern can be used to replace it", function (assert) {
+    let { editor } = describeModule(`
+      let [{ x }, { y }] = bar();
+      console.log(y);
+    `);
+    editor.rename("y", "yas");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let [{ x }, { y: yas }] = bar();
+      console.log(yas);
     `
     );
   });
@@ -442,8 +518,33 @@ QUnit.module("describe-module", function () {
     );
   });
 
-  // TODO removing all variable declarations does not remove side effectful right side (or maybe that is better handled in combine modules?)
+  test("removing a variable declaration in an AssignmentPattern LVal", function (assert) {
+    let { editor } = describeModule(`
+      let { x, y = 1 } = foo;
+      console.log(2);
+    `);
+    editor.removeDeclaration("y");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let { x } = foo;
+      console.log(2);
+    `
+    );
+  });
 
-  // TODO AssignmentPattern LVal tests:
-  //   const { name, nickname = name } = person; // LVal declares and consumes a binding
+  test("removing a variable declaration in a nested AssignmentPattern LVal", function (assert) {
+    let { editor } = describeModule(`
+      let { x, b: [ y = 1 ] } = foo;
+      console.log(2);
+    `);
+    editor.removeDeclaration("y");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let { x } = foo;
+      console.log(2);
+    `
+    );
+  });
 });

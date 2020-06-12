@@ -11,6 +11,7 @@ import { ModuleDescription } from "./describe-module";
 export type RegionPointer = number;
 
 const DocumentPointer = { isDocumentPointer: true };
+const lvalTypes = ["ObjectProperty", "ArrayPattern", "RestElement"];
 type InternalRegionPointer = RegionPointer | typeof DocumentPointer;
 
 // the parts of a CodeRegion that we can determine independent of its location,
@@ -282,6 +283,18 @@ export class RegionBuilder {
         return "within";
       } else if (otherType === "Identifier") {
         return "around";
+      } else if (
+        newType === "AssignmentPattern" &&
+        otherType &&
+        lvalTypes.includes(otherType)
+      ) {
+        return "within";
+      } else if (
+        newType &&
+        lvalTypes.includes(newType) &&
+        otherType === "AssignmentPattern"
+      ) {
+        return "around";
       }
       throw new Error(
         `don't know how to break ties between ${newType} and ${otherType}`
@@ -488,8 +501,11 @@ function shorthandMode(path: NodePath): PathFacts["shorthand"] {
   }
   if (
     path.type === "Identifier" &&
-    path.parent.type === "ObjectProperty" &&
-    path.parent.shorthand
+    ((path.parent.type === "ObjectProperty" && path.parent.shorthand) ||
+      (path.parent.type === "AssignmentPattern" &&
+        path.parent.left === path.node &&
+        path.parentPath.parent.type === "ObjectProperty" &&
+        path.parentPath.parent.shorthand))
   ) {
     return "object";
   }
