@@ -194,6 +194,18 @@ QUnit.module("describe-module", function () {
     assert.ok(desc.exports.get("default")?.name === "Q");
   });
 
+  test("variables consumed in LVal", function (assert) {
+    let { desc } = describeModule(`
+      let a = foo();
+      let { x = a, y = x } = bar();
+    `);
+    let out = desc.names.get("x")!;
+    assert.ok(out.dependsOn.has("a"));
+
+    out = desc.names.get("y")!;
+    assert.ok(out.dependsOn.has("x"));
+  });
+
   test("renaming a function declaration", function (assert) {
     let { editor } = describeModule(`
       console.log(1);
@@ -353,6 +365,21 @@ QUnit.module("describe-module", function () {
       const bleep = makeBar();
       const { a, b = bleep.blah } = foo();
       console.log(a, bleep.blurb);
+    `
+    );
+  });
+
+  test("code regions for nested ObjectPattern can be used to replace it", function (assert) {
+    let { editor } = describeModule(`
+      let [{ x }, { y }] = bar();
+      console.log(y);
+    `);
+    editor.rename("y", "yas");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let [{ x }, { y: yas }] = bar();
+      console.log(yas);
     `
     );
   });
