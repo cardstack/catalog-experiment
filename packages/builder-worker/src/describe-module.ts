@@ -171,8 +171,13 @@ export function describeModule(ast: File): ModuleDescription {
           currentModuleScopedDeclaration?.path.node.id === path.node) ||
         currentModuleScopedDeclaration?.withinLVal === path.parentPath
       ) {
-        currentModuleScopedDeclaration!.withinLVal = path;
         builder.createCodeRegion(path as NodePath);
+      }
+      if (
+        path.parentPath === currentModuleScopedDeclaration?.path &&
+        currentModuleScopedDeclaration?.path.node.id === path.node
+      ) {
+        currentModuleScopedDeclaration.withinLVal = path;
       }
     },
     exit(path: DuckPath) {
