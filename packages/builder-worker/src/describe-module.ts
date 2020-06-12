@@ -55,6 +55,7 @@ export interface NameDescription {
   usedByModule: boolean;
 
   declaration: RegionPointer;
+  declarationSideEffects: RegionPointer | undefined;
   references: RegionPointer[];
 }
 

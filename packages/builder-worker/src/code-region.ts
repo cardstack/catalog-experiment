@@ -344,7 +344,11 @@ export class RegionEditor {
   private cursor = 0;
   private output: string[] = [];
 
-  constructor(private src: string, private desc: ModuleDescription) {
+  constructor(
+    private src: string,
+    private desc: ModuleDescription,
+    unusedNameLike: (name: string) => string
+  ) {
     this.dispositions = desc.regions.map(() => ({
       state: "unchanged",
     }));
