@@ -6,7 +6,7 @@ import {
 import { RegionEditor } from "../src/code-region";
 import { parse } from "@babel/core";
 
-const { test } = QUnit;
+const { test, skip } = QUnit;
 
 function describeModule(
   js: string
@@ -194,7 +194,7 @@ QUnit.module("describe-module", function () {
     assert.ok(desc.exports.get("default")?.name === "Q");
   });
 
-  test("variables consumed in LVal", function (assert) {
+  skip("variables consumed in LVal", function (assert) {
     let { desc } = describeModule(`
       let a = foo();
       let { x = a, y = x } = bar();
@@ -204,6 +204,7 @@ QUnit.module("describe-module", function () {
 
     out = desc.names.get("y")!;
     assert.ok(out.dependsOn.has("x"));
+    assert.notOk(out.dependsOn.has("a"));
   });
 
   test("renaming a function declaration", function (assert) {
