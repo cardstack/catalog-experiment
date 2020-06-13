@@ -4,19 +4,18 @@
 // removed.
 
 import { NodePath } from "@babel/traverse";
-import { VariableDeclaration } from "@babel/types";
+import { Program } from "@babel/types";
 import { assertNever } from "shared/util";
 import { ModuleDescription } from "./describe-module";
 
 export type RegionPointer = number;
 
-const DocumentPointer = { isDocumentPointer: true };
+const documentPointer = 0;
 const lvalTypes = ["ObjectProperty", "ArrayPattern", "RestElement"];
-type InternalRegionPointer = RegionPointer | typeof DocumentPointer;
 
 // the parts of a CodeRegion that we can determine independent of its location,
 // based only on its own NodePath.
-type PathFacts = Pick<CodeRegion, "shorthand">;
+type PathFacts = Pick<CodeRegion, "shorthand" | "preserveGaps">;
 
 interface NewRegion {
   absoluteStart: number;
@@ -29,34 +28,28 @@ type Position = "before" | "within" | "around" | "after" | "same";
 
 export class RegionBuilder {
   regions: CodeRegion[] = [];
-  get top(): RegionPointer | undefined {
-    return this.documentRegion.firstChild;
-  }
-
-  private documentRegion: CodeRegion;
   private absoluteRanges: Map<
-    InternalRegionPointer,
+    RegionPointer,
     { start: number; end: number }
   > = new Map();
-  private types: Map<InternalRegionPointer, string> = new Map();
+  private types: Map<RegionPointer, string> = new Map();
 
-  constructor() {
-    this.documentRegion = {
+  constructor(programPath: NodePath<Program>) {
+    let path = programPath as NodePath;
+    let { absoluteStart, absoluteEnd } = this.pathAbsoluteRange(path);
+    this.absoluteRanges.set(documentPointer, {
+      start: absoluteStart,
+      end: absoluteEnd,
+    });
+    this.types.set(documentPointer, path.type);
+    this.regions.push({
       start: 0,
-      get end(): number {
-        throw new Error(`not supposed to need document's end`);
-      },
+      end: absoluteEnd,
       firstChild: undefined,
       nextSibling: undefined,
       shorthand: false,
-    };
-    this.absoluteRanges.set(DocumentPointer, {
-      start: 0,
-      get end(): number {
-        throw new Error(`not supposed to need document's absolute end`);
-      },
+      preserveGaps: true,
     });
-    this.types.set(DocumentPointer, "Program");
   }
 
   createCodeRegion(path: NodePath): RegionPointer {
@@ -65,14 +58,17 @@ export class RegionBuilder {
       absoluteStart,
       absoluteEnd,
       index: this.regions.length,
-      pathFacts: { shorthand: shorthandMode(path) },
+      pathFacts: {
+        shorthand: shorthandMode(path),
+        preserveGaps: path.type === "ArrayPattern",
+      },
     };
     this.absoluteRanges.set(newRegion.index, {
       start: absoluteStart,
       end: absoluteEnd,
     });
     this.types.set(newRegion.index, path.type);
-    this.insertWithin(DocumentPointer, newRegion);
+    this.insertWithin(documentPointer, newRegion);
     return newRegion.index;
   }
 
@@ -85,36 +81,18 @@ export class RegionBuilder {
         `bug: do not know how to create code region for ${path.node.type}: missing start/end character positions`
       );
     }
-    // our code regions want to include some "gaps" that babel doesn't.
-    if (path.type === "VariableDeclarator") {
-      let parent = path.parent as VariableDeclaration;
-      let us = parent.declarations.findIndex((n) => n === path.node);
-      if (us === -1) {
-        throw new Error(`bug: couldn't find ourselves`);
-      }
-      let nextSibling = parent.declarations[us + 1];
-      if (nextSibling) {
-        absoluteEnd = nextSibling.start! - 1;
-      }
-    }
     return { absoluteStart, absoluteEnd };
   }
 
-  private getRegion(pointer: InternalRegionPointer): CodeRegion {
-    if (typeof pointer === "number") {
-      return this.regions[pointer]!;
-    } else {
-      return this.documentRegion;
-    }
+  private getRegion(pointer: RegionPointer): CodeRegion {
+    return this.regions[pointer]!;
   }
 
-  private getAbsolute(
-    pointer: InternalRegionPointer
-  ): { start: number; end: number } {
+  private getAbsolute(pointer: RegionPointer): { start: number; end: number } {
     return this.absoluteRanges.get(pointer)!;
   }
 
-  private insertWithin(parent: InternalRegionPointer, newRegion: NewRegion) {
+  private insertWithin(parent: RegionPointer, newRegion: NewRegion) {
     let child = this.getRegion(parent).firstChild;
     let prevChild: RegionPointer | undefined;
     while (child != null) {
@@ -147,8 +125,8 @@ export class RegionBuilder {
   // to insert newRegion, set the appropriate firstChild or nextSibling link and
   // return the absolute basis from which we should measure our start.
   private linkToNewRegion(
-    targetParent: InternalRegionPointer,
-    targetPrevious: InternalRegionPointer | undefined,
+    targetParent: RegionPointer,
+    targetPrevious: RegionPointer | undefined,
     newRegion: NewRegion
   ): number {
     if (targetPrevious != null) {
@@ -165,8 +143,8 @@ export class RegionBuilder {
   // previous sibling (which may or may not exist)
   private insertBefore(
     target: RegionPointer,
-    targetParent: InternalRegionPointer,
-    targetPrevious: InternalRegionPointer | undefined,
+    targetParent: RegionPointer,
+    targetPrevious: RegionPointer | undefined,
     newRegion: NewRegion
   ) {
     let basis = this.linkToNewRegion(targetParent, targetPrevious, newRegion);
@@ -185,8 +163,8 @@ export class RegionBuilder {
   // previous sibling (which may or may not exist)
   private insertAround(
     target: RegionPointer,
-    targetParent: InternalRegionPointer,
-    targetPrevious: InternalRegionPointer | undefined,
+    targetParent: RegionPointer,
+    targetPrevious: RegionPointer | undefined,
     newRegion: NewRegion
   ) {
     let basis = this.linkToNewRegion(targetParent, targetPrevious, newRegion);
@@ -227,7 +205,7 @@ export class RegionBuilder {
   // add newRegion as the final sibling after target, beneath targetParent.
   private insertLast(
     target: RegionPointer | undefined,
-    targetParent: InternalRegionPointer,
+    targetParent: RegionPointer,
     newRegion: NewRegion
   ) {
     let basis = this.linkToNewRegion(targetParent, target, newRegion);
@@ -241,18 +219,12 @@ export class RegionBuilder {
     this.adjustEndRelativeTo(targetParent, newRegion.absoluteEnd);
   }
 
-  private adjustStartRelativeTo(
-    subject: InternalRegionPointer,
-    absoluteBasis: number
-  ) {
+  private adjustStartRelativeTo(subject: RegionPointer, absoluteBasis: number) {
     this.getRegion(subject).start =
       this.getAbsolute(subject).start - absoluteBasis;
   }
 
-  private adjustEndRelativeTo(
-    subject: InternalRegionPointer,
-    absoluteBasis: number
-  ) {
+  private adjustEndRelativeTo(subject: RegionPointer, absoluteBasis: number) {
     // we only need to adjust real regions, not the document region.
     if (typeof subject === "number") {
       this.getRegion(subject).end =
@@ -342,6 +314,7 @@ export interface CodeRegion {
   //    let { x: x0 } = foo();
   //
   shorthand: "import" | "export" | "object" | false;
+  preserveGaps: boolean;
 }
 
 type Disposition =
@@ -360,7 +333,7 @@ export class RegionEditor {
   constructor(
     private src: string,
     private desc: ModuleDescription,
-    unusedNameLike: (name: string) => string
+    private unusedNameLike: (name: string) => string
   ) {
     this.dispositions = desc.regions.map(() => ({
       state: "unchanged",
@@ -389,23 +362,16 @@ export class RegionEditor {
     if (this.desc.regions.length === 0) {
       return this.src;
     }
+
     this.cursor = 0;
     this.output = [];
-    this.forAllSiblings(this.desc.topRegion, (region) => {
-      this.innerSerialize(region);
-    });
-    this.output.push(this.src.slice(this.cursor));
+    this.innerSerialize(documentPointer);
+
     return this.output.join("");
   }
 
   private innerSerialize(regionPointer: RegionPointer): Disposition["state"] {
     let region = this.desc.regions[regionPointer];
-
-    // we're responsible for emitting the piece of our parent that falls before
-    // us and after the previous child.
-    this.output.push(this.src.slice(this.cursor, this.cursor + region.start));
-    this.cursor += region.start;
-
     let disposition = this.dispositions[regionPointer];
     switch (disposition.state) {
       case "removed":
@@ -418,10 +384,58 @@ export class RegionEditor {
       case "unchanged":
         if (region.firstChild != null) {
           let childDispositions: Disposition["state"][] = [];
-          this.forAllSiblings(region.firstChild, (r) =>
-            childDispositions.push(this.innerSerialize(r))
-          );
-          if (childDispositions.every((d) => d === "removed")) {
+          let childRegion: CodeRegion;
+          this.forAllSiblings(region.firstChild, (r) => {
+            childRegion = this.desc.regions[r];
+
+            // do not emit the gap if the region.preserveGaps is false
+            // (like the Document region or ArrayPattern type--those gaps are
+            // special), e, g,:
+            //   let [ , y ] = foo();
+            // and:
+            // 1. the current child is being removed and it's not the first
+            //    child
+            // 2. the all the previous children have been removed (so the
+            //    current child is a candidate for being the first child)
+            // note that the part of us preceeding the first child and the part
+            // of us following the last child should always be emitted.
+
+            let gapEmitted: boolean;
+            if (
+              childDispositions.length > 0 &&
+              childDispositions.every((d) => d === "removed") &&
+              !region.preserveGaps
+            ) {
+              // all the children before this one have been removed, don't emit
+              // the gap since this child is a candidate for being the first
+              // child
+              gapEmitted = false;
+            } else {
+              this.output.push(
+                this.src.slice(this.cursor, this.cursor + childRegion.start)
+              );
+              gapEmitted = true;
+            }
+            this.cursor += childRegion.start;
+
+            let disposition = this.innerSerialize(r);
+            if (
+              childDispositions.length > 0 &&
+              disposition === "removed" &&
+              !region.preserveGaps &&
+              gapEmitted
+            ) {
+              // this is case #2 from above where the current child, which is
+              // not the first child, is removed, so we'll pluck out the gap
+              // from the output (which was last item in the output).
+              this.output.pop();
+            }
+            childDispositions.push(disposition);
+          });
+          if (
+            childDispositions.every((d) => d === "removed") &&
+            regionPointer !== documentPointer
+          ) {
             // need to remove our code that was pushed by our removed children
             // (removed children push their parent's code up to the their start)
             // and advance the cursor to the end of this region.
@@ -430,6 +444,7 @@ export class RegionEditor {
             return "removed";
           }
         }
+        // emit the part of yourself that appears after the last child
         this.output.push(this.src.slice(this.cursor, this.cursor + region.end));
         this.cursor += region.end;
         return disposition.state;

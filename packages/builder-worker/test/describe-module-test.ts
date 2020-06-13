@@ -8,6 +8,8 @@ import { parse } from "@babel/core";
 
 const { test, skip } = QUnit;
 
+let unusedNameNonce = 0;
+
 function describeModule(
   js: string
 ): { desc: ModuleDescription; editor: RegionEditor } {
@@ -19,11 +21,15 @@ function describeModule(
   let desc = astDescribeModule(parsed);
   return {
     desc,
-    editor: new RegionEditor(js, desc),
+    editor: new RegionEditor(js, desc, () => `unused${unusedNameNonce++}`),
   };
 }
 
-QUnit.module("describe-module", function () {
+QUnit.module("describe-module", function (hooks) {
+  hooks.beforeEach(() => {
+    unusedNameNonce = 0;
+  });
+
   test("pure reexport examples", function (assert) {
     let { desc } = describeModule(`
       export { foo } from './bar';
@@ -385,7 +391,7 @@ QUnit.module("describe-module", function () {
     );
   });
 
-  test("removing one variable declaration from a list", function (assert) {
+  test("removing leading variable declaration from a list", function (assert) {
     let { editor } = describeModule(`
       let a = 1, b = 2;
       console.log(b);
@@ -396,6 +402,47 @@ QUnit.module("describe-module", function () {
       `
       let b = 2;
       console.log(b);
+    `
+    );
+  });
+
+  test("removing trailing variable declaration from a list", function (assert) {
+    let { editor } = describeModule(`
+      let a = 1, b = 2;
+    `);
+    editor.removeDeclaration("b");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let a = 1;
+    `
+    );
+  });
+
+  test("removing adjacent variable declarations from a list", function (assert) {
+    let { editor } = describeModule(`
+      let a = 1, b = 2, c = 3, d = 4;
+    `);
+    editor.removeDeclaration("b");
+    editor.removeDeclaration("c");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let a = 1, d = 4;
+    `
+    );
+  });
+
+  test("removing first 2 adjacent variable declarations from a list", function (assert) {
+    let { editor } = describeModule(`
+      let a = 1, b = 2, c = 3, d = 4;
+    `);
+    editor.removeDeclaration("a");
+    editor.removeDeclaration("b");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let c = 3, d = 4;
     `
     );
   });
@@ -460,14 +507,15 @@ QUnit.module("describe-module", function () {
 
   test("removing a variable declaration in an ArrayPattern LVal", function (assert) {
     let { editor } = describeModule(`
-      let [ x, y ] = foo;
+      let [ x, y, z ] = foo;
       console.log(2);
     `);
     editor.removeDeclaration("x");
+    editor.removeDeclaration("y");
     assert.codeEqual(
       editor.serialize(),
       `
-      let [ , y ] = foo;
+      let [ , , z ] = foo;
       console.log(2);
     `
     );

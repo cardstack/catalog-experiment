@@ -44,7 +44,6 @@ export interface ModuleDescription {
   // storage of all the included CodeRegions. The order is always stable. Other
   // places refer to a code region by its index in this list.
   regions: CodeRegion[];
-  topRegion: RegionPointer | undefined;
 }
 
 export interface NameDescription {
@@ -86,14 +85,8 @@ interface DuckPath {
 }
 
 export function describeModule(ast: File): ModuleDescription {
-  let builder = new RegionBuilder();
-  let desc: ModuleDescription = {
-    imports: [],
-    exports: new Map(),
-    names: new Map(),
-    regions: builder.regions,
-    topRegion: -1, // todo: this is just here to satisfy TS, we set the real value at the bottom of the function
-  };
+  let builder: RegionBuilder;
+  let desc: ModuleDescription;
   let consumedByModule: Set<string> = new Set();
   let currentModuleScopedDeclaration:
     | {
@@ -161,6 +154,7 @@ export function describeModule(ast: File): ModuleDescription {
         usedByModule: false,
         declaration: builder.createCodeRegion(declaration),
         references,
+        declarationSideEffects: undefined,
       });
     }
   }
@@ -190,6 +184,15 @@ export function describeModule(ast: File): ModuleDescription {
 
   traverse(ast, {
     Program: {
+      enter(path) {
+        builder = new RegionBuilder(path);
+        desc = {
+          imports: [],
+          exports: new Map(),
+          names: new Map(),
+          regions: builder.regions,
+        };
+      },
       exit() {
         for (let name of consumedByModule) {
           let nameDesc = desc.names.get(name);
@@ -416,9 +419,7 @@ export function describeModule(ast: File): ModuleDescription {
       }
     },
   });
-
-  desc.topRegion = builder.top;
-  return desc;
+  return desc!;
 }
 
 function ensureImportSpecifier(
@@ -464,6 +465,7 @@ function addImportedName(
         .getBinding(identifierPath.node.name)!
         .referencePaths.map((i) => builder.createCodeRegion(i)),
     ],
+    declarationSideEffects: undefined,
   });
 }
 
