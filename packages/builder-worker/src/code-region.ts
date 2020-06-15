@@ -322,7 +322,8 @@ type Disposition =
       state: "unchanged";
     }
   | { state: "removed" }
-  | { state: "replaced"; replacement: string };
+  | { state: "replaced"; replacement: string }
+  | { state: "remove with side-effects"; sideEffects: RegionPointer };
 
 export class RegionEditor {
   private dispositions: Disposition[];
@@ -344,7 +345,15 @@ export class RegionEditor {
     if (!nameDesc) {
       throw new Error(`tried to remove unknown declaration ${name}`);
     }
-    this.dispositions[nameDesc.declaration] = { state: "removed" };
+    if (nameDesc.declarationSideEffects != null) {
+      this.dispositions[nameDesc.declaration] = {
+        state: "remove with side-effects",
+        sideEffects: nameDesc.declarationSideEffects,
+      };
+      this.rename(name, this.unusedNameLike(name));
+    } else {
+      this.dispositions[nameDesc.declaration] = { state: "removed" };
+    }
   }
   rename(oldName: string, newName: string) {
     let nameDesc = this.desc.names.get(oldName);
@@ -365,25 +374,29 @@ export class RegionEditor {
 
     this.cursor = 0;
     this.output = [];
-    this.innerSerialize(documentPointer);
+    this.innerSerialize(documentPointer, undefined);
 
     return this.output.join("");
   }
 
-  private innerSerialize(regionPointer: RegionPointer): Disposition["state"] {
+  private innerSerialize(
+    regionPointer: RegionPointer,
+    parent: RegionPointer | undefined
+  ): Disposition {
     let region = this.desc.regions[regionPointer];
     let disposition = this.dispositions[regionPointer];
     switch (disposition.state) {
       case "removed":
         this.skip(regionPointer);
-        return disposition.state;
+        return disposition;
       case "replaced":
         this.handleReplace(region, disposition.replacement);
         this.skip(regionPointer);
-        return disposition.state;
+        return disposition;
+      case "remove with side-effects":
       case "unchanged":
         if (region.firstChild != null) {
-          let childDispositions: Disposition["state"][] = [];
+          let childDispositions: Disposition[] = [];
           let childRegion: CodeRegion;
           this.forAllSiblings(region.firstChild, (r) => {
             childRegion = this.desc.regions[r];
@@ -401,9 +414,11 @@ export class RegionEditor {
             // of us following the last child should always be emitted.
 
             let gapEmitted: boolean;
+
+            // TODO we can collapse the 2 gap removals into a single gap removal condition by paying attention to the index of the output that represents the gap to be removed
             if (
               childDispositions.length > 0 &&
-              childDispositions.every((d) => d === "removed") &&
+              childDispositions.every((d) => d.state === "removed") &&
               !region.preserveGaps
             ) {
               // all the children before this one have been removed, don't emit
@@ -418,10 +433,10 @@ export class RegionEditor {
             }
             this.cursor += childRegion.start;
 
-            let disposition = this.innerSerialize(r);
+            let disposition = this.innerSerialize(r, regionPointer);
             if (
               childDispositions.length > 0 &&
-              disposition === "removed" &&
+              disposition.state === "removed" &&
               !region.preserveGaps &&
               gapEmitted
             ) {
@@ -432,8 +447,9 @@ export class RegionEditor {
             }
             childDispositions.push(disposition);
           });
+
           if (
-            childDispositions.every((d) => d === "removed") &&
+            childDispositions.every((d) => d.state === "removed") &&
             regionPointer !== documentPointer
           ) {
             // need to remove our code that was pushed by our removed children
@@ -441,13 +457,36 @@ export class RegionEditor {
             // and advance the cursor to the end of this region.
             this.output.pop();
             this.cursor += region.end;
-            return "removed";
+            return { state: "removed" };
+          } else if (
+            parent === documentPointer && // don't try to isolate side effects in LVals
+            childDispositions.filter(
+              (d) => d.state === "remove with side-effects"
+            ).length === 1 &&
+            childDispositions.filter((d) => d.state === "removed").length +
+              1 ===
+              childDispositions.length
+          ) {
+            // All the children have been removed, and there is only a single side effect.
+            // In this situation there should have been 6 items emitted to the
+            // output for the VariableDeclaration specifically:
+            // 1. our beginning
+            // 2. the gap before the retained child
+            // 3. the renamed left-side of the declaration
+            // 4. the gap between the reference name and the side effect ("=" sign)
+            // 5. the side effectful right-side of the declaration
+            // 6. the gap after the retained child
+            // We want to keep only #5 and remove all the rest.
+            this.output.pop();
+            let sideEffect = this.output.pop()!;
+            this.output = this.output.slice(0, -4);
+            this.output.push(sideEffect);
           }
         }
         // emit the part of yourself that appears after the last child
         this.output.push(this.src.slice(this.cursor, this.cursor + region.end));
         this.cursor += region.end;
-        return disposition.state;
+        return disposition;
       default:
         throw assertNever(disposition);
     }

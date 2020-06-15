@@ -1,4 +1,5 @@
 import {
+  Expression,
   File,
   ImportDeclaration,
   ImportSpecifier,
@@ -79,6 +80,7 @@ export interface ImportDescription {
 // duck-type our own generic thing that will probably only match NodePaths.
 interface DuckPath {
   node: any;
+  type: string;
   scope: Scope;
   parentPath: DuckPath;
   isIdentifier(): this is NodePath<Identifier>;
@@ -97,6 +99,7 @@ export function describeModule(ast: File): ModuleDescription {
           // we track the default export along with all our local names, and
           // it's the only one that has no identifier of its own
           identifier?: NodePath<Identifier>;
+          sideEffects: NodePath | false;
         }[];
         consumes: Set<string>;
         withinLVal: DuckPath | false;
@@ -110,6 +113,10 @@ export function describeModule(ast: File): ModuleDescription {
       | NodePath<VariableDeclarator>
   ) {
     let hasIdentifier = isIdentifier(path.node.id);
+    if (isModuleScopedDeclaration(path as NodePath)) {
+      builder.createCodeRegion(path as NodePath);
+    }
+
     if (
       isModuleScopedDeclaration(path as NodePath) &&
       (path.node.type === "VariableDeclarator" || hasIdentifier)
@@ -121,10 +128,12 @@ export function describeModule(ast: File): ModuleDescription {
         withinLVal: false,
       };
       if (hasIdentifier) {
+        let identifier = path.get("id") as NodePath<Identifier>;
         currentModuleScopedDeclaration.defines.push({
           name: path.node.id.name,
           declaration: path as NodePath,
-          identifier: path.get("id") as NodePath<Identifier>,
+          identifier,
+          sideEffects: sideEffectsForIdentifier(identifier),
         });
       }
     }
@@ -136,7 +145,7 @@ export function describeModule(ast: File): ModuleDescription {
     }
     let { defines, consumes } = currentModuleScopedDeclaration!;
     currentModuleScopedDeclaration = undefined;
-    for (let { name, declaration, identifier } of defines) {
+    for (let { name, declaration, identifier, sideEffects } of defines) {
       let references: RegionPointer[];
       if (identifier) {
         references = [
@@ -148,17 +157,63 @@ export function describeModule(ast: File): ModuleDescription {
       } else {
         references = [];
       }
+
+      let declarationSideEffects: RegionPointer | undefined;
+      if (sideEffects) {
+        declarationSideEffects = builder.createCodeRegion(sideEffects);
+      }
+
       desc.names.set(name, {
         type: "local",
         dependsOn: consumes,
         usedByModule: false,
         declaration: builder.createCodeRegion(declaration),
         references,
-        declarationSideEffects: undefined,
+        declarationSideEffects,
       });
     }
   }
 
+  function sideEffectsForIdentifier(
+    path: NodePath<Identifier>
+  ): NodePath | false {
+    switch (path.parent.type) {
+      case "VariableDeclarator":
+        if (
+          path.parent.id === path.node &&
+          path.parent.init &&
+          !isSideEffectFree(path.parent.init)
+        ) {
+          return path.parentPath.get("init") as NodePath;
+        }
+        return false;
+      case "AssignmentPattern":
+        if (
+          path.parent.left === path.node &&
+          !isSideEffectFree(path.parent.right)
+        ) {
+          return path.parentPath.get("right") as NodePath;
+        }
+        return false;
+      case "ObjectProperty":
+      case "ArrayPattern":
+      case "RestElement":
+        if (currentModuleScopedDeclaration?.withinLVal) {
+          let declaration = currentModuleScopedDeclaration.path as NodePath;
+          if (
+            declaration &&
+            isVariableDeclarator(declaration.node) &&
+            declaration.node.init &&
+            !isSideEffectFree(declaration.node.init)
+          ) {
+            return declaration.get("init") as NodePath;
+          }
+        }
+        return false;
+      default:
+        return false;
+    }
+  }
   const handlePossibleLVal = {
     enter(path: DuckPath) {
       if (
@@ -234,11 +289,13 @@ export function describeModule(ast: File): ModuleDescription {
     Identifier(path) {
       if (currentModuleScopedDeclaration?.withinLVal) {
         let declaration = declarationForIdentifier(path);
+        let sideEffects = sideEffectsForIdentifier(path);
         if (declaration) {
           currentModuleScopedDeclaration.defines.push({
             name: path.node.name,
             declaration,
             identifier: path,
+            sideEffects,
           });
         }
       }
@@ -317,6 +374,7 @@ export function describeModule(ast: File): ModuleDescription {
             {
               name: "default",
               declaration: path.get("declaration") as NodePath,
+              sideEffects: false,
             },
           ],
           consumes: new Set(),
@@ -510,6 +568,21 @@ function declarationForIdentifier(
         return path as NodePath;
       }
       return false;
+    default:
+      return false;
+  }
+}
+
+function isSideEffectFree(node: Expression): boolean {
+  switch (node.type) {
+    case "BooleanLiteral":
+    case "NumericLiteral":
+    case "StringLiteral":
+    case "NullLiteral":
+    case "Identifier":
+    case "FunctionExpression":
+    case "ClassExpression":
+      return true;
     default:
       return false;
   }

@@ -447,6 +447,20 @@ QUnit.module("describe-module", function (hooks) {
     );
   });
 
+  test("removing a declaration from a list that includes a mix of LVal and non-LVal declarations", function (assert) {
+    let { editor } = describeModule(`
+      let { a } = foo, b = 2, { c } = blah, d = 4;
+    `);
+    editor.removeDeclaration("b");
+    editor.removeDeclaration("c");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let { a } = foo, d = 4;
+      `
+    );
+  });
+
   test("removing all variable declarations", function (assert) {
     let { editor } = describeModule(`
       let a = 1;
@@ -593,6 +607,202 @@ QUnit.module("describe-module", function (hooks) {
       let { x } = foo;
       console.log(2);
     `
+    );
+  });
+
+  test("preserves side-effectful right-hand side when there is only one side effect at the beginning of the list", async function (assert) {
+    let { editor } = describeModule(`
+      let a = initCache(), b = true, c = 1, d = 'd', e = null, f = undefined, g = function() {}, h = class foo {};
+    `);
+
+    editor.removeDeclaration("a");
+    editor.removeDeclaration("b");
+    editor.removeDeclaration("c");
+    editor.removeDeclaration("d");
+    editor.removeDeclaration("e");
+    editor.removeDeclaration("f");
+    editor.removeDeclaration("g");
+    editor.removeDeclaration("h");
+
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      initCache();
+      `
+    );
+  });
+
+  test("preserves side-effectful right-hand side when there is only one side effect at the end of the list", async function (assert) {
+    let { editor } = describeModule(`
+      let b = true, c = 1, d = 'd', e = null, f = undefined, g = function() {}, h = class foo {}, a = initCache();
+    `);
+
+    editor.removeDeclaration("a");
+    editor.removeDeclaration("b");
+    editor.removeDeclaration("c");
+    editor.removeDeclaration("d");
+    editor.removeDeclaration("e");
+    editor.removeDeclaration("f");
+    editor.removeDeclaration("g");
+    editor.removeDeclaration("h");
+
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      initCache();
+      `
+    );
+  });
+
+  test("preserves side-effectful right-hand side when there is only one side effect in the middle of the list", async function (assert) {
+    let { editor } = describeModule(`
+      let b = true, c = 1, d = 'd', e = null, a = initCache(), f = undefined, g = function() {}, h = class foo {};
+    `);
+
+    editor.removeDeclaration("a");
+    editor.removeDeclaration("b");
+    editor.removeDeclaration("c");
+    editor.removeDeclaration("d");
+    editor.removeDeclaration("e");
+    editor.removeDeclaration("f");
+    editor.removeDeclaration("g");
+    editor.removeDeclaration("h");
+
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      initCache();
+      `
+    );
+  });
+
+  test("preserves side-effectful right-hand side when there are multiple effects in the list", async function (assert) {
+    let { editor } = describeModule(`
+      let a = initACache(), b = true, c = 1, d = 'd', e = initECache(), f = undefined, g = function() {}, h = class foo {};
+    `);
+
+    editor.removeDeclaration("a");
+    editor.removeDeclaration("b");
+    editor.removeDeclaration("c");
+    editor.removeDeclaration("d");
+    editor.removeDeclaration("e");
+    editor.removeDeclaration("f");
+    editor.removeDeclaration("g");
+    editor.removeDeclaration("h");
+
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let unused0 = initACache(), unused1 = initECache();
+      `
+    );
+  });
+
+  test("preserves side-effectful right-hand side when it is the only declarator in a declaration", async function (assert) {
+    let { editor } = describeModule(`
+      let a = initCache();
+    `);
+
+    editor.removeDeclaration("a");
+
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      initCache();
+      `
+    );
+  });
+
+  test("preserves side-effectful right-hand side for ObjectPatten LVal", async function (assert) {
+    let { editor } = describeModule(`
+      let { x } = initCache();
+    `);
+
+    editor.removeDeclaration("x");
+
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let { x: unused0 } = initCache();
+      `
+    );
+  });
+
+  test("preserves side-effectful right-hand side for ArrayPatten LVal", async function (assert) {
+    let { editor } = describeModule(`
+      let [ x ] = initCache();
+    `);
+
+    editor.removeDeclaration("x");
+
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let [ unused0 ] = initCache();
+      `
+    );
+  });
+
+  test("preserves side-effectful right-hand side for RestElement LVal", async function (assert) {
+    let { editor } = describeModule(`
+      let { a: [ ...x ] } = initCache();
+    `);
+
+    editor.removeDeclaration("x");
+
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let { a: [ ...unused0 ] }= initCache();
+      `
+    );
+  });
+
+  test("preserves side-effectful right-hand side for mulitple LVal identifiers", async function (assert) {
+    let { editor } = describeModule(`
+      let { x, y } = initCache();
+    `);
+
+    editor.removeDeclaration("x");
+    editor.removeDeclaration("y");
+
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let { x: unused0, y: unused1 } = initCache();
+      `
+    );
+  });
+
+  test("preserves side-effectful initializer in LVal", async function (assert) {
+    let { editor } = describeModule(`
+      let { x = initCache() } = foo;
+    `);
+
+    editor.removeDeclaration("x");
+
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let { x: unused0 = initCache() } = foo;
+      `
+    );
+  });
+
+  test("preserves side-effectful initializer in list that includes side-effectful LVal", async function (assert) {
+    let { editor } = describeModule(`
+      let { x = initCache() } = foo, y = 1, z = initZCache();
+    `);
+
+    editor.removeDeclaration("x");
+    editor.removeDeclaration("y");
+    editor.removeDeclaration("z");
+
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let { x: unused0 = initCache() } = foo, unused1 = initZCache();
+      `
     );
   });
 });
