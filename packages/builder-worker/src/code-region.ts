@@ -400,6 +400,12 @@ export class RegionEditor {
           let childRegion: CodeRegion;
           this.forAllSiblings(region.firstChild, (r) => {
             childRegion = this.desc.regions[r];
+            let gapIndex = this.output.length;
+            this.output.push(
+              this.src.slice(this.cursor, this.cursor + childRegion.start)
+            );
+            this.cursor += childRegion.start;
+            let disposition = this.innerSerialize(r, regionPointer);
 
             // do not emit the gap if the region.preserveGaps is false
             // (like the Document region or ArrayPattern type--those gaps are
@@ -412,38 +418,13 @@ export class RegionEditor {
             //    current child is a candidate for being the first child)
             // note that the part of us preceeding the first child and the part
             // of us following the last child should always be emitted.
-
-            let gapEmitted: boolean;
-
-            // TODO we can collapse the 2 gap removals into a single gap removal condition by paying attention to the index of the output that represents the gap to be removed
             if (
               childDispositions.length > 0 &&
-              childDispositions.every((d) => d.state === "removed") &&
-              !region.preserveGaps
-            ) {
-              // all the children before this one have been removed, don't emit
-              // the gap since this child is a candidate for being the first
-              // child
-              gapEmitted = false;
-            } else {
-              this.output.push(
-                this.src.slice(this.cursor, this.cursor + childRegion.start)
-              );
-              gapEmitted = true;
-            }
-            this.cursor += childRegion.start;
-
-            let disposition = this.innerSerialize(r, regionPointer);
-            if (
-              childDispositions.length > 0 &&
-              disposition.state === "removed" &&
               !region.preserveGaps &&
-              gapEmitted
+              (disposition.state === "removed" ||
+                childDispositions.every((d) => d.state === "removed"))
             ) {
-              // this is case #2 from above where the current child, which is
-              // not the first child, is removed, so we'll pluck out the gap
-              // from the output (which was last item in the output).
-              this.output.pop();
+              this.output.splice(gapIndex, 1);
             }
             childDispositions.push(disposition);
           });
@@ -452,9 +433,7 @@ export class RegionEditor {
             childDispositions.every((d) => d.state === "removed") &&
             regionPointer !== documentPointer
           ) {
-            // need to remove our code that was pushed by our removed children
-            // (removed children push their parent's code up to the their start)
-            // and advance the cursor to the end of this region.
+            // if all our children were removed, then we need to be removed
             this.output.pop();
             this.cursor += region.end;
             return { state: "removed" };
