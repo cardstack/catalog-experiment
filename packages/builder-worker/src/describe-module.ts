@@ -39,7 +39,10 @@ export interface ModuleDescription {
     | { type: "reexport"; importIndex: number; name: string | NamespaceMarker }
   >;
 
-  exportRegions: RegionPointer[];
+  exportRegions: {
+    region: RegionPointer;
+    declaration: RegionPointer | undefined;
+  }[];
 
   // all the names in module scope
   names: Map<string, LocalNameDescription | ImportedNameDescription>;
@@ -361,7 +364,12 @@ export function describeModule(ast: File): ModuleDescription {
     },
     ExportDefaultDeclaration: {
       enter(path) {
-        desc.exportRegions.push(builder.createCodeRegion(path as NodePath));
+        desc.exportRegions.push({
+          region: builder.createCodeRegion(path as NodePath),
+          declaration: builder.createCodeRegion(
+            path.get("declaration") as NodePath
+          ),
+        });
 
         // we're relying on the fact that default is a keyword so it can't be used
         // as a real local name
@@ -400,11 +408,25 @@ export function describeModule(ast: File): ModuleDescription {
       exit: exitDeclaration,
     },
     ExportNamedDeclaration(path) {
-      desc.exportRegions.push(builder.createCodeRegion(path as NodePath));
+      let declaration: RegionPointer | undefined;
+      if (path.node.declaration != null) {
+        declaration = builder.createCodeRegion(
+          path.get("declaration") as NodePath
+        );
+      }
+      let region = builder.createCodeRegion(path as NodePath);
+      desc.exportRegions.push({
+        region,
+        declaration,
+      });
 
       if (path.node.source) {
         // we are reexporting things
-        let importIndex = ensureImportSpecifier(desc, path.node.source!.value);
+        let importIndex = ensureImportSpecifier(
+          desc,
+          path.node.source!.value,
+          region
+        );
 
         for (let spec of path.node.specifiers) {
           switch (spec.type) {
@@ -500,7 +522,8 @@ export function describeModule(ast: File): ModuleDescription {
 
 function ensureImportSpecifier(
   desc: ModuleDescription,
-  specifier: string
+  specifier: string,
+  region: RegionPointer
 ): number {
   let importDesc = desc.imports.find((i) => i.specifier === specifier);
   if (importDesc) {
@@ -510,6 +533,7 @@ function ensureImportSpecifier(
     desc.imports.push({
       specifier,
       isDynamic: false,
+      region,
     });
     return importIndex;
   }

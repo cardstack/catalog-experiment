@@ -323,7 +323,8 @@ type Disposition =
     }
   | { state: "removed" }
   | { state: "replaced"; replacement: string }
-  | { state: "remove with side-effects"; sideEffects: RegionPointer };
+  | { state: "removed export"; declaration: RegionPointer | undefined }
+  | { state: "removed with side-effects"; sideEffects: RegionPointer };
 
 export class RegionEditor {
   private dispositions: Disposition[];
@@ -347,7 +348,7 @@ export class RegionEditor {
     }
     if (nameDesc.declarationSideEffects != null) {
       this.dispositions[nameDesc.declaration] = {
-        state: "remove with side-effects",
+        state: "removed with side-effects",
         sideEffects: nameDesc.declarationSideEffects,
       };
       this.rename(name, this.unusedNameLike(name));
@@ -368,8 +369,8 @@ export class RegionEditor {
     this.dispositions[region] = { state: "replaced", replacement };
   }
   removeImportsAndExports(): void {
-    for (let region of this.desc.exportRegions) {
-      this.dispositions[region] = { state: "removed" };
+    for (let { region, declaration } of this.desc.exportRegions) {
+      this.dispositions[region] = { state: "removed export", declaration };
     }
     for (let importDesc of this.desc.imports) {
       if (!importDesc.isDynamic) {
@@ -403,11 +404,19 @@ export class RegionEditor {
         this.handleReplace(region, disposition.replacement);
         this.skip(regionPointer);
         return disposition;
-      case "remove with side-effects":
+      //@ts-ignore
+      case "removed export":
+        if (disposition.declaration == null) {
+          this.skip(regionPointer);
+          return { state: "removed" };
+        }
+      // intentionally falling through since we have a child declaration that we want to preserve
+      case "removed with side-effects":
       case "unchanged":
         if (region.firstChild != null) {
           let childDispositions: Disposition[] = [];
           let childRegion: CodeRegion;
+          let ourStartOutputIndex = this.output.length;
           this.forAllSiblings(region.firstChild, (r) => {
             childRegion = this.desc.regions[r];
             let gapIndex = this.output.length;
@@ -450,7 +459,7 @@ export class RegionEditor {
           } else if (
             parent === documentPointer && // don't try to isolate side effects in LVals
             childDispositions.filter(
-              (d) => d.state === "remove with side-effects"
+              (d) => d.state === "removed with side-effects"
             ).length === 1 &&
             childDispositions.filter((d) => d.state === "removed").length +
               1 ===
@@ -470,6 +479,10 @@ export class RegionEditor {
             let sideEffect = this.output.pop()!;
             this.output = this.output.slice(0, -4);
             this.output.push(sideEffect);
+          } else if (disposition.state === "removed export") {
+            // remove our start which is actually the export keyword, thereby
+            // hoisting the declaration in the export
+            this.output.splice(ourStartOutputIndex, 1);
           }
         }
         // emit the part of yourself that appears after the last child
