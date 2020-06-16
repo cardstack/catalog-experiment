@@ -133,6 +133,30 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
+  test("it can combine modules that consume an exported LVal", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { a } from './a.js';
+        import { b } from './b.js';
+        console.log(a + b);
+      `,
+      "a.js": `export const [ { a } ] = foo();`,
+      "b.js": `export const b = 'b';`,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined,
+      `
+      const [ { a } ] = foo();
+      const b = 'b';
+      console.log(a + b);
+      `
+    );
+  });
+
   test("internal imports share the same name in multiple modules", async function (assert) {
     await assert.setupFiles({
       "index.js": `

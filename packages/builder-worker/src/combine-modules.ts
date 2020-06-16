@@ -31,37 +31,90 @@ export function combineModules(
   let modules = [];
   let editors = new Map();
   let usedNames: Set<string> = new Set();
+  // outer map is the href of the exported module. the inner map goes from
+  // exported name to our name. our name also must appear in usedNames.
+  let assignedImportedNames: Map<
+    string,
+    Map<string | NamespaceMarker, string>
+  > = new Map();
 
   for (let assignment of assignments) {
     if (assignment.bundleURL.href !== bundle.href) {
       continue;
     }
-    let editor = new RegionEditor(
-      assignment.module.source,
-      assignment.module.desc,
-      () => {
-        throw new Error("unimplemented");
-      }
-    );
-    editors.set(assignment.module, editor);
-    modules.push(assignment.module);
+    let { module } = assignment;
+    let editor = new RegionEditor(module.source, module.desc, () => {
+      throw new Error("unimplemented");
+    });
+    editors.set(module, editor);
+    modules.push(module);
     editor.removeImportsAndExports();
-    for (let [name, nameDesc] of assignment.module.desc.names) {
+
+    for (let [name, nameDesc] of module.desc.names) {
       let assignedName = name;
-      if (usedNames.has(name)) {
-        assignedName = unusedNameLike(name, usedNames);
-        editor.rename(name, assignedName);
+
+      // This if/else was lifted from the existing code. Here we are figuring
+      // out which names in module scope are imports vs things that live inside
+      // this module.
+      if (nameDesc.type === "import") {
+        let { name: remoteName, module: remoteModule } = resolveReexport(
+          nameDesc.name,
+          module.resolvedImports[nameDesc.importIndex]
+        );
+        module.resolvedImports[nameDesc.importIndex];
+        assignedName = maybeAssignImportName(
+          remoteModule,
+          remoteName,
+          name,
+          assignedImportedNames,
+          usedNames
+        );
+      } else {
+        let entry = [...module.desc.exports].find(
+          ([_, desc]) => desc.type === "local" && desc.name === name
+        );
+        if (entry?.[0]) {
+          assignedName = maybeAssignImportName(
+            module,
+            entry[0],
+            name,
+            assignedImportedNames,
+            usedNames
+          );
+        } else {
+          assignedName = unusedNameLike(name, usedNames);
+        }
       }
-      usedNames.add(assignedName);
+      claimAndRename(name, assignedName, editor, usedNames);
     }
+
+    // TODO: the chunk of code that appears after this in the existing code was the
+    // tree shaking logic. We should be able to use our new module name desc to
+    // be able to perform that.
   }
+
   let output = [];
+  // TODO what is the right order to emit these?
   for (let module of modules) {
     output.push(editors.get(module).serialize());
   }
-  return output.join("\n");
+  return output.join("\n").trim();
 }
 
+// it would be nice to move this into a Class method to hold the usedNames state
+function claimAndRename(
+  origName: string,
+  newName: string,
+  editor: RegionEditor,
+  usedNames: Set<string>
+) {
+  usedNames.add(newName);
+  if (origName !== newName) {
+    editor.rename(origName, newName);
+  }
+}
+
+// it would be nice to move this into a Class method to hold the usedNames state
 function unusedNameLike(name: string, usedNames: Set<string>) {
   let candidate = name;
   let counter = 0;
@@ -69,6 +122,49 @@ function unusedNameLike(name: string, usedNames: Set<string>) {
     candidate = `${name}${counter++}`;
   }
   return candidate;
+}
+
+// this is a straight up copy from the existing code--i think it really wants to
+// live in a class so we dont have huge list of function params
+function maybeAssignImportName(
+  remoteModule: ModuleResolution,
+  remoteName: string | NamespaceMarker,
+  suggestedName: string,
+  assignedImportedNames: Map<string, Map<string | NamespaceMarker, string>>,
+  usedNames: Set<string>
+): string {
+  let alreadyAssignedName = assignedImportedNames
+    .get(remoteModule.url.href)
+    ?.get(remoteName);
+
+  if (alreadyAssignedName) {
+    return alreadyAssignedName;
+  } else {
+    let assignedName = unusedNameLike(suggestedName, usedNames);
+    assignImportName(
+      remoteModule,
+      remoteName,
+      assignedName,
+      assignedImportedNames
+    );
+    return assignedName;
+  }
+}
+
+// this is a straight up copy from the existing code--i think it really wants to
+// live in a class so we dont have huge list of function params
+function assignImportName(
+  module: ModuleResolution,
+  exportedName: string | NamespaceMarker,
+  assignedName: string,
+  assignedImportedNames: Map<string, Map<string | NamespaceMarker, string>>
+) {
+  let mapping = assignedImportedNames.get(module.url.href);
+  if (!mapping) {
+    mapping = new Map();
+    assignedImportedNames.set(module.url.href, mapping);
+  }
+  mapping.set(exportedName, assignedName);
 }
 
 export function xcombineModules(
