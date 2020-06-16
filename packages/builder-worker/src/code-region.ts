@@ -367,6 +367,16 @@ export class RegionEditor {
   private replace(region: RegionPointer, replacement: string): void {
     this.dispositions[region] = { state: "replaced", replacement };
   }
+  removeImportsAndExports(): void {
+    for (let region of this.desc.exportRegions) {
+      this.dispositions[region] = { state: "removed" };
+    }
+    for (let importDesc of this.desc.imports) {
+      if (!importDesc.isDynamic) {
+        this.dispositions[importDesc.region] = { state: "removed" };
+      }
+    }
+  }
   serialize(): string {
     if (this.desc.regions.length === 0) {
       return this.src;

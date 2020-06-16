@@ -22,8 +22,56 @@ import { NamespaceMarker, isNamespaceMarker } from "./describe-module";
 import { maybeRelativeURL } from "./path";
 import { assertNever } from "shared/util";
 import upperFirst from "lodash/upperFirst";
+import { RegionEditor } from "./code-region";
 
 export function combineModules(
+  bundle: URL,
+  assignments: BundleAssignment[]
+): string {
+  let modules = [];
+  let editors = new Map();
+  let usedNames: Set<string> = new Set();
+
+  for (let assignment of assignments) {
+    if (assignment.bundleURL.href !== bundle.href) {
+      continue;
+    }
+    let editor = new RegionEditor(
+      assignment.module.source,
+      assignment.module.desc,
+      () => {
+        throw new Error("unimplemented");
+      }
+    );
+    editors.set(assignment.module, editor);
+    modules.push(assignment.module);
+    editor.removeImportsAndExports();
+    for (let [name, nameDesc] of assignment.module.desc.names) {
+      let assignedName = name;
+      if (usedNames.has(name)) {
+        assignedName = unusedNameLike(name, usedNames);
+        editor.rename(name, assignedName);
+      }
+      usedNames.add(assignedName);
+    }
+  }
+  let output = [];
+  for (let module of modules) {
+    output.push(editors.get(module).serialize());
+  }
+  return output.join("\n");
+}
+
+function unusedNameLike(name: string, usedNames: Set<string>) {
+  let candidate = name;
+  let counter = 0;
+  while (usedNames.has(candidate)) {
+    candidate = `${name}${counter++}`;
+  }
+  return candidate;
+}
+
+export function xcombineModules(
   bundle: URL,
   assignments: BundleAssignment[]
 ): string {

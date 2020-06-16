@@ -38,7 +38,7 @@ export class ModuleResolutionsNode implements BuilderNode {
 
 export interface ModuleResolution {
   url: URL;
-  parsed: File;
+  source: string;
   desc: ModuleDescription;
   resolvedImports: ModuleResolution[];
 }

@@ -39,6 +39,8 @@ export interface ModuleDescription {
     | { type: "reexport"; importIndex: number; name: string | NamespaceMarker }
   >;
 
+  exportRegions: RegionPointer[];
+
   // all the names in module scope
   names: Map<string, LocalNameDescription | ImportedNameDescription>;
 
@@ -69,11 +71,16 @@ export interface ImportedNameDescription extends NameDescription {
   name: string | NamespaceMarker;
 }
 
-export interface ImportDescription {
-  // true if this specifier is used dynamically in this module
-  isDynamic: boolean;
-  specifier: string;
-}
+export type ImportDescription =
+  | {
+      isDynamic: false;
+      specifier: string;
+      region: RegionPointer;
+    }
+  | {
+      isDynamic: true;
+      specifier: string;
+    };
 
 // @babel/traverse makes it very hard to talk about NodePath's generically,
 // because NodePath<AlmostAnything> is not a valid NodePath<Node>. Here we
@@ -249,6 +256,7 @@ export function describeModule(ast: File): ModuleDescription {
         desc = {
           imports: [],
           exports: new Map(),
+          exportRegions: [],
           names: new Map(),
           regions: builder.regions,
         };
@@ -320,6 +328,7 @@ export function describeModule(ast: File): ModuleDescription {
         importDesc = {
           specifier: path.node.source.value,
           isDynamic: false,
+          region: builder.createCodeRegion(path as NodePath),
         };
         desc.imports.push(importDesc);
       }
@@ -352,6 +361,8 @@ export function describeModule(ast: File): ModuleDescription {
     },
     ExportDefaultDeclaration: {
       enter(path) {
+        desc.exportRegions.push(builder.createCodeRegion(path as NodePath));
+
         // we're relying on the fact that default is a keyword so it can't be used
         // as a real local name
         let name = "default";
@@ -389,6 +400,8 @@ export function describeModule(ast: File): ModuleDescription {
       exit: exitDeclaration,
     },
     ExportNamedDeclaration(path) {
+      desc.exportRegions.push(builder.createCodeRegion(path as NodePath));
+
       if (path.node.source) {
         // we are reexporting things
         let importIndex = ensureImportSpecifier(desc, path.node.source!.value);

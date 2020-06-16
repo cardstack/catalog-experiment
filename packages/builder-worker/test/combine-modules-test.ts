@@ -15,8 +15,8 @@ async function makeModuleResolutions(
   fs: FileSystem,
   moduleURL: URL
 ): Promise<ModuleResolution> {
-  let js = await ((await fs.open(moduleURL)) as FileDescriptor).readText();
-  let parsed = parse(js);
+  let source = await ((await fs.open(moduleURL)) as FileDescriptor).readText();
+  let parsed = parse(source);
   if (parsed?.type !== "File") {
     throw new Error(`parsed js for ${moduleURL.href} is not a babel File type`);
   }
@@ -27,7 +27,7 @@ async function makeModuleResolutions(
       return makeModuleResolutions(fs, depURL);
     })
   );
-  return { url: moduleURL, parsed, resolvedImports, desc };
+  return { url: moduleURL, source, resolvedImports, desc };
 }
 
 async function makeBundleAssignments(
