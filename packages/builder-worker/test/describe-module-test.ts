@@ -805,4 +805,10 @@ QUnit.module("describe-module", function (hooks) {
       `
     );
   });
+
+  test("rename an exported const", async function (assert) {
+    let { editor } = describeModule(`export const a = 'a';`);
+    editor.rename("a", "a0");
+    assert.codeEqual(editor.serialize(), `export const a0 = 'a';`);
+  });
 });

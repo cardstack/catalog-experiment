@@ -152,7 +152,12 @@ export function describeModule(ast: File): ModuleDescription {
           builder.createCodeRegion(identifier as NodePath),
           ...path.scope
             .getBinding(name)!
-            .referencePaths.map((i) => builder.createCodeRegion(i)),
+            // we filter because babel gives you some things like
+            // ExportNamedDeclaration here that aren't relevant to us, because
+            // we never do fine-grained renaming within export statements anyway
+            // -- we re-synthesize entir export statements.
+            .referencePaths.filter((path) => path.type === "Identifier")
+            .map((i) => builder.createCodeRegion(i)),
         ];
       } else {
         references = [];
