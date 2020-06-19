@@ -73,27 +73,38 @@ export function expandAssignments(
 ) {
   while (queue.length > 0) {
     let assignment = queue.shift()!;
-    for (let dependency of Object.values(assignment.module.imports)) {
-      let depAssignment = assignments.get(dependency.resolution.url.href);
+
+    for (let source of assignment.module.desc.names.values()) {
+      if (source.type !== "import") {
+        continue;
+      }
+      let depResolution = assignment.module.resolvedImports[source.importIndex];
+      let depAssignment = assignments.get(depResolution.url.href);
       if (depAssignment) {
         // already assigned
         if (depAssignment.bundleURL.href !== assignment.bundleURL.href) {
-          // already assigned to another bundle, so the names we consume out of
-          // it must be exposed
-          for (let name of dependency.desc.names.values()) {
-            ensureExposed(name, depAssignment);
-          }
-          if (dependency.desc.namespace.length > 0) {
-            ensureExposed(NamespaceMarker, depAssignment);
-          }
+          // already assigned to another bundle, so the name must be exposed
+          ensureExposed(source.name, depAssignment);
         }
       } else {
         let a = {
           bundleURL: assignment.bundleURL,
-          module: dependency.resolution,
+          module: depResolution,
           exposedNames: new Map(),
         };
         assignments.set(a.module.url.href, a);
+        queue.push(a);
+      }
+    }
+
+    for (let dep of assignment.module.resolvedImports) {
+      if (!assignments.get(dep.url.href)) {
+        let a = {
+          bundleURL: assignment.bundleURL,
+          module: dep,
+          exposedNames: new Map(),
+        };
+        assignments.set(dep.url.href, a);
         queue.push(a);
       }
     }
