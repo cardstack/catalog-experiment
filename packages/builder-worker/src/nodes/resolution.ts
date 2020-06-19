@@ -55,9 +55,16 @@ export class ModuleResolutionNode implements BuilderNode {
     this.cacheKey = `module-resolution:${url.href}`;
   }
   deps() {
-    return { parsed: new JSParseNode(new FileNode(this.url)) };
+    let fileNode = new FileNode(this.url);
+    return { parsed: new JSParseNode(fileNode), source: fileNode };
   }
-  async run({ parsed }: { parsed: File }): Promise<NextNode<ModuleResolution>> {
+  async run({
+    parsed,
+    source,
+  }: {
+    parsed: File;
+    source: string;
+  }): Promise<NextNode<ModuleResolution>> {
     let desc = describeModule(parsed);
     let imports = await Promise.all(
       desc.imports.map(async (imp) => {
@@ -66,7 +73,7 @@ export class ModuleResolutionNode implements BuilderNode {
       })
     );
     return {
-      node: new FinishResolutionNode(this.url, imports, desc, parsed),
+      node: new FinishResolutionNode(this.url, imports, desc, source),
     };
   }
 }
@@ -77,7 +84,7 @@ class FinishResolutionNode implements BuilderNode {
     private url: URL,
     private imports: ModuleResolutionNode[],
     private desc: ModuleDescription,
-    private parsed: File
+    private source: string
   ) {
     this.cacheKey = this;
   }
@@ -90,7 +97,7 @@ class FinishResolutionNode implements BuilderNode {
     return {
       value: {
         url: this.url,
-        parsed: this.parsed,
+        source: this.source,
         desc: this.desc,
         resolvedImports: this.imports.map((_, index) => resolutions[index]),
       },

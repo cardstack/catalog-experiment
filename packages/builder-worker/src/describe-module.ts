@@ -10,10 +10,13 @@ import {
   VariableDeclarator,
   Identifier,
   Node,
+  LVal,
+  ObjectProperty,
   CallExpression,
   StringLiteral,
   isVariableDeclarator,
   isIdentifier,
+  isLVal,
 } from "@babel/types";
 import { assertNever } from "shared/util";
 import traverse, { NodePath, Scope } from "@babel/traverse";
@@ -34,9 +37,18 @@ export interface ModuleDescription {
   exports: Map<
     string,
     // comes from a local binding with this name. You can look it up in `names`.
-    | { type: "local"; name: string }
+    | {
+        type: "local";
+        name: string;
+        exportRegion: RegionPointer;
+      }
     // comes from another module, you can look up which one in `imports`.
-    | { type: "reexport"; importIndex: number; name: string | NamespaceMarker }
+    | {
+        type: "reexport";
+        importIndex: number;
+        name: string | NamespaceMarker;
+        exportRegion: RegionPointer;
+      }
   >;
 
   exportRegions: {
@@ -364,8 +376,9 @@ export function describeModule(ast: File): ModuleDescription {
     },
     ExportDefaultDeclaration: {
       enter(path) {
+        let exportRegion = builder.createCodeRegion(path as NodePath);
         desc.exportRegions.push({
-          region: builder.createCodeRegion(path as NodePath),
+          region: exportRegion,
           declaration: builder.createCodeRegion(
             path.get("declaration") as NodePath
           ),
@@ -385,6 +398,7 @@ export function describeModule(ast: File): ModuleDescription {
         desc.exports.set("default", {
           type: "local",
           name,
+          exportRegion,
         });
 
         if (name !== "default") {
@@ -409,14 +423,14 @@ export function describeModule(ast: File): ModuleDescription {
     },
     ExportNamedDeclaration(path) {
       let declaration: RegionPointer | undefined;
+      let exportRegion = builder.createCodeRegion(path as NodePath);
       if (path.node.declaration != null) {
         declaration = builder.createCodeRegion(
           path.get("declaration") as NodePath
         );
       }
-      let region = builder.createCodeRegion(path as NodePath);
       desc.exportRegions.push({
-        region,
+        region: exportRegion,
         declaration,
       });
 
@@ -425,7 +439,7 @@ export function describeModule(ast: File): ModuleDescription {
         let importIndex = ensureImportSpecifier(
           desc,
           path.node.source!.value,
-          region
+          exportRegion
         );
 
         for (let spec of path.node.specifiers) {
@@ -435,6 +449,7 @@ export function describeModule(ast: File): ModuleDescription {
                 type: "reexport",
                 name: "default",
                 importIndex,
+                exportRegion,
               });
               break;
             case "ExportSpecifier":
@@ -442,6 +457,7 @@ export function describeModule(ast: File): ModuleDescription {
                 type: "reexport",
                 name: spec.local.name,
                 importIndex,
+                exportRegion,
               });
               break;
             case "ExportNamespaceSpecifier":
@@ -449,6 +465,7 @@ export function describeModule(ast: File): ModuleDescription {
                 type: "reexport",
                 name: NamespaceMarker,
                 importIndex,
+                exportRegion,
               });
               break;
             default:
@@ -467,7 +484,11 @@ export function describeModule(ast: File): ModuleDescription {
                   `bug: exported declarations always have an identifier`
                 );
               }
-              desc.exports.set(id.name, { type: "local", name: id.name });
+              desc.exports.set(id.name, {
+                type: "local",
+                name: id.name,
+                exportRegion,
+              });
               break;
             case "VariableDeclaration":
               for (let declarator of path.node.declaration.declarations) {
@@ -481,13 +502,20 @@ export function describeModule(ast: File): ModuleDescription {
                     desc.exports.set(declarator.id.name, {
                       type: "local",
                       name: declarator.id.name,
+                      exportRegion,
                     });
                     break;
                   case "ArrayPattern":
-                  case "AssignmentPattern":
-                  case "MemberExpression":
                   case "ObjectPattern":
                   case "RestElement":
+                    setLValExportDesc(
+                      desc.exports,
+                      declarator.id,
+                      exportRegion
+                    );
+                    break;
+                  case "AssignmentPattern":
+                  case "MemberExpression":
                   case "TSParameterProperty":
                     throw new Error("unimplemented");
                   default:
@@ -511,6 +539,7 @@ export function describeModule(ast: File): ModuleDescription {
             desc.exports.set(spec.exported.name, {
               type: "local",
               name: spec.local.name,
+              exportRegion,
             });
           }
         }
@@ -518,6 +547,49 @@ export function describeModule(ast: File): ModuleDescription {
     },
   });
   return desc!;
+}
+
+function setLValExportDesc(
+  exportDesc: ModuleDescription["exports"],
+  node: LVal | ObjectProperty,
+  exportRegion: RegionPointer
+): void {
+  switch (node.type) {
+    case "Identifier":
+      let name = node.name as string;
+      exportDesc.set(name, {
+        type: "local",
+        exportRegion,
+        name,
+      });
+      break;
+    case "ObjectPattern":
+      for (let prop of node.properties) {
+        setLValExportDesc(exportDesc, prop, exportRegion);
+      }
+      break;
+    case "ObjectProperty":
+      if (isLVal(node.value)) {
+        setLValExportDesc(exportDesc, node.value, exportRegion);
+      }
+      break;
+    case "ArrayPattern":
+      for (let element of node.elements) {
+        if (element) {
+          setLValExportDesc(exportDesc, element, exportRegion);
+        }
+      }
+      break;
+    case "RestElement":
+      setLValExportDesc(exportDesc, node.argument, exportRegion);
+      break;
+    case "AssignmentPattern":
+    case "MemberExpression":
+    case "TSParameterProperty":
+      throw new Error("unimplemented");
+    default:
+      assertNever(node);
+  }
 }
 
 function ensureImportSpecifier(

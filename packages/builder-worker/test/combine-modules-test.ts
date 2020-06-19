@@ -838,13 +838,12 @@ QUnit.module("combine modules", function (origHooks) {
         import prop from './lib.js';
         const a = 'a';
         const b = 'b';
-        const defaultLib = 'collide with me';
-        console.log(prop.propA + a + b + defaultLib);
+        console.log(prop.propA + a + b);
       `,
       "lib.js": `
-        import { a, b } from "./a.js";
+        import { a as prop, b } from "./a.js";
         export default {
-          [a]: b + 1
+          [prop]: b + 1
         };
       `,
       "a.js": `
@@ -859,13 +858,12 @@ QUnit.module("combine modules", function (origHooks) {
     assert.codeEqual(
       combined,
       `
-      const a0 = 'propA';
+      const prop0 = 'propA';
       const b0 = 1;
-      const defaultLib0 = { [a0]: b0 + 1 };
+      const prop = { [prop0]: b0 + 1 };
       const a = 'a';
       const b = 'b';
-      const defaultLib = 'collide with me';
-      console.log(prop.propA + a + b + defaultLib);
+      console.log(prop.propA + a + b);
       `
     );
   });
@@ -899,7 +897,7 @@ QUnit.module("combine modules", function (origHooks) {
       function a() {
         console.log('a');
       }
-      function defaultB() {
+      const b = function () {
         console.log('b');
       }
       a();
@@ -939,7 +937,7 @@ QUnit.module("combine modules", function (origHooks) {
       class A {
         display() { console.log('a'); }
       }
-      class defaultB {
+      const B = class {
         display() { console.log('b'); }
       }
       let a = new A();
@@ -1091,6 +1089,12 @@ QUnit.module("combine modules", function (origHooks) {
       `
     );
   });
+
+  // TODO strips binding that was local that was assgined new name
+
+  // TODO strips binding that was import that was assigned new name
+
+  // TODO strips binding that was rennamed import that was assigned new name
 
   test("a function that's consumed by the bundle itself is not stripped", async function (assert) {
     await assert.setupFiles({
@@ -1294,7 +1298,7 @@ QUnit.module("combine modules", function (origHooks) {
       combined,
       `
       function i() { return 1; }
-      let a = initCache();
+      initCache();
       console.log(i());
       `
     );

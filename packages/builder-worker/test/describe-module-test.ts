@@ -45,16 +45,20 @@ QUnit.module("describe-module", function (hooks) {
     );
     assert.ok(desc.exports.has("y"), "y in exportedNames");
     assert.ok(desc.exports.has("foo"), "foo is a reexport");
-    assert.deepEqual(
-      desc.exports.get("foo"),
-      { type: "reexport", name: "foo", importIndex: 0 },
-      "foo is not named"
-    );
-    assert.deepEqual(
-      desc.exports.get("y"),
-      { type: "reexport", importIndex: 1, name: "x" },
-      "y is a reexport"
-    );
+
+    let exportDesc = desc.exports.get("foo")!;
+    assert.equal(exportDesc.type, "reexport");
+    assert.equal(exportDesc.name, "foo", "foo is not named");
+    if (exportDesc.type === "reexport") {
+      assert.equal(exportDesc.importIndex, 0);
+    }
+
+    exportDesc = desc.exports.get("y")!;
+    assert.equal(exportDesc.type, "reexport", "y is a reexport");
+    assert.equal(exportDesc.name, "x");
+    if (exportDesc.type === "reexport") {
+      assert.equal(exportDesc.importIndex, 1);
+    }
   });
 
   test("export name is different than module-scoped name", function (assert) {
@@ -64,18 +68,18 @@ QUnit.module("describe-module", function (hooks) {
     `);
     assert.ok(desc.exports.has("b"), "b in exportedNames");
     assert.ok(!desc.exports.has("a"), "a not in exportedNames");
-    assert.deepEqual(
-      desc.exports.get("b"),
-      { type: "local", name: "a" },
-      "we can see that b comes from a"
-    );
+    let exportDesc = desc.exports.get("b")!;
+    assert.equal(exportDesc.type, "local");
+    assert.equal(exportDesc.name, "a", "we can see that b comes from a");
   });
 
   test("default export function", function (assert) {
     let { desc } = describeModule(`
     export default function x() {}
   `);
-    assert.deepEqual(desc.exports.get("default"), { type: "local", name: "x" });
+    let exportDesc = desc.exports.get("default")!;
+    assert.equal(exportDesc.type, "local");
+    assert.equal(exportDesc.name, "x");
     assert.equal(desc.names.get("x")?.type, "local");
   });
 
@@ -83,7 +87,9 @@ QUnit.module("describe-module", function (hooks) {
     let { desc } = describeModule(`
     export default class x {}
   `);
-    assert.deepEqual(desc.exports.get("default"), { type: "local", name: "x" });
+    let exportDesc = desc.exports.get("default")!;
+    assert.equal(exportDesc.type, "local");
+    assert.equal(exportDesc.name, "x");
     assert.equal(desc.names.get("x")?.type, "local");
   });
 
@@ -91,10 +97,9 @@ QUnit.module("describe-module", function (hooks) {
     let { desc } = describeModule(`
     export default foo();
   `);
-    assert.deepEqual(desc.exports.get("default"), {
-      type: "local",
-      name: "default",
-    });
+    let exportDesc = desc.exports.get("default")!;
+    assert.equal(exportDesc.type, "local");
+    assert.equal(exportDesc.name, "default");
     assert.ok(desc.names.get("default")?.dependsOn.has("foo"));
   });
 
