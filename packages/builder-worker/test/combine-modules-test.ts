@@ -1090,12 +1090,6 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
-  // TODO strips binding that was local that was assgined new name
-
-  // TODO strips binding that was import that was assigned new name
-
-  // TODO strips binding that was rennamed import that was assigned new name
-
   test("a function that's consumed by the bundle itself is not stripped", async function (assert) {
     await assert.setupFiles({
       "index.js": `
@@ -1271,6 +1265,38 @@ QUnit.module("combine modules", function (origHooks) {
       let aValue;
       function a() { return aValue; }
       console.log(a());
+      `
+    );
+  });
+
+  test("strips unconsumed variable that was renamed because of a collision", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { a } from './lib.js';
+        const foo = 'bleep';
+        console.log(a() + foo);
+      `,
+      "lib.js": `
+        export function a() { return 1; }
+        let cache;
+        function helper() {
+          if (cache) { return cache; }
+          return cache = 1;
+        }
+        const foo = 'bar';
+        export function b(options) { return helper(); }
+        `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined,
+      `
+      function a() { return 1; }
+      const foo = 'bleep';
+      console.log(a() + foo);
       `
     );
   });

@@ -410,11 +410,6 @@ function setBindingDependencies(
       name = state.assignedLocalNames
         .get(currentModule.url.href)
         ?.get(originalName);
-      if (!name) {
-        throw new Error(
-          `bug: can't find name assignment for the binding '${originalName}' in module: ${currentModule.url.href}`
-        );
-      }
     } else {
       // the module that holds the binding dependency to set is actually a
       // different module. follow the export to get to the module where the
@@ -450,11 +445,6 @@ function setBindingDependencies(
           .get(currentModule.url.href)
           ?.get(localName);
         originalDependsOn = currentModule.desc.names.get(localName)!.dependsOn;
-        if (!name) {
-          throw new Error(
-            `bug: can't find name assignment for the binding '${localName}' in module: ${currentModule.url.href}`
-          );
-        }
       } else {
         // the binding we are dealing with originates from another bundle.
         // terminate the search for this binding in the currentModule and use
@@ -462,15 +452,14 @@ function setBindingDependencies(
         name = state.assignedImportedNames
           .get(currentModule.url.href)
           ?.get(localName);
-        if (!name) {
-          throw new Error(
-            `bug: can't find name assignment for the binding '${localName}' in module: ${currentModule.url.href}`
-          );
-        }
       }
     }
 
-    // TODO consolidate all the assertions for a name to exist here
+    if (!name) {
+      throw new Error(
+        `bug: can't find name assignment for the binding '${originalName}' in module: ${module.url.href}`
+      );
+    }
 
     if (desc.usedByModule) {
       state.bundleDependsOn.add(name);
