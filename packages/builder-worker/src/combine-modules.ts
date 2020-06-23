@@ -11,10 +11,11 @@ export function combineModules(
   let state: State = {
     bundle,
     assignedLocalNames: new Map(),
-    usedNames: new Set(),
+    usedNames: new Map(),
     assignedImportedNames: new Map(),
     bindingDependsOn: new Map(),
     bundleDependsOn: new Set(),
+    seenModules: new Set(),
   };
   let ownAssignments = assignments.filter(
     (a) => a.bundleURL.href === bundle.href
@@ -34,7 +35,7 @@ export function combineModules(
   let exports = assignedExports(ownAssignments, state);
   let removedBindings = new Set<string>();
   let consumptionCache = new Map<string, Map<string, boolean>>();
-  for (let bindingName of state.usedNames) {
+  for (let bindingName of state.usedNames.keys()) {
     if (
       [...exports.values()].some(
         (exportedBinding) =>
@@ -124,88 +125,43 @@ function removeBinding(
   state: State,
   assignments: BundleAssignment[]
 ): void {
-  let { name, module } = findOriginalBindingDeclaration(
-    assignedName,
-    rewriters,
-    state,
-    assignments
-  );
+  let name: string | undefined;
+  let moduleHref: string | undefined;
+  if (!state.usedNames.has(assignedName)) {
+    // if we have not found the name it is because it comes from a module that
+    // has been assigned to a different bundle. because it comes from a
+    // different bundle, the name has never been assigned, so the name being
+    // asked about is actually already the original name
+    name = assignedName;
+    let assignment = assignments.find(({ exposedNames }) =>
+      exposedNames.has(assignedName)
+    );
+    moduleHref = assignment?.bundleURL.href;
+  } else {
+    ({ moduleHref, name } = state.usedNames.get(assignedName) || {});
+  }
+  if (!moduleHref || !name) {
+    throw new Error(
+      `bug: could not determine the original name and module of the bundle scoped binding (after assignment) of '${assignedName}`
+    );
+  }
 
   let { bundleURL } = assignments.find(
-    ({ module: m }) => m.url.href === module.url.href
+    ({ module: m }) => m.url.href === moduleHref
   )!;
   // no need to worry about removing bindings that come from other bundles, as
   // we wont even bother writing their import statements in the final steps of
   // the bundle creation since they would be unconsumed.
   if (bundle.href === bundleURL.href) {
-    let rewriter = rewriters.get(module.url.href)!;
+    let rewriter = rewriters.get(moduleHref)!;
     rewriter.editor.removeDeclaration(name);
   }
-}
-
-function findOriginalBindingDeclaration(
-  assignedName: string,
-  rewriters: Map<string, ModuleRewriter>,
-  state: State,
-  assignments: BundleAssignment[]
-): { module: ModuleResolution; name: string } {
-  let name: string | undefined;
-  // these are all the modules that have the declaration for the binding, but
-  // we still need to narrow down to which module has the name as a local (vs
-  // as an import)
-  let modules = [...rewriters.values()]
-    .filter(({ module }) =>
-      [
-        ...(state.assignedLocalNames.get(module.url.href)?.entries() || []),
-        ...(state.assignedImportedNames.get(module.url.href)?.entries() || []),
-      ].find(([originalName, _assignedName]) => {
-        if (
-          _assignedName === assignedName &&
-          typeof originalName === "string"
-        ) {
-          // excuse the side effect, I didn't want to do another search just
-          // to determine the value that we have easy access to here
-          name = originalName;
-          return true;
-        }
-        return false;
-      })
-    )
-    .map(({ module }) => module);
-
-  if (!name) {
-    // if we have not found the name it is because it comes from a module that
-    // has been assigned to a different bundle. because it comes from a
-    // different bundle, the name has never been assigned, so the name being
-    // asked about is actually already the original name
-    let assignment = assignments.find(({ exposedNames }) =>
-      exposedNames.has(assignedName)
-    );
-    if (assignment) {
-      return { name: assignedName, module: assignment.module };
-    }
-    throw new Error(
-      `bug: could not determine the original name and module of the bundle scoped binding (after assignment) of '${assignedName}`
-    );
-  }
-  let module = modules.find(
-    (m) =>
-      rewriters.get(m.url.href)!.module.desc.names.get(name!)?.type === "local"
-  );
-  if (!module) {
-    throw new Error(
-      `bug: could not determine the module that has the local declaration of the binding with the originalName of '${name}' and assigned name of '${assignedName}', that has import declarations in the modules ${modules
-        .map((m) => m.url.href)
-        .join(", ")}`
-    );
-  }
-  return { name, module };
 }
 
 interface State {
   bundle: URL;
 
-  usedNames: Set<string>;
+  usedNames: Map<string, { moduleHref: string; name: string }>;
 
   // outer map is the href of the exported module. the inner map goes from
   // exported name to our name. our name also must appear in usedNames.
@@ -225,6 +181,8 @@ interface State {
   // similar to bindingDependsOn, these are bindings that are needed by the
   // bundle's top-level module scope itself.
   bundleDependsOn: Set<string>;
+
+  seenModules: Set<string>;
 }
 class ModuleRewriter {
   readonly editor: RegionEditor;
@@ -298,7 +256,7 @@ class ModuleRewriter {
         }
         nameAssignments.set(name, assignedName);
       }
-      this.claimAndRename(name, assignedName);
+      this.claimAndRename(this.module.url.href, name, assignedName);
     }
 
     this.editor.removeImportsAndExports(assignedDefaultName);
@@ -335,8 +293,12 @@ class ModuleRewriter {
     mapping.set(exportedName, assignedName);
   }
 
-  private claimAndRename(origName: string, newName: string) {
-    this.sharedState.usedNames.add(newName);
+  private claimAndRename(
+    moduleHref: string,
+    origName: string,
+    newName: string
+  ) {
+    this.sharedState.usedNames.set(newName, { moduleHref, name: origName });
     if (origName !== newName) {
       this.editor.rename(origName, newName);
     }
@@ -363,9 +325,11 @@ function gatherModuleRewriters(
   state: State,
   assignments: BundleAssignment[]
 ) {
-  if (rewriters.has(module.url.href)) {
+  if (state.seenModules.has(module.url.href)) {
     return;
   }
+  state.seenModules.add(module.url.href);
+
   // we intentionally want to perform the module rewriting when we enter the
   // recursive function so that module bindings that are closest to the bundle
   // entrypoint have their names retained so that collisions are more likely the
