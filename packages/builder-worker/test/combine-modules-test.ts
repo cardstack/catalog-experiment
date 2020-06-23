@@ -1399,10 +1399,16 @@ QUnit.module("combine modules", function (origHooks) {
         let bar = 3;
         console.log(a() + bar);
       `,
+      // in bundleB.js the goal is to have lib.js's "bar" resolve to a different
+      // name than it resolved to in bundleA.js (it resolves to "bar1" in
+      // bundleB.js), but that we should still see it stripped out in the final
+      // combined bundle, and well as an interesting collision prevention should
+      // occur too around "bar0" in the final combined bundle.
       "entrypointB.js": `
         import { b } from './b.js';
         let bar = 4;
-        console.log(b() + bar);
+        let bar0 = 5;
+        console.log(b() + bar + bar0);
       `,
       "a.js": `
         import { bar } from './lib.js';
@@ -1478,8 +1484,9 @@ QUnit.module("combine modules", function (origHooks) {
       console.log(a() + bar);
 
       function b() { return bar0; }
-      let bar1 = 4;
-      console.log(b() + bar1);
+      let bar2 = 4;
+      let bar00 = 5
+      console.log(b() + bar2 + bar00);
       `
     );
   });
