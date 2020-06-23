@@ -50,7 +50,7 @@ export class BundleNode {
 
   async run(): Promise<Value<string>> {
     return {
-      value: combineModules(this.bundle, this.assignments),
+      value: combineModules(this.bundle, this.assignments).code,
     };
   }
 }

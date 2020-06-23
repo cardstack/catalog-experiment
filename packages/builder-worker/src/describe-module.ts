@@ -21,6 +21,7 @@ import {
 import { assertNever } from "shared/util";
 import traverse, { NodePath, Scope } from "@babel/traverse";
 import { CodeRegion, RegionPointer, RegionBuilder } from "./code-region";
+import { ImportAssignments } from "./combine-modules";
 
 export const NamespaceMarker = { isNamespace: true };
 export type NamespaceMarker = typeof NamespaceMarker;
@@ -78,6 +79,10 @@ export interface NameDescription {
 
 export interface LocalNameDescription extends NameDescription {
   type: "local";
+  original?: {
+    moduleHref: string;
+    exportedName: string | NamespaceMarker;
+  };
 }
 
 export interface ImportedNameDescription extends NameDescription {
@@ -108,7 +113,10 @@ interface DuckPath {
   isIdentifier(): this is NodePath<Identifier>;
 }
 
-export function describeModule(ast: File): ModuleDescription {
+export function describeModule(
+  ast: File,
+  importAssignments?: ImportAssignments
+): ModuleDescription {
   let builder: RegionBuilder;
   let desc: ModuleDescription;
   let consumedByModule: Set<string> = new Set();
@@ -189,15 +197,22 @@ export function describeModule(ast: File): ModuleDescription {
       if (sideEffects) {
         declarationSideEffects = builder.createCodeRegion(sideEffects);
       }
-
-      desc.names.set(name, {
+      let nameDesc = {
         type: "local",
         dependsOn: consumes,
         usedByModule: false,
         declaration: builder.createCodeRegion(declaration),
         references,
         declarationSideEffects,
-      });
+      } as LocalNameDescription;
+      if (importAssignments && importAssignments.has(name)) {
+        let { moduleHref, name: exportedName } = importAssignments.get(name)!;
+        nameDesc.original = {
+          moduleHref,
+          exportedName,
+        };
+      }
+      desc.names.set(name, nameDesc);
     }
   }
 
