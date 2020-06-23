@@ -4,10 +4,18 @@ import { NamespaceMarker, isNamespaceMarker } from "./describe-module";
 import { maybeRelativeURL } from "./path";
 import { RegionEditor } from "./code-region";
 
+// This is an inverted State.assignedImportedNames, where the key is the
+// assigned name in the bundle and the value is the original moduleHref and
+// exported name for the assignment.
+export type ImportAssignments = Map<
+  string,
+  { moduleHref: string; name: string | NamespaceMarker }
+>;
+
 export function combineModules(
   bundle: URL,
   assignments: BundleAssignment[]
-): string {
+): { code: string; importAssignments: ImportAssignments } {
   let state: State = {
     bundle,
     assignedLocalNames: new Map(),
@@ -115,7 +123,28 @@ export function combineModules(
   }
   output.unshift(importDeclarations.join("\n"));
 
-  return output.join("\n").trim();
+  const importAssignments = invertAssignedImportedNames(
+    state.assignedImportedNames
+  );
+  return {
+    code: output.join("\n").trim(),
+    importAssignments,
+  };
+}
+
+function invertAssignedImportedNames(
+  assignedImportedNames: State["assignedImportedNames"]
+): ImportAssignments {
+  let importAssignments: ImportAssignments = new Map();
+  for (let [moduleHref, mapping] of assignedImportedNames) {
+    for (let [name, assignedName] of mapping) {
+      importAssignments.set(assignedName, {
+        moduleHref,
+        name,
+      });
+    }
+  }
+  return importAssignments;
 }
 
 function removeBinding(
@@ -207,14 +236,26 @@ class ModuleRewriter {
 
       // figure out which names in module scope are imports vs things that
       // live inside this module
-      if (nameDesc.type === "import") {
-        let { name: remoteName, module: remoteModule } = resolveReexport(
-          nameDesc.name,
-          this.module.resolvedImports[nameDesc.importIndex]
-        );
+      if (
+        nameDesc.type === "import" ||
+        (nameDesc.type === "local" && nameDesc.original)
+      ) {
+        let remoteName: string | NamespaceMarker;
+        let remoteModuleHref: string;
+        if (nameDesc.type === "local" && nameDesc.original) {
+          remoteName = nameDesc.original.exportedName;
+          remoteModuleHref = nameDesc.original.moduleHref;
+        } else if (nameDesc.type === "import") {
+          let remoteModule: ModuleResolution;
+          ({ name: remoteName, module: remoteModule } = resolveReexport(
+            nameDesc.name,
+            this.module.resolvedImports[nameDesc.importIndex]
+          ));
+          remoteModuleHref = remoteModule.url.href;
+        }
         assignedName = this.maybeAssignImportName(
-          remoteModule,
-          remoteName,
+          remoteModuleHref!,
+          remoteName!,
           name
         );
       } else {
@@ -236,7 +277,7 @@ class ModuleRewriter {
           assignedName = assignedDefaultName;
         } else if (entry?.[0]) {
           assignedName = this.maybeAssignImportName(
-            this.module,
+            this.module.url.href,
             entry[0],
             name
           );
@@ -263,32 +304,32 @@ class ModuleRewriter {
   }
 
   private maybeAssignImportName(
-    remoteModule: ModuleResolution,
+    remoteModuleHref: string,
     remoteName: string | NamespaceMarker,
     suggestedName: string
   ): string {
     let alreadyAssignedName = this.sharedState.assignedImportedNames
-      .get(remoteModule.url.href)
+      .get(remoteModuleHref)
       ?.get(remoteName);
 
     if (alreadyAssignedName) {
       return alreadyAssignedName;
     } else {
       let assignedName = this.unusedNameLike(suggestedName);
-      this.assignImportName(remoteModule, remoteName, assignedName);
+      this.assignImportName(remoteModuleHref, remoteName, assignedName);
       return assignedName;
     }
   }
 
   private assignImportName(
-    module: ModuleResolution,
+    moduleHref: string,
     exportedName: string | NamespaceMarker,
     assignedName: string
   ) {
-    let mapping = this.sharedState.assignedImportedNames.get(module.url.href);
+    let mapping = this.sharedState.assignedImportedNames.get(moduleHref);
     if (!mapping) {
       mapping = new Map();
-      this.sharedState.assignedImportedNames.set(module.url.href, mapping);
+      this.sharedState.assignedImportedNames.set(moduleHref, mapping);
     }
     mapping.set(exportedName, assignedName);
   }
@@ -370,11 +411,15 @@ function setBindingDependencies(
     let name: string | undefined;
     let { dependsOn: originalDependsOn } = desc;
 
-    if (desc.type === "local") {
+    if (desc.type === "local" && !desc.original) {
       name = state.assignedLocalNames
         .get(currentModule.url.href)
         ?.get(originalName);
-    } else {
+    } else if (desc.type === "local" && desc.original) {
+      name = state.assignedImportedNames
+        .get(desc.original.moduleHref)
+        ?.get(desc.original.exportedName);
+    } else if (desc.type === "import") {
       // the module that holds the binding dependency to set is actually a
       // different module. follow the export to get to the module where the
       // binding is declared locally
@@ -509,6 +554,11 @@ function assignedImports(
   let imports: ReturnType<typeof assignedImports> = new Map();
   for (let [moduleHref, mappings] of state.assignedImportedNames) {
     let assignment = assignments.find((a) => a.module.url.href === moduleHref)!;
+    if (!assignment) {
+      // this binding is actually a local binding that originally was imported
+      // into a module that this bundle includes
+      continue;
+    }
     if (assignment.bundleURL.href === state.bundle.href) {
       // internal, no import needed
       continue;
