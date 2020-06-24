@@ -28,6 +28,7 @@ let originURL = new URL(worker.origin);
 let inputURL = new URL("https://local-disk/");
 let projects: [URL, URL][] = [[inputURL, originURL]];
 let buildManager: BuildManager;
+let activating: Promise<void>;
 
 console.log(`service worker evaluated`);
 
@@ -50,7 +51,7 @@ worker.addEventListener("activate", () => {
   // takes over when there is *no* existing service worker
   worker.clients.claim();
 
-  activate();
+  activating = activate();
 });
 
 async function activate() {
@@ -73,9 +74,6 @@ async function activate() {
   await fs.displayListing();
 }
 
-// TODO it looks like there is a bug where the browser displays 404 if you visit
-// the page while the service worker is installing/activating...
-
 worker.addEventListener("fetch", (event: FetchEvent) => {
   let url = new URL(event.request.url);
 
@@ -86,6 +84,7 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
 
   event.respondWith(
     (async () => {
+      await activating;
       if (volume) {
         await buildManager.rebuilder.isIdle();
 
