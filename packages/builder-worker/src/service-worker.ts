@@ -87,7 +87,7 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
       try {
         await activating;
         if (!volume) {
-          throw new Error(`The FileDaemonClientVolume is unavailable`);
+          throw new Error(`bug: the FileDaemonClientVolume is unavailable`);
         }
         await buildManager.rebuilder.isIdle();
 
