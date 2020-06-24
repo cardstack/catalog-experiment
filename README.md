@@ -127,6 +127,15 @@ Sketch of basic app dependency design:
 
    Management of the clock is up to us to optimize, it's opaque to all public API. A very coarse clock will require us to host fewer bundles, but introduces latency before new packages show up. We might want to handle the low-latency case explicitly in our equivalent of yarn resolutions.
 
+   To import packages from NPM:
+      - we're going to delegate installs (and all the custom postinstall stuff) to yarn
+      - to keep determinism, we're going to save the yarn.lock that results, per package per version.
+      - the bundle we build is tied to our global clock when we built it, which is derived from the yarn.lock version we used.
+      - as we traverse all the deps, we save bundles for each package, which cuts down on the number of independent yarn installs we need to run and build. They will all share a clock.
+      - there are optimizations possible where you can reuse earlier bundles, as long as they truly match what yarn just decided
+        - packages with no deps that are on the same version as we've seen before, we can just reuse that bundle (at its earlier clock)
+        - moving up from there, if all your deps are reused bundles you can be a reused bundle too
+  
 4. Beyond optimization, it's important for correctness that we resolve duplicates deterministically even in dev, so it matches the optimized prod output. We will handle this via our combineModules, which will need to annotate _dependsOn_ with the reason why, including semver ranges.
 
 5. All third-party bundles will go through combineModules even in dev, this ensures correctness and things like yarn-resolutions get applied. We will probably configure the bundle assignments so that all public exports are available to the app (this means we don't need to rebuild third-party bundles at all as the app changes). Not until prod do we shake out the unused parts.
