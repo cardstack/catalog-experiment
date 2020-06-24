@@ -1,4 +1,4 @@
-import { Handler, Context } from "./request-handler";
+import { Handler } from "./request-handler";
 import { contentType, lookup } from "mime-types";
 import { FileSystem, FileSystemError } from "../filesystem";
 import {
@@ -9,55 +9,58 @@ import {
 import { log } from "../logger";
 import { HttpStat } from "../filesystem-drivers/http-driver";
 import { relativeURL } from "../path";
+import { BuildManager } from "../build-manager";
 
 const builderOrigin = "http://localhost:8080";
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 
-export const handleFileRequest: Handler = async function (req, context) {
-  // turning this into a URL so we can normalize comparisons (trailing slashes
-  // wont mess with us that way)
-  let originURL = new URL(worker.origin);
-  let requestURL = new URL(req.url);
+export function handleFileRequest(fs: FileSystem, buildManager: BuildManager) {
+  return (async ({ request }) => {
+    // turning this into a URL so we can normalize comparisons (trailing slashes
+    // wont mess with us that way)
+    let originURL = new URL(worker.origin);
+    let requestURL = new URL(request.url);
 
-  // For the webpack hosted builder requests, we need to honor same origin
-  // policy (apparently), as the responses are empty otherwise. So instead route
-  // these requests through the file daemon where they will be proxied to the
-  // webpack hosted builder.
-  if (requestURL.origin === builderOrigin) {
-    return new Response(
-      (await fetch(new URL(requestURL.pathname, originURL).href)).body
-    );
-  }
+    // For the webpack hosted builder requests, we need to honor same origin
+    // policy (apparently), as the responses are empty otherwise. So instead route
+    // these requests through the file daemon where they will be proxied to the
+    // webpack hosted builder.
+    if (requestURL.origin === builderOrigin) {
+      return new Response(
+        (await fetch(new URL(requestURL.pathname, originURL).href)).body
+      );
+    }
 
-  if (!originURL.href || requestURL.origin !== originURL.origin) {
-    return await fetch(req);
-  }
+    if (!originURL.href || requestURL.origin !== originURL.origin) {
+      return await fetch(request);
+    }
 
-  log(`serving request ${requestURL} from filesystem`);
-  let response = await serveFile(requestURL, context);
-  if (response.status === 404) {
-    for (let [input, output] of context.buildManager.projects) {
-      // we serve each project's input files as a fallback to their output
-      // files, which lets you not worry about assets that are unchanged by the
-      // build.
-      if (requestURL.href.startsWith(output.href)) {
-        let fallbackResponse = await serveFile(
-          new URL(relativeURL(requestURL, output)!, input),
-          context
-        );
-        if (fallbackResponse.status !== 404) {
-          return fallbackResponse;
+    log(`serving request ${requestURL} from filesystem`);
+    let response = await serveFile(requestURL, fs);
+    if (response.status === 404) {
+      for (let [input, output] of buildManager.projects) {
+        // we serve each project's input files as a fallback to their output
+        // files, which lets you not worry about assets that are unchanged by the
+        // build.
+        if (requestURL.href.startsWith(output.href)) {
+          let fallbackResponse = await serveFile(
+            new URL(relativeURL(requestURL, output)!, input),
+            fs
+          );
+          if (fallbackResponse.status !== 404) {
+            return fallbackResponse;
+          }
         }
       }
     }
-  }
-  return response;
-};
+    return response;
+  }) as Handler;
+}
 
-async function serveFile(url: URL, context: Context): Promise<Response> {
+async function serveFile(url: URL, fs: FileSystem): Promise<Response> {
   let file: FileDescriptor | DirectoryDescriptor | Response | undefined;
   try {
-    file = await openFile(context.fs, url);
+    file = await openFile(fs, url);
     if (file instanceof Response) {
       return file;
     }
@@ -67,7 +70,7 @@ async function serveFile(url: URL, context: Context): Promise<Response> {
         url = new URL(url.href + "/");
       }
       url = new URL("index.html", url);
-      file = (await openFile(context.fs, url)) as FileDescriptor;
+      file = (await openFile(fs, url)) as FileDescriptor;
       if (file instanceof Response) {
         return file;
       }

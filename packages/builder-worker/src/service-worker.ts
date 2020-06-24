@@ -5,7 +5,7 @@ import {
 } from "./filesystem-drivers/file-daemon-client-driver";
 import { FileSystem } from "./filesystem";
 import { addEventListener } from "./event-bus";
-import { log } from "./logger";
+import { log, error } from "./logger";
 import { handleFileRequest } from "./request-handlers/file-request-handler";
 import { handleClientRegister } from "./request-handlers/client-register-handler";
 import { handleLogLevelRequest } from "./request-handlers/log-level-handler";
@@ -28,6 +28,7 @@ let originURL = new URL(worker.origin);
 let inputURL = new URL("https://local-disk/");
 let projects: [URL, URL][] = [[inputURL, originURL]];
 let buildManager: BuildManager;
+let activating: Promise<void>;
 
 console.log(`service worker evaluated`);
 
@@ -50,7 +51,7 @@ worker.addEventListener("activate", () => {
   // takes over when there is *no* existing service worker
   worker.clients.claim();
 
-  activate();
+  activating = activate();
 });
 
 async function activate() {
@@ -73,9 +74,6 @@ async function activate() {
   await fs.displayListing();
 }
 
-// TODO it looks like there is a bug where the browser displays 404 if you visit
-// the page while the service worker is installing/activating...
-
 worker.addEventListener("fetch", (event: FetchEvent) => {
   let url = new URL(event.request.url);
 
@@ -86,31 +84,29 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
 
   event.respondWith(
     (async () => {
-      if (volume) {
+      try {
+        await activating;
+        if (!volume) {
+          throw new Error(`bug: the FileDaemonClientVolume is unavailable`);
+        }
         await buildManager.rebuilder.isIdle();
 
         let stack: Handler[] = [
-          handleClientRegister,
-          handleBuilderRestartRequest,
-          handleLogLevelRequest,
-          handleFileRequest,
+          handleClientRegister(eventHandler, volume),
+          handleBuilderRestartRequest(buildManager),
+          handleLogLevelRequest(),
+          handleFileRequest(fs, buildManager),
         ];
         let response: Response | undefined;
-        let context = {
-          fs,
-          event,
-          fileDaemonVolume: volume,
-          eventHandler,
-          buildManager,
-        };
         for (let handler of stack) {
-          response = await handler(event.request, context);
+          response = await handler(event);
           if (response) {
             return response;
           }
         }
+      } catch (err) {
+        error(`An unhandled error occurred`, err);
       }
-
       return new Response("Not Found", { status: 404 });
     })()
   );
