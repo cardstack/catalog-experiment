@@ -5,7 +5,7 @@ import {
 } from "./filesystem-drivers/file-daemon-client-driver";
 import { FileSystem } from "./filesystem";
 import { addEventListener } from "./event-bus";
-import { log } from "./logger";
+import { log, error } from "./logger";
 import { handleFileRequest } from "./request-handlers/file-request-handler";
 import { handleClientRegister } from "./request-handlers/client-register-handler";
 import { handleLogLevelRequest } from "./request-handlers/log-level-handler";
@@ -84,8 +84,11 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
 
   event.respondWith(
     (async () => {
-      await activating;
-      if (volume) {
+      try {
+        await activating;
+        if (!volume) {
+          throw new Error(`The FileDaemonClientVolume is unavailable`);
+        }
         await buildManager.rebuilder.isIdle();
 
         let stack: Handler[] = [
@@ -101,8 +104,9 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
             return response;
           }
         }
+      } catch (err) {
+        error(`An unhandled error occurred`, err);
       }
-
       return new Response("Not Found", { status: 404 });
     })()
   );
