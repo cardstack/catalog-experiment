@@ -324,11 +324,10 @@ type Disposition =
   | { state: "removed" }
   | { state: "replaced"; replacement: string }
   | {
-      // TODO We can do better with this disposition...
-      state: "replaced our start or removed ourselves";
-      replacement: string | false;
+      state: "replaced start";
+      replacement: string;
     }
-  | { state: "unwrap"; preserveChild: RegionPointer };
+  | { state: "unwrap" };
 
 export class RegionEditor {
   private dispositions: Disposition[];
@@ -354,7 +353,6 @@ export class RegionEditor {
     if (nameDesc.declarationSideEffects != null) {
       this.dispositions[nameDesc.declaration] = {
         state: "unwrap",
-        preserveChild: nameDesc.declarationSideEffects,
       };
       this.rename(name, this.unusedNameLike(name));
     } else {
@@ -393,14 +391,16 @@ export class RegionEditor {
           );
         }
         this.dispositions[region] = {
-          state: "replaced our start or removed ourselves",
+          state: "replaced start",
           replacement: `const ${defaultNameSuggestion} = `,
         };
-      } else {
+      } else if (declaration != null) {
         this.dispositions[region] = {
-          state: "replaced our start or removed ourselves",
-          replacement: declaration != null ? "" : false,
+          state: "replaced start",
+          replacement: "",
         };
+      } else {
+        this.dispositions[region] = { state: "removed" };
       }
     }
     for (let importDesc of this.desc.imports) {
@@ -436,15 +436,8 @@ export class RegionEditor {
         this.handleReplace(region, disposition.replacement);
         this.skip(regionPointer);
         return disposition;
-      //@ts-ignore
-      case "replaced our start or removed ourselves":
-        if (disposition.replacement === false) {
-          this.skip(regionPointer);
-          return { state: "removed" };
-        }
-      // intentionally falling through since we have a child declaration that we want to preserve
       case "unwrap":
-      case "replaced our start or removed ourselves":
+      case "replaced start":
       case "unchanged":
         if (region.firstChild != null) {
           let childDispositions: Disposition[] = [];
@@ -511,12 +504,7 @@ export class RegionEditor {
             let sideEffect = this.output.pop()!;
             this.output = this.output.slice(0, -4);
             this.output.push(sideEffect);
-          } else if (
-            disposition.state === "replaced our start or removed ourselves"
-          ) {
-            if (disposition.replacement === false) {
-              throw new Error(`bug: should never be here`);
-            }
+          } else if (disposition.state === "replaced start") {
             this.output[ourStartOutputIndex] = disposition.replacement;
           }
         }
