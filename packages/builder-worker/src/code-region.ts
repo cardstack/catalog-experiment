@@ -327,7 +327,7 @@ type Disposition =
       state: "replaced start";
       replacement: string;
     }
-  | { state: "unwrap"; preserveChild: RegionPointer };
+  | { state: "unwrap" };
 
 export class RegionEditor {
   private dispositions: Disposition[];
@@ -353,7 +353,6 @@ export class RegionEditor {
     if (nameDesc.declarationSideEffects != null) {
       this.dispositions[nameDesc.declaration] = {
         state: "unwrap",
-        preserveChild: nameDesc.declarationSideEffects,
       };
       this.rename(name, this.unusedNameLike(name));
     } else {
