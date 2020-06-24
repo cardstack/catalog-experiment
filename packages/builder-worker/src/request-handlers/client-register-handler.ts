@@ -4,52 +4,55 @@ import { eventGroup as fsGroup } from "../filesystem";
 import {
   FileDaemonClientEvent,
   eventCategory as fileDaemonClientEventCategory,
+  FileDaemonClientVolume,
 } from "../filesystem-drivers/file-daemon-client-driver";
 import { LogMessage, eventGroup as logGroup } from "../logger";
+import { ClientEventHandler } from "../client-event-handler";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 
-export const handleClientRegister: Handler = async function (
-  req,
-  context
-): Promise<Response | undefined> {
-  let requestURL = new URL(req.url);
-  const { event, eventHandler, fileDaemonVolume } = context;
-  // cross origin requests will not have a client
-  if (!event.clientId || requestURL.origin !== worker.origin) {
-    return;
-  }
-
-  if (requestURL.pathname.startsWith("/register-client")) {
-    eventHandler.addClient(event.clientId);
-    if (fileDaemonVolume.connected) {
-      await eventHandler.sendEvent<FileDaemonClientEvent>(event.clientId, {
-        group: fsGroup,
-        args: {
-          href: worker.origin,
-          category: fileDaemonClientEventCategory,
-          type: "connected",
-        },
-      });
-    } else {
-      await eventHandler.sendEvent<FileDaemonClientEvent>(event.clientId, {
-        group: fsGroup,
-        args: {
-          href: worker.origin,
-          category: fileDaemonClientEventCategory,
-          type: "disconnected",
-        },
-      });
+export function handleClientRegister(
+  eventHandler: ClientEventHandler,
+  fileDaemonVolume: FileDaemonClientVolume
+) {
+  return (async ({ clientId, request }) => {
+    let requestURL = new URL(request.url);
+    // cross origin requests will not have a client
+    if (!clientId || requestURL.origin !== worker.origin) {
+      return;
     }
 
-    await eventHandler.sendEvent<LogMessage[]>(event.clientId, {
-      group: logGroup,
-      args: Logger.messages(),
-    });
-    return new Response("client registered", { status: 200 });
-  } else if (requestURL.pathname.startsWith("/unregister-client")) {
-    eventHandler.removeClient(event.clientId);
-    return new Response("client unregistered", { status: 200 });
-  }
-  return;
-};
+    if (requestURL.pathname.startsWith("/register-client")) {
+      eventHandler.addClient(clientId);
+      if (fileDaemonVolume.connected) {
+        await eventHandler.sendEvent<FileDaemonClientEvent>(clientId, {
+          group: fsGroup,
+          args: {
+            href: worker.origin,
+            category: fileDaemonClientEventCategory,
+            type: "connected",
+          },
+        });
+      } else {
+        await eventHandler.sendEvent<FileDaemonClientEvent>(clientId, {
+          group: fsGroup,
+          args: {
+            href: worker.origin,
+            category: fileDaemonClientEventCategory,
+            type: "disconnected",
+          },
+        });
+      }
+
+      await eventHandler.sendEvent<LogMessage[]>(clientId, {
+        group: logGroup,
+        args: Logger.messages(),
+      });
+      return new Response("client registered", { status: 200 });
+    } else if (requestURL.pathname.startsWith("/unregister-client")) {
+      eventHandler.removeClient(clientId);
+      return new Response("client unregistered", { status: 200 });
+    }
+    return;
+  }) as Handler;
+}

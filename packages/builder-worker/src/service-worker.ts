@@ -90,21 +90,14 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
         await buildManager.rebuilder.isIdle();
 
         let stack: Handler[] = [
-          handleClientRegister,
-          handleBuilderRestartRequest,
-          handleLogLevelRequest,
-          handleFileRequest,
+          handleClientRegister(eventHandler, volume),
+          handleBuilderRestartRequest(buildManager),
+          handleLogLevelRequest(),
+          handleFileRequest(fs, buildManager),
         ];
         let response: Response | undefined;
-        let context = {
-          fs,
-          event,
-          fileDaemonVolume: volume,
-          eventHandler,
-          buildManager,
-        };
         for (let handler of stack) {
-          response = await handler(event.request, context);
+          response = await handler(event);
           if (response) {
             return response;
           }

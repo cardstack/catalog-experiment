@@ -1,20 +1,19 @@
 import { Handler } from "./request-handler";
+import { BuildManager } from "../build-manager";
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 
-export const handleBuilderRestartRequest: Handler = async function (
-  req,
-  context
-): Promise<Response | undefined> {
-  let requestURL = new URL(req.url);
-  if (requestURL.origin !== worker.origin) {
-    return;
-  }
-  if (!requestURL.pathname.startsWith("/restart-builder")) {
-    return;
-  }
+export function handleBuilderRestartRequest(buildManager: BuildManager) {
+  return (async ({ request }) => {
+    let requestURL = new URL(request.url);
+    if (requestURL.origin !== worker.origin) {
+      return;
+    }
+    if (!requestURL.pathname.startsWith("/restart-builder")) {
+      return;
+    }
 
-  let { buildManager } = context;
-  await buildManager.reload();
+    await buildManager.reload();
 
-  return new Response("restarted builder", { status: 200 });
-};
+    return new Response("restarted builder", { status: 200 });
+  }) as Handler;
+}
