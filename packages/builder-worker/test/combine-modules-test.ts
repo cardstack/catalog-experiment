@@ -1,30 +1,35 @@
 import { installFileAssertions } from "./helpers/file-assertions";
 import "./helpers/code-equality-assertions";
-import { combineModules } from "../src/combine-modules";
+import { combineModules, ImportAssignments } from "../src/combine-modules";
 import { Resolver, ModuleResolution } from "../src/nodes/resolution";
 import { BundleAssignment, expandAssignments } from "../src/nodes/bundle";
-import { describeModule, NamespaceMarker } from "../src/describe-module";
-import { parse } from "@babel/core";
+import {
+  describeModule,
+  NamespaceMarker,
+  LocalNameDescription,
+} from "../src/describe-module";
 import { url } from "./helpers/file-assertions";
 import { FileSystem } from "../src/filesystem";
 import { FileDescriptor } from "../src/filesystem-drivers/filesystem-driver";
+import { parse } from "@babel/core";
 
 let resolver = new Resolver(); // TODO need to resolve modules without '.js' extension
 
 async function makeModuleResolutions(
   fs: FileSystem,
-  moduleURL: URL
+  moduleURL: URL,
+  importAssignments?: ImportAssignments
 ): Promise<ModuleResolution> {
   let source = await ((await fs.open(moduleURL)) as FileDescriptor).readText();
   let parsed = parse(source);
   if (parsed?.type !== "File") {
     throw new Error(`parsed js for ${moduleURL.href} is not a babel File type`);
   }
-  let desc = describeModule(parsed);
+  let desc = describeModule(parsed, importAssignments);
   let resolvedImports = await Promise.all(
     desc.imports.map(async (imp) => {
       let depURL = await resolver.resolve(imp.specifier, moduleURL);
-      return makeModuleResolutions(fs, depURL);
+      return makeModuleResolutions(fs, depURL, importAssignments);
     })
   );
   return { url: moduleURL, source, resolvedImports, desc };
@@ -33,6 +38,7 @@ async function makeModuleResolutions(
 async function makeBundleAssignments(
   fs: FileSystem,
   opts?: {
+    bundleURL?: URL;
     exports?: {
       [outsideName: string]: { file: string; name: string | NamespaceMarker };
     };
@@ -46,6 +52,7 @@ async function makeBundleAssignments(
 ): Promise<BundleAssignment[]> {
   let optsWithDefaults = Object.assign(
     {
+      bundleURL: url("dist/0.js"),
       containsEntrypoint: "index.js",
       exports: {},
     },
@@ -61,7 +68,7 @@ async function makeBundleAssignments(
       url(optsWithDefaults.containsEntrypoint)
     );
     assignments.set(module.url.href, {
-      bundleURL: url("dist/0.js"),
+      bundleURL: optsWithDefaults.bundleURL,
       module,
       exposedNames: new Map(),
     });
@@ -75,7 +82,7 @@ async function makeBundleAssignments(
       let assignment = assignments.get(fileURL.href);
       if (!assignment) {
         assignment = {
-          bundleURL: url("dist/0.js"),
+          bundleURL: optsWithDefaults.bundleURL,
           module: await makeModuleResolutions(fs, fileURL),
           exposedNames: new Map(),
         };
@@ -124,7 +131,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       const a = 'a';
       const b = 'b';
@@ -148,7 +155,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       const [ { a } ] = foo();
       const b = 'b';
@@ -174,7 +181,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       const hello = 'hello';
       const b = hello + '!';
@@ -200,7 +207,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       const hello = 'hello';
       const b = hello + '!';
@@ -231,7 +238,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       let shared1 = 3;
       console.log(shared1);
@@ -262,7 +269,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       const hello = 'hello';
       const a = 'a';
@@ -293,7 +300,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `const a = 'a';
        const b = 'b';
        console.log(a + b);
@@ -323,7 +330,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       const a = 'a';
       const b = 'b';
@@ -355,7 +362,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       const a = 'a';
       const b = 'b';
@@ -387,7 +394,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       const a = 'a';
       const c = 'b';
@@ -418,7 +425,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `const a = 'a';
       function b() {
         return 'b';
@@ -449,7 +456,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `const a = 'a';
       class b {
         foo() {
@@ -484,7 +491,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `const a0 = 'a';
       function a() {
         return 1;
@@ -524,7 +531,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       const a0 = 'a';
       const b0 = 'b';
@@ -564,7 +571,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       const a0 = 'a', b0 = 'b';
       const a = 1;
@@ -602,7 +609,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `function a0() {
         return 1;
       }
@@ -636,7 +643,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       class a0 {}
       const a = 'a';
@@ -669,7 +676,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       const a0 = 'a';
       function a() {
@@ -706,7 +713,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       const a = 'a';
       const c0 = 'a different c';
@@ -735,7 +742,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       const hello = 'hello';
       const hi = 'hi';
@@ -766,7 +773,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       const b = 'hello';
       const b0 = 1;
@@ -797,7 +804,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       const a = 1;
       const b = 'internal';
@@ -822,7 +829,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       const hello = 'hello';
       const goodbye = 'goodbye';
@@ -856,7 +863,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       const prop0 = 'propA';
       const b0 = 1;
@@ -892,7 +899,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       function a() {
         console.log('a');
@@ -932,7 +939,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       class A {
         display() { console.log('a'); }
@@ -971,7 +978,7 @@ QUnit.module("combine modules", function (origHooks) {
     let assignments = await makeBundleAssignments(assert.fs);
     let combined = combineModules(url("dist/0.js"), assignments);
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       const b0 = 'b';
       class A {
@@ -1011,7 +1018,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `import { lib_a as a } from './2.js';
        const b = 'b';
        console.log(a + b);`
@@ -1034,7 +1041,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       function a() { return 1; }
       console.log(a());
@@ -1058,7 +1065,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       function a() { return 1; }
       console.log(a());
@@ -1082,7 +1089,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       function a() { return 1; }
       console.log(a());
@@ -1107,7 +1114,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       function a() { return 1; }
       function b() { return 2; }
@@ -1136,7 +1143,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       function a() { return 1; }
       console.log(a());
@@ -1166,7 +1173,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       function a() { return 1; }
       console.log(a());
@@ -1204,7 +1211,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `function b() { return 1; }
        console.log(b());`
     );
@@ -1231,7 +1238,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       function a() { return 1; }
       console.log(a());
@@ -1260,7 +1267,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       let aValue;
       function a() { return aValue; }
@@ -1292,7 +1299,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       function a() { return 1; }
       const foo = 'bleep';
@@ -1321,7 +1328,7 @@ QUnit.module("combine modules", function (origHooks) {
     let combined = combineModules(url("dist/0.js"), assignments);
 
     assert.codeEqual(
-      combined,
+      combined.code,
       `
       function i() { return 1; }
       initCache();
@@ -1330,8 +1337,157 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
-  // Test ideas:
-  // mulitple named imports: import { a, b, c} from './lib.js'
-  // import default and variations on that theme
-  // import namespace and variations on that theme
+  test("module combination returns assigned imported names", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { foo } from './foo.js';
+        let bar = 3;
+        console.log(foo() + bar);
+      `,
+      "foo.js": `
+        import { bar } from './lib.js';
+        export function foo() { return bar; }
+        `,
+      "lib.js": `
+          export const bar = 2;
+        `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let { importAssignments } = combineModules(url("dist/0.js"), assignments);
+    let original = importAssignments.get("bar0");
+    assert.deepEqual(original, { moduleHref: url("lib.js").href, name: "bar" });
+  });
+
+  test("module descriptions include original import info for local bindings that originally came from an import", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { foo } from './foo.js';
+        let bar = 3;
+        console.log(foo() + bar);
+      `,
+      "foo.js": `
+        import { bar } from './lib.js';
+        export function foo() { return bar; }
+        `,
+      "lib.js": `
+          export const bar = 2;
+        `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let { code, importAssignments } = combineModules(
+      url("dist/0.js"),
+      assignments
+    );
+    let parsed = parse(code);
+    if (parsed?.type !== "File") {
+      throw new Error(`unexpected babel output`);
+    }
+    let bundleDescription = describeModule(parsed, importAssignments);
+    let nameDesc = bundleDescription.names.get("bar0") as LocalNameDescription;
+    assert.deepEqual(nameDesc.original, {
+      moduleHref: url("lib.js").href,
+      exportedName: "bar",
+    });
+  });
+
+  test("it can dedupe a binding when combining bundles where the binding in each bundle originates from the same place", async function (assert) {
+    await assert.setupFiles({
+      "entrypointA.js": `
+        import { a } from './a.js';
+        let bar = 3;
+        console.log(a() + bar);
+      `,
+      // in bundleB.js the goal is to have lib.js's "bar" resolve to a different
+      // name than it resolved to in bundleA.js (it resolves to "bar1" in
+      // bundleB.js), but that we should still see it stripped out in the final
+      // combined bundle, and well as an interesting collision prevention should
+      // occur too around "bar0" in the final combined bundle.
+      "entrypointB.js": `
+        import { b } from './b.js';
+        let bar = 4;
+        let bar0 = 5;
+        console.log(b() + bar + bar0);
+      `,
+      "a.js": `
+        import { bar } from './lib.js';
+        export function a() { return bar; }
+        `,
+      "b.js": `
+        import { bar } from './lib.js';
+        export function b() { return bar; }
+        `,
+      "lib.js": `
+          export const bar = 2;
+        `,
+    });
+
+    // make bundle A
+    let bundleAURL = url("dist/bundleA.js");
+    let assignmentsA = await makeBundleAssignments(assert.fs, {
+      bundleURL: bundleAURL,
+      containsEntrypoint: "entrypointA.js",
+    });
+    let { code: codeA, importAssignments: importAssignmentsA } = combineModules(
+      bundleAURL,
+      assignmentsA
+    );
+    let bundleA = (await assert.fs.open(bundleAURL, true)) as FileDescriptor;
+    await bundleA.write(codeA);
+    bundleA.close();
+
+    // make bundle B
+    let bundleBURL = url("dist/bundleB.js");
+    let assignmentsB = await makeBundleAssignments(assert.fs, {
+      bundleURL: bundleBURL,
+      containsEntrypoint: "entrypointB.js",
+    });
+    let { code: codeB, importAssignments: importAssignmentsB } = combineModules(
+      bundleBURL,
+      assignmentsB
+    );
+    let bundleB = (await assert.fs.open(bundleBURL, true)) as FileDescriptor;
+    await bundleB.write(codeB);
+    bundleB.close();
+
+    // make a combined bundle that includes bundle A and bundle B along with
+    // their respective import assignments
+    let combinedBundleURL = url("dist/combined.js");
+    let combinedAssignments: BundleAssignment[] = [
+      {
+        bundleURL: combinedBundleURL,
+        module: await makeModuleResolutions(
+          assert.fs,
+          bundleAURL,
+          importAssignmentsA
+        ),
+        exposedNames: new Map(),
+      },
+      {
+        bundleURL: combinedBundleURL,
+        module: await makeModuleResolutions(
+          assert.fs,
+          bundleBURL,
+          importAssignmentsB
+        ),
+        exposedNames: new Map(),
+      },
+    ];
+    let combined = combineModules(combinedBundleURL, combinedAssignments);
+    assert.codeEqual(
+      combined.code,
+      `
+      const bar0 = 2;
+      function a() { return bar0; }
+      let bar = 3;
+      console.log(a() + bar);
+
+      function b() { return bar0; }
+      let bar2 = 4;
+      let bar00 = 5
+      console.log(b() + bar2 + bar00);
+      `
+    );
+  });
 });
