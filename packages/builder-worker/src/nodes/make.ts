@@ -1,5 +1,5 @@
 import { BuilderNode, NextNode, AllNode, ConstantNode } from "./common";
-import { EntrypointsJSONNode, HTMLEntrypoint } from "./html";
+import { EntrypointsJSONNode, HTMLEntrypoint, Entrypoint } from "./entrypoint";
 import { WriteFileNode } from "./file";
 import uniqBy from "lodash/uniqBy";
 import flatten from "lodash/flatten";
@@ -10,26 +10,29 @@ export class MakeBundledModulesNode implements BuilderNode {
   constructor(private projectRoots: [URL, URL][]) {}
 
   deps() {
-    let htmlEntrypoints = new AllNode(
+    let entrypoints = new AllNode(
       this.projectRoots.map(
         ([inputRoot, outputRoot]) =>
           new EntrypointsJSONNode(inputRoot, outputRoot)
       )
     );
     return {
-      htmlEntrypoints,
+      entrypoints,
       bundleAssignments: new BundleAssignmentsNode(this.projectRoots),
     };
   }
 
   async run({
-    htmlEntrypoints,
+    entrypoints,
     bundleAssignments,
   }: {
-    htmlEntrypoints: HTMLEntrypoint[];
+    entrypoints: Entrypoint[];
     bundleAssignments: BundleAssignment[];
   }): Promise<NextNode<void[]>> {
-    let htmls = uniqBy(flatten(htmlEntrypoints), "destURL").map(
+    let htmls = (uniqBy(
+      flatten(entrypoints).filter((e) => e instanceof HTMLEntrypoint),
+      "destURL"
+    ) as HTMLEntrypoint[]).map(
       (htmlEntrypoint) =>
         new WriteFileNode(
           new ConstantNode(htmlEntrypoint.render(bundleAssignments)),

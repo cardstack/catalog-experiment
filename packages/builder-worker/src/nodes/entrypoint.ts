@@ -58,44 +58,63 @@ export class EntrypointsJSONNode implements BuilderNode {
     }
   }
 
-  async run({ json }: { json: any }): Promise<NextNode<HTMLEntrypoint[]>> {
+  async run({ json }: { json: any }): Promise<NextNode<Entrypoint[]>> {
     this.assertValid(json);
-    let htmlEntrypoints = [];
-    if (json.html) {
-      for (let src of json.html) {
-        htmlEntrypoints.push(
-          new HTMLEntrypointNode(
-            new URL(src, this.inputRoot),
-            new URL(src, this.outputRoot)
-          )
-        );
-      }
+    let entrypoints = [];
+    for (let src of [...(json.html || []), ...(json.js || [])]) {
+      entrypoints.push(
+        new EntrypointNode(
+          new URL(src, this.inputRoot),
+          new URL(src, this.outputRoot)
+        )
+      );
     }
-    return { node: new AllNode(htmlEntrypoints) };
+    return { node: new AllNode(entrypoints) };
   }
 }
 
-export class HTMLEntrypointNode implements BuilderNode {
+export class EntrypointNode implements BuilderNode {
   cacheKey: string;
 
   constructor(private src: URL, private dest: URL) {
-    this.cacheKey = `html-entrypoint:${this.dest.href}`;
+    this.cacheKey = `entrypoint:${this.dest.href}`;
   }
 
   deps() {
-    return {
-      parsedHTML: new HTMLParseNode(new FileNode(this.src)),
-    };
+    let extension = this.src.href.split(".").pop();
+    if (extension === "html") {
+      return {
+        parsedHTML: new HTMLParseNode(new FileNode(this.src)),
+      };
+    } else if (extension === "js") {
+      return {
+        js: new FileNode(this.src),
+      };
+    } else {
+      throw Error(
+        `Don't know how to handle entrypoint ${this.src.href}, doesn't appear to be either HTML nor JS`
+      );
+    }
   }
 
   async run({
     parsedHTML,
+    js,
   }: {
     parsedHTML: OutputType<HTMLParseNode>;
-  }): Promise<Value<HTMLEntrypoint>> {
-    return {
-      value: new HTMLEntrypoint(this.src, this.dest, parsedHTML),
-    };
+    js: string;
+  }): Promise<Value<HTMLEntrypoint | JSEntrypoint>> {
+    if (parsedHTML) {
+      return {
+        value: new HTMLEntrypoint(this.src, this.dest, parsedHTML),
+      };
+    } else if (js) {
+      return {
+        value: new JSEntrypoint(this.src),
+      };
+    } else {
+      throw new Error("bug: should always have either parsed HTML or js");
+    }
   }
 }
 
@@ -113,6 +132,12 @@ export class HTMLParseNode implements BuilderNode {
   async run({ source }: { source: string }) {
     return { value: parseDOM(source) };
   }
+}
+
+export type Entrypoint = HTMLEntrypoint | JSEntrypoint;
+
+export class JSEntrypoint {
+  constructor(readonly url: URL) {}
 }
 
 export class HTMLEntrypoint {

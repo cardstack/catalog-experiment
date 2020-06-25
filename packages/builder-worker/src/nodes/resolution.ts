@@ -1,5 +1,5 @@
 import { BuilderNode, Value, NextNode, AllNode } from "./common";
-import { EntrypointsJSONNode, HTMLEntrypoint } from "./html";
+import { EntrypointsJSONNode, HTMLEntrypoint, Entrypoint } from "./entrypoint";
 import { FileNode } from "./file";
 import { JSParseNode } from "./js";
 import { describeModule, ModuleDescription } from "../describe-module";
@@ -18,13 +18,17 @@ export class ModuleResolutionsNode implements BuilderNode {
   }
 
   async run(projects: {
-    [index: string]: HTMLEntrypoint[];
+    [index: string]: Entrypoint[];
   }): Promise<NextNode<ModuleResolution[]>> {
     let jsEntrypoints: Set<string> = new Set();
     for (let project of Object.values(projects)) {
       for (let entrypoint of project) {
-        for (let js of entrypoint.jsEntrypoints.keys()) {
-          jsEntrypoints.add(js);
+        if (entrypoint instanceof HTMLEntrypoint) {
+          for (let js of entrypoint.jsEntrypoints.keys()) {
+            jsEntrypoints.add(js);
+          }
+        } else {
+          jsEntrypoints.add(entrypoint.url.href);
         }
       }
     }

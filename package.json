@@ -20,9 +20,10 @@
     "test": "npm-run-all test:*",
     "test:builder-worker": "cd packages/builder-worker && yarn test",
     "test:builder-node": "cd packages/builder-worker && yarn webpack && yarn qunit assets/node-test.js",
-    "test:test-app": "node ./packages/builder-node/bin/build.js packages/app && testem ci",
+    "test:test-app": "node ./packages/builder-node/bin/build.js packages/test-app --overlay && testem ci",
+    "test:test-lib": "node ./packages/builder-node/bin/build.js packages/test-lib && testem ci",
     "builder": "cd packages/builder-worker && yarn start",
-    "serve": "cd packages/app && yarn start",
+    "serve": "cd packages/test-app && yarn start",
     "ui": "cd packages/ui && yarn start"
   },
   "devDependencies": {

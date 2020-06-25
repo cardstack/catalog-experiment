@@ -1,7 +1,9 @@
-import { BuilderNode, Value } from "./common";
+import { BuilderNode, Value, AllNode } from "./common";
 import { ModuleResolutionsNode, ModuleResolution } from "./resolution";
 import { combineModules } from "../combine-modules";
 import { NamespaceMarker } from "../describe-module";
+import { EntrypointsJSONNode, Entrypoint, JSEntrypoint } from "./entrypoint";
+import flatten from "lodash/flatten";
 
 export class BundleAssignmentsNode implements BuilderNode {
   cacheKey = this;
@@ -9,15 +11,25 @@ export class BundleAssignmentsNode implements BuilderNode {
   constructor(private projectRoots: [URL, URL][]) {}
 
   deps() {
-    return { resolutions: new ModuleResolutionsNode(this.projectRoots) };
+    return {
+      entrypoints: new AllNode(
+        this.projectRoots.map(
+          ([inputRoot, outputRoot]) =>
+            new EntrypointsJSONNode(inputRoot, outputRoot)
+        )
+      ),
+      resolutions: new ModuleResolutionsNode(this.projectRoots),
+    };
   }
 
   async run({
     resolutions,
+    entrypoints,
   }: {
     resolutions: ModuleResolution[];
+    entrypoints: Entrypoint[];
   }): Promise<Value<BundleAssignment[]>> {
-    let assignments = new Map();
+    let assignments = new Map<string, BundleAssignment>();
     for (let [index, module] of resolutions.entries()) {
       // place the bundles in the first project's output, under dist.
       let bundleURL = new URL(`./dist/${index}.js`, this.projectRoots[0][1]);
@@ -28,6 +40,23 @@ export class BundleAssignmentsNode implements BuilderNode {
       });
     }
     expandAssignments(assignments, [...assignments.values()]);
+
+    // For lib builds, the exports of the JS entrypoint become the exports of
+    // the resulting bundle
+    for (let jsEntrypoint of flatten(entrypoints).filter(
+      (e) => e instanceof JSEntrypoint
+    ) as JSEntrypoint[]) {
+      let assignment = assignments.get(jsEntrypoint.url.href);
+      if (!assignment) {
+        throw new Error(
+          `bug: can't find bundle assignment for js entrypoint ${jsEntrypoint.url.href}`
+        );
+      }
+      for (let exportedName of assignment.module.desc.exports.keys()) {
+        ensureExposed(exportedName, assignment);
+      }
+    }
+
     return {
       value: [...assignments.values()],
     };

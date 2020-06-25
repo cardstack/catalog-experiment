@@ -92,7 +92,7 @@ export function combineModules(
             ? outsideName
             : `${insideName} as ${outsideName}`
         )
-        .join(",")
+        .join(", ")
     );
     exportDeclaration.push("};");
     output.push(exportDeclaration.join(" "));
@@ -113,7 +113,7 @@ export function combineModules(
             ? exportedName
             : `${exportedName} as ${localName}`
         )
-        .join(",")
+        .join(", ")
     );
     importDeclaration.push("} from");
     importDeclaration.push(
