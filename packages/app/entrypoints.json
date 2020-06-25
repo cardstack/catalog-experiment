@@ -1,4 +1,6 @@
-[
-  "index.html",
-  "test/index.html"
-]
+{
+  "html": [
+    "index.html",
+    "test/index.html"
+  ]
+}

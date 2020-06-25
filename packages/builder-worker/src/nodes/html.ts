@@ -14,6 +14,11 @@ import { Memoize } from "typescript-memoize";
 import { maybeURL, maybeRelativeURL } from "../path";
 import { BundleAssignment } from "./bundle";
 
+interface EntrypointsJSON {
+  html?: string[];
+  js?: string[];
+}
+
 export class EntrypointsJSONNode implements BuilderNode {
   cacheKey: string;
 
@@ -29,11 +34,26 @@ export class EntrypointsJSONNode implements BuilderNode {
     };
   }
 
-  private assertValid(json: any): asserts json is string[] {
-    if (!json || !Array.isArray(json)) {
+  private assertValid(json: any): asserts json is EntrypointsJSON {
+    if (
+      !json ||
+      typeof json !== "object" ||
+      (!("html" in json) && !("js" in json))
+    ) {
       throw new Error(`invalid entrypoints.json in ${this.inputRoot.href}`);
     }
-    if (!json.every((k) => typeof k === "string")) {
+    if (
+      "html" in json &&
+      (!Array.isArray(json.html) ||
+        !json.html.every((k: any) => typeof k === "string"))
+    ) {
+      throw new Error(`invalid entrypoints.json in ${this.inputRoot.href}`);
+    }
+    if (
+      "js" in json &&
+      (!Array.isArray(json.js) ||
+        !json.js.every((k: any) => typeof k === "string"))
+    ) {
       throw new Error(`invalid entrypoints.json in ${this.inputRoot.href}`);
     }
   }
@@ -41,13 +61,15 @@ export class EntrypointsJSONNode implements BuilderNode {
   async run({ json }: { json: any }): Promise<NextNode<HTMLEntrypoint[]>> {
     this.assertValid(json);
     let htmlEntrypoints = [];
-    for (let src of json) {
-      htmlEntrypoints.push(
-        new HTMLEntrypointNode(
-          new URL(src, this.inputRoot),
-          new URL(src, this.outputRoot)
-        )
-      );
+    if (json.html) {
+      for (let src of json.html) {
+        htmlEntrypoints.push(
+          new HTMLEntrypointNode(
+            new URL(src, this.inputRoot),
+            new URL(src, this.outputRoot)
+          )
+        );
+      }
     }
     return { node: new AllNode(htmlEntrypoints) };
   }
