@@ -362,6 +362,7 @@ export function isFileDaemonEvent(
   event: any
 ): event is Event<FileDaemonClientEvent> {
   return (
+    typeof event === "object" &&
     "group" in event &&
     event.group === eventGroup &&
     "args" in event &&

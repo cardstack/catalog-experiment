@@ -18,5 +18,10 @@ export interface Hide {
 export type UIManagerCommand = Ready | Show | Hide;
 
 export function isUIManagerEvent(event: any): event is Event<UIManagerCommand> {
-  return "group" in event && event.group === eventGroup && "args" in event;
+  return (
+    typeof event === "object" &&
+    "group" in event &&
+    event.group === eventGroup &&
+    "args" in event
+  );
 }

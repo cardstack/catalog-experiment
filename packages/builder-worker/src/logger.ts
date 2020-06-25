@@ -155,6 +155,7 @@ export class Logger {
 
 export function isLogMessagesEvent(event: any): event is Event<LogMessage[]> {
   return (
+    typeof event === "object" &&
     "group" in event &&
     event.group === eventGroup &&
     "args" in event &&
