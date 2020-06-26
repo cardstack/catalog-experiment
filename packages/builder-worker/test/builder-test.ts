@@ -187,6 +187,30 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file("output/dist/0.js").matches(/Hello world/);
       await assert.file("output/dist/0.js").doesNotMatch(/import/);
     });
+
+    test("bundles for js entrypoints have the same exports as the js entrypoint", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { puppies } from "./puppies.js";
+
+          function getPuppies() { return puppies; }
+
+          function getCats() { return ["jojo"]; }
+
+          function getRats() { return ["pizza rat"]; }
+
+          export { getPuppies, getCats, getRats };
+        `,
+        "puppies.js": `export const puppies = ["mango", "van gogh"];`,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/dist/0.js").doesNotMatch(/import/);
+      await assert
+        .file("output/dist/0.js")
+        .matches(/export { getPuppies, getCats, getRats };/);
+    });
   });
 
   QUnit.module("rebuild", function () {
