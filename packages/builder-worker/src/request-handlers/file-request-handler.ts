@@ -59,22 +59,26 @@ export function handleFileRequest(fs: FileSystem, buildManager: BuildManager) {
 
 async function serveFile(url: URL, fs: FileSystem): Promise<Response> {
   let file: FileDescriptor | DirectoryDescriptor | Response | undefined;
+  let maybeDirectory = !url.href.split("/").pop()?.includes(".");
   try {
     file = await openFile(fs, url);
-    if (file instanceof Response) {
+    if (file instanceof Response && !maybeDirectory) {
       return file;
     }
-    if (file.type === "directory") {
-      file.close();
+    if (file.type === "directory" || maybeDirectory) {
+      if (!(file instanceof Response)) {
+        file.close();
+      }
       if (!url.href.endsWith("/")) {
         url = new URL(url.href + "/");
       }
       url = new URL("index.html", url);
       file = (await openFile(fs, url)) as FileDescriptor;
-      if (file instanceof Response) {
-        return file;
-      }
     }
+    if (file instanceof Response) {
+      return file;
+    }
+
     let response = new Response(await file.getReadbleStream());
     await setContentHeaders(response, url.href, file);
     return response;

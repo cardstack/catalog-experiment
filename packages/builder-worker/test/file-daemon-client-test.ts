@@ -17,7 +17,7 @@ import { eventCategory } from "../src/filesystem";
 import { flushEvents, removeAllEventListeners } from "../src/event-bus";
 
 let scenario = Object.freeze({
-  "entrypoints.json": `["index.html"]`,
+  "entrypoints.json": `{ "html": ["index.html"] }`,
   "index.html": `
     <!DOCTYPE html>
     <script src="http://localhost:8080/main.js"></script>

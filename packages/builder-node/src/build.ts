@@ -1,3 +1,4 @@
+import yargs from "yargs";
 import { Logger, log, error } from "../../builder-worker/src/logger";
 import { resolve, join } from "path";
 import { NodeFileSystemDriver } from "./node-filesystem-driver";
@@ -18,13 +19,27 @@ let outputURL = new URL("https://build-output");
 let appDir: string;
 let outputDir = join(process.cwd(), "dist");
 
-if (!process.argv[2]) {
+let { _: projectDirs, overlay } = yargs
+  .options({
+    overlay: {
+      alias: "o",
+      type: "boolean",
+      default: false,
+      description:
+        "overlay output on top of input (otherwise input is not included in the output)",
+    },
+  })
+  .boolean("overlay").argv;
+
+console.log(`overlay: ${overlay}`);
+
+if (projectDirs.length === 0) {
   error(
     "Error: must specify the app directory to be built as a commandline argument"
   );
   process.exit(1);
 } else {
-  appDir = resolve(process.argv[2]);
+  appDir = resolve(projectDirs[0]);
 }
 
 (async () => {
@@ -43,9 +58,16 @@ async function build() {
   let fs = new FileSystem();
   await fs.mount(inputURL, new NodeFileSystemDriver(appDir));
   await fs.mount(outputURL, new NodeFileSystemDriver(outputDir));
-  // this ensures that we can provide resource layering that emulates how our
-  // service worker web server works
-  await fs.copy(inputURL, outputURL);
-  let builder = Builder.forProjects(fs, [[outputURL, outputURL]]);
+
+  let builder;
+  if (overlay) {
+    // this ensures that we can provide resource layering that emulates how our
+    // service worker web server works
+    await fs.copy(inputURL, outputURL);
+    builder = Builder.forProjects(fs, [[outputURL, outputURL]]);
+  } else {
+    builder = Builder.forProjects(fs, [[inputURL, outputURL]]);
+  }
+
   await builder.build();
 }

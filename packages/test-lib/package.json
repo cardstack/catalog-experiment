@@ -1,0 +1,9 @@
+{
+  "name": "test-lib",
+  "license": "MIT",
+  "version": "0.0.1",
+  "scripts": {
+    "start-pkg": "node ../file-daemon/dist/main.js -d .",
+    "start": "node ../file-daemon -d ."
+  }
+}
