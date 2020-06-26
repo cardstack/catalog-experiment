@@ -2,7 +2,12 @@ import { BuilderNode, Value, AllNode } from "./common";
 import { ModuleResolutionsNode, ModuleResolution } from "./resolution";
 import { combineModules } from "../combine-modules";
 import { NamespaceMarker } from "../describe-module";
-import { EntrypointsJSONNode, Entrypoint, JSEntrypoint } from "./entrypoint";
+import {
+  EntrypointsJSONNode,
+  Entrypoint,
+  JSEntrypoint,
+  HTMLEntrypoint,
+} from "./entrypoint";
 import flatten from "lodash/flatten";
 
 export class BundleAssignmentsNode implements BuilderNode {
@@ -44,7 +49,7 @@ export class BundleAssignmentsNode implements BuilderNode {
     // For lib builds, the exports of the JS entrypoint become the exports of
     // the resulting bundle
     for (let jsEntrypoint of flatten(entrypoints).filter(
-      (e) => e instanceof JSEntrypoint
+      (e) => !(e instanceof HTMLEntrypoint)
     ) as JSEntrypoint[]) {
       let assignment = assignments.get(jsEntrypoint.url.href);
       if (!assignment) {

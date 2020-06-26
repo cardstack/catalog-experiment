@@ -110,7 +110,7 @@ export class EntrypointNode implements BuilderNode {
       };
     } else if (js) {
       return {
-        value: new JSEntrypoint(this.src),
+        value: { url: this.src },
       };
     } else {
       throw new Error("bug: should always have either parsed HTML or js");
@@ -136,8 +136,8 @@ export class HTMLParseNode implements BuilderNode {
 
 export type Entrypoint = HTMLEntrypoint | JSEntrypoint;
 
-export class JSEntrypoint {
-  constructor(readonly url: URL) {}
+export interface JSEntrypoint {
+  url: URL;
 }
 
 export class HTMLEntrypoint {
