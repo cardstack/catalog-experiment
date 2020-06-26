@@ -103,7 +103,7 @@ export class EntrypointNode implements BuilderNode {
   }: {
     parsedHTML: OutputType<HTMLParseNode>;
     js: string;
-  }): Promise<Value<HTMLEntrypoint | JSEntrypoint>> {
+  }): Promise<Value<Entrypoint>> {
     if (parsedHTML) {
       return {
         value: new HTMLEntrypoint(this.src, this.dest, parsedHTML),
