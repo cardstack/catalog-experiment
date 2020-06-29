@@ -68,6 +68,10 @@ class BuildRunner<Input> {
     private inputDidChange?: () => void
   ) {}
 
+  get cachedNodeStates() {
+    return [...this.nodeStates.keys()].filter((k) => typeof k === "string");
+  }
+
   async build(): Promise<OutputTypes<Input>> {
     let context = new CurrentContext(this.recentlyChangedFiles);
     this.recentlyChangedFiles = new Set();
@@ -280,6 +284,11 @@ export class Builder<Input> {
 
   async build(): ReturnType<BuildRunner<Input>["build"]> {
     return this.runner.build();
+  }
+
+  // instrumentation used for testing
+  get cachedNodeStates() {
+    return this.runner.cachedNodeStates;
   }
 }
 

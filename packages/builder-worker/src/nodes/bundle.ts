@@ -1,7 +1,16 @@
-import { BuilderNode, Value, AllNode } from "./common";
+import {
+  BuilderNode,
+  Value,
+  AllNode,
+  NextNode,
+  ConstantNode,
+  annotationEnd,
+  annotationStart,
+} from "./common";
 import { ModuleResolutionsNode, ModuleResolution } from "./resolution";
 import { combineModules } from "../combine-modules";
-import { NamespaceMarker } from "../describe-module";
+import { File } from "@babel/types";
+import { NamespaceMarker, describeModule } from "../describe-module";
 import {
   EntrypointsJSONNode,
   Entrypoint,
@@ -9,6 +18,8 @@ import {
   HTMLEntrypoint,
 } from "./entrypoint";
 import flatten from "lodash/flatten";
+import { JSParseNode } from "./js";
+import { encodeModuleDescription } from "../description-encoder";
 
 export class BundleAssignmentsNode implements BuilderNode {
   cacheKey = this;
@@ -82,10 +93,35 @@ export class BundleNode {
     return null;
   }
 
-  async run(): Promise<Value<string>> {
+  async run(): Promise<NextNode<string>> {
     return {
-      value: combineModules(this.bundle, this.assignments).code,
+      node: new BundleSerializerNode(
+        combineModules(this.bundle, this.assignments).code
+      ),
     };
+  }
+}
+
+export class BundleSerializerNode {
+  cacheKey = this;
+
+  constructor(private unannotatedSrc: string) {}
+
+  deps() {
+    return {
+      parsed: new JSParseNode(new ConstantNode(this.unannotatedSrc)),
+    };
+  }
+
+  async run({ parsed }: { parsed: File }): Promise<Value<string>> {
+    let desc = describeModule(parsed);
+    let value = [
+      this.unannotatedSrc,
+      annotationStart,
+      encodeModuleDescription(desc),
+      annotationEnd,
+    ].join("");
+    return { value };
   }
 }
 

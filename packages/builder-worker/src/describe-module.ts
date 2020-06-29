@@ -35,22 +35,7 @@ export interface ModuleDescription {
   imports: ImportDescription[];
 
   // all the names we export, and where they come from
-  exports: Map<
-    string,
-    // comes from a local binding with this name. You can look it up in `names`.
-    | {
-        type: "local";
-        name: string;
-        exportRegion: RegionPointer;
-      }
-    // comes from another module, you can look up which one in `imports`.
-    | {
-        type: "reexport";
-        importIndex: number;
-        name: string | NamespaceMarker;
-        exportRegion: RegionPointer;
-      }
-  >;
+  exports: Map<string, ExportDescription>;
 
   exportRegions: {
     region: RegionPointer;
@@ -64,6 +49,21 @@ export interface ModuleDescription {
   // places refer to a code region by its index in this list.
   regions: CodeRegion[];
 }
+
+export type ExportDescription =
+  // comes from a local binding with this name. You can look it up in `names`.
+  | {
+      type: "local";
+      name: string;
+      exportRegion: RegionPointer;
+    }
+  // comes from another module, you can look up which one in `imports`.
+  | {
+      type: "reexport";
+      importIndex: number;
+      name: string | NamespaceMarker;
+      exportRegion: RegionPointer;
+    };
 
 export interface NameDescription {
   // these are other names in the `names` that we depend on
@@ -345,7 +345,7 @@ export function describeModule(
       if (path.isReferencedIdentifier()) {
         if (currentModuleScopedDeclaration) {
           currentModuleScopedDeclaration.consumes.add(path.node.name);
-        } else {
+        } else if (path.parent.type !== "ExportSpecifier") {
           consumedByModule.add(path.node.name);
         }
       }

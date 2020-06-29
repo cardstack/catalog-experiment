@@ -1,9 +1,17 @@
-import { BuilderNode, Value, NextNode, AllNode } from "./common";
+import {
+  BuilderNode,
+  Value,
+  NextNode,
+  AllNode,
+  annotationRegex,
+  ConstantNode,
+} from "./common";
 import { EntrypointsJSONNode, HTMLEntrypoint, Entrypoint } from "./entrypoint";
 import { FileNode } from "./file";
 import { JSParseNode } from "./js";
 import { describeModule, ModuleDescription } from "../describe-module";
 import { File } from "@babel/types";
+import { decodeModuleDescription } from "../description-encoder";
 
 export class ModuleResolutionsNode implements BuilderNode {
   cacheKey = this;
@@ -53,6 +61,41 @@ export class Resolver {
   }
 }
 
+export class ModuleAnnotationNode implements BuilderNode {
+  cacheKey: string;
+  constructor(private url: URL) {
+    this.cacheKey = `module-annotation:${url.href}`;
+  }
+  deps() {
+    return { source: new FileNode(this.url) };
+  }
+  async run({
+    source,
+  }: {
+    source: string;
+  }): Promise<NextNode<ModuleDescription>> {
+    let match = annotationRegex.exec(source);
+    if (match) {
+      let desc = decodeModuleDescription(match[1]);
+      return { node: new ConstantNode(desc) };
+    }
+    return { node: new ModuleDescriptionNode(this.url) };
+  }
+}
+
+export class ModuleDescriptionNode implements BuilderNode {
+  cacheKey: string;
+  constructor(private url: URL) {
+    this.cacheKey = `module-description:${url.href}`;
+  }
+  deps() {
+    return { parsed: new JSParseNode(new FileNode(this.url)) };
+  }
+  async run({ parsed }: { parsed: File }): Promise<Value<ModuleDescription>> {
+    return { value: describeModule(parsed) };
+  }
+}
+
 export class ModuleResolutionNode implements BuilderNode {
   cacheKey: string;
   constructor(private url: URL, private resolver: Resolver) {
@@ -60,22 +103,23 @@ export class ModuleResolutionNode implements BuilderNode {
   }
   deps() {
     let fileNode = new FileNode(this.url);
-    return { parsed: new JSParseNode(fileNode), source: fileNode };
+    return { desc: new ModuleAnnotationNode(this.url), source: fileNode };
   }
   async run({
-    parsed,
+    desc,
     source,
   }: {
-    parsed: File;
+    desc: ModuleDescription;
     source: string;
   }): Promise<NextNode<ModuleResolution>> {
-    let desc = describeModule(parsed);
     let imports = await Promise.all(
       desc.imports.map(async (imp) => {
         let depURL = await this.resolver.resolve(imp.specifier, this.url);
         return new ModuleResolutionNode(depURL, this.resolver);
       })
     );
+    source = source.replace(annotationRegex, "");
+
     return {
       node: new FinishResolutionNode(this.url, imports, desc, source),
     };
