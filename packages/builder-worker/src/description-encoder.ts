@@ -117,11 +117,14 @@ export function encodeModuleDescription(desc: ModuleDescription): string {
         );
     }
   }
-  return encode(encoded).join(" ");
+  let d = Buffer.from(encode(encoded)).toString("hex");
+  return d;
 }
 
 export function decodeModuleDescription(encoded: string): ModuleDescription {
-  let buffer = encoded.split(" ").map((i) => Number(i));
+  let buffer = new Uint8Array(
+    encoded.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
+  );
   let encodedDesc = decode(buffer) as any[];
 
   let imports: ModuleDescription["imports"] = [];
