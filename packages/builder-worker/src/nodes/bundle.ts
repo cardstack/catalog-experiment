@@ -20,6 +20,7 @@ import {
 import flatten from "lodash/flatten";
 import { JSParseNode } from "./js";
 import { encodeModuleDescription } from "../description-encoder";
+import { baseName } from "../path";
 
 export class BundleAssignmentsNode implements BuilderNode {
   cacheKey = this;
@@ -46,9 +47,27 @@ export class BundleAssignmentsNode implements BuilderNode {
     entrypoints: Entrypoint[];
   }): Promise<Value<BundleAssignment[]>> {
     let assignments = new Map<string, BundleAssignment>();
+    let jsEntrypoints = flatten(entrypoints).filter(
+      (e) => !(e instanceof HTMLEntrypoint)
+    ) as JSEntrypoint[];
+    let jsEntrypointHrefs = jsEntrypoints.map((e) => e.url.href);
     for (let [index, module] of resolutions.entries()) {
       // place the bundles in the first project's output, under dist.
-      let bundleURL = new URL(`./dist/${index}.js`, this.projectRoots[0][1]);
+      let root = this.projectRoots[0][1];
+      let bundleURL: URL;
+      if (jsEntrypointHrefs.includes(module.url.href)) {
+        let entrypoint = jsEntrypoints.find(
+          (e) => e.url.href === module.url.href
+        )!;
+        bundleURL = new URL(
+          `./dist/${encodeURIComponent(entrypoint.packageName)}/${baseName(
+            module.url
+          )}`,
+          root
+        );
+      } else {
+        bundleURL = new URL(`./dist/${index}.js`, root);
+      }
       assignments.set(module.url.href, {
         bundleURL,
         module,
@@ -59,13 +78,11 @@ export class BundleAssignmentsNode implements BuilderNode {
 
     // For lib builds, the exports of the JS entrypoint become the exports of
     // the resulting bundle
-    for (let jsEntrypoint of flatten(entrypoints).filter(
-      (e) => !(e instanceof HTMLEntrypoint)
-    ) as JSEntrypoint[]) {
-      let assignment = assignments.get(jsEntrypoint.url.href);
+    for (let jsEntrypointHref of jsEntrypointHrefs) {
+      let assignment = assignments.get(jsEntrypointHref);
       if (!assignment) {
         throw new Error(
-          `bug: can't find bundle assignment for js entrypoint ${jsEntrypoint.url.href}`
+          `bug: can't find bundle assignment for js entrypoint ${jsEntrypointHref}`
         );
       }
       for (let exportedName of assignment.module.desc.exports.keys()) {
