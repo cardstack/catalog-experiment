@@ -1,4 +1,5 @@
 {
+  "name": "pets-lib",
   "html": [
     "test/index.html"
   ],
