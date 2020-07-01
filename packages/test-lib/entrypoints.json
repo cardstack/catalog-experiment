@@ -1,9 +1,9 @@
 {
-  "name": "pets-lib",
+  "name": "test-lib",
   "html": [
     "test/index.html"
   ],
   "js": [
-    "lib.js"
+    "index.js"
   ]
 }

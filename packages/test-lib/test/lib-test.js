@@ -1,5 +1,5 @@
 const { module, test } = QUnit;
-import { getPuppies, getRats } from "../lib.js";
+import { getPuppies, getRats } from "../index.js";
 
 module("lib test bed", function (hooks) {
   test("entrypoint exports are exports of the bundle", async function (assert) {
