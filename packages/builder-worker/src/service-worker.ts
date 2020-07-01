@@ -34,7 +34,8 @@ let projects: [URL, URL][] = [
   ],
 ];
 let buildManager: BuildManager;
-let activating: Promise<void>;
+let activated: () => void;
+let activating = new Promise<void>((res) => (activated = res));
 
 console.log(`service worker evaluated`);
 
@@ -57,7 +58,7 @@ worker.addEventListener("activate", () => {
   // takes over when there is *no* existing service worker
   worker.clients.claim();
 
-  activating = activate();
+  activate();
 });
 
 async function activate() {
@@ -78,6 +79,7 @@ async function activate() {
   await buildManager.rebuilder.start();
   await buildManager.rebuilder.isIdle();
   await fs.displayListing();
+  activated();
 }
 
 worker.addEventListener("fetch", (event: FetchEvent) => {
