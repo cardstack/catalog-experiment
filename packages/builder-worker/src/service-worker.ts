@@ -25,7 +25,7 @@ let isDisabled = false;
 let volume: FileDaemonClientVolume | undefined;
 let eventHandler: ClientEventHandler;
 let originURL = new URL(worker.origin);
-let inputURL = new URL("https://local-disk/");
+let inputURL = new URL("https://local-disk/test-app");
 let projects: [URL, URL][] = [[inputURL, originURL]];
 let buildManager: BuildManager;
 let activating: Promise<void>;

@@ -12,6 +12,7 @@ import { DIRTYPE, REGTYPE } from "tarstream/constants";
 import { NodeReadableToDOM, DOMToNodeReadable } from "./stream-shims";
 import { DirectoryEntry } from "tarstream/types";
 import { unixTime } from "./utils";
+import { basename } from "path";
 
 const builderServer = "http://localhost:8080";
 export type RequestHandler = (
@@ -20,12 +21,25 @@ export type RequestHandler = (
 ) => boolean;
 
 export default class FileHostingServer {
+  private mapping: Map<string, string>;
+
   constructor(
     private port: number,
-    private directory: string,
+    directories: string[],
     private corsEnabled = true,
     private testHandler?: RequestHandler
-  ) {}
+  ) {
+    this.mapping = new Map();
+    for (let dir of directories) {
+      let localName = basename(dir);
+      let counter = 0;
+      while (this.mapping.has(localName)) {
+        localName = `${localName}/${counter}`;
+        counter++;
+      }
+      this.mapping.set(localName, dir);
+    }
+  }
 
   start() {
     let proxy = httpProxy.createProxyServer();
@@ -44,10 +58,16 @@ export default class FileHostingServer {
       }
 
       try {
-        let filePath = resolve(
-          join(this.directory, urlParse(path).pathname || "")
-        );
-        if (filePath.indexOf(this.directory) !== 0) {
+        let pathName = urlParse(path).pathname || "";
+        let top = pathName.split("/")[0];
+        let root = this.mapping.get(top);
+        if (!root) {
+          res.statusCode = 404;
+          res.end();
+          return;
+        }
+        let filePath = resolve(join(root, pathName.slice(top.length)));
+        if (filePath.indexOf(root) !== 0) {
           res.statusCode = 403;
           res.end();
           return;
