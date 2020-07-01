@@ -20,7 +20,6 @@ import {
 import flatten from "lodash/flatten";
 import { JSParseNode } from "./js";
 import { encodeModuleDescription } from "../description-encoder";
-import { baseName } from "../path";
 
 export class BundleAssignmentsNode implements BuilderNode {
   cacheKey = this;
@@ -47,24 +46,15 @@ export class BundleAssignmentsNode implements BuilderNode {
     entrypoints: Entrypoint[];
   }): Promise<Value<BundleAssignment[]>> {
     let assignments = new Map<string, BundleAssignment>();
-    let jsEntrypoints = flatten(entrypoints).filter(
+    let jsEntrypointHrefs = (flatten(entrypoints).filter(
       (e) => !(e instanceof HTMLEntrypoint)
-    ) as JSEntrypoint[];
-    let jsEntrypointHrefs = jsEntrypoints.map((e) => e.url.href);
+    ) as JSEntrypoint[]).map((e) => e.url.href);
     for (let [index, module] of resolutions.entries()) {
-      // place the bundles in the first project's output, under dist.
+      // place the bundles in the first project's output
       let root = this.projectRoots[0][1];
       let bundleURL: URL;
       if (jsEntrypointHrefs.includes(module.url.href)) {
-        let entrypoint = jsEntrypoints.find(
-          (e) => e.url.href === module.url.href
-        )!;
-        bundleURL = new URL(
-          `./dist/${encodeURIComponent(entrypoint.packageName)}/${baseName(
-            module.url
-          )}`,
-          root
-        );
+        bundleURL = new URL(`.${module.url.pathname}`, root);
       } else {
         bundleURL = new URL(`./dist/${index}.js`, root);
       }

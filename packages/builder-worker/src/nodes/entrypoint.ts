@@ -17,7 +17,6 @@ import { BundleAssignment } from "./bundle";
 interface EntrypointsJSON {
   html?: string[];
   js?: string[];
-  name?: string;
 }
 
 export class EntrypointsJSONNode implements BuilderNode {
@@ -57,11 +56,6 @@ export class EntrypointsJSONNode implements BuilderNode {
     ) {
       throw new Error(`invalid entrypoints.json in ${this.inputRoot.href}`);
     }
-    if ("js" in json && typeof json.name !== "string") {
-      throw new Error(
-        `invalid entrypoints.json in ${this.inputRoot.href}, a package with js entrypoints should have a 'name' property`
-      );
-    }
   }
 
   async run({ json }: { json: any }): Promise<NextNode<Entrypoint[]>> {
@@ -71,8 +65,7 @@ export class EntrypointsJSONNode implements BuilderNode {
       entrypoints.push(
         new EntrypointNode(
           new URL(src, this.inputRoot),
-          new URL(src, this.outputRoot),
-          json.name
+          new URL(src, this.outputRoot)
         )
       );
     }
@@ -83,11 +76,7 @@ export class EntrypointsJSONNode implements BuilderNode {
 export class EntrypointNode implements BuilderNode {
   cacheKey: string;
 
-  constructor(
-    private src: URL,
-    private dest: URL,
-    private packageName: string | undefined
-  ) {
+  constructor(private src: URL, private dest: URL) {
     this.cacheKey = `entrypoint:${this.dest.href}`;
   }
 
@@ -120,13 +109,8 @@ export class EntrypointNode implements BuilderNode {
         value: new HTMLEntrypoint(this.src, this.dest, parsedHTML),
       };
     } else if (js) {
-      if (!this.packageName) {
-        throw new Error(
-          `bug: missing packageName, never passed into EntrypointsNode constructor`
-        );
-      }
       return {
-        value: { url: this.src, packageName: this.packageName },
+        value: { url: this.src },
       };
     } else {
       throw new Error("bug: should always have either parsed HTML or js");
@@ -154,7 +138,6 @@ export type Entrypoint = HTMLEntrypoint | JSEntrypoint;
 
 export interface JSEntrypoint {
   url: URL;
-  packageName: string;
 }
 
 export class HTMLEntrypoint {
