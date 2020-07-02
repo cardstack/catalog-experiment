@@ -54,7 +54,17 @@ export class BundleAssignmentsNode implements BuilderNode {
       let root = this.projectRoots[0][1];
       let bundleURL: URL;
       if (jsEntrypointHrefs.includes(module.url.href)) {
-        bundleURL = new URL(`.${module.url.pathname}`, root);
+        // merge the bundle's path into the root's folder structure if they
+        // share a common root folder structure in the path part of the URL
+        let commonRootParts = commonStart(
+          module.url.pathname.split("/"),
+          root.pathname.split("/")
+        );
+        let commonRoot = commonRootParts.join("/");
+        bundleURL = new URL(
+          `.${module.url.pathname.slice(commonRoot.length)}`,
+          root
+        );
       } else {
         bundleURL = new URL(`./dist/${index}.js`, root);
       }
@@ -212,4 +222,16 @@ function defaultName(
     return match[1];
   }
   return "a";
+}
+
+function commonStart(arr1: string[], arr2: string[]): string[] {
+  let result: string[] = [];
+  for (let i = 0; i < Math.min(arr1.length - 1, arr2.length - 1); i++) {
+    if (arr1[i] === arr2[i]) {
+      result.push(arr1[i]);
+    } else {
+      break;
+    }
+  }
+  return result;
 }

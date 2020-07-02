@@ -14,9 +14,14 @@ import { Memoize } from "typescript-memoize";
 import { maybeURL, maybeRelativeURL } from "../path";
 import { BundleAssignment } from "./bundle";
 
+export interface Dependencies {
+  [name: string]: string;
+}
+
 interface EntrypointsJSON {
   html?: string[];
   js?: string[];
+  dependencies?: Dependencies;
 }
 
 export class EntrypointsJSONNode implements BuilderNode {
@@ -47,14 +52,29 @@ export class EntrypointsJSONNode implements BuilderNode {
       (!Array.isArray(json.html) ||
         !json.html.every((k: any) => typeof k === "string"))
     ) {
-      throw new Error(`invalid entrypoints.json in ${this.inputRoot.href}`);
+      throw new Error(
+        `invalid entrypoints.json in ${this.inputRoot.href}, 'html' must only contain strings`
+      );
     }
     if (
       "js" in json &&
       (!Array.isArray(json.js) ||
         !json.js.every((k: any) => typeof k === "string"))
     ) {
-      throw new Error(`invalid entrypoints.json in ${this.inputRoot.href}`);
+      throw new Error(
+        `invalid entrypoints.json in ${this.inputRoot.href}, 'js' must only contain strings`
+      );
+    }
+    if (
+      "dependencies" in json &&
+      (typeof json.dependencies !== "object" ||
+        !Object.values(json.dependencies).every(
+          (v: any) => typeof v === "string"
+        ))
+    ) {
+      throw new Error(
+        `invalid entrypoints.json in ${this.inputRoot.href}, the values of 'dependencies' must only contain strings`
+      );
     }
   }
 
@@ -65,7 +85,8 @@ export class EntrypointsJSONNode implements BuilderNode {
       entrypoints.push(
         new EntrypointNode(
           new URL(src, this.inputRoot),
-          new URL(src, this.outputRoot)
+          new URL(src, this.outputRoot),
+          json.dependencies
         )
       );
     }
@@ -76,8 +97,12 @@ export class EntrypointsJSONNode implements BuilderNode {
 export class EntrypointNode implements BuilderNode {
   cacheKey: string;
 
-  constructor(private src: URL, private dest: URL) {
-    this.cacheKey = `entrypoint:${this.dest.href}`;
+  constructor(
+    private src: URL,
+    private dest: URL,
+    private dependencies: Dependencies | undefined
+  ) {
+    this.cacheKey = `entrypoint:${this.src.href}:${this.dest.href}`;
   }
 
   deps() {
@@ -106,11 +131,16 @@ export class EntrypointNode implements BuilderNode {
   }): Promise<Value<Entrypoint>> {
     if (parsedHTML) {
       return {
-        value: new HTMLEntrypoint(this.src, this.dest, parsedHTML),
+        value: new HTMLEntrypoint(
+          this.src,
+          this.dest,
+          parsedHTML,
+          this.dependencies
+        ),
       };
     } else if (js) {
       return {
-        value: { url: this.src },
+        value: { url: this.src, dependencies: this.dependencies },
       };
     } else {
       throw new Error("bug: should always have either parsed HTML or js");
@@ -138,13 +168,15 @@ export type Entrypoint = HTMLEntrypoint | JSEntrypoint;
 
 export interface JSEntrypoint {
   url: URL;
+  dependencies: Dependencies | undefined;
 }
 
 export class HTMLEntrypoint {
   constructor(
     private src: URL,
     private dest: URL,
-    private parsedHTML: dom.Node[]
+    private parsedHTML: dom.Node[],
+    readonly dependencies: Dependencies | undefined
   ) {}
 
   get destURL() {

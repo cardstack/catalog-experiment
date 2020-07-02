@@ -14,7 +14,7 @@ import {
   debugName,
 } from "./nodes/common";
 import { FileNode, WriteFileNode } from "./nodes/file";
-import { MakeBundledModulesNode } from "./nodes/make";
+import { MakeProjectsNode } from "./nodes/project";
 import { FileDescriptor } from "./filesystem-drivers/filesystem-driver";
 import { Deferred } from "./deferred";
 import { assertNever } from "shared/util";
@@ -180,13 +180,20 @@ class BuildRunner<Input> {
     if (Object.values(inputs.changes).every((didChange) => !didChange)) {
       let previous = this.nodeStates.get(node.cacheKey);
       if (previous) {
-        // we have a previous answer, and all our inputs are unchanged, so
-        // nothing to run
-        return makeInternalResult(previous.output, false);
+        if (
+          !FileNode.isFileNode(node) ||
+          !context.changedFiles.has(node.url.href)
+        ) {
+          // we have a previous answer, and all our inputs are unchanged, so
+          // nothing to run
+          return makeInternalResult(previous.output, false);
+        }
       }
     }
 
-    if (WriteFileNode.isWriteFileNode(node)) {
+    if (FileNode.isFileNode(node)) {
+      return { value: await this.runFileNode(node), changed: true };
+    } else if (WriteFileNode.isWriteFileNode(node)) {
       let fd = (await this.fs.open(node.url, true)) as FileDescriptor;
       await fd.write(Object.values(inputs.values)[0]);
       fd.close();
@@ -210,27 +217,31 @@ class BuildRunner<Input> {
       }
     }
     if (FileNode.isFileNode(node)) {
-      this.ensureWatching(node.url);
-      let fd: FileDescriptor | undefined;
-      try {
-        fd = (await this.fs.open(node.url)) as FileDescriptor;
-        if (fd.type === "file") {
-          return { value: await fd.readText(), changed: true };
-        } else {
-          throw new Error(
-            `bug: expecting ${node.url} to be a file, but it was a directory`
-          );
-        }
-      } finally {
-        if (fd) {
-          fd.close();
-        }
-      }
+      return { value: await this.runFileNode(node), changed: true };
     } else {
       return this.handleUnchanged(
         node,
         await (node as BuilderNode<unknown, void>).run()
       );
+    }
+  }
+
+  private async runFileNode(node: FileNode): Promise<string> {
+    this.ensureWatching(node.url);
+    let fd: FileDescriptor | undefined;
+    try {
+      fd = (await this.fs.open(node.url)) as FileDescriptor;
+      if (fd.type === "file") {
+        return await fd.readText();
+      } else {
+        throw new Error(
+          `bug: expecting ${node.url} to be a file, but it was a directory`
+        );
+      }
+    } finally {
+      if (fd) {
+        fd.close();
+      }
     }
   }
 
@@ -279,7 +290,7 @@ export class Builder<Input> {
 
   // roots lists [inputRoot, outputRoot]
   static forProjects(fs: FileSystem, roots: [URL, URL][]) {
-    return new this(fs, [new MakeBundledModulesNode(roots)]);
+    return new this(fs, [new MakeProjectsNode(roots)]);
   }
 
   async build(): ReturnType<BuildRunner<Input>["build"]> {
@@ -332,7 +343,7 @@ export class Rebuilder<Input> {
         );
       }
     }
-    return new this(fs, [new MakeBundledModulesNode(roots)]);
+    return new this(fs, [new MakeProjectsNode(roots)]);
   }
 
   start() {

@@ -1,4 +1,5 @@
 import { BuilderNode, Value } from "./common";
+import { MakeProjectNode } from "./project";
 
 export class FileNode implements BuilderNode {
   isFileNode = true;
@@ -16,6 +17,26 @@ export class FileNode implements BuilderNode {
 
   async run(): Promise<Value<string>> {
     throw new Error(`bug: this isn't supposed to actually run`);
+  }
+}
+
+export class BundleFileNode extends FileNode {
+  constructor(
+    url: URL,
+    private projectInputRoot: URL,
+    private projectOutputRoot: URL
+  ) {
+    super(url);
+    this.cacheKey = `bundle-file:${this.url.href}`;
+  }
+
+  deps() {
+    return {
+      project: new MakeProjectNode(
+        this.projectInputRoot,
+        this.projectOutputRoot
+      ),
+    };
   }
 }
 

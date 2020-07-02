@@ -6,8 +6,13 @@ import {
   annotationRegex,
   ConstantNode,
 } from "./common";
-import { EntrypointsJSONNode, HTMLEntrypoint, Entrypoint } from "./entrypoint";
-import { FileNode } from "./file";
+import {
+  EntrypointsJSONNode,
+  HTMLEntrypoint,
+  Entrypoint,
+  Dependencies,
+} from "./entrypoint";
+import { FileNode, BundleFileNode } from "./file";
 import { JSParseNode } from "./js";
 import { describeModule, ModuleDescription } from "../describe-module";
 import { File } from "@babel/types";
@@ -28,21 +33,26 @@ export class ModuleResolutionsNode implements BuilderNode {
   async run(projects: {
     [index: string]: Entrypoint[];
   }): Promise<NextNode<ModuleResolution[]>> {
-    let jsEntrypoints: Set<string> = new Set();
+    let jsEntrypoints: Map<string, Dependencies | undefined> = new Map();
     for (let project of Object.values(projects)) {
       for (let entrypoint of project) {
         if (entrypoint instanceof HTMLEntrypoint) {
-          for (let js of entrypoint.jsEntrypoints.keys()) {
-            jsEntrypoints.add(js);
+          for (let jsHref of entrypoint.jsEntrypoints.keys()) {
+            jsEntrypoints.set(jsHref, entrypoint.dependencies);
           }
         } else {
-          jsEntrypoints.add(entrypoint.url.href);
+          jsEntrypoints.set(entrypoint.url.href, entrypoint.dependencies);
         }
       }
     }
     let resolutions = [...jsEntrypoints].map(
-      (jsEntrypoint) =>
-        new ModuleResolutionNode(new URL(jsEntrypoint), new Resolver())
+      ([jsEntrypoint, dependencies]) =>
+        new ModuleResolutionNode(
+          new URL(jsEntrypoint),
+          new Resolver(),
+          this.projectRoots,
+          dependencies
+        )
     );
     return { node: new AllNode(resolutions) };
   }
@@ -63,11 +73,11 @@ export class Resolver {
 
 export class ModuleAnnotationNode implements BuilderNode {
   cacheKey: string;
-  constructor(private url: URL) {
-    this.cacheKey = `module-annotation:${url.href}`;
+  constructor(private fileNode: FileNode) {
+    this.cacheKey = `module-annotation:${fileNode.url.href}`;
   }
   deps() {
-    return { source: new FileNode(this.url) };
+    return { source: this.fileNode };
   }
   async run({
     source,
@@ -79,17 +89,17 @@ export class ModuleAnnotationNode implements BuilderNode {
       let desc = decodeModuleDescription(match[1]);
       return { node: new ConstantNode(desc) };
     }
-    return { node: new ModuleDescriptionNode(this.url) };
+    return { node: new ModuleDescriptionNode(this.fileNode) };
   }
 }
 
 export class ModuleDescriptionNode implements BuilderNode {
   cacheKey: string;
-  constructor(private url: URL) {
-    this.cacheKey = `module-description:${url.href}`;
+  constructor(private fileNode: FileNode) {
+    this.cacheKey = `module-description:${fileNode.url.href}`;
   }
   deps() {
-    return { parsed: new JSParseNode(new FileNode(this.url)) };
+    return { parsed: new JSParseNode(this.fileNode) };
   }
   async run({ parsed }: { parsed: File }): Promise<Value<ModuleDescription>> {
     return { value: describeModule(parsed) };
@@ -98,12 +108,31 @@ export class ModuleDescriptionNode implements BuilderNode {
 
 export class ModuleResolutionNode implements BuilderNode {
   cacheKey: string;
-  constructor(private url: URL, private resolver: Resolver) {
+  constructor(
+    private url: URL,
+    private resolver: Resolver,
+    private projectRoots: [URL, URL][],
+    private dependencies: Dependencies | undefined
+  ) {
     this.cacheKey = `module-resolution:${url.href}`;
   }
   deps() {
-    let fileNode = new FileNode(this.url);
-    return { desc: new ModuleAnnotationNode(this.url), source: fileNode };
+    let fileNode: FileNode;
+    let dependencyHrefs = this.dependencies
+      ? Object.values(this.dependencies)
+      : [];
+    let depHref = dependencyHrefs.find(
+      (dep) => this.url.href.indexOf(dep) === 0
+    );
+    if (this.dependencies && depHref) {
+      let [inputRoot, outputRoot] = this.projectRoots.find(
+        ([, outputRoot]) => depHref === outputRoot.href
+      )!;
+      fileNode = new BundleFileNode(this.url, inputRoot, outputRoot);
+    } else {
+      fileNode = new FileNode(this.url);
+    }
+    return { desc: new ModuleAnnotationNode(fileNode), source: fileNode };
   }
   async run({
     desc,
@@ -115,7 +144,12 @@ export class ModuleResolutionNode implements BuilderNode {
     let imports = await Promise.all(
       desc.imports.map(async (imp) => {
         let depURL = await this.resolver.resolve(imp.specifier, this.url);
-        return new ModuleResolutionNode(depURL, this.resolver);
+        return new ModuleResolutionNode(
+          depURL,
+          this.resolver,
+          this.projectRoots,
+          this.dependencies
+        );
       })
     );
     source = source.replace(annotationRegex, "");

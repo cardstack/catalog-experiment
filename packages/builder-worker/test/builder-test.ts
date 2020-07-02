@@ -30,16 +30,18 @@ QUnit.module("module builder", function (origHooks) {
     return etags;
   }
 
-  function makeBuilder(fs: FileSystem) {
-    return Builder.forProjects(fs, [
-      [new URL(origin), new URL("/output/", origin)],
-    ]);
+  function makeBuilder(
+    fs: FileSystem,
+    outputURL = new URL("/output/", origin)
+  ) {
+    return Builder.forProjects(fs, [[new URL(origin), outputURL]]);
   }
 
-  function makeRebuilder(fs: FileSystem) {
-    return Rebuilder.forProjects(fs, [
-      [new URL(origin), new URL("/output/", outputOrigin)],
-    ]);
+  function makeRebuilder(
+    fs: FileSystem,
+    outputURL = new URL("/output/", outputOrigin)
+  ) {
+    return Rebuilder.forProjects(fs, [[new URL(origin), outputURL]]);
   }
 
   async function buildBundle(
@@ -370,6 +372,75 @@ QUnit.module("module builder", function (origHooks) {
         .matches(/console\.log\(getPuppies\(\)\);/);
       await assert.file("output/driver.js").doesNotMatch(/getCats/);
       await assert.file("output/driver.js").doesNotMatch(/getRats/);
+    });
+
+    test("declared entrypoints.json dependency can trigger build of bundle for dependency", async function (assert) {
+      const namesOutputURL = url("output/names");
+      const petsOutputURL = url("output/pets");
+
+      await assert.setupFiles({
+        // names bundle
+        "names/entrypoints.json": `{ "js": ["./index.js"] }`,
+        "names/index.js": `
+          export const cutie1 = "mango";
+          export const cutie2 = "van gogh";
+          export const cutie3 = "ringo";
+        `,
+
+        // pets bundle
+        "pets/entrypoints.json": `{
+          "js": ["./index.js"],
+          "dependencies": {
+            "names": "${namesOutputURL.href}"
+          }
+        }`,
+        "pets/index.js": `
+          import { puppies } from "./puppies.js";
+          function getPuppies() { return puppies; }
+          function getCats() { return ["jojo"]; }
+          function getRats() { return ["pizza rat"]; }
+          export { getPuppies, getCats, getRats };
+        `,
+        "pets/puppies.js": `
+          import { cutie1, cutie2 } from "${namesOutputURL.href}/index.js";
+          export const puppies = [cutie1, cutie2];
+         `,
+
+        // driver bundle
+        "driver/entrypoints.json": `{
+          "js": ["./index.js"],
+          "dependencies": {
+            "test-lib": "${petsOutputURL.href}"
+          }
+        }`,
+        "driver/index.js": `
+          import { getPuppies } from "${petsOutputURL.href}/index.js";
+          console.log(getPuppies());
+        `,
+      });
+
+      let builder = Builder.forProjects(assert.fs, [
+        [url("driver/"), url("/output/driver")],
+        [url("pets/"), petsOutputURL],
+        [url("names/"), namesOutputURL],
+      ]);
+
+      await builder.build();
+      await assert
+        .file("output/driver/index.js")
+        .matches(/const puppies = \[cutie1, cutie2\];/);
+      await assert
+        .file("output/driver/index.js")
+        .matches(/const cutie1 = "mango";/);
+      await assert
+        .file("output/driver/index.js")
+        .matches(/function getPuppies\(\) { return puppies; }/);
+      await assert
+        .file("output/driver/index.js")
+        .matches(/console\.log\(getPuppies\(\)\);/);
+      await assert.file("output/driver/index.js").doesNotMatch(/getCats/);
+      await assert.file("output/driver/index.js").doesNotMatch(/getRats/);
+      await assert.file("output/driver/index.js").doesNotMatch(/cutie3/);
     });
   });
 
