@@ -426,6 +426,17 @@ QUnit.module("module builder", function (origHooks) {
       ]);
 
       await builder.build();
+
+      await assert.file("output/names/index.js").exists();
+      await assert
+        .file("output/names/index.js")
+        .matches(/export { cutie1, cutie2, cutie3 };/);
+
+      await assert.file("output/pets/index.js").exists();
+      await assert
+        .file("output/pets/index.js")
+        .matches(/export { getPuppies, getCats, getRats };/);
+
       await assert
         .file("output/driver/index.js")
         .matches(/const puppies = \[cutie1, cutie2\];/);
