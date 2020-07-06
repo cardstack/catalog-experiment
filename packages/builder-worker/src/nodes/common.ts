@@ -19,6 +19,15 @@ export interface BuilderNode<Output = unknown, Input = unknown> {
   readonly cacheKey: any;
   deps(): Input;
   run(input: OutputTypes<Input>): Promise<NodeOutput<Output>>;
+
+  // if true, your `run` will always be called even when your inputs are all
+  // unchanged
+  volatile?: boolean;
+
+  // optional and only valid on the root BuilderNodes that are passed directly
+  // to the Builder. Used to link multiple projects together so that reads from
+  // within your project's outputRoot will defer until your project has built.
+  readonly outputRoot?: URL;
 }
 
 const debugNames: WeakMap<BuilderNode, string> = new WeakMap();

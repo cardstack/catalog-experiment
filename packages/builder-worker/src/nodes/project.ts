@@ -19,7 +19,8 @@ import { BundleAssignmentsNode, BundleNode, BundleAssignment } from "./bundle";
 // global bundle assignment effort.
 export class MakeProjectNode implements BuilderNode {
   cacheKey: string;
-  constructor(private inputRoot: URL, private outputRoot: URL) {
+
+  constructor(private inputRoot: URL, readonly outputRoot: URL) {
     this.cacheKey = `project:input=${inputRoot.href},output=${outputRoot.href}`;
   }
 

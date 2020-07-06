@@ -9,6 +9,10 @@ import { FileSystem } from "../src/filesystem";
 import { FileDescriptor } from "../src/filesystem-drivers/filesystem-driver";
 import { flushEvents, removeAllEventListeners } from "../src/event-bus";
 import { annotationRegex } from "../src/nodes/common";
+import { Logger } from "../src/logger";
+
+Logger.setLogLevel("debug");
+Logger.echoInConsole(true);
 
 const outputOrigin = `http://output`;
 

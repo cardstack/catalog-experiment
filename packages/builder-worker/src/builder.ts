@@ -12,6 +12,8 @@ import {
   BuilderNode,
   NodeOutput,
   debugName,
+  Value,
+  NextNode,
 } from "./nodes/common";
 import { FileNode, WriteFileNode } from "./nodes/file";
 import { MakeProjectNode } from "./nodes/project";
@@ -112,6 +114,18 @@ class BuildRunner<Input> {
       state = undefined;
     }
 
+    // NEXT STEP: this is probably the wrong spot for this, and/or our cacheKey
+    // system doesn't give enough object stability
+    if (FileNode.isFileNode(node)) {
+      node = new InternalFileNode(
+        node.url,
+        this.fs,
+        context,
+        this.roots,
+        this.ensureWatching
+      );
+    }
+
     let result;
     if (state) {
       result = await state.output;
@@ -177,7 +191,7 @@ class BuildRunner<Input> {
   ): Promise<InternalResult> {
     let inputs = deps ? await this.evalNodes(deps, context) : null;
     let previous = this.nodeStates.get(node.cacheKey);
-    if (previous) {
+    if (previous && !node.volatile) {
       let stableInputs: boolean;
       if (inputs) {
         stableInputs = Object.values(inputs.changes).every(
@@ -186,22 +200,12 @@ class BuildRunner<Input> {
       } else {
         stableInputs = true;
       }
-
       if (stableInputs) {
-        if (
-          !FileNode.isFileNode(node) ||
-          !context.changedFiles.has(node.url.href)
-        ) {
-          // we have a previous answer, and all our inputs are unchanged, so
-          // nothing to run
-          return makeInternalResult(previous.output, false);
-        }
+        return makeInternalResult(previous.output, false);
       }
     }
 
-    if (FileNode.isFileNode(node)) {
-      return this.runFileNode(node);
-    } else if (WriteFileNode.isWriteFileNode(node)) {
+    if (WriteFileNode.isWriteFileNode(node)) {
       let fd = (await this.fs.open(node.url, true)) as FileDescriptor;
       await fd.write(Object.values(inputs!.values)[0] as string);
       fd.close();
@@ -216,35 +220,7 @@ class BuildRunner<Input> {
     }
   }
 
-  private async runFileNode(node: FileNode): Promise<InternalResult> {
-    for (let _rootNode of Object.values(this.roots)) {
-      let rootNode = _rootNode as BuilderNode;
-      if (
-        rootNode.outputRoot &&
-        node.url.href.startsWith(rootNode.outputRoot.href)
-      ) {
-        return { node: new DeferFile(node.url, rootNode), changed: true };
-      }
-    }
-
-    this.ensureWatching(node.url);
-    let fd: FileDescriptor | undefined;
-    try {
-      fd = (await this.fs.open(node.url)) as FileDescriptor;
-      if (fd.type === "file") {
-        return { value: await fd.readText(), changed: true };
-      } else {
-        throw new Error(
-          `bug: expecting ${node.url} to be a file, but it was a directory`
-        );
-      }
-    } finally {
-      if (fd) {
-        fd.close();
-      }
-    }
-  }
-
+  @bind
   private ensureWatching(url: URL) {
     if (!this.watchedFiles.has(url.href)) {
       addEventListener(this.fileDidChange);
@@ -476,4 +452,63 @@ function describeNodes(nodeStates: Map<CacheKey, CompleteState>) {
 
 function projectsToNodes(roots: [URL, URL][]) {
   return roots.map(([input, output]) => new MakeProjectNode(input, output));
+}
+
+class InternalFileNode<Input> implements BuilderNode<string> {
+  cacheKey: string;
+  volatile = true;
+
+  private firstRun = true;
+
+  constructor(
+    private url: URL,
+    private fs: FileSystem,
+    private context: CurrentContext,
+    private roots: Input,
+    private ensureWatching: BuildRunner<Input>["ensureWatching"]
+  ) {
+    this.cacheKey = `file:${this.url.href}`;
+  }
+
+  deps() {
+    for (let _rootNode of Object.values(this.roots)) {
+      let rootNode = _rootNode as BuilderNode;
+      if (
+        rootNode.outputRoot &&
+        this.url.href.startsWith(rootNode.outputRoot.href)
+      ) {
+        return { dependsOnProject: rootNode };
+      }
+    }
+    return undefined;
+  }
+
+  async run(dependsOnProject: unknown): Promise<NodeOutput<string>> {
+    if (!this.firstRun && !this.context.changedFiles.has(this.url.href)) {
+      throw new Error("bang");
+      return { unchanged: true };
+    }
+    if (this.firstRun) {
+      this.firstRun = false;
+    }
+
+    if (!dependsOnProject) {
+      this.ensureWatching(this.url);
+    }
+    let fd: FileDescriptor | undefined;
+    try {
+      fd = (await this.fs.open(this.url)) as FileDescriptor;
+      if (fd.type === "file") {
+        return { value: await fd.readText() };
+      } else {
+        throw new Error(
+          `bug: expecting ${this.url} to be a file, but it was a directory`
+        );
+      }
+    } finally {
+      if (fd) {
+        fd.close();
+      }
+    }
+  }
 }
