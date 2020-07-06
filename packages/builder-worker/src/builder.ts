@@ -14,7 +14,7 @@ import {
   debugName,
 } from "./nodes/common";
 import { FileNode, WriteFileNode } from "./nodes/file";
-import { MakeProjectsNode } from "./nodes/project";
+import { MakeProjectNode } from "./nodes/project";
 import { FileDescriptor } from "./filesystem-drivers/filesystem-driver";
 import { Deferred } from "./deferred";
 import { assertNever } from "shared/util";
@@ -296,7 +296,7 @@ export class Builder<Input> {
 
   // roots lists [inputRoot, outputRoot]
   static forProjects(fs: FileSystem, roots: [URL, URL][]) {
-    return new this(fs, [new MakeProjectsNode(roots)]);
+    return new this(fs, projectsToNodes(roots));
   }
 
   async build(): ReturnType<BuildRunner<Input>["build"]> {
@@ -349,7 +349,7 @@ export class Rebuilder<Input> {
         );
       }
     }
-    return new this(fs, [new MakeProjectsNode(roots)]);
+    return new this(fs, projectsToNodes(roots));
   }
 
   start() {
@@ -478,4 +478,8 @@ function describeNodes(nodeStates: Map<CacheKey, CompleteState>) {
   }
   output.push("}");
   return output.join("\n");
+}
+
+function projectsToNodes(roots: [URL, URL][]) {
+  return roots.map(([input, output]) => new MakeProjectNode(input, output));
 }

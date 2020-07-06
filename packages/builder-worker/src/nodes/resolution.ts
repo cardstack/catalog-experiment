@@ -6,53 +6,47 @@ import {
   annotationRegex,
   ConstantNode,
 } from "./common";
-import {
-  EntrypointsJSONNode,
-  HTMLEntrypoint,
-  Entrypoint,
-  Dependencies,
-} from "./entrypoint";
-import { FileNode, BundleFileNode } from "./file";
+import { EntrypointsJSONNode, HTMLEntrypoint, Entrypoint } from "./entrypoint";
+import { FileNode } from "./file";
 import { JSParseNode } from "./js";
 import { describeModule, ModuleDescription } from "../describe-module";
 import { File } from "@babel/types";
 import { decodeModuleDescription } from "../description-encoder";
 
 export class ModuleResolutionsNode implements BuilderNode {
-  cacheKey = this;
+  cacheKey: string;
 
-  constructor(private projectRoots: [URL, URL][]) {}
-
-  deps() {
-    return this.projectRoots.map(
-      ([inputRoot, outputRoot]) =>
-        new EntrypointsJSONNode(inputRoot, outputRoot)
-    );
+  constructor(private projectInput: URL, private projectOutput: URL) {
+    this.cacheKey = `module-resolutions:input=${projectInput.href},output=${projectOutput.href}`;
   }
 
-  async run(projects: {
-    [index: string]: Entrypoint[];
+  deps() {
+    return {
+      entrypoints: new EntrypointsJSONNode(
+        this.projectInput,
+        this.projectOutput
+      ),
+    };
+  }
+
+  async run({
+    entrypoints,
+  }: {
+    entrypoints: Entrypoint[];
   }): Promise<NextNode<ModuleResolution[]>> {
-    let jsEntrypoints: Map<string, Dependencies | undefined> = new Map();
-    for (let project of Object.values(projects)) {
-      for (let entrypoint of project) {
-        if (entrypoint instanceof HTMLEntrypoint) {
-          for (let jsHref of entrypoint.jsEntrypoints.keys()) {
-            jsEntrypoints.set(jsHref, entrypoint.dependencies);
-          }
-        } else {
-          jsEntrypoints.set(entrypoint.url.href, entrypoint.dependencies);
+    let jsEntrypoints: Set<string> = new Set();
+    for (let entrypoint of entrypoints) {
+      if (entrypoint instanceof HTMLEntrypoint) {
+        for (let jsHref of entrypoint.jsEntrypoints.keys()) {
+          jsEntrypoints.add(jsHref);
         }
+      } else {
+        jsEntrypoints.add(entrypoint.url.href);
       }
     }
     let resolutions = [...jsEntrypoints].map(
-      ([jsEntrypoint, dependencies]) =>
-        new ModuleResolutionNode(
-          new URL(jsEntrypoint),
-          new Resolver(),
-          this.projectRoots,
-          dependencies
-        )
+      (jsEntrypoint) =>
+        new ModuleResolutionNode(new URL(jsEntrypoint), new Resolver())
     );
     return { node: new AllNode(resolutions) };
   }
@@ -108,31 +102,11 @@ export class ModuleDescriptionNode implements BuilderNode {
 
 export class ModuleResolutionNode implements BuilderNode {
   cacheKey: string;
-  constructor(
-    private url: URL,
-    private resolver: Resolver,
-    private projectRoots: [URL, URL][],
-    private dependencies: Dependencies | undefined
-  ) {
+  constructor(private url: URL, private resolver: Resolver) {
     this.cacheKey = `module-resolution:${url.href}`;
   }
   deps() {
-    let fileNode: FileNode;
-    let dependencyHrefs = this.dependencies
-      ? Object.values(this.dependencies)
-      : [];
-    let depHref = dependencyHrefs.find(
-      (dep) => this.url.href.indexOf(dep) === 0
-    );
-    // this is not the right spot to make this decision
-    if (this.dependencies && depHref) {
-      let [inputRoot, outputRoot] = this.projectRoots.find(
-        ([, outputRoot]) => depHref === outputRoot.href
-      )!;
-      fileNode = new BundleFileNode(this.url, inputRoot, outputRoot);
-    } else {
-      fileNode = new FileNode(this.url);
-    }
+    let fileNode = new FileNode(this.url);
     return { desc: new ModuleAnnotationNode(fileNode), source: fileNode };
   }
   async run({
@@ -146,12 +120,7 @@ export class ModuleResolutionNode implements BuilderNode {
       desc.imports.map(async (imp) => {
         let depURL = await this.resolver.resolve(imp.specifier, this.url);
         // how do we know the dependencies for this new node are actually not from another project?
-        return new ModuleResolutionNode(
-          depURL,
-          this.resolver,
-          this.projectRoots,
-          this.dependencies
-        );
+        return new ModuleResolutionNode(depURL, this.resolver);
       })
     );
     source = source.replace(annotationRegex, "");

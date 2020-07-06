@@ -1,7 +1,6 @@
 import {
   BuilderNode,
   Value,
-  AllNode,
   NextNode,
   ConstantNode,
   annotationEnd,
@@ -17,24 +16,26 @@ import {
   JSEntrypoint,
   HTMLEntrypoint,
 } from "./entrypoint";
-import flatten from "lodash/flatten";
 import { JSParseNode } from "./js";
 import { encodeModuleDescription } from "../description-encoder";
 
 export class BundleAssignmentsNode implements BuilderNode {
-  cacheKey = this;
+  cacheKey: string;
 
-  constructor(private projectRoots: [URL, URL][]) {}
+  constructor(private projectInput: URL, private projectOutput: URL) {
+    this.cacheKey = `bundle-assignments:input=${projectInput.href},output=${projectOutput.href}`;
+  }
 
   deps() {
     return {
-      entrypoints: new AllNode(
-        this.projectRoots.map(
-          ([inputRoot, outputRoot]) =>
-            new EntrypointsJSONNode(inputRoot, outputRoot)
-        )
+      entrypoints: new EntrypointsJSONNode(
+        this.projectInput,
+        this.projectOutput
       ),
-      resolutions: new ModuleResolutionsNode(this.projectRoots),
+      resolutions: new ModuleResolutionsNode(
+        this.projectInput,
+        this.projectOutput
+      ),
     };
   }
 
@@ -46,12 +47,11 @@ export class BundleAssignmentsNode implements BuilderNode {
     entrypoints: Entrypoint[];
   }): Promise<Value<BundleAssignment[]>> {
     let assignments = new Map<string, BundleAssignment>();
-    let jsEntrypointHrefs = (flatten(entrypoints).filter(
+    let jsEntrypointHrefs = (entrypoints.filter(
       (e) => !(e instanceof HTMLEntrypoint)
     ) as JSEntrypoint[]).map((e) => e.url.href);
     for (let [index, module] of resolutions.entries()) {
-      // place the bundles in the first project's output
-      let root = this.projectRoots[0][1];
+      let root = this.projectOutput;
       let bundleURL: URL;
       if (jsEntrypointHrefs.includes(module.url.href)) {
         // merge the bundle's path into the root's folder structure if they

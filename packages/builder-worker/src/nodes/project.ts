@@ -5,32 +5,6 @@ import uniqBy from "lodash/uniqBy";
 import flatten from "lodash/flatten";
 import { BundleAssignmentsNode, BundleNode, BundleAssignment } from "./bundle";
 
-export class MakeProjectsNode implements BuilderNode {
-  cacheKey = this;
-  constructor(private projectRoots: [URL, URL][]) {}
-
-  deps() {
-    return {
-      bundleAssignments: new BundleAssignmentsNode(this.projectRoots),
-    };
-  }
-
-  async run({
-    bundleAssignments,
-  }: {
-    bundleAssignments: BundleAssignment[];
-  }): Promise<NextNode<void[][]>> {
-    return {
-      node: new AllNode(
-        this.projectRoots.map(
-          ([inputRoot, outputRoot]) =>
-            new MakeProjectNode(inputRoot, outputRoot, bundleAssignments)
-        )
-      ),
-    };
-  }
-}
-
 // This can leverage global bundle assignments (that spans all projects), or it
 // can derive bundle assignments for just its own project. The latter is
 // necessary in the scenario where you have a project that depends on the build
@@ -45,29 +19,19 @@ export class MakeProjectsNode implements BuilderNode {
 // global bundle assignment effort.
 export class MakeProjectNode implements BuilderNode {
   cacheKey: string;
-  constructor(
-    private inputRoot: URL,
-    private outputRoot: URL,
-    private bundleAssignments?: BundleAssignment[]
-  ) {
+  constructor(private inputRoot: URL, private outputRoot: URL) {
     this.cacheKey = `project:input=${inputRoot.href},output=${outputRoot.href}`;
   }
 
   deps() {
     let entrypoints = new EntrypointsJSONNode(this.inputRoot, this.outputRoot);
-    let deps: {
-      entrypoints: EntrypointsJSONNode;
-      bundleAssignments?: BundleAssignmentsNode;
-    } = {
+    return {
       entrypoints,
+      bundleAssignments: new BundleAssignmentsNode(
+        this.inputRoot,
+        this.outputRoot
+      ),
     };
-    if (!this.bundleAssignments) {
-      deps.bundleAssignments = new BundleAssignmentsNode([
-        // TODO no need to pass in a list here--only ever have one project
-        [this.inputRoot, this.outputRoot],
-      ]);
-    }
-    return deps;
   }
 
   async run({
@@ -75,31 +39,28 @@ export class MakeProjectNode implements BuilderNode {
     bundleAssignments,
   }: {
     entrypoints: Entrypoint[];
-    bundleAssignments?: BundleAssignment[];
+    bundleAssignments: BundleAssignment[];
   }): Promise<NextNode<void[]>> {
-    if (!bundleAssignments && !this.bundleAssignments) {
-      throw new Error(
-        `bug: there are no bundle assignments for the project ${this.cacheKey}`
-      );
-    }
-    let assignments = (this.bundleAssignments ?? bundleAssignments)!;
     let htmls = (uniqBy(
       flatten(entrypoints).filter((e) => e instanceof HTMLEntrypoint),
       "destURL"
     ) as HTMLEntrypoint[]).map(
       (htmlEntrypoint) =>
         new WriteFileNode(
-          new ConstantNode(htmlEntrypoint.render(assignments)),
+          new ConstantNode(htmlEntrypoint.render(bundleAssignments)),
           htmlEntrypoint.destURL
         )
     );
 
     let bundles = uniqBy(
-      assignments.map((a) => a.bundleURL),
+      bundleAssignments.map((a) => a.bundleURL),
       (url) => url.href
     ).map(
       (bundleURL) =>
-        new WriteFileNode(new BundleNode(bundleURL, assignments), bundleURL)
+        new WriteFileNode(
+          new BundleNode(bundleURL, bundleAssignments),
+          bundleURL
+        )
     );
 
     return { node: new AllNode([...htmls, ...bundles]) };
