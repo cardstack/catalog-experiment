@@ -30,6 +30,8 @@ export default class FileHostingServer {
     private testHandler?: RequestHandler
   ) {
     this.mapping = new Map();
+    // the first direcotry as assumed to be the one that will serve requests to "/"
+    this.mapping.set("/", directories[0]);
     for (let dir of directories) {
       let localName = basename(dir);
       let counter = 0;
@@ -59,15 +61,28 @@ export default class FileHostingServer {
 
       try {
         let pathName = urlParse(path).pathname || "";
-        let top = pathName.split("/")[0];
+        let isRootTarRequest =
+          pathName === "/" &&
+          req.headers.accept &&
+          req.headers.accept.split(",").includes("application/x-tar");
+        let top = pathName.split("/")[1];
         let root = this.mapping.get(top);
-        if (!root) {
+        if (!isRootTarRequest && (!root || !top || pathName === "/")) {
+          // try again, the request may have actually been for the default
+          // directory (via a request relative to the root of the origin), e.g.:
+          // http://localhost:4200/test
+          top = "";
+          root = this.mapping.get("/");
+        }
+        if (!root && !isRootTarRequest) {
           res.statusCode = 404;
           res.end();
           return;
         }
-        let filePath = resolve(join(root, pathName.slice(top.length)));
-        if (filePath.indexOf(root) !== 0) {
+        let filePath = !isRootTarRequest
+          ? resolve(join(root!, pathName.slice(top.length)))
+          : undefined;
+        if (filePath && filePath.indexOf(root!) !== 0) {
           res.statusCode = 403;
           res.end();
           return;
@@ -93,18 +108,21 @@ export default class FileHostingServer {
         }
 
         if (
-          req.headers.accept &&
-          req.headers.accept.split(",").includes("application/x-tar")
+          isRootTarRequest ||
+          (req.headers.accept &&
+            req.headers.accept.split(",").includes("application/x-tar"))
         ) {
           res.setHeader("content-type", "application/x-tar");
-          if (existsSync(filePath)) {
+          if (isRootTarRequest) {
+            streamFileSystem([...this.mapping.values()]).pipe(res);
+          } else if (filePath && existsSync(filePath)) {
             streamFileSystem(filePath).pipe(res);
           } else {
             res.statusCode = 404;
             res.end();
           }
         } else {
-          if (existsSync(filePath)) {
+          if (filePath && existsSync(filePath)) {
             let stat = statSync(filePath);
             if (stat.isDirectory()) {
               serveFile(res, join(filePath, "index.html"));
@@ -130,35 +148,42 @@ export default class FileHostingServer {
   }
 }
 
-function streamFileSystem(path: string): Readable {
-  console.log(`streaming filesystem: ${path}`);
+function streamFileSystem(path: string): Readable;
+function streamFileSystem(paths: string[]): Readable;
+function streamFileSystem(pathOrPaths: string | string[]): Readable {
+  let paths = typeof pathOrPaths === "string" ? [pathOrPaths] : pathOrPaths;
+  console.log(`streaming filesystems: ${paths.join()}`);
 
   let tar = new Tar();
   // walk sync ignores the current directory, so we add that first
   tar.addFile({
     name: "/",
     type: DIRTYPE,
-    mode: statSync(path).mode,
-    modifyTime: unixTime(statSync(path).mtime.getTime()),
+    mode: statSync(paths[0]).mode,
+    modifyTime: unixTime(statSync(paths[0]).mtime.getTime()),
   });
 
-  for (let entry of walkSync.entries(path)) {
-    let { fullPath, size, mtime, mode, relativePath } = entry;
-    relativePath = `/${relativePath}`;
-    let file = {
-      mode,
-      size,
-      modifyTime: unixTime(mtime),
-      type: entry.isDirectory() ? DIRTYPE : REGTYPE,
-      name: entry.isDirectory() ? relativePath.slice(0, -1) : relativePath,
-    };
-    if (entry.isDirectory()) {
-      tar.addFile(file as DirectoryEntry);
-    } else {
-      tar.addFile({
-        ...file,
-        stream: () => new NodeReadableToDOM(createReadStream(fullPath)),
-      });
+  for (let path of paths) {
+    let base = path.split("/").pop();
+    for (let entry of walkSync.entries(path)) {
+      let { fullPath, size, mtime, mode, relativePath } = entry;
+
+      relativePath = `/${base}/${relativePath}`;
+      let file = {
+        mode,
+        size,
+        modifyTime: unixTime(mtime),
+        type: entry.isDirectory() ? DIRTYPE : REGTYPE,
+        name: entry.isDirectory() ? relativePath.slice(0, -1) : relativePath,
+      };
+      if (entry.isDirectory()) {
+        tar.addFile(file as DirectoryEntry);
+      } else {
+        tar.addFile({
+          ...file,
+          stream: () => new NodeReadableToDOM(createReadStream(fullPath)),
+        });
+      }
     }
   }
   return new DOMToNodeReadable(tar.finish());

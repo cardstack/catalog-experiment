@@ -25,7 +25,7 @@ export default class Watcher {
   add(sock: WebSocket) {
     this.watchers.set(sock, true);
     if (!this.nextWatch) {
-      console.log(`First watcher added: starting watch`);
+      console.log(`First watcher added: starting watch of ${this.directory}`);
       this.previousDirectoryMap = this.buildDirectoryMap();
       this.scheduleNextWatch();
     }

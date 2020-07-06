@@ -8,10 +8,19 @@
       "type": "node",
       "request": "launch",
       "name": "Serve test-app",
-      "cwd": "${workspaceRoot}/packages/app",
+      "cwd": "${workspaceRoot}/packages/test-app",
       "env": {},
       "program": "${workspaceRoot}/packages/file-daemon/index.js",
-      "args": ["-d", "."]
+      "args": [".", "../test-lib"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Serve test-lib",
+      "cwd": "${workspaceRoot}/packages/test-lib",
+      "env": {},
+      "program": "${workspaceRoot}/packages/file-daemon/index.js",
+      "args": ["."]
     },
     {
       "type": "node",
@@ -39,14 +48,13 @@
       "env": {},
       "program": "${workspaceRoot}/packages/file-daemon/index.js",
       "args": [
-        "-d",
-        ".",
         "-p",
         "4201",
         "-w",
         "3001",
         "-k",
-        "7J+SZeMa6nmaJMpls8Qi6fKLMsNsLJoPcd8SsOUpDW0="
+        "7J+SZeMa6nmaJMpls8Qi6fKLMsNsLJoPcd8SsOUpDW0=",
+        "."
       ]
     },
     {

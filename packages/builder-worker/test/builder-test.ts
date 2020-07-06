@@ -406,6 +406,7 @@ QUnit.module("module builder", function (origHooks) {
           export const puppies = [cutie1, cutie2];
          `,
 
+        // TODO remove dependencies from the tests in entrypoint.json
         // driver bundle
         "driver/entrypoints.json": `{
           "js": ["./index.js"],

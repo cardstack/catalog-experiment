@@ -7,8 +7,8 @@ import { HandlerMaker } from "./test-support/test-request-handler";
 interface CommandLineArgs {
   port: number;
   websocketPort: number;
-  directory: string;
   key?: string;
+  _: string[]; // this is yargs' "rest" property that holds all commandline args without names
 }
 
 function polyfill() {
@@ -32,12 +32,6 @@ export function start(makeTestHandler?: HandlerMaker) {
       default: 3000,
       description: "Sets the file notification web sock port",
     },
-    directory: {
-      alias: "d",
-      type: "string",
-      default: process.cwd(),
-      description: "Set the directory to serve and watch for changes",
-    },
     key: {
       alias: "k",
       type: "string",
@@ -46,16 +40,23 @@ export function start(makeTestHandler?: HandlerMaker) {
     },
   }).argv;
   const serverArgs = argv as CommandLineArgs;
+  if (serverArgs._.length === 0) {
+    console.error(
+      `Please specify the directories to watch as command line arguments`
+    );
+    process.exit(1);
+  }
 
-  let rootDir = resolve(process.cwd(), serverArgs.directory);
-  let watcher = new FileWatcherServer(serverArgs.websocketPort, rootDir);
+  let { _: unresolvedDirs } = serverArgs;
+  let directories = unresolvedDirs.map((dir) => resolve(process.cwd(), dir));
+  let watcher = new FileWatcherServer(serverArgs.websocketPort, directories);
   let testRequestHandler =
     makeTestHandler && serverArgs.key
-      ? makeTestHandler(rootDir, serverArgs.key)
+      ? makeTestHandler(directories[0], serverArgs.key)
       : undefined;
   let hoster = new FileHostingServer(
     serverArgs.port,
-    rootDir,
+    directories,
     true,
     testRequestHandler
   );

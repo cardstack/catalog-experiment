@@ -112,6 +112,12 @@ class BuildRunner<Input> {
       state = undefined;
     }
 
+    // TODO: link a write file node that doesn't know its source yet to a write
+    // file node that has a source, and let the write file node that has its
+    // source "win". This should mutate the cache with the write file that has
+    // the actual source. (also if there are 2 write files nodes with different
+    // source strings, then we should error)
+
     let result;
     if (state) {
       result = await state.output;

@@ -25,12 +25,12 @@ let isDisabled = false;
 let volume: FileDaemonClientVolume | undefined;
 let eventHandler: ClientEventHandler;
 let originURL = new URL(worker.origin);
-let inputURL = new URL("https://local-disk/test-app");
+let inputURL = new URL("https://local-disk/test-app/");
 let projects: [URL, URL][] = [
   [inputURL, originURL],
   [
-    new URL("https://local-disk/test-lib"),
-    new URL(`${originURL.href}/test-lib`),
+    new URL("https://local-disk/test-lib/"),
+    new URL(`${originURL.href}/test-lib/`),
   ],
 ];
 let buildManager: BuildManager;

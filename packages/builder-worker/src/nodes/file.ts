@@ -30,6 +30,7 @@ export class BundleFileNode extends FileNode {
     this.cacheKey = `bundle-file:${this.url.href}`;
   }
 
+  // TODO what we really depend on here is the WriteFileNode for the TBD bundle file that will be eventually written out
   deps() {
     return {
       project: new MakeProjectNode(
@@ -49,6 +50,7 @@ export class WriteFileNode implements BuilderNode<void> {
   }
 
   constructor(private source: BuilderNode<string>, public url: URL) {
+    //TODO precreate a FileNode that depends on this (for files that are bundles, so that it is in cache)
     this.cacheKey = `write-file:${this.url.href}`;
   }
 

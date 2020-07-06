@@ -124,6 +124,7 @@ export class ModuleResolutionNode implements BuilderNode {
     let depHref = dependencyHrefs.find(
       (dep) => this.url.href.indexOf(dep) === 0
     );
+    // this is not the right spot to make this decision
     if (this.dependencies && depHref) {
       let [inputRoot, outputRoot] = this.projectRoots.find(
         ([, outputRoot]) => depHref === outputRoot.href
@@ -144,6 +145,7 @@ export class ModuleResolutionNode implements BuilderNode {
     let imports = await Promise.all(
       desc.imports.map(async (imp) => {
         let depURL = await this.resolver.resolve(imp.specifier, this.url);
+        // how do we know the dependencies for this new node are actually not from another project?
         return new ModuleResolutionNode(
           depURL,
           this.resolver,

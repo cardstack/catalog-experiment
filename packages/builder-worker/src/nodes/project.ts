@@ -63,6 +63,7 @@ export class MakeProjectNode implements BuilderNode {
     };
     if (!this.bundleAssignments) {
       deps.bundleAssignments = new BundleAssignmentsNode([
+        // TODO no need to pass in a list here--only ever have one project
         [this.inputRoot, this.outputRoot],
       ]);
     }
