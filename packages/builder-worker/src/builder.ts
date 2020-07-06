@@ -112,12 +112,6 @@ class BuildRunner<Input> {
       state = undefined;
     }
 
-    // TODO: link a write file node that doesn't know its source yet to a write
-    // file node that has a source, and let the write file node that has its
-    // source "win". This should mutate the cache with the write file that has
-    // the actual source. (also if there are 2 write files nodes with different
-    // source strings, then we should error)
-
     let result;
     if (state) {
       result = await state.output;
@@ -143,11 +137,12 @@ class BuildRunner<Input> {
     node: BuilderNode,
     context: CurrentContext
   ): EvaluatingState {
-    let deps = node.deps();
-    let state: EvaluatingState;
-    if (hasDeps(deps)) {
-      let deduplicatedDeps: typeof deps = {};
-      for (let [key, depNode] of Object.entries(deps)) {
+    let maybeDeps = node.deps();
+    let deps: EvaluatingState["deps"];
+
+    if (hasDeps(maybeDeps)) {
+      let deduplicatedDeps: typeof maybeDeps = {};
+      for (let [key, depNode] of Object.entries(maybeDeps)) {
         let existing = context.nodeStates.get(depNode.cacheKey);
         if (existing) {
           deduplicatedDeps[key] = existing.node;
@@ -159,33 +154,40 @@ class BuildRunner<Input> {
           deduplicatedDeps[key] = depNode;
         }
       }
-      state = {
-        name: "evaluating",
-        node,
-        deps: deduplicatedDeps,
-        output: this.runNodeWithDeps(node, deduplicatedDeps, context),
-      };
+      deps = deduplicatedDeps;
     } else {
-      state = {
-        name: "evaluating",
-        node,
-        deps: null,
-        output: this.runNodeWithoutDeps(node, context),
-      };
+      deps = null;
     }
+
+    let output = this.runNode(node, context, deps);
+    let state: EvaluatingState = {
+      name: "evaluating",
+      node,
+      deps,
+      output,
+    };
     context.nodeStates.set(node.cacheKey, state);
     return state;
   }
 
-  async runNodeWithDeps(
+  async runNode(
     node: BuilderNode,
-    deps: object,
-    context: CurrentContext
+    context: CurrentContext,
+    deps: EvaluatingState["deps"]
   ): Promise<InternalResult> {
-    let inputs = await this.evalNodes(deps, context);
-    if (Object.values(inputs.changes).every((didChange) => !didChange)) {
-      let previous = this.nodeStates.get(node.cacheKey);
-      if (previous) {
+    let inputs = deps ? await this.evalNodes(deps, context) : null;
+    let previous = this.nodeStates.get(node.cacheKey);
+    if (previous) {
+      let stableInputs: boolean;
+      if (inputs) {
+        stableInputs = Object.values(inputs.changes).every(
+          (didChange) => !didChange
+        );
+      } else {
+        stableInputs = true;
+      }
+
+      if (stableInputs) {
         if (
           !FileNode.isFileNode(node) ||
           !context.changedFiles.has(node.url.href)
@@ -198,32 +200,14 @@ class BuildRunner<Input> {
     }
 
     if (FileNode.isFileNode(node)) {
-      return { value: await this.runFileNode(node), changed: true };
+      return this.runFileNode(node);
     } else if (WriteFileNode.isWriteFileNode(node)) {
       let fd = (await this.fs.open(node.url, true)) as FileDescriptor;
-      await fd.write(Object.values(inputs.values)[0]);
+      await fd.write(Object.values(inputs!.values)[0] as string);
       fd.close();
       return { value: undefined, changed: true };
-    } else {
+    } else if (inputs) {
       return this.handleUnchanged(node, await node.run(inputs.values));
-    }
-  }
-
-  async runNodeWithoutDeps(
-    node: BuilderNode,
-    context: CurrentContext
-  ): Promise<InternalResult> {
-    let previous = this.nodeStates.get(node.cacheKey);
-    if (previous) {
-      if (
-        !FileNode.isFileNode(node) ||
-        !context.changedFiles.has(node.url.href)
-      ) {
-        return makeInternalResult(previous.output, false);
-      }
-    }
-    if (FileNode.isFileNode(node)) {
-      return { value: await this.runFileNode(node), changed: true };
     } else {
       return this.handleUnchanged(
         node,
@@ -232,13 +216,23 @@ class BuildRunner<Input> {
     }
   }
 
-  private async runFileNode(node: FileNode): Promise<string> {
+  private async runFileNode(node: FileNode): Promise<InternalResult> {
+    for (let _rootNode of Object.values(this.roots)) {
+      let rootNode = _rootNode as BuilderNode;
+      if (
+        rootNode.outputRoot &&
+        node.url.href.startsWith(rootNode.outputRoot.href)
+      ) {
+        return { node: new DeferFile(node.url, rootNode), changed: true };
+      }
+    }
+
     this.ensureWatching(node.url);
     let fd: FileDescriptor | undefined;
     try {
       fd = (await this.fs.open(node.url)) as FileDescriptor;
       if (fd.type === "file") {
-        return await fd.readText();
+        return { value: await fd.readText(), changed: true };
       } else {
         throw new Error(
           `bug: expecting ${node.url} to be a file, but it was a directory`
