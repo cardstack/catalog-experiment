@@ -66,7 +66,20 @@ interface CompleteState {
 
 type Explanation = Map<
   string,
-  { prevNodes: Set<string>; nextNode: string | undefined; didChange: boolean }
+  {
+    // this is the set of nodes that the given node asked for as dependencies
+    dependencies: Set<string>;
+
+    // these are the actual results that were returned, which can differ because
+    // a node can return another node as its output
+    inputs: Set<string>;
+
+    // this is the node returned by the given node, if any
+    created: string | undefined;
+
+    // did this node change in the most recent build
+    didChange: boolean;
+  }
 >;
 
 class CurrentContext {
@@ -89,19 +102,30 @@ class BuildRunner<Input> {
   explain(): Explanation {
     let explanation: Explanation = new Map();
     for (let state of this.nodeStates.values()) {
-      let prevNodes = new Set<string>();
+      let dependencies = new Set<string>();
+      let inputs = new Set<string>();
       if (state.deps) {
         for (let dep of Object.values(state.deps)) {
-          prevNodes.add(debugName(dep));
+          dependencies.add(debugName(dep));
+
+          let entry = this.nodeStates.get(dep.cacheKey)!;
+          while ("node" in entry.output) {
+            // keep following output.node, because that is what actually
+            // provides our inputs.
+            dep = entry.output.node;
+            entry = this.nodeStates.get(dep.cacheKey)!;
+          }
+          inputs.add(debugName(dep));
         }
       }
-      let nextNode: string | undefined;
+      let created: string | undefined;
       if ("node" in state.output) {
-        nextNode = debugName(state.output.node);
+        created = debugName(state.output.node);
       }
       explanation.set(debugName(state.node), {
-        prevNodes,
-        nextNode,
+        dependencies,
+        inputs,
+        created,
         didChange: state.didChange,
       });
     }
@@ -531,27 +555,19 @@ function dotSafeName(name: string): string {
 
 export function explainAsDot(explanation: Explanation): string {
   let output = ["digraph {"];
-  for (let [debugName, { prevNodes, nextNode, didChange }] of explanation) {
+  for (let [debugName, { inputs, created, didChange }] of explanation) {
     let name = dotSafeName(debugName);
 
     // nodes with red outlines have changed on the last build.
     output.push(`"${name}" ${didChange ? '[color="red"]' : ""}`);
 
-    for (let prevNode of prevNodes) {
-      let entry = explanation.get(prevNode)!;
-      while (entry.nextNode) {
-        // keep following nextNode, because that is what actually provides our
-        // output. This means the black arrows on the graph will actually point
-        // at where your answer came from.
-        prevNode = entry.nextNode;
-        entry = explanation.get(prevNode)!;
-      }
+    for (let prevNode of inputs) {
       output.push(`"${name}" -> "${dotSafeName(prevNode)}"`);
     }
 
-    if (nextNode) {
+    if (created) {
       // the blue arrows mean "created by"
-      output.push(`"${dotSafeName(nextNode)}" -> "${name}" [color="blue"]`);
+      output.push(`"${dotSafeName(created)}" -> "${name}" [color="blue"]`);
     }
   }
   output.push("}");
