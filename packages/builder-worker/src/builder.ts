@@ -533,14 +533,25 @@ export function explainAsDot(explanation: Explanation): string {
   let output = ["digraph {"];
   for (let [debugName, { prevNodes, nextNode, didChange }] of explanation) {
     let name = dotSafeName(debugName);
+
+    // nodes with red outlines have changed on the last build.
     output.push(`"${name}" ${didChange ? '[color="red"]' : ""}`);
 
     for (let prevNode of prevNodes) {
+      let entry = explanation.get(prevNode)!;
+      while (entry.nextNode) {
+        // keep following nextNode, because that is what actually provides our
+        // output. This means the black arrows on the graph will actually point
+        // at where your answer came from.
+        prevNode = entry.nextNode;
+        entry = explanation.get(prevNode)!;
+      }
       output.push(`"${name}" -> "${dotSafeName(prevNode)}"`);
     }
 
     if (nextNode) {
-      output.push(`"${name}" -> "${dotSafeName(nextNode)}" [color="blue"]`);
+      // the blue arrows mean "created by"
+      output.push(`"${dotSafeName(nextNode)}" -> "${name}" [color="blue"]`);
     }
   }
   output.push("}");
