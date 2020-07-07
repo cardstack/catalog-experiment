@@ -34,18 +34,19 @@ const debugNames: WeakMap<BuilderNode, string> = new WeakMap();
 let debugNameCounter = 0;
 
 export function debugName(node: BuilderNode): string {
-  const maxCacheKeyLen = 60;
-  let cacheKey = node.cacheKey;
-  if (typeof cacheKey === "string") {
-    if (cacheKey.length > maxCacheKeyLen) {
-      return `${cacheKey.slice(0, maxCacheKeyLen)}...`;
-    } else {
-      return cacheKey;
-    }
-  }
   let name = debugNames.get(node);
   if (!name) {
-    name = `${node.constructor.name}:${debugNameCounter++}`;
+    let cacheKey = node.cacheKey;
+    if (typeof cacheKey === "string") {
+      const maxCacheKeyLen = 60;
+      if (cacheKey.length > maxCacheKeyLen) {
+        name = `${cacheKey.slice(0, maxCacheKeyLen)}...`;
+      } else {
+        name = cacheKey;
+      }
+    } else {
+      name = `${node.constructor.name}:${debugNameCounter++}`;
+    }
     debugNames.set(node, name);
   }
   return name;

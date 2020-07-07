@@ -4,7 +4,7 @@ import {
   url,
   FileAssert,
 } from "./helpers/file-assertions";
-import { Builder, Rebuilder } from "../src/builder";
+import { Builder, Rebuilder, explainAsDot } from "../src/builder";
 import { FileSystem } from "../src/filesystem";
 import { FileDescriptor } from "../src/filesystem-drivers/filesystem-driver";
 import { flushEvents, removeAllEventListeners } from "../src/event-bus";
@@ -63,7 +63,7 @@ QUnit.module("module builder", function (origHooks) {
     return bundleSrc;
   }
 
-  async function rebuild(rebuilder: Rebuilder<unknown>) {
+  async function buildDidFinish(rebuilder: Rebuilder<unknown>) {
     await flushEvents();
     await rebuilder.isIdle();
     if (rebuilder.status.name === "failed") {
@@ -314,10 +314,7 @@ QUnit.module("module builder", function (origHooks) {
       });
       builder = makeBuilder(assert.fs);
       await builder.build();
-
-      assert.ok(
-        builder.cachedNodeStates.includes(`module-description:${url("lib.js")}`)
-      );
+      assert.ok(builder.explain().get(`module-description:${url("lib.js")}`));
     });
 
     test("skips parse if annotation exists in bundle", async function (assert) {
@@ -345,7 +342,13 @@ QUnit.module("module builder", function (origHooks) {
       await builder.build();
 
       assert.notOk(
-        builder.cachedNodeStates.includes(`module-description:${url("lib.js")}`)
+        builder.explain().get(`module-description:${url("lib.js")}`)
+      );
+
+      // experimental control: make sure we can detect the node for modules that
+      // definitely do need to be parsed
+      assert.ok(
+        builder.explain().get(`module-description:${url("driver.js")}`)
       );
     });
 
@@ -484,7 +487,7 @@ QUnit.module("module builder", function (origHooks) {
       rebuilder = makeRebuilder(assert.fs);
 
       rebuilder.start();
-      await rebuild(rebuilder);
+      await buildDidFinish(rebuilder);
 
       await assert.file(`${outputOrigin}/output/index.html`).exists();
       await assert
@@ -510,13 +513,14 @@ QUnit.module("module builder", function (origHooks) {
       rebuilder = makeRebuilder(assert.fs);
 
       rebuilder.start();
-      await rebuild(rebuilder);
+      await buildDidFinish(rebuilder);
 
       let file = (await assert.fs.open(url("ui.js"))) as FileDescriptor;
       await file.write(`export const message = "Bye mars";`);
       file.close();
-      await rebuild(rebuilder);
+      await buildDidFinish(rebuilder);
 
+      console.log(explainAsDot(rebuilder.explain()));
       await assert.file(`${outputOrigin}/output/dist/0.js`).matches(/Bye mars/);
     });
 

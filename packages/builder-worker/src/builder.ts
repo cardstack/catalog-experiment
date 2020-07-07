@@ -18,7 +18,7 @@ import { MakeProjectNode } from "./nodes/project";
 import { FileDescriptor } from "./filesystem-drivers/filesystem-driver";
 import { Deferred } from "./deferred";
 import { assertNever } from "shared/util";
-import { debug, error } from "./logger";
+import { error } from "./logger";
 
 type BoolForEach<T> = {
   [P in keyof T]: boolean;
@@ -32,12 +32,23 @@ type InternalResult =
   | { node: BuilderNode; changed: boolean }
   | { value: unknown; changed: boolean };
 
-type CurrentState = InitialState | EvaluatingState | CompleteState;
+type CurrentState =
+  | InitialState
+  | ReusedState
+  | EvaluatingState
+  | CompleteState;
 
 interface InitialState {
   name: "initial";
   node: BuilderNode;
 }
+
+interface ReusedState {
+  name: "reused";
+  node: BuilderNode;
+  deps: { [name: string]: BuilderNode } | null;
+}
+
 interface EvaluatingState {
   name: "evaluating";
   node: BuilderNode;
@@ -50,7 +61,13 @@ interface CompleteState {
   node: BuilderNode;
   deps: { [name: string]: BuilderNode } | null;
   output: InternalResult;
+  didChange: boolean;
 }
+
+type Explanation = Map<
+  string,
+  { prevNodes: Set<string>; nextNode: string | undefined; didChange: boolean }
+>;
 
 class CurrentContext {
   nodeStates: Map<string, CurrentState> = new Map();
@@ -69,8 +86,26 @@ class BuildRunner<Input> {
     private inputDidChange?: () => void
   ) {}
 
-  get cachedNodeStates() {
-    return [...this.nodeStates.keys()].filter((k) => typeof k === "string");
+  explain(): Explanation {
+    let explanation: Explanation = new Map();
+    for (let state of this.nodeStates.values()) {
+      let prevNodes = new Set<string>();
+      if (state.deps) {
+        for (let dep of Object.values(state.deps)) {
+          prevNodes.add(debugName(dep));
+        }
+      }
+      let nextNode: string | undefined;
+      if ("node" in state.output) {
+        nextNode = debugName(state.output.node);
+      }
+      explanation.set(debugName(state.node), {
+        prevNodes,
+        nextNode,
+        didChange: state.didChange,
+      });
+    }
+    return explanation;
   }
 
   async build(): Promise<OutputTypes<Input>> {
@@ -81,7 +116,6 @@ class BuildRunner<Input> {
     assertAllComplete(context.nodeStates);
     this.nodeStates = context.nodeStates;
     this.currentContext = undefined;
-    debug(describeNodes(this.nodeStates));
     return result.values;
   }
 
@@ -93,7 +127,7 @@ class BuildRunner<Input> {
     throw new Error(`bug: tried to access currentContext outside of a build`);
   }
 
-  async evalNodes<LocalInput>(
+  private async evalNodes<LocalInput>(
     nodes: LocalInput
   ): Promise<{
     values: OutputTypes<LocalInput>;
@@ -109,7 +143,7 @@ class BuildRunner<Input> {
     return { values, changes };
   }
 
-  private getNodeState(node: BuilderNode): CurrentState | undefined {
+  private getNodeState(node: BuilderNode): CurrentState {
     let state = this.getCurrentContext().nodeStates.get(node.cacheKey);
     if (state) {
       return state;
@@ -120,59 +154,65 @@ class BuildRunner<Input> {
     let lastState = this.nodeStates.get(node.cacheKey);
     if (lastState) {
       return {
-        name: "initial",
+        name: "reused",
         node: lastState.node,
+        deps: lastState.deps,
       };
     }
 
-    return undefined;
+    return {
+      name: "initial",
+      node,
+    };
   }
 
-  async evalNode(
+  private async evalNode(
     node: BuilderNode
   ): Promise<{ value: unknown; changed: boolean }> {
     let state = this.getNodeState(node);
 
-    if (state && state.name === "initial") {
-      // somebody already created an initial state for this cacheKey, use that
-      // node instance instead of the one we were given
-      node = state.node;
-      state = undefined;
-    }
-
-    if (FileNode.isFileNode(node)) {
-      node = new InternalFileNode(
-        node.url,
-        this.fs,
-        this.getCurrentContext,
-        this.roots,
-        this.ensureWatching
-      );
-    }
-
-    let result;
-    if (state) {
-      result = await state.output;
-    } else {
-      state = this.startEvaluating(node);
-      result = await state.output;
-      this.getCurrentContext().nodeStates.set(node.cacheKey, {
-        name: "complete",
-        node,
-        deps: state.deps,
-        output: result,
-      });
-    }
-
-    if ("node" in result) {
-      return this.evalNode(result.node);
-    } else {
-      return result;
+    switch (state.name) {
+      case "initial":
+        let realNode = state.node;
+        if (FileNode.isFileNode(realNode)) {
+          realNode = new InternalFileNode(
+            realNode.url,
+            this.fs,
+            this.getCurrentContext,
+            this.roots,
+            this.ensureWatching
+          );
+        }
+        return this.handleNextNode(
+          await this.evaluate(realNode, realNode.deps())
+        );
+      case "reused":
+        return this.handleNextNode(await this.evaluate(state.node, state.deps));
+      case "evaluating":
+      case "complete":
+        return this.handleNextNode(await state.output);
+      default:
+        throw assertNever(state);
     }
   }
 
-  private startEvaluating(node: BuilderNode): EvaluatingState {
-    let maybeDeps = node.deps();
+  private async evaluate(node: BuilderNode, maybeDeps: unknown) {
+    let state = this.startEvaluating(node, maybeDeps);
+    let result = await state.output;
+    this.getCurrentContext().nodeStates.set(node.cacheKey, {
+      name: "complete",
+      node,
+      deps: state.deps,
+      output: result,
+      didChange: result.changed,
+    });
+    return result;
+  }
+
+  private startEvaluating(
+    node: BuilderNode,
+    maybeDeps: unknown
+  ): EvaluatingState {
     let deps: EvaluatingState["deps"];
 
     if (hasDeps(maybeDeps)) {
@@ -205,7 +245,17 @@ class BuildRunner<Input> {
     return state;
   }
 
-  async runNode(
+  private async handleNextNode(
+    result: InternalResult
+  ): Promise<{ value: unknown; changed: boolean }> {
+    if ("node" in result) {
+      return this.evalNode(result.node);
+    } else {
+      return result;
+    }
+  }
+
+  private async runNode(
     node: BuilderNode,
     deps: EvaluatingState["deps"]
   ): Promise<InternalResult> {
@@ -260,7 +310,7 @@ class BuildRunner<Input> {
     }
   }
 
-  handleUnchanged(
+  private handleUnchanged(
     node: BuilderNode,
     result: NodeOutput<unknown>
   ): InternalResult {
@@ -293,9 +343,8 @@ export class Builder<Input> {
     return this.runner.build();
   }
 
-  // instrumentation used for testing
-  get cachedNodeStates() {
-    return this.runner.cachedNodeStates;
+  explain(): Explanation {
+    return this.runner.explain();
   }
 }
 
@@ -443,6 +492,10 @@ export class Rebuilder<Input> {
       await this.nextState.promise;
     }
   }
+
+  explain(): Explanation {
+    return this.runner.explain();
+  }
 }
 
 function hasDeps(deps: unknown): deps is { [key: string]: BuilderNode } {
@@ -472,24 +525,22 @@ function assertAllComplete(
   }
 }
 
-function dotSafeName(node: BuilderNode): string {
-  return debugName(node).replace(/"/g, '\\"');
+function dotSafeName(name: string): string {
+  return name.replace(/"/g, '\\"');
 }
 
-function describeNodes(nodeStates: Map<CacheKey, CompleteState>) {
+export function explainAsDot(explanation: Explanation): string {
   let output = ["digraph {"];
-  for (let state of nodeStates.values()) {
-    let name = dotSafeName(state.node);
-    output.push(`"${name}"`);
-    if (state.deps) {
-      for (let dep of Object.values(state.deps)) {
-        output.push(`"${name}" -> "${dotSafeName(dep)}"`);
-      }
+  for (let [debugName, { prevNodes, nextNode, didChange }] of explanation) {
+    let name = dotSafeName(debugName);
+    output.push(`"${name}" ${didChange ? '[color="red"]' : ""}`);
+
+    for (let prevNode of prevNodes) {
+      output.push(`"${name}" -> "${dotSafeName(prevNode)}"`);
     }
-    if ("node" in state.output) {
-      output.push(
-        `"${name}" -> "${dotSafeName(state.output.node)}" [color="blue"]`
-      );
+
+    if (nextNode) {
+      output.push(`"${name}" -> "${dotSafeName(nextNode)}" [color="blue"]`);
     }
   }
   output.push("}");
