@@ -28,7 +28,6 @@ export class WriteFileNode implements BuilderNode<void> {
   }
 
   constructor(private source: BuilderNode<string>, public url: URL) {
-    //TODO precreate a FileNode that depends on this (for files that are bundles, so that it is in cache)
     this.cacheKey = `write-file:${this.url.href}`;
   }
 

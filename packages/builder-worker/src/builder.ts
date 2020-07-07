@@ -197,16 +197,7 @@ class BuildRunner<Input> {
 
     switch (state.name) {
       case "initial":
-        let realNode = state.node;
-        if (FileNode.isFileNode(realNode)) {
-          realNode = new InternalFileNode(
-            realNode.url,
-            this.fs,
-            this.getCurrentContext,
-            this.roots,
-            this.ensureWatching
-          );
-        }
+        let realNode = this.internalize(state.node);
         return this.handleNextNode(
           await this.evaluate(realNode, realNode.deps())
         );
@@ -218,6 +209,24 @@ class BuildRunner<Input> {
       default:
         throw assertNever(state);
     }
+  }
+
+  private internalize(node: BuilderNode) {
+    if (FileNode.isFileNode(node)) {
+      return new InternalFileNode(
+        node.url,
+        this.fs,
+        this.getCurrentContext,
+        this.roots,
+        this.ensureWatching
+      );
+    }
+
+    if (WriteFileNode.isWriteFileNode(node)) {
+      return new InternalWriteFileNode(node, this.fs);
+    }
+
+    return node;
   }
 
   private async evaluate(node: BuilderNode, maybeDeps: unknown) {
@@ -299,12 +308,7 @@ class BuildRunner<Input> {
       }
     }
 
-    if (WriteFileNode.isWriteFileNode(node)) {
-      let fd = (await this.fs.open(node.url, true)) as FileDescriptor;
-      await fd.write(Object.values(inputs!.values)[0] as string);
-      fd.close();
-      return { value: undefined, changed: true };
-    } else if (inputs) {
+    if (inputs) {
       return this.handleUnchanged(node, await node.run(inputs.values));
     } else {
       return this.handleUnchanged(
@@ -562,12 +566,13 @@ export function explainAsDot(explanation: Explanation): string {
     output.push(`"${name}" ${didChange ? '[color="red"]' : ""}`);
 
     for (let prevNode of inputs) {
-      output.push(`"${name}" -> "${dotSafeName(prevNode)}"`);
+      output.push(`"${name}" -> "${dotSafeName(prevNode)}" [dir="back"]`);
     }
 
     if (created) {
-      // the blue arrows mean "created by"
-      output.push(`"${dotSafeName(created)}" -> "${name}" [color="blue"]`);
+      output.push(
+        `"${dotSafeName(created)}" -> "${name}" [color="blue",dir="back"]`
+      );
     }
   }
   output.push("}");
@@ -636,5 +641,25 @@ class InternalFileNode<Input> implements BuilderNode<string> {
         fd.close();
       }
     }
+  }
+}
+
+class InternalWriteFileNode implements BuilderNode<void> {
+  private source: BuilderNode<string>;
+  private url: URL;
+  cacheKey: string;
+  constructor(writeFileNode: WriteFileNode, private fs: FileSystem) {
+    this.source = writeFileNode.deps().source;
+    this.url = writeFileNode.url;
+    this.cacheKey = `write-file:${this.url.href}`;
+  }
+  deps() {
+    return { source: this.source };
+  }
+  async run({ source }: { source: string }): Promise<NodeOutput<void>> {
+    let fd = (await this.fs.open(this.url, true)) as FileDescriptor;
+    await fd.write(source);
+    fd.close();
+    return { value: undefined };
   }
 }
