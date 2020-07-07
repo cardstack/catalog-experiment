@@ -12,8 +12,6 @@ import {
   BuilderNode,
   NodeOutput,
   debugName,
-  Value,
-  NextNode,
 } from "./nodes/common";
 import { FileNode, WriteFileNode } from "./nodes/file";
 import { MakeProjectNode } from "./nodes/project";
@@ -63,6 +61,7 @@ class BuildRunner<Input> {
   private nodeStates: Map<CacheKey, CompleteState> = new Map();
   private watchedFiles: Set<string> = new Set();
   private recentlyChangedFiles: Set<string> = new Set();
+  private currentContext: CurrentContext | undefined;
 
   constructor(
     private fs: FileSystem,
@@ -76,17 +75,26 @@ class BuildRunner<Input> {
 
   async build(): Promise<OutputTypes<Input>> {
     let context = new CurrentContext(this.recentlyChangedFiles);
+    this.currentContext = context;
     this.recentlyChangedFiles = new Set();
-    let result = await this.evalNodes(this.roots, context);
+    let result = await this.evalNodes(this.roots);
     assertAllComplete(context.nodeStates);
     this.nodeStates = context.nodeStates;
+    this.currentContext = undefined;
     debug(describeNodes(this.nodeStates));
     return result.values;
   }
 
+  @bind
+  private getCurrentContext(): CurrentContext {
+    if (this.currentContext) {
+      return this.currentContext;
+    }
+    throw new Error(`bug: tried to access currentContext outside of a build`);
+  }
+
   async evalNodes<LocalInput>(
-    nodes: LocalInput,
-    context: CurrentContext
+    nodes: LocalInput
   ): Promise<{
     values: OutputTypes<LocalInput>;
     changes: BoolForEach<LocalInput>;
@@ -94,18 +102,36 @@ class BuildRunner<Input> {
     let values = {} as OutputTypes<LocalInput>;
     let changes = {} as BoolForEach<LocalInput>;
     for (let [name, node] of Object.entries(nodes)) {
-      let { value, changed } = await this.evalNode(node, context);
+      let { value, changed } = await this.evalNode(node);
       (values as any)[name] = value;
       (changes as any)[name] = changed;
     }
     return { values, changes };
   }
 
+  private getNodeState(node: BuilderNode): CurrentState | undefined {
+    let state = this.getCurrentContext().nodeStates.get(node.cacheKey);
+    if (state) {
+      return state;
+    }
+
+    // if we had the same cacheKey in the previous build, reuse the Node
+    // instance. This lets nodes do stateful optimizations.
+    let lastState = this.nodeStates.get(node.cacheKey);
+    if (lastState) {
+      return {
+        name: "initial",
+        node: lastState.node,
+      };
+    }
+
+    return undefined;
+  }
+
   async evalNode(
-    node: BuilderNode,
-    context: CurrentContext
+    node: BuilderNode
   ): Promise<{ value: unknown; changed: boolean }> {
-    let state = context.nodeStates.get(node.cacheKey);
+    let state = this.getNodeState(node);
 
     if (state && state.name === "initial") {
       // somebody already created an initial state for this cacheKey, use that
@@ -114,13 +140,11 @@ class BuildRunner<Input> {
       state = undefined;
     }
 
-    // NEXT STEP: this is probably the wrong spot for this, and/or our cacheKey
-    // system doesn't give enough object stability
     if (FileNode.isFileNode(node)) {
       node = new InternalFileNode(
         node.url,
         this.fs,
-        context,
+        this.getCurrentContext,
         this.roots,
         this.ensureWatching
       );
@@ -130,9 +154,9 @@ class BuildRunner<Input> {
     if (state) {
       result = await state.output;
     } else {
-      state = this.startEvaluating(node, context);
+      state = this.startEvaluating(node);
       result = await state.output;
-      context.nodeStates.set(node.cacheKey, {
+      this.getCurrentContext().nodeStates.set(node.cacheKey, {
         name: "complete",
         node,
         deps: state.deps,
@@ -141,27 +165,24 @@ class BuildRunner<Input> {
     }
 
     if ("node" in result) {
-      return this.evalNode(result.node, context);
+      return this.evalNode(result.node);
     } else {
       return result;
     }
   }
 
-  private startEvaluating(
-    node: BuilderNode,
-    context: CurrentContext
-  ): EvaluatingState {
+  private startEvaluating(node: BuilderNode): EvaluatingState {
     let maybeDeps = node.deps();
     let deps: EvaluatingState["deps"];
 
     if (hasDeps(maybeDeps)) {
       let deduplicatedDeps: typeof maybeDeps = {};
       for (let [key, depNode] of Object.entries(maybeDeps)) {
-        let existing = context.nodeStates.get(depNode.cacheKey);
+        let existing = this.getNodeState(depNode);
         if (existing) {
           deduplicatedDeps[key] = existing.node;
         } else {
-          context.nodeStates.set(depNode.cacheKey, {
+          this.getCurrentContext().nodeStates.set(depNode.cacheKey, {
             name: "initial",
             node: depNode,
           });
@@ -173,23 +194,22 @@ class BuildRunner<Input> {
       deps = null;
     }
 
-    let output = this.runNode(node, context, deps);
+    let output = this.runNode(node, deps);
     let state: EvaluatingState = {
       name: "evaluating",
       node,
       deps,
       output,
     };
-    context.nodeStates.set(node.cacheKey, state);
+    this.getCurrentContext().nodeStates.set(node.cacheKey, state);
     return state;
   }
 
   async runNode(
     node: BuilderNode,
-    context: CurrentContext,
     deps: EvaluatingState["deps"]
   ): Promise<InternalResult> {
-    let inputs = deps ? await this.evalNodes(deps, context) : null;
+    let inputs = deps ? await this.evalNodes(deps) : null;
     let previous = this.nodeStates.get(node.cacheKey);
     if (previous && !node.volatile) {
       let stableInputs: boolean;
@@ -288,6 +308,12 @@ type RebuilderState =
     }
   | {
       name: "idle";
+      lastBuildSucceeded: true;
+    }
+  | {
+      name: "idle";
+      lastBuildSucceeded: false;
+      error: Error;
     }
   | {
       name: "shutdown-requested";
@@ -320,6 +346,19 @@ export class Rebuilder<Input> {
       }
     }
     return new this(fs, projectsToNodes(roots));
+  }
+
+  get status():
+    | { name: "succeeded" }
+    | { name: "failed"; exception: Error }
+    | { name: "running" } {
+    if (this.state.name === "idle") {
+      return this.state.lastBuildSucceeded
+        ? { name: "succeeded" }
+        : { name: "failed", exception: this.state.error };
+    } else {
+      return { name: "running" };
+    }
   }
 
   start() {
@@ -356,12 +395,19 @@ export class Rebuilder<Input> {
         case "working":
           try {
             await this.runner.build();
+            if (this.state.name === "working") {
+              this.setState({ name: "idle", lastBuildSucceeded: true });
+            }
             dispatchEvent<ReloadEvent>(reloadEventGroup, {});
           } catch (err) {
+            if (this.state.name === "working") {
+              this.setState({
+                name: "idle",
+                lastBuildSucceeded: false,
+                error: err,
+              });
+            }
             error(`Exception while building`, err);
-          }
-          if (this.state.name === "working") {
-            this.setState({ name: "idle" });
           }
           break;
         case "idle":
@@ -463,7 +509,7 @@ class InternalFileNode<Input> implements BuilderNode<string> {
   constructor(
     private url: URL,
     private fs: FileSystem,
-    private context: CurrentContext,
+    private getCurrentContext: () => CurrentContext,
     private roots: Input,
     private ensureWatching: BuildRunner<Input>["ensureWatching"]
   ) {
@@ -474,8 +520,8 @@ class InternalFileNode<Input> implements BuilderNode<string> {
     for (let _rootNode of Object.values(this.roots)) {
       let rootNode = _rootNode as BuilderNode;
       if (
-        rootNode.outputRoot &&
-        this.url.href.startsWith(rootNode.outputRoot.href)
+        rootNode.projectOutputRoot &&
+        this.url.href.startsWith(rootNode.projectOutputRoot.href)
       ) {
         return { dependsOnProject: rootNode };
       }
@@ -484,8 +530,10 @@ class InternalFileNode<Input> implements BuilderNode<string> {
   }
 
   async run(dependsOnProject: unknown): Promise<NodeOutput<string>> {
-    if (!this.firstRun && !this.context.changedFiles.has(this.url.href)) {
-      throw new Error("bang");
+    if (
+      !this.firstRun &&
+      !this.getCurrentContext().changedFiles.has(this.url.href)
+    ) {
       return { unchanged: true };
     }
     if (this.firstRun) {

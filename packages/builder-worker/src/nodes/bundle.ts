@@ -96,30 +96,40 @@ export class BundleAssignmentsNode implements BuilderNode {
   }
 }
 
-export class BundleNode {
-  cacheKey: BundleNode;
-  constructor(private bundle: URL, private assignments: BundleAssignment[]) {
-    this.cacheKey = this;
+export class BundleNode implements BuilderNode {
+  cacheKey: string;
+
+  constructor(
+    private bundle: URL,
+    private inputRoot: URL,
+    private outputRoot: URL
+  ) {
+    this.cacheKey = `bundle-node:url=${this.bundle.href},inputRoot=${this.inputRoot.href},outputRoot=${this.outputRoot.href}`;
   }
 
   deps() {
-    // right now BundleNode is entirely volatile and gets constructed with all
-    // the info it needs, so it has no deps. But this means we aren't saving any
-    // of its work in between rebuilds. We plan to make it cache better, which
-    // justifies keeping BundleNode as a separate node.
-    return null;
+    return {
+      bundleAssignments: new BundleAssignmentsNode(
+        this.inputRoot,
+        this.outputRoot
+      ),
+    };
   }
 
-  async run(): Promise<NextNode<string>> {
+  async run({
+    bundleAssignments,
+  }: {
+    bundleAssignments: BundleAssignment[];
+  }): Promise<NextNode<string>> {
     return {
       node: new BundleSerializerNode(
-        combineModules(this.bundle, this.assignments).code
+        combineModules(this.bundle, bundleAssignments).code
       ),
     };
   }
 }
 
-export class BundleSerializerNode {
+export class BundleSerializerNode implements BuilderNode {
   cacheKey = this;
 
   constructor(private unannotatedSrc: string) {}

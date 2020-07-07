@@ -63,6 +63,14 @@ QUnit.module("module builder", function (origHooks) {
     return bundleSrc;
   }
 
+  async function rebuild(rebuilder: Rebuilder<unknown>) {
+    await flushEvents();
+    await rebuilder.isIdle();
+    if (rebuilder.status.name === "failed") {
+      throw rebuilder.status.exception;
+    }
+  }
+
   origHooks.beforeEach(async () => {
     builder = undefined;
     rebuilder = undefined;
@@ -476,7 +484,7 @@ QUnit.module("module builder", function (origHooks) {
       rebuilder = makeRebuilder(assert.fs);
 
       rebuilder.start();
-      await rebuilder.isIdle();
+      await rebuild(rebuilder);
 
       await assert.file(`${outputOrigin}/output/index.html`).exists();
       await assert
@@ -502,13 +510,12 @@ QUnit.module("module builder", function (origHooks) {
       rebuilder = makeRebuilder(assert.fs);
 
       rebuilder.start();
-      await rebuilder.isIdle();
+      await rebuild(rebuilder);
 
       let file = (await assert.fs.open(url("ui.js"))) as FileDescriptor;
       await file.write(`export const message = "Bye mars";`);
       file.close();
-      await flushEvents();
-      await rebuilder.isIdle();
+      await rebuild(rebuilder);
 
       await assert.file(`${outputOrigin}/output/dist/0.js`).matches(/Bye mars/);
     });

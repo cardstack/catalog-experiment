@@ -20,17 +20,20 @@ import { BundleAssignmentsNode, BundleNode, BundleAssignment } from "./bundle";
 export class MakeProjectNode implements BuilderNode {
   cacheKey: string;
 
-  constructor(private inputRoot: URL, readonly outputRoot: URL) {
-    this.cacheKey = `project:input=${inputRoot.href},output=${outputRoot.href}`;
+  constructor(private inputRoot: URL, readonly projectOutputRoot: URL) {
+    this.cacheKey = `project:input=${inputRoot.href},output=${projectOutputRoot.href}`;
   }
 
   deps() {
-    let entrypoints = new EntrypointsJSONNode(this.inputRoot, this.outputRoot);
+    let entrypoints = new EntrypointsJSONNode(
+      this.inputRoot,
+      this.projectOutputRoot
+    );
     return {
       entrypoints,
       bundleAssignments: new BundleAssignmentsNode(
         this.inputRoot,
-        this.outputRoot
+        this.projectOutputRoot
       ),
     };
   }
@@ -59,7 +62,7 @@ export class MakeProjectNode implements BuilderNode {
     ).map(
       (bundleURL) =>
         new WriteFileNode(
-          new BundleNode(bundleURL, bundleAssignments),
+          new BundleNode(bundleURL, this.inputRoot, this.projectOutputRoot),
           bundleURL
         )
     );

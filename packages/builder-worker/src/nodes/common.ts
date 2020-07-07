@@ -27,7 +27,7 @@ export interface BuilderNode<Output = unknown, Input = unknown> {
   // optional and only valid on the root BuilderNodes that are passed directly
   // to the Builder. Used to link multiple projects together so that reads from
   // within your project's outputRoot will defer until your project has built.
-  readonly outputRoot?: URL;
+  readonly projectOutputRoot?: URL;
 }
 
 const debugNames: WeakMap<BuilderNode, string> = new WeakMap();

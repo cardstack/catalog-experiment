@@ -27,14 +27,14 @@ interface EntrypointsJSON {
 export class EntrypointsJSONNode implements BuilderNode {
   cacheKey: string;
 
-  constructor(private inputRoot: URL, private outputRoot: URL) {
-    this.cacheKey = `entrypoints-json:${this.inputRoot.href}:${this.outputRoot.href}`;
+  constructor(private input: URL, private output: URL) {
+    this.cacheKey = `entrypoints-json:${this.input.href}:${this.output.href}`;
   }
 
   deps() {
     return {
       json: new JSONParseNode(
-        new FileNode(new URL("entrypoints.json", this.inputRoot))
+        new FileNode(new URL("entrypoints.json", this.input))
       ),
     };
   }
@@ -45,7 +45,7 @@ export class EntrypointsJSONNode implements BuilderNode {
       typeof json !== "object" ||
       (!("html" in json) && !("js" in json))
     ) {
-      throw new Error(`invalid entrypoints.json in ${this.inputRoot.href}`);
+      throw new Error(`invalid entrypoints.json in ${this.input.href}`);
     }
     if (
       "html" in json &&
@@ -53,7 +53,7 @@ export class EntrypointsJSONNode implements BuilderNode {
         !json.html.every((k: any) => typeof k === "string"))
     ) {
       throw new Error(
-        `invalid entrypoints.json in ${this.inputRoot.href}, 'html' must only contain strings`
+        `invalid entrypoints.json in ${this.input.href}, 'html' must only contain strings`
       );
     }
     if (
@@ -62,7 +62,7 @@ export class EntrypointsJSONNode implements BuilderNode {
         !json.js.every((k: any) => typeof k === "string"))
     ) {
       throw new Error(
-        `invalid entrypoints.json in ${this.inputRoot.href}, 'js' must only contain strings`
+        `invalid entrypoints.json in ${this.input.href}, 'js' must only contain strings`
       );
     }
     if (
@@ -73,7 +73,7 @@ export class EntrypointsJSONNode implements BuilderNode {
         ))
     ) {
       throw new Error(
-        `invalid entrypoints.json in ${this.inputRoot.href}, the values of 'dependencies' must only contain strings`
+        `invalid entrypoints.json in ${this.input.href}, the values of 'dependencies' must only contain strings`
       );
     }
   }
@@ -83,11 +83,7 @@ export class EntrypointsJSONNode implements BuilderNode {
     let entrypoints = [];
     for (let src of [...(json.html || []), ...(json.js || [])]) {
       entrypoints.push(
-        new EntrypointNode(
-          new URL(src, this.inputRoot),
-          new URL(src, this.outputRoot),
-          json.dependencies
-        )
+        new EntrypointNode(new URL(src, this.input), new URL(src, this.output))
       );
     }
     return { node: new AllNode(entrypoints) };
@@ -97,11 +93,7 @@ export class EntrypointsJSONNode implements BuilderNode {
 export class EntrypointNode implements BuilderNode {
   cacheKey: string;
 
-  constructor(
-    private src: URL,
-    private dest: URL,
-    private dependencies: Dependencies | undefined
-  ) {
+  constructor(private src: URL, private dest: URL) {
     this.cacheKey = `entrypoint:${this.src.href}:${this.dest.href}`;
   }
 
@@ -131,16 +123,11 @@ export class EntrypointNode implements BuilderNode {
   }): Promise<Value<Entrypoint>> {
     if (parsedHTML) {
       return {
-        value: new HTMLEntrypoint(
-          this.src,
-          this.dest,
-          parsedHTML,
-          this.dependencies
-        ),
+        value: new HTMLEntrypoint(this.src, this.dest, parsedHTML),
       };
     } else if (js) {
       return {
-        value: { url: this.src, dependencies: this.dependencies },
+        value: { url: this.src },
       };
     } else {
       throw new Error("bug: should always have either parsed HTML or js");
@@ -168,15 +155,13 @@ export type Entrypoint = HTMLEntrypoint | JSEntrypoint;
 
 export interface JSEntrypoint {
   url: URL;
-  dependencies: Dependencies | undefined;
 }
 
 export class HTMLEntrypoint {
   constructor(
     private src: URL,
     private dest: URL,
-    private parsedHTML: dom.Node[],
-    readonly dependencies: Dependencies | undefined
+    private parsedHTML: dom.Node[]
   ) {}
 
   get destURL() {
