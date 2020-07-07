@@ -4,7 +4,7 @@ import {
   NextNode,
   AllNode,
   annotationRegex,
-  ConstantNode,
+  NodeOutput,
 } from "./common";
 import { EntrypointsJSONNode, HTMLEntrypoint, Entrypoint } from "./entrypoint";
 import { FileNode } from "./file";
@@ -77,11 +77,11 @@ export class ModuleAnnotationNode implements BuilderNode {
     source,
   }: {
     source: string;
-  }): Promise<NextNode<ModuleDescription>> {
+  }): Promise<NodeOutput<ModuleDescription>> {
     let match = annotationRegex.exec(source);
     if (match) {
       let desc = decodeModuleDescription(match[1]);
-      return { node: new ConstantNode(desc) };
+      return { value: desc };
     }
     return { node: new ModuleDescriptionNode(this.fileNode) };
   }
