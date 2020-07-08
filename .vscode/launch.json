@@ -10,7 +10,7 @@
       "name": "Serve test-app",
       "cwd": "${workspaceRoot}/packages/test-app",
       "env": {},
-      "program": "${workspaceRoot}/packages/file-daemon/index.js",
+      "program": "${workspaceRoot}/packages/file-daemon/bin/file-daemon.js",
       "args": [".", "../test-lib"]
     },
     {
@@ -39,6 +39,15 @@
       "env": {},
       "program": "${workspaceRoot}/node_modules/.bin/qunit",
       "args": ["test/test-entrypoint.js"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Run file-daemon QUnit",
+      "cwd": "${workspaceRoot}/packages/file-daemon",
+      "env": {},
+      "program": "${workspaceRoot}/node_modules/.bin/qunit",
+      "args": ["test/index.js"]
     },
     {
       "type": "node",

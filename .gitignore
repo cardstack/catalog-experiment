@@ -16,6 +16,10 @@
 /packages/builder-worker/**/*.d.ts
 /packages/builder-worker/**/*.js
 /packages/builder-worker/**/*.js.map
+/packages/file-daemon-client/**/*.d.ts
+/packages/file-daemon-client/**/*.js
+/packages/file-daemon-client/**/*.js.map
+
 /packages/builder-dom/**/*.d.ts
 /packages/builder-dom/**/*.js
 /packages/builder-dom/**/*.js.map

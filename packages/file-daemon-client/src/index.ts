@@ -1,23 +1,25 @@
-import { Event, dispatchEvent as _dispatchEvent } from "../event-bus";
+import {
+  Event,
+  dispatchEvent as _dispatchEvent,
+} from "../../builder-worker/src/event-bus";
 import {
   FileSystem,
   eventGroup,
   FileSystemError,
   Event as FSEvent,
   BaseEvent as FSBaseEvent,
-} from "../filesystem";
+} from "../../builder-worker/src/filesystem";
 import {
   FileSystemDriver,
   FileDescriptor,
   DefaultVolume,
   DefaultFileDescriptor,
   DefaultDirectoryDescriptor,
-} from "./filesystem-driver";
-import { log, error } from "../logger";
+} from "../../builder-worker/src/filesystem-drivers/filesystem-driver";
+import { log, error } from "../../builder-worker/src/logger";
 import { REGTYPE } from "tarstream/constants";
-//@ts-ignore
 import { UnTar } from "tarstream";
-import { WatchInfo, FileInfo } from "../../../file-daemon/interfaces";
+import { WatchInfo, FileInfo } from "../../file-daemon/interfaces";
 
 export const defaultOrigin = "http://localhost:4200";
 export const defaultWebsocketURL = "ws://localhost:3000";
