@@ -3,8 +3,7 @@ import { serveFiles } from "./file-hosting-server";
 import Koa from "koa";
 import compose from "koa-compose";
 import route, { KoaRoute } from "koa-better-route";
-import { cors } from "./cors";
-import { serverLog } from "./server-log";
+import { cors, serverLog, errorHandler } from "./koa-util";
 
 interface Options {
   port: number;
@@ -25,6 +24,7 @@ export function server({ directories }: { directories: string[] }) {
   app.use(
     compose([
       serverLog,
+      errorHandler,
       cors,
       route.get("/catalogjs/alive", (ctxt: KoaRoute.Context) => {
         ctxt.status = 200;
