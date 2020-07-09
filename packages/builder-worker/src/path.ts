@@ -91,9 +91,7 @@ export function maybeRelativeURL(url: URL, relativeTo: URL): string {
 export function assertURLEndsInDir(url: URL) {
   if (url.href.slice(-1) === "/") {
     return url;
-  }
-  if (url.href.slice(-1) !== "/") {
+  } else {
     return new URL(`${url.href}/`);
   }
-  return;
 }

@@ -12,12 +12,13 @@ import {
   removeEventListener,
   Event,
 } from "../src/event-bus";
+import { FileDescriptor } from "../src/filesystem-drivers/filesystem-driver";
+
 import {
-  DefaultDriver,
-  DefaultFileDescriptor,
-  DefaultDirectoryDescriptor,
-  FileDescriptor,
-} from "../src/filesystem-drivers/filesystem-driver";
+  MemoryDriver,
+  MemoryFileDescriptor,
+  MemoryDirectoryDescriptor,
+} from "../src/filesystem-drivers/memory-driver";
 
 QUnit.module("filesystem", function (origHooks) {
   let { test } = installFileAssertions(origHooks);
@@ -29,8 +30,8 @@ QUnit.module("filesystem", function (origHooks) {
     });
 
     test("it can mount a volume within another volume", async function (assert) {
-      let driverA = new DefaultDriver();
-      let driverB = new DefaultDriver();
+      let driverA = new MemoryDriver();
+      let driverB = new MemoryDriver();
       await assert.fs.mount(url("/driverA/"), driverA);
       await assert.fs.mount(url("/driverA/foo/driverB/"), driverB);
 
@@ -51,7 +52,7 @@ QUnit.module("filesystem", function (origHooks) {
     });
 
     test("it throws when you create a mount without a trailing slash in the URL", async function (assert) {
-      let driverA = new DefaultDriver();
+      let driverA = new MemoryDriver();
       try {
         await assert.fs.mount(url("/driverA"), driverA);
         throw new Error("should not be able to mount");
@@ -61,15 +62,15 @@ QUnit.module("filesystem", function (origHooks) {
     });
 
     test("can unmount a volume", async function (assert) {
-      let driverA = new DefaultDriver();
-      let driverB = new DefaultDriver();
-      let volumeA = await assert.fs.mount(url("/driverA/"), driverA);
+      let driverA = new MemoryDriver();
+      let driverB = new MemoryDriver();
+      await assert.fs.mount(url("/driverA/"), driverA);
       await assert.fs.mount(url("/driverA/foo/driverB/"), driverB);
 
       await assert.fs.open(url("/driverA/blah/"), true);
       await assert.fs.open(url("/driverA/foo/driverB/bar"), true);
 
-      await assert.fs.unmount(volumeA.id);
+      await assert.fs.unmount(url("/driverA/"));
 
       await assert.file("/driverA/").doesNotExist();
       await assert.file("/driverA/foo/").doesNotExist();
@@ -373,8 +374,8 @@ QUnit.module("filesystem", function (origHooks) {
   });
 
   QUnit.module("file descriptor", function (origHooks) {
-    let file: DefaultFileDescriptor;
-    let directory: DefaultDirectoryDescriptor;
+    let file: MemoryFileDescriptor;
+    let directory: MemoryDirectoryDescriptor;
 
     origHooks.beforeEach(async (assert) => {
       let fileAssert = (assert as unknown) as FileAssert;
@@ -383,10 +384,10 @@ QUnit.module("filesystem", function (origHooks) {
       });
       directory = (await fileAssert.fs.open(
         url("/foo/")
-      )) as DefaultDirectoryDescriptor;
+      )) as MemoryDirectoryDescriptor;
       file = (await fileAssert.fs.open(
         url("/foo/bar")
-      )) as DefaultFileDescriptor;
+      )) as MemoryFileDescriptor;
     });
 
     QUnit.module("write", function () {
@@ -786,15 +787,6 @@ QUnit.module("filesystem", function (origHooks) {
       await assert.setupFiles();
       await assert.fs.remove(url("does-not-exist"));
     });
-  });
-
-  test("can get a temp origin", async function (assert) {
-    await assert.setupFiles();
-    let tempURL = await assert.fs.tempURL();
-    assert.ok(
-      /https:\/\/tmp\d+/.test(tempURL.origin),
-      "temp origin looks correct"
-    );
   });
 });
 

@@ -53,14 +53,14 @@
       "type": "node",
       "request": "launch",
       "name": "Start Test File Daemon",
-      "cwd": "${workspaceRoot}/packages/builder/test/test-app",
+      "cwd": "${workspaceRoot}/packages/file-daemon-client/test/test-app",
       "env": {},
-      "program": "${workspaceRoot}/packages/file-daemon/index.js",
+      "program": "${workspaceRoot}/packages/file-daemon/bin/file-daemon.js",
       "args": [
         "-p",
-        "4201",
+        "4202",
         "-w",
-        "3001",
+        "3002",
         "-k",
         "7J+SZeMa6nmaJMpls8Qi6fKLMsNsLJoPcd8SsOUpDW0=",
         "."

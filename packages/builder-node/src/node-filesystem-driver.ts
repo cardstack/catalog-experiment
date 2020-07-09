@@ -8,7 +8,6 @@ import {
 import { assertURLEndsInDir } from "../../builder-worker/src/path";
 import { dispatchEvent } from "../../builder-worker/src/event-bus";
 import {
-  FileSystem,
   eventCategory as category,
   eventGroup,
   Event as FSEvent,
@@ -40,8 +39,8 @@ const utf8 = new TextDecoder("utf8");
 export class NodeFileSystemDriver implements FileSystemDriver {
   constructor(private path: string) {}
 
-  async mountVolume(_fs: FileSystem, id: string, url: URL) {
-    return new NodeVolume(id, this.path, url);
+  async mountVolume(url: URL) {
+    return new NodeVolume(this.path, url);
   }
 }
 
@@ -62,7 +61,7 @@ export function closeAll() {
 export class NodeVolume implements Volume {
   root: NodeDirectoryDescriptor;
 
-  constructor(readonly id: string, rootPath: string, url: URL) {
+  constructor(rootPath: string, url: URL) {
     this.root = new NodeDirectoryDescriptor(this, url, opendirSync(rootPath));
   }
 

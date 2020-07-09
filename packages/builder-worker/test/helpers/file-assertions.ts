@@ -179,18 +179,17 @@ function makeBoundFile(this: FileAssert, relativeURL: string) {
 
 export function installFileAssertions(hooks: NestedHooks) {
   let baseURL = new URL(origin);
-  let fs: FileSystem;
+  let fs = new FileSystem();
 
   async function setupFiles(
     scenario: Scenario = {},
     b = new URL(origin)
   ): Promise<void> {
-    fs = new FileSystem();
     baseURL = b;
     for (let [path, text] of Object.entries(scenario)) {
       let url = new URL(path, baseURL);
       let file = (await fs.open(url, true)) as FileDescriptor;
-      file.write(text);
+      await file.write(text);
     }
   }
 

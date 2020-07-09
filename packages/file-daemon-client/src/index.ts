@@ -12,34 +12,67 @@ import {
 import {
   FileSystemDriver,
   FileDescriptor,
-  DefaultVolume,
-  DefaultFileDescriptor,
-  DefaultDirectoryDescriptor,
+  Volume,
+  DirectoryDescriptor,
+  readStream,
 } from "../../builder-worker/src/filesystem-drivers/filesystem-driver";
+import {
+  MemoryVolume,
+  MemoryFileDescriptor,
+  MemoryDirectoryDescriptor,
+} from "../../builder-worker/src/filesystem-drivers/memory-driver";
 import { log, error } from "../../builder-worker/src/logger";
 import { REGTYPE } from "tarstream/constants";
 import { UnTar } from "tarstream";
 import { WatchInfo, FileInfo } from "../../file-daemon/interfaces";
+import { map } from "lodash";
+import { assertURLEndsInDir } from "../../builder-worker/src/path";
 
 export const defaultOrigin = "http://localhost:4200";
 export const defaultWebsocketURL = "ws://localhost:3000";
 export const entrypointsPath = "/entrypoints.json";
 
 export const eventCategory = "file-daemon-client";
+const utf8 = new TextDecoder("utf8");
+const textEncoder = new TextEncoder();
 
-export class FileDaemonClientDirectoryDescriptor extends DefaultDirectoryDescriptor {}
+class DirCache {
+  children: Map<string, DirCache | FileCache> = new Map();
+  constructor(readonly path: string) {}
+}
 
-export class FileDaemonClientFileDescriptor extends DefaultFileDescriptor {}
+class FileCache {
+  constructor(
+    readonly path: string,
+    public data: Uint8Array = new Uint8Array(0)
+  ) {}
+}
+
+function cacheInsert(start: DirCache, path: string, data: Uint8Array) {
+  let cursor: DirCache = start;
+  let dirs = path.split("/");
+  let leaf = dirs.pop()!;
+  for (let dir of dirs) {
+    let nextCursor = cursor.children.get(dir);
+    if (!nextCursor) {
+      nextCursor = new DirCache(`${cursor.path}/${dir}/`);
+      cursor.children.set(dir, nextCursor);
+    }
+    if (nextCursor instanceof FileCache) {
+      throw new Error(`bug: tried to create directory over existing file`);
+    }
+    cursor = nextCursor;
+  }
+  cursor.children.set(leaf, new FileCache(path, data));
+}
 
 export class FileDaemonClientDriver implements FileSystemDriver {
   constructor(private fileServerURL: URL, private websocketServerURL: URL) {}
 
-  async mountVolume(fs: FileSystem, id: string, url: URL) {
+  async mountVolume(url: URL) {
     let volume = new FileDaemonClientVolume(
       this.fileServerURL,
       this.websocketServerURL,
-      fs,
-      id,
       url
     );
 
@@ -49,7 +82,7 @@ export class FileDaemonClientDriver implements FileSystemDriver {
   }
 }
 
-export class FileDaemonClientVolume extends DefaultVolume {
+export class FileDaemonClientVolume implements Volume {
   ready: Promise<void>;
   connected = false;
 
@@ -63,17 +96,49 @@ export class FileDaemonClientVolume extends DefaultVolume {
   private resolveQueuePromise: undefined | (() => void);
   private running: Promise<void>;
 
-  constructor(
-    private fileServerURL: URL,
-    private websocketServerURL: URL,
-    private fs: FileSystem,
-    id: string,
-    private mountURL: URL
-  ) {
-    super(id, mountURL);
+  private rootCache: DirCache = new DirCache("/");
 
+  constructor(private httpURL: URL, private wsURL: URL, private mountURL: URL) {
     this.ready = new Promise((res) => (this.doneSyncing = res));
     this.running = this.run();
+  }
+
+  get root(): DirectoryDescriptor {
+    return new ClientDirectoryDescriptor(
+      undefined,
+      this.rootCache,
+      "ROOT",
+      this.mountURL,
+      this
+    );
+  }
+
+  async createDirectory(
+    parent: ClientDirectoryDescriptor,
+    name: string
+  ): Promise<DirectoryDescriptor> {
+    let self = new DirCache(`${parent.inode}${name}`);
+    parent.dir.children.set(name, self);
+    return new ClientDirectoryDescriptor(
+      parent.dir,
+      self,
+      name,
+      new URL(name, parent.url),
+      this
+    );
+  }
+
+  async createFile(
+    parent: ClientDirectoryDescriptor,
+    name: string
+  ): Promise<FileDescriptor> {
+    return new ClientFileDescriptor(
+      parent.dir,
+      name,
+      new FileCache(`${parent.dir.path}${name}`),
+      new URL(name, parent.url),
+      this
+    );
   }
 
   async close() {
@@ -116,10 +181,23 @@ export class FileDaemonClientVolume extends DefaultVolume {
     }
   }
 
+  async postFile(buffer: Uint8Array, path: string) {
+    let response = await fetch(
+      new URL(`/catalogjs/files${path}`, this.httpURL).href,
+      {
+        method: "POST",
+        body: buffer,
+      }
+    );
+    if (response.status !== 200) {
+      throw new Error(`unable to write ${path} to ${this.httpURL.href}`);
+    }
+  }
+
   private tryConnect() {
     log(`attempting to connect`);
 
-    let socket = new WebSocket(this.websocketServerURL.href);
+    let socket = new WebSocket(this.wsURL.href);
     let socketIsClosed: () => void;
     let socketClosed: Promise<void> = new Promise((r) => {
       socketIsClosed = r;
@@ -202,33 +280,22 @@ export class FileDaemonClientVolume extends DefaultVolume {
       href: this.mountURL.href,
       type: "sync-started",
     });
-    let stream = (
-      await fetch(`${this.fileServerURL}/`, {
-        headers: {
-          accept: "application/x-tar",
-        },
-      })
-    ).body as ReadableStream;
+    let stream = (await fetch(`${this.httpURL}catalogjs/files`))
+      .body as ReadableStream;
 
-    let fs = this.fs;
-    let temp = await fs.tempURL();
     let files: string[] = [];
+    let root = new DirCache("/");
+
     let untar = new UnTar(stream, {
       async file(entry) {
         if (entry.type === REGTYPE) {
-          let file = (await fs.open(
-            new URL(entry.name, temp),
-            true
-          )) as FileDescriptor;
-          await file.write(entry.stream());
-          file.close();
+          cacheInsert(root, entry.name, await readStream(entry.stream()));
           files.push(entry.name);
         }
       },
     });
     await untar.done;
-    await fs.move(temp, this.mountURL);
-    await fs.remove(temp);
+    this.rootCache = root;
     log("completed full sync");
     dispatchEvent({
       category: eventCategory,
@@ -279,7 +346,7 @@ export class FileDaemonClientVolume extends DefaultVolume {
   }
 
   private async updateFile(path: string): Promise<URL> {
-    let res = await fetch(`${this.fileServerURL}${path}`);
+    let res = await fetch(`${this.httpURL}${path}`);
     let stream = res.body as ReadableStream<Uint8Array>;
     if (!stream) {
       throw new Error(`Couldn't fetch ${path} from file server`);
@@ -302,7 +369,7 @@ export class FileDaemonClientVolume extends DefaultVolume {
         let currentFile: FileDescriptor | undefined;
         try {
           currentFile = (await this.fs.open(
-            new URL(name, this.fileServerURL)
+            new URL(name, this.httpURL)
           )) as FileDescriptor;
           if ((await currentFile.stat()).etag !== etag) {
             return change;
@@ -322,6 +389,79 @@ export class FileDaemonClientVolume extends DefaultVolume {
     );
     return changed.filter(Boolean) as FileInfo[];
   }
+}
+
+class ClientDirectoryDescriptor implements DirectoryDescriptor {
+  type = "directory" as "directory";
+  url: URL;
+
+  constructor(
+    public parent: DirCache | undefined,
+    public dir: DirCache,
+    public name: string,
+    url: URL,
+    public volume: Volume
+  ) {
+    this.url = assertURLEndsInDir(url);
+  }
+
+  stat(): Promise<Stat> {}
+  close(): void {}
+  get inode(): string {
+    return this.dir.path;
+  }
+
+  getDirectory(name: string): Promise<DirectoryDescriptor | undefined> {}
+
+  getFile(name: string): Promise<FileDescriptor | undefined> {}
+  children(): Promise<string[]> {}
+
+  async hasDirectory(name: string): Promise<boolean> {}
+
+  async hasFile(name: string): Promise<boolean> {
+    let entry = this.dir.children.get(name);
+    return Boolean(entry && entry instanceof FileCache);
+  }
+  remove(name: string): Promise<void> {}
+
+  add(
+    name: string,
+    resource: FileDescriptor | DirectoryDescriptor
+  ): Promise<void> {}
+}
+
+class ClientFileDescriptor implements FileDescriptor {
+  type = "file" as "file";
+
+  constructor(
+    public parent: DirCache,
+    public name: string,
+    private fileCache: FileCache,
+    public url: URL,
+    public volume: FileDaemonClientVolume
+  ) {}
+
+  stat(): Promise<Stat> {}
+  close(): void {}
+  get inode(): string {
+    return this.fileCache.path;
+  }
+  async write(data: ReadableStream | Uint8Array | string): Promise<void> {
+    let buffer: Uint8Array;
+    if (data instanceof ReadableStream) {
+      buffer = await readStream(data);
+    } else if (typeof data === "string") {
+      buffer = textEncoder.encode(data);
+    } else {
+      buffer = data;
+    }
+    await this.volume.postFile(buffer, this.inode);
+    this.fileCache.data = buffer;
+    this.parent.children.set(this.name, this.fileCache);
+  }
+  read(): Promise<Uint8Array> {}
+  readText(): Promise<string> {}
+  getReadbleStream(): Promise<ReadableStream> {}
 }
 
 function dispatchEvent(event: FileDaemonClientEvent) {

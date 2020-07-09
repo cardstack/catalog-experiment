@@ -1,6 +1,5 @@
 import { dispatchEvent } from "../event-bus";
 import {
-  FileSystem,
   eventCategory as category,
   eventGroup,
   FileSystemError,
@@ -27,9 +26,8 @@ interface Options {
 export class HttpFileSystemDriver implements FileSystemDriver {
   constructor(private httpURL: URL, private opts: Partial<Options> = {}) {}
 
-  async mountVolume(_fs: FileSystem, id: string, url: URL) {
+  async mountVolume(url: URL) {
     return new HttpVolume(
-      id,
       this.httpURL,
       url,
       Object.assign(
@@ -53,7 +51,6 @@ export class HttpVolume implements Volume {
   httpResponseCache: HttpResponseCache = new Map();
 
   constructor(
-    readonly id: string,
     private httpURL: URL,
     private mountURL: URL,
     readonly opts: Options
