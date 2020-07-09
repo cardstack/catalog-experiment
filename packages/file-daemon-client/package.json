@@ -2,6 +2,7 @@
   "name": "file-daemon-client",
   "version": "0.0.1",
   "license": "MIT",
+  "main": "src/index.js",
   "devDependencies": {
     "@babel/core": "^7.9.0",
     "@babel/plugin-proposal-class-properties": "^7.8.3",

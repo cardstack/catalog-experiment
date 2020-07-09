@@ -8,7 +8,7 @@ import {
   FilesChangedEvent,
   isFileDaemonEvent,
   FileDaemonClientEvent,
-} from "builder-worker/src/filesystem-drivers/file-daemon-client-driver";
+} from "file-daemon-client";
 
 export default class FileDaemonClientService extends Service {
   @service uiManager!: UIManagerService;

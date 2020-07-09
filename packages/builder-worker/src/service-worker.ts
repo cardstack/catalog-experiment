@@ -2,7 +2,7 @@ import {
   FileDaemonClientVolume,
   defaultWebsocketURL,
   FileDaemonClientDriver,
-} from "./filesystem-drivers/file-daemon-client-driver";
+} from "../../file-daemon-client/src/index";
 import { FileSystem } from "./filesystem";
 import { addEventListener } from "./event-bus";
 import { log, error } from "./logger";

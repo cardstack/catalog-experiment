@@ -1631,7 +1631,7 @@
     "@types/ember__engine" "*"
     "@types/ember__object" "*"
 
-"@types/ember__engine@*", "@types/ember__engine@^3.0.5":
+"@types/ember__engine@*":
   version "3.0.5"
   resolved "https://registry.yarnpkg.com/@types/ember__engine/-/ember__engine-3.0.5.tgz#d24b5758e3c50b71f1917c309258cb6ff55a7304"
   integrity sha512-RfmgcNuwj6OJzsJejj9Zu/4td5xHHIj/Mydk0dYqBLoNFp/BKVMhYwuxOHZLkcF/Vy36R33UJ8zIklZuYli1SA==

@@ -3,9 +3,26 @@
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",
-  "workspaces": [
-    "packages/*"
-  ],
+  "workspaces": {
+    "packages": [
+      "packages/*"
+    ],
+    "_comment_": "We can't hoist these packages because they contain types and those types or their dependencies pull in <ref lib='dom'>, and TS discovers all of them across all monorepo packages.",
+    "nohoist": [
+      "**/@types/superagent",
+      "**/@types/supertest",
+      "**/@types/ember",
+      "**/@types/ember/**",
+      "**/@types/ember-qunit",
+      "**/@types/ember-qunit/**",
+      "**/@types/ember__test-helpers",
+      "**/@types/ember__test-helpers/**",
+      "**/@types/qunit",
+      "**/@types/rsvp",
+      "**/ember-load-initializers",
+      "**/ember-load-initializers/**"
+    ]
+  },
   "private": true,
   "scripts": {
     "clean": "git clean -x -f",
@@ -30,7 +47,6 @@
     "ui": "cd packages/ui && yarn start"
   },
   "devDependencies": {
-    "@types/ember__engine": "^3.0.5",
     "npm-run-all": "^4.1.5",
     "testem": "^3.1.0"
   },
