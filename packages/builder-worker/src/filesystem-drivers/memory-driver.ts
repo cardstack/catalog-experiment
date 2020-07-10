@@ -12,6 +12,7 @@ import {
   FileDescriptor,
   Stat,
   readStream,
+  makeStream,
 } from "./filesystem-driver";
 
 type MemoryDescriptors = MemoryDirectoryDescriptor | MemoryFileDescriptor;
@@ -243,17 +244,7 @@ export class MemoryFileDescriptor implements FileDescriptor {
   }
 
   async getReadbleStream() {
-    let buffer = this.resource.buffer;
-    return new ReadableStream({
-      async start(controller: ReadableStreamDefaultController) {
-        if (!buffer) {
-          controller.close();
-        } else {
-          controller.enqueue(new Uint8Array(buffer));
-          controller.close();
-        }
-      },
-    });
+    return makeStream(this.resource.buffer);
   }
 }
 

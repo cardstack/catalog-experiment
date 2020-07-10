@@ -3,7 +3,6 @@ import {
   dispatchEvent as _dispatchEvent,
 } from "../../builder-worker/src/event-bus";
 import {
-  FileSystem,
   eventGroup,
   FileSystemError,
   Event as FSEvent,
@@ -15,17 +14,13 @@ import {
   Volume,
   DirectoryDescriptor,
   readStream,
+  makeStream,
+  Stat,
 } from "../../builder-worker/src/filesystem-drivers/filesystem-driver";
-import {
-  MemoryVolume,
-  MemoryFileDescriptor,
-  MemoryDirectoryDescriptor,
-} from "../../builder-worker/src/filesystem-drivers/memory-driver";
 import { log, error } from "../../builder-worker/src/logger";
 import { REGTYPE } from "tarstream/constants";
 import { UnTar } from "tarstream";
 import { WatchInfo, FileInfo } from "../../file-daemon/interfaces";
-import { map } from "lodash";
 import { assertURLEndsInDir } from "../../builder-worker/src/path";
 
 export const defaultOrigin = "http://localhost:4200";
@@ -53,9 +48,10 @@ function cacheInsert(start: DirCache, path: string, data: Uint8Array) {
   let dirs = path.split("/");
   let leaf = dirs.pop()!;
   for (let dir of dirs) {
+    dir += "/"; // the FileSystem convention is that directories always have a trailing slash in their name
     let nextCursor = cursor.children.get(dir);
     if (!nextCursor) {
-      nextCursor = new DirCache(`${cursor.path}/${dir}/`);
+      nextCursor = new DirCache(`${cursor.path}${dir}`);
       cursor.children.set(dir, nextCursor);
     }
     if (nextCursor instanceof FileCache) {
@@ -63,7 +59,7 @@ function cacheInsert(start: DirCache, path: string, data: Uint8Array) {
     }
     cursor = nextCursor;
   }
-  cursor.children.set(leaf, new FileCache(path, data));
+  cursor.children.set(leaf, new FileCache(`${cursor.path}${leaf}`, data));
 }
 
 export class FileDaemonClientDriver implements FileSystemDriver {
@@ -107,7 +103,7 @@ export class FileDaemonClientVolume implements Volume {
     return new ClientDirectoryDescriptor(
       undefined,
       this.rootCache,
-      "ROOT",
+      "/",
       this.mountURL,
       this
     );
@@ -285,7 +281,6 @@ export class FileDaemonClientVolume implements Volume {
 
     let files: string[] = [];
     let root = new DirCache("/");
-
     let untar = new UnTar(stream, {
       async file(entry) {
         if (entry.type === REGTYPE) {
@@ -400,34 +395,70 @@ class ClientDirectoryDescriptor implements DirectoryDescriptor {
     public dir: DirCache,
     public name: string,
     url: URL,
-    public volume: Volume
+    public volume: FileDaemonClientVolume
   ) {
     this.url = assertURLEndsInDir(url);
   }
 
-  stat(): Promise<Stat> {}
+  async stat(): Promise<Stat> {
+    throw new Error("unimpl");
+  }
   close(): void {}
   get inode(): string {
     return this.dir.path;
   }
 
-  getDirectory(name: string): Promise<DirectoryDescriptor | undefined> {}
+  async getDirectory(name: string): Promise<DirectoryDescriptor | undefined> {
+    let entry = this.dir.children.get(name);
+    if (entry instanceof DirCache) {
+      return new ClientDirectoryDescriptor(
+        this.dir,
+        entry,
+        name,
+        new URL(name, this.url),
+        this.volume
+      );
+    }
+    return undefined;
+  }
 
-  getFile(name: string): Promise<FileDescriptor | undefined> {}
-  children(): Promise<string[]> {}
+  async getFile(name: string): Promise<FileDescriptor | undefined> {
+    let entry = this.dir.children.get(name);
+    if (entry instanceof FileCache) {
+      return new ClientFileDescriptor(
+        this.dir,
+        name,
+        entry,
+        new URL(name, this.url),
+        this.volume
+      );
+    }
+    return undefined;
+  }
 
-  async hasDirectory(name: string): Promise<boolean> {}
+  async children(): Promise<string[]> {
+    return [...this.dir.children.keys()];
+  }
+
+  async hasDirectory(name: string): Promise<boolean> {
+    let entry = this.dir.children.get(name);
+    return Boolean(entry && entry instanceof DirCache);
+  }
 
   async hasFile(name: string): Promise<boolean> {
     let entry = this.dir.children.get(name);
     return Boolean(entry && entry instanceof FileCache);
   }
-  remove(name: string): Promise<void> {}
+  async remove(name: string): Promise<void> {
+    throw new Error("u");
+  }
 
-  add(
+  async add(
     name: string,
     resource: FileDescriptor | DirectoryDescriptor
-  ): Promise<void> {}
+  ): Promise<void> {
+    throw new Error("u");
+  }
 }
 
 class ClientFileDescriptor implements FileDescriptor {
@@ -441,7 +472,9 @@ class ClientFileDescriptor implements FileDescriptor {
     public volume: FileDaemonClientVolume
   ) {}
 
-  stat(): Promise<Stat> {}
+  async stat(): Promise<Stat> {
+    throw new Error("U");
+  }
   close(): void {}
   get inode(): string {
     return this.fileCache.path;
@@ -459,9 +492,15 @@ class ClientFileDescriptor implements FileDescriptor {
     this.fileCache.data = buffer;
     this.parent.children.set(this.name, this.fileCache);
   }
-  read(): Promise<Uint8Array> {}
-  readText(): Promise<string> {}
-  getReadbleStream(): Promise<ReadableStream> {}
+  async read(): Promise<Uint8Array> {
+    return this.fileCache.data;
+  }
+  async readText(): Promise<string> {
+    return utf8.decode(this.fileCache.data);
+  }
+  async getReadbleStream(): Promise<ReadableStream> {
+    return makeStream(this.fileCache.data);
+  }
 }
 
 function dispatchEvent(event: FileDaemonClientEvent) {

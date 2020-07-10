@@ -3,6 +3,7 @@ import request from "supertest";
 import Project from "fixturify-project";
 import merge from "lodash/merge";
 import Koa from "koa";
+import { ProjectMapping } from "../daemon";
 
 const { test } = QUnit;
 
@@ -33,10 +34,12 @@ QUnit.module("file-hosting", function (hooks) {
   test("serves files from your mounted directories", async function (assert) {
     let app = new Koa();
     app.use(
-      serveFiles([
-        `${project.root}/fixtures/test-app`,
-        `${project.root}/fixtures/vendor/test-lib`,
-      ])
+      serveFiles(
+        new ProjectMapping([
+          `${project.root}/fixtures/test-app`,
+          `${project.root}/fixtures/vendor/test-lib`,
+        ])
+      )
     );
     let response = await request(app.callback()).get(
       "/catalogjs/files/test-lib/src/index.js"
@@ -52,7 +55,9 @@ QUnit.module("file-hosting", function (hooks) {
 
   test("can't escape shared dirs", async function (assert) {
     let app = new Koa();
-    app.use(serveFiles([`${project.root}/fixtures/test-app`]));
+    app.use(
+      serveFiles(new ProjectMapping([`${project.root}/fixtures/test-app`]))
+    );
 
     let response = await request(app.callback()).get(
       "/catalogjs/files/test-lib/../../other.js"

@@ -1,40 +1,28 @@
 import walkSync from "walk-sync";
-import {
-  createReadStream,
-  outputFileSync,
-  ensureDirSync,
-  createWriteStream,
-} from "fs-extra";
+import { createReadStream, ensureDirSync, createWriteStream } from "fs-extra";
 import { Readable } from "stream";
 import { Tar } from "tarstream";
 import { DIRTYPE, REGTYPE } from "tarstream/constants";
 import { NodeReadableToDOM, DOMToNodeReadable } from "./stream-shims";
 import { DirectoryEntry } from "tarstream/types";
 import { unixTime } from "./utils";
-import { basename, join, resolve, dirname } from "path";
+import { join, resolve, dirname } from "path";
 import * as webStreams from "web-streams-polyfill/ponyfill/es2018";
 import send from "koa-send";
 import route, { KoaRoute } from "koa-better-route";
 import compose from "koa-compose";
 import proxy from "koa-proxies";
 import flatMap from "lodash/flatMap";
+import { ProjectMapping } from "./daemon";
 
 // polyfill
 global = Object.assign(global, webStreams);
 
 const builderServer = "http://localhost:8080";
 
-export function serveFiles(directories: string[]) {
-  let mapping = new Map();
+export function serveFiles(mapping: ProjectMapping) {
   return compose([
-    ...flatMap(directories, (dir) => {
-      let localName = basename(dir);
-      let counter = 0;
-      while (mapping.has(localName)) {
-        localName = `${localName}/${counter}`;
-        counter++;
-      }
-      mapping.set(localName, dir);
+    ...flatMap([...mapping.nameToPath.entries()], ([localName, dir]) => {
       return [
         route.get(
           `/catalogjs/files/${localName}/(.*)`,
@@ -58,9 +46,9 @@ export function serveFiles(directories: string[]) {
   ]);
 }
 
-function streamFileSystem(mapping: Map<string, string>): Readable {
+function streamFileSystem(mapping: ProjectMapping): Readable {
   let tar = new Tar();
-  for (let [localName, dir] of mapping) {
+  for (let [localName, dir] of mapping.nameToPath) {
     for (let entry of walkSync.entries(dir)) {
       let { fullPath, size, mtime, mode, relativePath } = entry;
 

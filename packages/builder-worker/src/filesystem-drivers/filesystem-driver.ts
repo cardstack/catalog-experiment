@@ -79,3 +79,12 @@ export async function readStream(stream: ReadableStream): Promise<Uint8Array> {
   }
   return result;
 }
+
+export function makeStream(buffer: Uint8Array): ReadableStream {
+  return new ReadableStream({
+    async start(controller: ReadableStreamDefaultController) {
+      controller.enqueue(buffer);
+      controller.close();
+    },
+  });
+}

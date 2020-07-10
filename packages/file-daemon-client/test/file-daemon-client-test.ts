@@ -1,21 +1,11 @@
-import {
-  installFileAssertions,
-  FileAssert,
-} from "../../builder-worker/test/helpers/file-assertions";
-import {
-  makeListener,
-  setupScenario,
-  setFile,
-  removeFile,
-  resetFileSystem,
-} from "./helpers/file-daemon-helpers";
-import { withListener } from "../../builder-worker/test/helpers/event-helpers";
+import { installFileAssertions } from "../../builder-worker/test/helpers/file-assertions";
+import { waitForFileEvent } from "./helpers/file-daemon-helpers";
 import { FileDaemonClientVolume, FileDaemonClientDriver } from "../src/index";
-import { eventCategory } from "../../builder-worker/src/filesystem";
 import {
   flushEvents,
   removeAllEventListeners,
 } from "../../builder-worker/src/event-bus";
+import { FileDescriptor } from "../../builder-worker/src/filesystem-drivers/filesystem-driver";
 
 // we use two file daemons, because that lets us test end-to-end that we are
 // really writing to the real filesystem. The only communication between the two
@@ -89,10 +79,24 @@ QUnit.module("filesystem - file daemon client driver", function (origHooks) {
     await assert
       .file(`${testDaemon.mountedAt.href}test-app/blah/bleep/blurp.txt`)
       .matches(/hi guys/);
-    assert.equal((await assert.fs.listAllOrigins()).length, 1); // tmp origins are cleaned up
+
+    // incremental update: add a file
+    let handle = await assert.fs.open(
+      new URL(`${controlDaemon.mountedAt.href}test-app/new-file.txt`),
+      true
+    );
+    await (handle as FileDescriptor).write("New File!");
+    handle.close();
+
+    await waitForFileEvent(
+      new URL(`${testDaemon.mountedAt.href}test-app/new-file.txt`)
+    );
+    await assert
+      .file(`${testDaemon.mountedAt.href}test-app/new-file.txt`)
+      .matches(/New File!/);
   });
 
-  hooks.after(async function (assert) {
+  hooks.after(async function () {
     if (controlVolume) {
       await controlVolume.close();
     }
@@ -102,23 +106,6 @@ QUnit.module("filesystem - file daemon client driver", function (origHooks) {
     removeAllEventListeners();
     await flushEvents();
   });
-
-  // test("can handle an added file", async function (assert) {
-  //   let { listener, wait } = makeListener(
-  //     origin.href,
-  //     eventCategory,
-  //     "write",
-  //     "one/two/foo.txt"
-  //   );
-  //   await withListener(listener, async () => {
-  //     await setFile("one/two/foo.txt", "bar");
-  //     await wait();
-
-  //     await assert
-  //       .file("one/two/foo.txt")
-  //       .matches(/bar/, "file contents are correct");
-  //   });
-  // });
 
   // test("can handle an updated file", async function (assert) {
   //   let { listener, wait } = makeListener(

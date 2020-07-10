@@ -1,5 +1,5 @@
 import WebSocket from "ws";
-import Watcher from "./watcher";
+import sane from "sane";
 
 export default class FileWatcherServer {
   watchers: Watcher[];
