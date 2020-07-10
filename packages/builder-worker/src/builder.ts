@@ -1,9 +1,4 @@
-import {
-  FileSystem,
-  Event as FSEvent,
-  eventCategory,
-  eventGroup,
-} from "./filesystem";
+import { FileSystem, FSEvent, eventCategory, eventGroup } from "./filesystem";
 import { addEventListener, Event, dispatchEvent } from "./event-bus";
 import { ReloadEvent, eventGroup as reloadEventGroup } from "./client-reload";
 import bind from "bind-decorator";

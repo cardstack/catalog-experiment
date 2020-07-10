@@ -1,9 +1,5 @@
 import { dispatchEvent } from "../event-bus";
-import {
-  eventCategory as category,
-  eventGroup,
-  Event as FSEvent,
-} from "../filesystem";
+import { eventCategory as category, eventGroup, FSEvent } from "../filesystem";
 import { ROOT, assertURLEndsInDir } from "../path";
 import {
   FileSystemDriver,

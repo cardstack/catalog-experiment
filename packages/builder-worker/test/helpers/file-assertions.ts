@@ -16,6 +16,7 @@ export function url(path: string, base = origin): URL {
 
 export interface FileAssert extends Assert {
   setupFiles(scenario?: Scenario, baseURL?: URL): Promise<void>;
+  resetFilesystem(): void;
   readonly fs: FileSystem;
   readonly baseURL: URL;
   file(relativeURL: string): BoundFileAssert;
@@ -181,6 +182,10 @@ export function installFileAssertions(hooks: NestedHooks) {
   let baseURL = new URL(origin);
   let fs = new FileSystem();
 
+  function resetFilesystem() {
+    fs = new FileSystem();
+  }
+
   async function setupFiles(
     scenario: Scenario = {},
     b = new URL(origin)
@@ -209,6 +214,7 @@ export function installFileAssertions(hooks: NestedHooks) {
     }
     assert.file = makeBoundFile;
     assert.setupFiles = setupFiles;
+    assert.resetFilesystem = resetFilesystem;
   }
 
   // we need "before" if we want to be available in the user's "before" hook.

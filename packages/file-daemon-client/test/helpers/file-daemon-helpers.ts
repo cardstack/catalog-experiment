@@ -1,4 +1,4 @@
-import { Event as FSEvent } from "../../../builder-worker/src/filesystem";
+import { FSEvent } from "../../../builder-worker/src/filesystem";
 import {
   Event,
   addEventListener,

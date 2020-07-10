@@ -19,10 +19,7 @@ import {
   DirectoryDescriptor,
 } from "../../builder-worker/src/filesystem-drivers/filesystem-driver";
 import { withListener } from "../../builder-worker/test/helpers/event-helpers";
-import {
-  eventGroup,
-  Event as FSEvent,
-} from "../../builder-worker/src/filesystem";
+import { eventGroup, FSEvent } from "../../builder-worker/src/filesystem";
 import {
   Event,
   removeAllEventListeners,
@@ -32,8 +29,10 @@ import {
 const testDir = join(__dirname, "testing");
 
 QUnit.module("Node FileSystem", function (origHooks) {
-  let { test } = installFileAssertions(origHooks);
-  let volumeId: string;
+  let { test, hooks } = installFileAssertions(origHooks);
+  hooks.beforeEach(function (assert) {
+    assert.resetFilesystem();
+  });
 
   function setup(scenario: { [path: string]: string }) {
     for (let [path, text] of Object.entries(scenario)) {
@@ -48,10 +47,7 @@ QUnit.module("Node FileSystem", function (origHooks) {
     removeSync(testDir);
     ensureDirSync(testDir);
 
-    ({ id: volumeId } = await fileAssert.fs.mount(
-      url("/"),
-      new NodeFileSystemDriver(testDir)
-    ));
+    await fileAssert.fs.mount(url("/"), new NodeFileSystemDriver(testDir));
   });
 
   origHooks.afterEach(closeAll);
@@ -499,7 +495,7 @@ QUnit.module("Node FileSystem", function (origHooks) {
 
   QUnit.module("mounting", function () {
     test("it can mount a volume within another volume", async function (assert) {
-      await assert.fs.unmount(volumeId);
+      await assert.fs.unmount(url("/"));
       ensureDirSync(join(testDir, "a"));
       ensureDirSync(join(testDir, "b"));
 

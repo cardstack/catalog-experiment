@@ -1,5 +1,10 @@
 import walkSync from "walk-sync";
-import { createReadStream, ensureDirSync, createWriteStream } from "fs-extra";
+import {
+  createReadStream,
+  ensureDirSync,
+  createWriteStream,
+  removeSync,
+} from "fs-extra";
 import { Readable } from "stream";
 import { Tar } from "tarstream";
 import { DIRTYPE, REGTYPE } from "tarstream/constants";
@@ -31,6 +36,7 @@ export function serveFiles(mapping: ProjectMapping) {
           }
         ),
         route.post(`/catalogjs/files/${localName}/(.*)`, updateFiles(dir)),
+        route.delete(`/catalogjs/files/${localName}/(.*)`, removeFiles(dir)),
       ];
     }),
     route.get(`/catalogjs/files`, (ctxt: KoaRoute.Context) => {
@@ -94,6 +100,25 @@ function updateFiles(dir: string) {
       stream.on("close", resolve);
       stream.on("error", reject);
     });
+    ctxt.response.status = 200;
+  };
+}
+
+function removeFiles(dir: string) {
+  if (!dir.endsWith("/")) {
+    // this ensures our startsWith test will do a true path prefix match, which
+    // is a security condition.
+    dir += "/";
+  }
+  return async function (ctxt: KoaRoute.Context) {
+    let localPath = ctxt.routeParams[0];
+    let fullPath = resolve(join(dir, localPath));
+    if (!fullPath.startsWith(dir)) {
+      ctxt.response.status = 403;
+      ctxt.response.body = "Forbidden";
+      return;
+    }
+    removeSync(fullPath);
     ctxt.response.status = 200;
   };
 }

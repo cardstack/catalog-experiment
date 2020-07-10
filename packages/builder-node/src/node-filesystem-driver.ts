@@ -10,7 +10,7 @@ import { dispatchEvent } from "../../builder-worker/src/event-bus";
 import {
   eventCategory as category,
   eventGroup,
-  Event as FSEvent,
+  FSEvent,
 } from "../../builder-worker/src/filesystem";
 import { DOMToNodeReadable, NodeReadableToDOM } from "file-daemon/stream-shims";
 import { Readable } from "stream";

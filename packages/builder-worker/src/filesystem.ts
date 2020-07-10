@@ -1,4 +1,4 @@
-import { dispatchEvent as _dispatchEvent } from "./event-bus";
+import { dispatchEvent as _dispatchEvent, Event } from "./event-bus";
 import { splitURL, baseName, dirName, ROOT } from "./path";
 import columnify from "columnify";
 import moment from "moment";
@@ -374,14 +374,25 @@ export interface WriteEvent extends BaseFSEvent {
   type: "write";
 }
 
-export type Event = CreateEvent | RemoveEvent | WriteEvent;
+export function isFileEvent(event: any): event is Event<FSEvent> {
+  return (
+    typeof event === "object" &&
+    "group" in event &&
+    event.group === eventGroup &&
+    "args" in event &&
+    "category" in event.args &&
+    event.args.category === eventCategory
+  );
+}
 
-export type EventListener = (event: Event) => void;
+export type FSEvent = CreateEvent | RemoveEvent | WriteEvent;
+
+export type EventListener = (event: FSEvent) => void;
 
 function notFound(href: string) {
   throw new FileSystemError("NOT_FOUND", `'${href}' does not exist`);
 }
 
-function dispatchEvent(event: Event) {
+function dispatchEvent(event: FSEvent) {
   _dispatchEvent(eventGroup, event);
 }

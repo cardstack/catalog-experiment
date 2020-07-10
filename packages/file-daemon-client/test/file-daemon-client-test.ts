@@ -6,6 +6,7 @@ import {
   removeAllEventListeners,
 } from "../../builder-worker/src/event-bus";
 import { FileDescriptor } from "../../builder-worker/src/filesystem-drivers/filesystem-driver";
+import { FileSystem } from "../../builder-worker/src/filesystem";
 
 // we use two file daemons, because that lets us test end-to-end that we are
 // really writing to the real filesystem. The only communication between the two
@@ -44,11 +45,44 @@ let scenario = Object.freeze({
   "test-app/blah/bleep/blurp.txt": `hi guys`,
 });
 
+async function resetScenario(fs: FileSystem, scenario: any, mountPoint: URL) {
+  let childDirs: Set<string> = new Set();
+  for (let path of Object.keys(scenario)) {
+    let dirs = path.split("/");
+    dirs.pop();
+    if (dirs?.length > 1) {
+      childDirs.add(`${dirs[0]}/${dirs[1]}`);
+    }
+
+    let url = new URL(path, mountPoint);
+    await fs.remove(url);
+    await waitForFileEvent(url);
+  }
+
+  for (let path of childDirs) {
+    let url = new URL(path, mountPoint);
+    await fs.remove(url);
+    await waitForFileEvent(url);
+  }
+}
+
 QUnit.module("filesystem - file daemon client driver", function (origHooks) {
   let { test, hooks } = installFileAssertions(origHooks);
 
   let controlVolume: FileDaemonClientVolume;
   let testVolume: FileDaemonClientVolume;
+
+  hooks.after(async function (assert) {
+    await resetScenario(assert.fs, scenario, controlDaemon.mountedAt);
+    if (controlVolume) {
+      await controlVolume.close();
+    }
+    if (testVolume) {
+      await testVolume.close();
+    }
+    removeAllEventListeners();
+    await flushEvents();
+  });
 
   test("end-to-end", async function (assert) {
     // first we write a bunch of files via the control side
@@ -87,55 +121,36 @@ QUnit.module("filesystem - file daemon client driver", function (origHooks) {
     );
     await (handle as FileDescriptor).write("New File!");
     handle.close();
-
     await waitForFileEvent(
       new URL(`${testDaemon.mountedAt.href}test-app/new-file.txt`)
     );
     await assert
       .file(`${testDaemon.mountedAt.href}test-app/new-file.txt`)
       .matches(/New File!/);
+
+    // incremental update: modify a file
+    handle = await assert.fs.open(
+      new URL(`${controlDaemon.mountedAt.href}test-app/new-file.txt`),
+      true
+    );
+    await (handle as FileDescriptor).write("this is a change");
+    handle.close();
+    await waitForFileEvent(
+      new URL(`${testDaemon.mountedAt.href}test-app/new-file.txt`)
+    );
+    await assert
+      .file(`${testDaemon.mountedAt.href}test-app/new-file.txt`)
+      .matches(/this is a change/);
+
+    // incremental update: remove a file
+    await assert.fs.remove(
+      new URL(`${controlDaemon.mountedAt.href}test-app/new-file.txt`)
+    );
+    await waitForFileEvent(
+      new URL(`${testDaemon.mountedAt.href}test-app/new-file.txt`)
+    );
+    await assert
+      .file(`${testDaemon.mountedAt.href}test-app/new-file.txt`)
+      .doesNotExist();
   });
-
-  hooks.after(async function () {
-    if (controlVolume) {
-      await controlVolume.close();
-    }
-    if (testVolume) {
-      await testVolume.close();
-    }
-    removeAllEventListeners();
-    await flushEvents();
-  });
-
-  // test("can handle an updated file", async function (assert) {
-  //   let { listener, wait } = makeListener(
-  //     origin.href,
-  //     eventCategory,
-  //     "write",
-  //     "blah/bleep/blurp.txt"
-  //   );
-  //   await withListener(listener, async () => {
-  //     await setFile("blah/bleep/blurp.txt", "bye guys");
-  //     await wait();
-
-  //     await assert
-  //       .file("blah/bleep/blurp.txt")
-  //       .matches(/bye guys/, "file contents are correct");
-  //   });
-  // });
-
-  // test("can handle a deleted file", async function (assert) {
-  //   let { listener, wait } = makeListener(
-  //     origin.href,
-  //     eventCategory,
-  //     "remove",
-  //     "blah/bleep/blurp.txt"
-  //   );
-  //   await withListener(listener, async () => {
-  //     await removeFile("blah/bleep/blurp.txt");
-  //     await wait();
-
-  //     await assert.file("blah/bleep/blurp.txt").doesNotExist();
-  //   });
-  // });
 });

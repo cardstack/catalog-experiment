@@ -13,7 +13,7 @@ import {
   HttpFileDescriptor,
   HttpDirectoryDescriptor,
 } from "../src/filesystem-drivers/http-driver";
-import { FileSystem, Event as FSEvent, eventGroup } from "../src/filesystem";
+import { FileSystem, FSEvent, eventGroup } from "../src/filesystem";
 import { flushEvents, removeAllEventListeners, Event } from "../src/event-bus";
 import moment from "moment";
 import { FileDescriptor } from "../src/filesystem-drivers/filesystem-driver";
@@ -24,9 +24,12 @@ const textEncoder = new TextEncoder();
 const webServerHref = "http://test.com";
 
 QUnit.module("filesystem - http driver", function (origHooks) {
-  let { test } = installFileAssertions(origHooks);
+  let { test, hooks } = installFileAssertions(origHooks);
   let stubbedFetch: sinon.SinonStub;
-  let volumeId: string;
+
+  hooks.beforeEach(function (assert) {
+    assert.resetFilesystem();
+  });
 
   origHooks.afterEach(async () => {
     removeAllEventListeners();
@@ -38,10 +41,10 @@ QUnit.module("filesystem - http driver", function (origHooks) {
     await fileAssert.setupFiles();
     removeAllEventListeners();
 
-    ({ id: volumeId } = await fileAssert.fs.mount(
+    await fileAssert.fs.mount(
       url("/"),
       new HttpFileSystemDriver(url(webServerHref))
-    ));
+    );
   });
 
   QUnit.module("mock fetch", function (hooks) {
@@ -525,8 +528,6 @@ QUnit.module("filesystem - http driver", function (origHooks) {
     });
 
     test("it can mount a volume within another volume", async function (assert) {
-      await assert.fs.unmount(volumeId);
-
       let driverA = new HttpFileSystemDriver(url(webA));
       let driverB = new HttpFileSystemDriver(url(webB));
       await assert.fs.mount(url("/driverA/"), driverA);

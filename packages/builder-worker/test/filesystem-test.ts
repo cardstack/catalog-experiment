@@ -5,7 +5,7 @@ import {
   url,
 } from "./helpers/file-assertions";
 import { withListener } from "./helpers/event-helpers";
-import { Event as FSEvent, eventGroup } from "../src/filesystem";
+import { FSEvent, eventGroup } from "../src/filesystem";
 import {
   flushEvents,
   removeAllEventListeners,
@@ -21,7 +21,10 @@ import {
 } from "../src/filesystem-drivers/memory-driver";
 
 QUnit.module("filesystem", function (origHooks) {
-  let { test } = installFileAssertions(origHooks);
+  let { test, hooks } = installFileAssertions(origHooks);
+  hooks.beforeEach(function (assert) {
+    assert.resetFilesystem();
+  });
 
   QUnit.module("mounting", function () {
     origHooks.beforeEach(async (assert) => {

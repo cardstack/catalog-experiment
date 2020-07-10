@@ -1,11 +1,8 @@
-import {
-  Event,
-  dispatchEvent as _dispatchEvent,
-} from "../../builder-worker/src/event-bus";
+import { Event, dispatchEvent } from "../../builder-worker/src/event-bus";
 import {
   eventGroup,
-  FileSystemError,
-  Event as FSEvent,
+  eventCategory as fsEventCategory,
+  FSEvent,
   BaseEvent as FSBaseEvent,
 } from "../../builder-worker/src/filesystem";
 import {
@@ -20,7 +17,7 @@ import {
 import { log, error } from "../../builder-worker/src/logger";
 import { REGTYPE } from "tarstream/constants";
 import { UnTar } from "tarstream";
-import { WatchInfo, FileInfo } from "../../file-daemon/interfaces";
+import { FileInfo } from "../../file-daemon/interfaces";
 import { assertURLEndsInDir } from "../../builder-worker/src/path";
 
 export const defaultOrigin = "http://localhost:4200";
@@ -62,6 +59,27 @@ function cacheInsert(start: DirCache, path: string, data: Uint8Array) {
   cursor.children.set(leaf, new FileCache(`${cursor.path}${leaf}`, data));
 }
 
+function cacheRemove(start: DirCache, path: string) {
+  let cursor: DirCache = start;
+  let dirs = path.split("/");
+  let nameToDelete = dirs.pop()!;
+  for (let dir of dirs) {
+    dir += "/"; // the FileSystem convention is that directories always have a trailing slash in their name
+    let nextCursor = cursor.children.get(dir);
+    if (!nextCursor) {
+      // the path to delete doesn't actually exist, nothing to do
+      return;
+    }
+    if (nextCursor instanceof FileCache) {
+      throw new Error(
+        `bug: tried to traverse a directory that was actually a file`
+      );
+    }
+    cursor = nextCursor;
+  }
+  cursor.children.delete(nameToDelete);
+}
+
 export class FileDaemonClientDriver implements FileSystemDriver {
   constructor(private fileServerURL: URL, private websocketServerURL: URL) {}
 
@@ -88,7 +106,7 @@ export class FileDaemonClientVolume implements Volume {
   private backoffInterval = 0;
   private doneSyncing!: () => void;
 
-  private queue: WatchInfo[] = [];
+  private queue: FileInfo[] = [];
   private resolveQueuePromise: undefined | (() => void);
   private running: Promise<void>;
 
@@ -190,6 +208,20 @@ export class FileDaemonClientVolume implements Volume {
     }
   }
 
+  async getFile(path: string): Promise<Uint8Array> {
+    let response = await fetch(
+      new URL(`/catalogjs/files${path}`, this.httpURL).href
+    );
+
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
+  async deleteFile(path: string): Promise<void> {
+    await fetch(new URL(`/catalogjs/files${path}`, this.httpURL).href, {
+      method: "DELETE",
+    });
+  }
+
   private tryConnect() {
     log(`attempting to connect`);
 
@@ -199,8 +231,8 @@ export class FileDaemonClientVolume implements Volume {
       socketIsClosed = r;
     });
     socket.onmessage = (event) => {
-      let watchInfo = JSON.parse(event.data) as WatchInfo;
-      this.queue.push(watchInfo);
+      let info = JSON.parse(event.data) as FileInfo;
+      this.queue.push(info);
       if (this.resolveQueuePromise) {
         this.resolveQueuePromise();
       }
@@ -212,7 +244,7 @@ export class FileDaemonClientVolume implements Volume {
       log(`websocket close: ${JSON.stringify(event)}`);
       socketIsClosed();
       this.connected = false;
-      dispatchEvent({
+      dispatchClientEvent({
         category: eventCategory,
         href: this.mountURL.href,
         type: "disconnected",
@@ -220,7 +252,7 @@ export class FileDaemonClientVolume implements Volume {
     };
     socket.onopen = (event) => {
       log(`websocket open: ${JSON.stringify(event)}`);
-      dispatchEvent({
+      dispatchClientEvent({
         category: eventCategory,
         href: this.mountURL.href,
         type: "connected",
@@ -237,7 +269,7 @@ export class FileDaemonClientVolume implements Volume {
     this.socketClosed = socketClosed;
   }
 
-  private async nextMessage(): Promise<{ info: WatchInfo } | { done: true }> {
+  private async nextMessage(): Promise<{ info: FileInfo } | { done: true }> {
     let info = this.queue.shift();
     if (info) {
       return { info };
@@ -271,7 +303,7 @@ export class FileDaemonClientVolume implements Volume {
   }
 
   private async startFullSync() {
-    dispatchEvent({
+    dispatchClientEvent({
       category: eventCategory,
       href: this.mountURL.href,
       type: "sync-started",
@@ -292,7 +324,7 @@ export class FileDaemonClientVolume implements Volume {
     await untar.done;
     this.rootCache = root;
     log("completed full sync");
-    dispatchEvent({
+    dispatchClientEvent({
       category: eventCategory,
       href: this.mountURL.href,
       type: "sync-finished",
@@ -301,88 +333,41 @@ export class FileDaemonClientVolume implements Volume {
     this.doneSyncing();
   }
 
-  private async handleInfo(watchInfo: WatchInfo) {
+  private async handleInfo(info: FileInfo) {
     log(
-      `handleMessage: Received file change notification ${JSON.stringify(
-        watchInfo
-      )}`
+      `handleMessage: Received file change notification ${JSON.stringify(info)}`
     );
-    let changes = await this.pruneChanges(watchInfo.files);
-    if (changes.length === 0) {
-      log("no action for file update necessary");
-      return;
+
+    let isDelete = info.etag === null;
+
+    // TODO make sure we guard against trying to insert/delete based off of a
+    // notification of our own add/remove. Right now we are letting the server
+    // stomp on top of the client. A simple way to coordinate this could be that
+    // we don't actually modify the cache until we get the WS notification here.
+    // That might mean that we need to hang on to the original add/remove
+    // Promise's resolve and perform that resolve here after recieving the WS
+    // notification so that we block until we hear back from the web socket
+    // notification that the server has updated accordingly...
+    if (isDelete) {
+      cacheRemove(this.rootCache, info.name);
+      dispatchEvent<FSEvent>(eventGroup, {
+        category: fsEventCategory,
+        href: new URL(info.name, this.mountURL).href, // this URL works because we have left the leading slash off the name in notification message
+        type: "remove",
+      });
+    } else {
+      let buffer = await this.getFile(`/${info.name}`);
+      cacheInsert(this.rootCache, info.name, buffer);
+      dispatchEvent<FSEvent>(eventGroup, {
+        category: fsEventCategory,
+        href: new URL(info.name, this.mountURL).href, // this URL works because we have left the leading slash off the name in notification message
+        type: "write",
+      });
     }
-    let removals = changes.filter(({ etag }) => etag == null);
-    let updates = changes.filter(({ etag }) => etag != null);
-    let modified: string[] = [];
-
-    for (let change of updates) {
-      log(`updating ${change.name}`);
-      modified.push((await this.updateFile(change.name)).href);
-    }
-
-    let removed: string[] = [];
-    for (let { name } of removals) {
-      log(`removing ${name}`);
-      let url = this.mountedPath(name);
-      await this.fs.remove(url);
-      removed.push(url.href);
-    }
-
-    dispatchEvent({
-      category: eventCategory,
-      href: this.mountURL.href,
-      type: "files-changed",
-      removed,
-      modified,
-    });
-
-    await this.fs.displayListing();
-  }
-
-  private async updateFile(path: string): Promise<URL> {
-    let res = await fetch(`${this.httpURL}${path}`);
-    let stream = res.body as ReadableStream<Uint8Array>;
-    if (!stream) {
-      throw new Error(`Couldn't fetch ${path} from file server`);
-    }
-    let url = this.mountedPath(path);
-    let file = (await this.fs.open(url, true)) as FileDescriptor;
-    await file.write(stream);
-    file.close();
-    return url;
   }
 
   private mountedPath(path: string): URL {
     return new URL(path, this.mountURL);
-  }
-
-  private async pruneChanges(changes: FileInfo[]): Promise<FileInfo[]> {
-    let changed = await Promise.all(
-      changes.map(async (change) => {
-        let { name, etag } = change;
-        let currentFile: FileDescriptor | undefined;
-        try {
-          currentFile = (await this.fs.open(
-            new URL(name, this.httpURL)
-          )) as FileDescriptor;
-          if ((await currentFile.stat()).etag !== etag) {
-            return change;
-          }
-        } catch (err) {
-          if (err instanceof FileSystemError && err.code === "NOT_FOUND") {
-            return change;
-          }
-          throw err;
-        } finally {
-          if (currentFile) {
-            currentFile.close();
-          }
-        }
-        return false;
-      })
-    );
-    return changed.filter(Boolean) as FileInfo[];
   }
 }
 
@@ -450,14 +435,25 @@ class ClientDirectoryDescriptor implements DirectoryDescriptor {
     return Boolean(entry && entry instanceof FileCache);
   }
   async remove(name: string): Promise<void> {
-    throw new Error("u");
+    this.dir.children.delete(name);
+    await this.volume.deleteFile(`${this.dir.path}${name}`);
+
+    // we can wait for the server round trip the change notification, and
+    // trigger the FS write event when we recieve the WS message instead of
+    // triggering it here which is generally done in the other drivers.
   }
 
+  async add(name: string, descriptor: ClientFileDescriptor): Promise<void>;
+  async add(name: string, descriptor: ClientDirectoryDescriptor): Promise<void>;
   async add(
     name: string,
-    resource: FileDescriptor | DirectoryDescriptor
+    descriptor: ClientFileDescriptor | ClientDirectoryDescriptor
   ): Promise<void> {
-    throw new Error("u");
+    if (descriptor.type === "directory") {
+      this.dir.children.set(name, descriptor.dir);
+    } else {
+      this.dir.children.set(name, descriptor.fileCache);
+    }
   }
 }
 
@@ -467,7 +463,7 @@ class ClientFileDescriptor implements FileDescriptor {
   constructor(
     public parent: DirCache,
     public name: string,
-    private fileCache: FileCache,
+    public fileCache: FileCache,
     public url: URL,
     public volume: FileDaemonClientVolume
   ) {}
@@ -491,6 +487,10 @@ class ClientFileDescriptor implements FileDescriptor {
     await this.volume.postFile(buffer, this.inode);
     this.fileCache.data = buffer;
     this.parent.children.set(this.name, this.fileCache);
+
+    // we can wait for the server round trip the change notification, and
+    // trigger the FS write event when we recieve the WS message instead of
+    // triggering it here which is generally done in the other drivers.
   }
   async read(): Promise<Uint8Array> {
     return this.fileCache.data;
@@ -503,16 +503,15 @@ class ClientFileDescriptor implements FileDescriptor {
   }
 }
 
-function dispatchEvent(event: FileDaemonClientEvent) {
-  _dispatchEvent<FileDaemonClientEvent | FSEvent>(eventGroup, event);
+function dispatchClientEvent(event: FileDaemonClientEvent) {
+  dispatchEvent<FileDaemonClientEvent | FSEvent>(eventGroup, event);
 }
 
 export type FileDaemonClientEvent =
   | ConnectedEvent
   | DisconnectedEvent
   | SyncStartedEvent
-  | SyncCompleteEvent
-  | FilesChangedEvent;
+  | SyncCompleteEvent;
 
 interface BaseEvent extends FSBaseEvent {
   category: "file-daemon-client";
@@ -526,12 +525,6 @@ export interface DisconnectedEvent extends BaseEvent {
 }
 export interface SyncStartedEvent extends BaseEvent {
   type: "sync-started";
-}
-
-export interface FilesChangedEvent extends BaseEvent {
-  type: "files-changed";
-  modified: string[];
-  removed: string[];
 }
 
 interface SyncCompleteEvent extends BaseEvent {

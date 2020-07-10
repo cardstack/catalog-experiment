@@ -3,7 +3,7 @@ import {
   eventCategory as category,
   eventGroup,
   FileSystemError,
-  Event as FSEvent,
+  FSEvent,
 } from "../filesystem";
 import {
   FileSystemDriver,
