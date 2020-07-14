@@ -5,7 +5,7 @@ import merge from "lodash/merge";
 import Koa from "koa";
 import { ProjectMapping } from "../daemon";
 
-const { test, only } = QUnit;
+const { test } = QUnit;
 
 QUnit.module("file-hosting", function (hooks) {
   let project: Project;
