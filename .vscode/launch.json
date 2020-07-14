@@ -43,6 +43,18 @@
     {
       "type": "node",
       "request": "launch",
+      "name": "Run node build",
+      "cwd": "${workspaceRoot}",
+      "env": {},
+      "program": "${workspaceRoot}/packages/builder-node/bin/build.js",
+      "args": [
+        "--project=packages/test-app,http://build-output",
+        "--project=packages/test-lib,http://localhost:4200/test-lib/"
+      ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
       "name": "Run file-daemon QUnit",
       "cwd": "${workspaceRoot}/packages/file-daemon",
       "env": {},

@@ -25,7 +25,7 @@ module("application test bed", function (hooks) {
     let el = document.getElementById("test-2");
     assert.equal(
       el.textContent,
-      "The cutest puppies are mango and van gogh",
+      "The cutest puppies are mango and van gogh!",
       "text content is correct"
     );
   });
