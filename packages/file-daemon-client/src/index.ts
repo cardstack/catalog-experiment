@@ -18,7 +18,7 @@ import { log, error } from "../../builder-worker/src/logger";
 import { REGTYPE } from "tarstream/constants";
 import { UnTar } from "tarstream";
 import { FileInfo } from "../../file-daemon/interfaces";
-import { assertURLEndsInDir } from "../../builder-worker/src/path";
+import { makeURLEndInDir } from "../../builder-worker/src/path";
 
 export const defaultOrigin = "http://localhost:4200";
 export const defaultWebsocketURL = "ws://localhost:3000";
@@ -30,13 +30,14 @@ const textEncoder = new TextEncoder();
 
 class DirCache {
   children: Map<string, DirCache | FileCache> = new Map();
-  constructor(readonly path: string) {}
+  constructor(readonly path: string, readonly mtime = Date.now()) {}
 }
 
 class FileCache {
   constructor(
     readonly path: string,
-    public data: Uint8Array = new Uint8Array(0)
+    public data: Uint8Array = new Uint8Array(0),
+    readonly mtime = Date.now()
   ) {}
 }
 
@@ -382,11 +383,15 @@ class ClientDirectoryDescriptor implements DirectoryDescriptor {
     url: URL,
     public volume: FileDaemonClientVolume
   ) {
-    this.url = assertURLEndsInDir(url);
+    this.url = makeURLEndInDir(url);
   }
 
   async stat(): Promise<Stat> {
-    throw new Error("unimpl");
+    return {
+      mtime: this.dir.mtime,
+      etag: undefined,
+      type: "directory",
+    };
   }
   close(): void {}
   get inode(): string {
@@ -469,7 +474,12 @@ class ClientFileDescriptor implements FileDescriptor {
   ) {}
 
   async stat(): Promise<Stat> {
-    throw new Error("U");
+    return {
+      etag: `${this.fileCache.data.length}_${this.fileCache.mtime}`,
+      mtime: this.fileCache.mtime,
+      size: this.fileCache.data.length,
+      type: "file",
+    };
   }
   close(): void {}
   get inode(): string {

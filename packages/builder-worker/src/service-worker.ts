@@ -17,22 +17,26 @@ import { BuildManager } from "./build-manager";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 const fs = new FileSystem();
-const ourBackendEndpoint = "__alive__";
-const uiOrigin = "http://localhost:4300";
+const uiURL = new URL("http://localhost:4300/catalogjs/ui/");
 
 let websocketURL: URL;
 let isDisabled = false;
 let volume: FileDaemonClientVolume | undefined;
 let eventHandler: ClientEventHandler;
 let originURL = new URL(worker.origin);
-let inputURL = new URL("https://local-disk/test-app/");
+
+// TODO this should be set from the app
 let projects: [URL, URL][] = [
-  [inputURL, originURL],
+  [
+    new URL("https://local-disk/test-app/"),
+    new URL(`${originURL.href}test-app/`),
+  ],
   [
     new URL("https://local-disk/test-lib/"),
-    new URL(`${originURL.href}/test-lib/`),
+    new URL(`${originURL.href}test-lib/`),
   ],
 ];
+
 let buildManager: BuildManager;
 let activated: () => void;
 let activating = new Promise<void>((res) => (activated = res));
@@ -62,18 +66,16 @@ worker.addEventListener("activate", () => {
 });
 
 async function activate() {
-  await Promise.all([
-    (async () => {
-      let uiDriver = new HttpFileSystemDriver(
-        new URL(`${uiOrigin}/catalogjs-ui/`)
-      );
-      await fs.mount(new URL(`/catalogjs-ui/`, originURL), uiDriver);
-    })(),
-    (async () => {
-      let driver = new FileDaemonClientDriver(originURL, websocketURL);
-      volume = (await fs.mount(inputURL, driver)) as FileDaemonClientVolume;
-    })(),
+  let uiDriver = new HttpFileSystemDriver(uiURL);
+  let clientDriver = new FileDaemonClientDriver(originURL, websocketURL);
+  let [, clientVolume] = await Promise.all([
+    fs.mount(new URL(`/catalogjs/ui/`, originURL), uiDriver),
+    fs.mount(new URL("https://local-disk/"), clientDriver),
   ]);
+  // TODO refactor how we handle client volumes events shuch that we don't need
+  // to get a handle on the "Volume" instance. Consider writing a file for the
+  // connected and sync events in a special folder that we can monitor.
+  volume = clientVolume as FileDaemonClientVolume;
 
   buildManager = new BuildManager(fs, projects);
   await buildManager.rebuilder.start();
@@ -85,7 +87,7 @@ async function activate() {
 worker.addEventListener("fetch", (event: FetchEvent) => {
   let url = new URL(event.request.url);
 
-  if (isDisabled || url.pathname === `/${ourBackendEndpoint}`) {
+  if (isDisabled || url.pathname === `/catalogjs/alive`) {
     event.respondWith(fetch(event.request));
     return;
   }
@@ -130,7 +132,7 @@ async function checkForOurBackend() {
   while (true) {
     let status;
     try {
-      status = (await fetch(`${worker.origin}/${ourBackendEndpoint}`)).status;
+      status = (await fetch(`${worker.origin}/catalogjs/alive`)).status;
     } catch (err) {
       console.log(
         `Encountered error performing aliveness check (server is probably not running):`,

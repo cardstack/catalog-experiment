@@ -1,0 +1,15 @@
+<div>
+  {{#if this.project.initialize.isRunning}}
+  <h2>Starting Service Worker...</h2>
+  {{/if}}
+  <p>
+    Select a project to get started:
+  </p>
+  <div>[TODO: implement this]</div>
+  <select>
+    <option>Test-App</option>
+    <option>Test-Lib</option>
+  </select>
+
+  <button onclick={{action startSelectedProject}}>Start</button>
+</div>

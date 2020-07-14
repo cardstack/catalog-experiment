@@ -8,41 +8,36 @@ import { isReloadEvent } from "../builder-worker/src/client-reload";
 
 let uiWidth: number;
 
-if (!navigator.serviceWorker.controller) {
-  // first load
-  navigator.serviceWorker.register("/service-worker.js", {
-    scope: "/",
-  });
-  navigator.serviceWorker.ready.then(() => {
-    window.location.reload();
-  });
-} else {
-  // Render the CatalogJS UI and respond to window positioning requests
-  let iframe = document.createElement("iframe");
-  iframe.setAttribute("src", `${window.origin}/catalogjs-ui/`);
-  iframe.setAttribute("id", "catalogjs-ui");
-  iframe.setAttribute(
-    "style",
-    `position: fixed;
-     top: 0;
-     bottom: 0;
-     right: -100%;
-     height: 100vh;
-     border: none;
-     transition: transform 300ms;
-    `
-  );
-  if (!document.body) {
-    document.body = document.createElement("body");
-  }
-  document.body.append(iframe);
-  window.addEventListener("message", handleUICommand, false);
-  navigator.serviceWorker.addEventListener("message", handleUICommand);
+// Note that the packages/ui ember app is responsible for the service worker
+// initialization and activation. At this point the service worker has already
+// been activated. The responsibility for this module is to render the ui's edge
+// route in an iframe, add a build reload-page listener, and respond to window positioning. requests.
 
-  (async () => {
-    await fetch("/register-client/reload");
-  })();
+let iframe = document.createElement("iframe");
+iframe.setAttribute("src", `${window.origin}/catalogjs/ui/#/edge`);
+iframe.setAttribute("id", "catalogjs-ui");
+iframe.setAttribute(
+  "style",
+  `position: fixed;
+   top: 0;
+   bottom: 0;
+   right: -100%;
+   height: 100vh;
+   border: none;
+   transition: transform 300ms;
+  `
+);
+if (!document.body) {
+  document.body = document.createElement("body");
 }
+document.body.setAttribute("style", "overflow-x: hidden;");
+document.body.append(iframe);
+window.addEventListener("message", handleUICommand, false);
+navigator.serviceWorker.addEventListener("message", handleUICommand);
+
+(async () => {
+  await fetch("/register-client/reload");
+})();
 
 function handleUICommand(event: MessageEvent) {
   if (event.origin !== window.origin) {

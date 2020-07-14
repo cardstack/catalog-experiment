@@ -1,6 +1,6 @@
 import { dispatchEvent } from "../event-bus";
 import { eventCategory as category, eventGroup, FSEvent } from "../filesystem";
-import { ROOT, assertURLEndsInDir } from "../path";
+import { ROOT, makeURLEndInDir } from "../path";
 import {
   FileSystemDriver,
   Volume,
@@ -45,7 +45,7 @@ export class MemoryVolume implements Volume {
     if (parent.url.href === ROOT.href) {
       url = new URL(name);
     } else {
-      url = new URL(name, assertURLEndsInDir(parent.url));
+      url = new URL(name, makeURLEndInDir(parent.url));
     }
     let descriptor = directory.getDescriptor(url);
     await parent.add(name, descriptor);
@@ -54,7 +54,7 @@ export class MemoryVolume implements Volume {
 
   async createFile(parent: MemoryDirectoryDescriptor, name: string) {
     let file = new File(this);
-    let url = new URL(name, assertURLEndsInDir(parent.url));
+    let url = new URL(name, makeURLEndInDir(parent.url));
     let descriptor = file.getDescriptor(url);
     await parent.add(name, descriptor);
     return descriptor;
@@ -126,7 +126,7 @@ export class MemoryDirectoryDescriptor implements DirectoryDescriptor {
     if (this.url === ROOT) {
       url = new URL(name);
     } else {
-      url = new URL(name, assertURLEndsInDir(this.url));
+      url = new URL(name, makeURLEndInDir(this.url));
     }
     return this.resource.files.get(name)!.getDescriptor(url);
   }

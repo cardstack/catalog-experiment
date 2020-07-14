@@ -469,8 +469,8 @@ export class Rebuilder<Input> {
             await this.runner.build();
             if (this.state.name === "working") {
               this.setState({ name: "idle", lastBuildSucceeded: true });
+              dispatchEvent<ReloadEvent>(reloadEventGroup, {});
             }
-            dispatchEvent<ReloadEvent>(reloadEventGroup, {});
           } catch (err) {
             if (this.state.name === "working") {
               this.setState({

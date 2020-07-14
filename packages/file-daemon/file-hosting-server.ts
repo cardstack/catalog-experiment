@@ -24,6 +24,7 @@ import { ProjectMapping } from "./daemon";
 global = Object.assign(global, webStreams);
 
 const builderServer = "http://localhost:8080";
+const uiServer = "http://localhost:4300/catalogjs/ui/";
 
 export function serveFiles(mapping: ProjectMapping) {
   return compose([
@@ -48,6 +49,32 @@ export function serveFiles(mapping: ProjectMapping) {
       rewrite(path: string) {
         return path.slice("/catalogjs/builder".length);
       },
+    }),
+    proxy("/main.js", {
+      target: builderServer,
+    }),
+    proxy("/service-worker.js", {
+      target: builderServer,
+    }),
+
+    // UI is being served from /catalogjs/ui/ from ember-cli, this proxy handles
+    // the asset references from the ember apps's index.html. We serve the ember
+    // app in ember-cli in a root path that matches how the UI is mounted in the
+    // filesystem abstration so that the asset references in index.html line up
+    // with path that they can be found in the filesytem abstraction. otherwise
+    // index.html will have references to UI assets that don't exist in the file
+    // system (e.g.: http://localhost:4200/assets/vendor.js vs
+    // http://localhost:4200/catalogjs/ui/assets/vendor.js)
+    proxy("/catalogjs/ui", {
+      target: uiServer,
+      rewrite(path: string) {
+        return path.slice("/catalogjs/ui".length);
+      },
+    }),
+    // this proxy handles the request for the UI's /index.html and any other
+    // fall-through conditions
+    proxy("/", {
+      target: uiServer,
     }),
   ]);
 }

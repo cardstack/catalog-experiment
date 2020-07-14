@@ -1,7 +1,7 @@
 import "qunit";
 import { Memoize } from "typescript-memoize";
 import { FileSystem } from "../../src/filesystem";
-import { assertURLEndsInDir } from "../../src/path";
+import { makeURLEndInDir } from "../../src/path";
 import { FileDescriptor } from "../../src/filesystem-drivers/filesystem-driver";
 
 export const origin = "http://localhost:4200";
@@ -35,7 +35,7 @@ export class BoundFileAssert {
 
   @Memoize()
   get fullURL(): URL {
-    return new URL(this.relativeURL, assertURLEndsInDir(this.assert.baseURL));
+    return new URL(this.relativeURL, makeURLEndInDir(this.assert.baseURL));
   }
 
   @Memoize()

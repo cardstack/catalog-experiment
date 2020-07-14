@@ -4,8 +4,8 @@ module.exports = function (environment) {
   let ENV = {
     modulePrefix: "ui",
     environment,
-    rootURL: "/catalogjs-ui/",
-    locationType: "auto",
+    rootURL: "/catalogjs/ui/",
+    locationType: "hash",
     EmberENV: {
       FEATURES: {
         // Here you can enable experimental features on an ember canary build

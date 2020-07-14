@@ -8,7 +8,7 @@ import {
 } from "../filesystem-drivers/filesystem-driver";
 import { log } from "../logger";
 import { HttpStat } from "../filesystem-drivers/http-driver";
-import { relativeURL } from "../path";
+import { relativeURL, makeURLEndInDir } from "../path";
 import { BuildManager } from "../build-manager";
 
 const builderOrigin = "http://localhost:8080";
@@ -37,6 +37,15 @@ export function handleFileRequest(fs: FileSystem, buildManager: BuildManager) {
 
     log(`serving request ${requestURL} from filesystem`);
     let response = await serveFile(requestURL, fs);
+    if (response.status === 404) {
+      // if the response is for the selected project's outputs then we use that
+      // project's URL as our root
+      requestURL = new URL(
+        `.${requestURL.pathname}`,
+        makeURLEndInDir(buildManager.projects[0][1])
+      );
+      response = await serveFile(requestURL, fs);
+    }
     if (response.status === 404) {
       for (let [input, output] of buildManager.projects) {
         // we serve each project's input files as a fallback to their output

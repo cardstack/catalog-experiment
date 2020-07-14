@@ -4,6 +4,6 @@
   "version": "0.0.1",
   "scripts": {
     "start-pkg": "node ../file-daemon/dist/main.js .",
-    "start": "node ../file-daemon ."
+    "start": "node ../file-daemon/bin/file-daemon ."
   }
 }

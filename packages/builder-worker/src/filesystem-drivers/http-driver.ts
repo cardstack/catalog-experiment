@@ -13,11 +13,14 @@ import {
   Stat,
   readStream,
 } from "./filesystem-driver";
-import { assertURLEndsInDir } from "../path";
+import { makeURLEndInDir } from "../path";
 import moment from "moment";
 
 const textEncoder = new TextEncoder();
 const utf8 = new TextDecoder("utf8");
+const acceptHeader = Object.freeze({
+  Accept: "text/html,*/*",
+});
 
 interface Options {
   useHttpPostForUpdate: boolean;
@@ -62,11 +65,11 @@ export class HttpVolume implements Volume {
     let underlyingURL: URL;
     let url: URL;
     if (!name || !(parent instanceof HttpDirectoryDescriptor)) {
-      underlyingURL = new URL(name, assertURLEndsInDir(this.httpURL));
-      url = new URL(name, assertURLEndsInDir(this.mountURL));
+      underlyingURL = new URL(name, makeURLEndInDir(this.httpURL));
+      url = new URL(name, makeURLEndInDir(this.mountURL));
     } else {
-      underlyingURL = new URL(name, assertURLEndsInDir(parent.underlyingURL));
-      url = new URL(name, assertURLEndsInDir(parent.url));
+      underlyingURL = new URL(name, makeURLEndInDir(parent.underlyingURL));
+      url = new URL(name, makeURLEndInDir(parent.url));
     }
     return new HttpDirectoryDescriptor(this, url, underlyingURL);
   }
@@ -75,7 +78,7 @@ export class HttpVolume implements Volume {
     parent: HttpDirectoryDescriptor,
     name: string
   ): Promise<HttpFileDescriptor> {
-    let underlyingURL = new URL(name, assertURLEndsInDir(parent.underlyingURL));
+    let underlyingURL = new URL(name, makeURLEndInDir(parent.underlyingURL));
     // this is awkward as we'll not have any data to POST until write() is
     // called... and really this is in the realm of the webserver policy around
     // how it wants to create resources...
@@ -104,14 +107,14 @@ export class HttpDirectoryDescriptor implements DirectoryDescriptor {
   }
 
   async getDirectory(name: string) {
-    let underlyingURL = new URL(name, assertURLEndsInDir(this.underlyingURL));
-    let url = new URL(name, assertURLEndsInDir(this.url));
+    let underlyingURL = new URL(name, makeURLEndInDir(this.underlyingURL));
+    let url = new URL(name, makeURLEndInDir(this.url));
     return new HttpDirectoryDescriptor(this.volume, url, underlyingURL);
   }
 
   async getFile(name: string) {
-    let underlyingURL = new URL(name, assertURLEndsInDir(this.underlyingURL));
-    let url = new URL(name, assertURLEndsInDir(this.url));
+    let underlyingURL = new URL(name, makeURLEndInDir(this.underlyingURL));
+    let url = new URL(name, makeURLEndInDir(this.url));
     // we're doing this for the side effect of a 404 being thrown if the
     // URL does not exist.
     await getIfNoneMatch(underlyingURL, undefined);
@@ -139,7 +142,7 @@ export class HttpDirectoryDescriptor implements DirectoryDescriptor {
   }
 
   async remove(name: string) {
-    let underlyingURL = new URL(name, assertURLEndsInDir(this.underlyingURL));
+    let underlyingURL = new URL(name, makeURLEndInDir(this.underlyingURL));
     throw new Error(
       `Unimplemented: HTTP volumes currently cant remove files. cannot remove ${underlyingURL}`
     );
@@ -215,7 +218,11 @@ export class HttpFileDescriptor implements FileDescriptor {
     }
 
     let method = this.volume.opts.useHttpPostForUpdate ? "POST" : "PUT";
-    let res = await fetch(this.underlyingURL.href, { method, body });
+    let res = await fetch(this.underlyingURL.href, {
+      method,
+      body,
+      headers: { ...acceptHeader },
+    });
 
     if (!res.ok) {
       throw new Error(
@@ -287,9 +294,11 @@ async function getIfNoneMatch(
   let response = etag
     ? await fetch(url.href, {
         method: "GET",
-        headers: { "If-None-Match": etag },
+        headers: { "If-None-Match": etag, ...acceptHeader },
       })
-    : await fetch(url.href);
+    : await fetch(url.href, {
+        headers: { ...acceptHeader },
+      });
   if (!response.ok) {
     if (response.status === 404) {
       throw new FileSystemError(

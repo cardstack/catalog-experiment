@@ -5,7 +5,7 @@ import {
   Volume,
   Stat,
 } from "../../builder-worker/src/filesystem-drivers/filesystem-driver";
-import { assertURLEndsInDir } from "../../builder-worker/src/path";
+import { makeURLEndInDir } from "../../builder-worker/src/path";
 import { dispatchEvent } from "../../builder-worker/src/event-bus";
 import {
   eventCategory as category,
@@ -74,7 +74,7 @@ export class NodeVolume implements Volume {
     }
     let path = join(parentDir.path, name);
     ensureDirSync(path);
-    let url = new URL(name, assertURLEndsInDir(parent.url));
+    let url = new URL(name, makeURLEndInDir(parent.url));
     return new NodeDirectoryDescriptor(this, url, opendirSync(path));
   }
 
@@ -86,7 +86,7 @@ export class NodeVolume implements Volume {
       );
     }
     let path = join(parentDir.path, name);
-    let url = new URL(name, assertURLEndsInDir(parent.url));
+    let url = new URL(name, makeURLEndInDir(parent.url));
     return new NodeFileDescriptor(this, url, openSync(path, "w+"));
   }
 }
@@ -128,7 +128,7 @@ export class NodeDirectoryDescriptor implements DirectoryDescriptor {
     if (entry && entry.isFile()) {
       return new NodeFileDescriptor(
         this.volume,
-        new URL(name, assertURLEndsInDir(this.url)),
+        new URL(name, makeURLEndInDir(this.url)),
         openSync(join(this.dir.path, name), "r+")
       );
     }
@@ -141,7 +141,7 @@ export class NodeDirectoryDescriptor implements DirectoryDescriptor {
     if (entry && entry.isDirectory()) {
       return new NodeDirectoryDescriptor(
         this.volume,
-        new URL(name, assertURLEndsInDir(this.url)),
+        new URL(name, makeURLEndInDir(this.url)),
         opendirSync(join(this.dir.path, name))
       );
     }

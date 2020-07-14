@@ -5,7 +5,7 @@ import UIManagerService from "ui/services/ui-manager";
 import LoggerService from "ui/services/logger";
 import EventRegistrarService from "ui/services/event-registrar";
 
-export default class ApplicationRoute extends Route {
+export default class CatalogJsUI extends Route {
   @service eventRegistrar!: EventRegistrarService;
   @service uiManager!: UIManagerService;
   @service logger!: LoggerService;
