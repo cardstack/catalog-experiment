@@ -38,6 +38,7 @@ export function handleFileRequest(fs: FileSystem, buildManager: BuildManager) {
     log(`serving request ${requestURL} from filesystem`);
     let response = await serveFile(requestURL, fs);
     if (response.status === 404) {
+      // TODO talk with Ed about this-- think this is actually a bug...
       // if the response is for the selected project's outputs then we use that
       // project's URL as our root
       requestURL = new URL(
