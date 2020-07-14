@@ -1,15 +1,21 @@
 <div>
-  {{#if this.project.initialize.isRunning}}
-  <h2>Starting Service Worker...</h2>
+  {{#if this.projects.initialize.isRunning}}
+  Starting up...
+  {{else}}
+  <h3>Available Projects</h3>
+  <div class="projects">
+    {{#each this.availableProjects as |project|}}
+    <div class="project">
+      <Input @type="checkbox" @checked={{has-project project this.activeProjects}}
+        {{on 'click' (fn this.toggleProject project)}} />
+      <span class="project-input">{{project}}</span>
+      output URL:
+      <Input @type="text" size="50" @value={{project-output-url project this.selectedProjects}}
+        @key-up={{fn this.setProjectOutput project}} />
+    </div>
+    {{/each}}
+  </div>
   {{/if}}
-  <p>
-    Select a project to get started:
-  </p>
-  <div>[TODO: implement this]</div>
-  <select>
-    <option>Test-App</option>
-    <option>Test-Lib</option>
-  </select>
 
   <button onclick={{action startSelectedProject}}>Start</button>
 </div>

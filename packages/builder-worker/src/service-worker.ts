@@ -14,6 +14,7 @@ import { ClientEventHandler } from "./client-event-handler";
 import { Handler } from "./request-handlers/request-handler";
 import { HttpFileSystemDriver } from "./filesystem-drivers/http-driver";
 import { BuildManager } from "./build-manager";
+import { handleListingRequest } from "./request-handlers/project-listing-handler";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 const fs = new FileSystem();
@@ -103,6 +104,7 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
 
         let stack: Handler[] = [
           handleClientRegister(eventHandler, volume),
+          handleListingRequest(fs, buildManager),
           handleBuilderRestartRequest(buildManager),
           handleLogLevelRequest(),
           handleFileRequest(fs, buildManager),
