@@ -45,7 +45,7 @@ export default class ProjectsService extends Service {
 
   start = task(function* (
     this: ProjectsService,
-    projectRoots: [string, string][]
+    _projectRoots: [string, string][]
   ) {
     yield this.initialize.lastPerformed;
 
