@@ -5,7 +5,7 @@ import merge from "lodash/merge";
 import Koa from "koa";
 import { ProjectMapping } from "../daemon";
 
-const { test } = QUnit;
+const { test, only } = QUnit;
 
 QUnit.module("file-hosting", function (hooks) {
   let project: Project;
@@ -51,17 +51,5 @@ QUnit.module("file-hosting", function (hooks) {
     );
     assert.equal(response.status, 200);
     assert.equal(response.text, "<html></html>");
-  });
-
-  test("can't escape shared dirs", async function (assert) {
-    let app = new Koa();
-    app.use(
-      serveFiles(new ProjectMapping([`${project.root}/fixtures/test-app`]))
-    );
-
-    let response = await request(app.callback()).get(
-      "/catalogjs/files/test-lib/../../other.js"
-    );
-    assert.equal(response.status, 404);
   });
 });
