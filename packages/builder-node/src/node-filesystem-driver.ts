@@ -89,6 +89,8 @@ export class NodeVolume implements Volume {
     let url = new URL(name, makeURLEndInDir(parent.url));
     return new NodeFileDescriptor(this, url, openSync(path, "w+"));
   }
+
+  async willUnmount() {}
 }
 
 export class NodeDirectoryDescriptor implements DirectoryDescriptor {

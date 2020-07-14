@@ -86,6 +86,8 @@ export class HttpVolume implements Volume {
       `Unimplemented: HTTP volumes currently cant create files. cannot create ${underlyingURL}`
     );
   }
+
+  async willUnmount() {}
 }
 
 export class HttpDirectoryDescriptor implements DirectoryDescriptor {

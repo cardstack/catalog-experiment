@@ -1,6 +1,6 @@
 import { installFileAssertions } from "../../builder-worker/test/helpers/file-assertions";
 import { waitForFileEvent } from "./helpers/file-daemon-helpers";
-import { FileDaemonClientVolume, FileDaemonClientDriver } from "../src/index";
+import { FileDaemonClientDriver } from "../src/index";
 import {
   flushEvents,
   removeAllEventListeners,
@@ -69,34 +69,27 @@ async function resetScenario(fs: FileSystem, scenario: any, mountPoint: URL) {
 QUnit.module("filesystem - file daemon client driver", function (origHooks) {
   let { test, hooks } = installFileAssertions(origHooks);
 
-  let controlVolume: FileDaemonClientVolume;
-  let testVolume: FileDaemonClientVolume;
-
   hooks.after(async function (assert) {
     await resetScenario(assert.fs, scenario, controlDaemon.mountedAt);
-    if (controlVolume) {
-      await controlVolume.close();
-    }
-    if (testVolume) {
-      await testVolume.close();
-    }
+    await assert.fs.unmount(controlDaemon.mountedAt);
+    await assert.fs.unmount(testDaemon.mountedAt);
     removeAllEventListeners();
     await flushEvents();
   });
 
   test("end-to-end", async function (assert) {
     // first we write a bunch of files via the control side
-    controlVolume = (await assert.fs.mount(
+    await assert.fs.mount(
       controlDaemon.mountedAt,
       new FileDaemonClientDriver(controlDaemon.http, controlDaemon.ws)
-    )) as FileDaemonClientVolume;
+    );
     await assert.setupFiles(scenario, controlDaemon.mountedAt);
 
     // then we mount the test side and let it sync in the files
-    testVolume = (await assert.fs.mount(
+    await assert.fs.mount(
       testDaemon.mountedAt,
       new FileDaemonClientDriver(testDaemon.http, testDaemon.ws)
-    )) as FileDaemonClientVolume;
+    );
 
     // as soon as mount as resolved we should see the full sync
     await assert

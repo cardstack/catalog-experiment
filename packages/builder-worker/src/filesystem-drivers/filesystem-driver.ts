@@ -12,6 +12,7 @@ export interface Volume {
     parent: DirectoryDescriptor,
     name: string
   ): Promise<FileDescriptor>;
+  willUnmount(): Promise<void>;
 }
 
 interface Descriptor {

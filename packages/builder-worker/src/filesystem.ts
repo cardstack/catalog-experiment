@@ -52,6 +52,7 @@ export class FileSystem {
         if (url.href === ROOT.href) {
           throw new Error("Cannot unmount the root volume");
         }
+        await this.volumes.get(key)!.willUnmount();
         this.volumes.delete(key);
         await this.remove(url);
         break;

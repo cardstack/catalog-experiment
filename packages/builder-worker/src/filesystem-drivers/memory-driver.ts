@@ -59,6 +59,8 @@ export class MemoryVolume implements Volume {
     await parent.add(name, descriptor);
     return descriptor;
   }
+
+  async willUnmount() {}
 }
 
 class Directory {

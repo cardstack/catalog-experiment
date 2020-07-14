@@ -156,7 +156,7 @@ export class FileDaemonClientVolume implements Volume {
     );
   }
 
-  async close() {
+  async willUnmount() {
     this.closeRequested = true;
     if (this.socket) {
       this.socket.close();
