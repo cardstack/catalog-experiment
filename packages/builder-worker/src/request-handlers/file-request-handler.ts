@@ -6,7 +6,7 @@ import {
   DirectoryDescriptor,
   Stat,
 } from "../filesystem-drivers/filesystem-driver";
-import { log } from "../logger";
+import { debug } from "../logger";
 import { HttpStat } from "../filesystem-drivers/http-driver";
 import { relativeURL, makeURLEndInDir } from "../path";
 import { BuildManager } from "../build-manager";
@@ -14,7 +14,7 @@ import { BuildManager } from "../build-manager";
 const builderOrigin = "http://localhost:8080";
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 
-export function handleFileRequest(fs: FileSystem, buildManager: BuildManager) {
+export function handleFile(fs: FileSystem, buildManager: BuildManager) {
   return (async ({ request }) => {
     // turning this into a URL so we can normalize comparisons (trailing slashes
     // wont mess with us that way)
@@ -35,9 +35,20 @@ export function handleFileRequest(fs: FileSystem, buildManager: BuildManager) {
       return await fetch(request);
     }
 
-    log(`serving request ${requestURL} from filesystem`);
+    // if the projects have not been built yet, then serve the UI
+    if (
+      !buildManager.rebuilder &&
+      !requestURL.href.startsWith(`${originURL}catalogjs/ui/`)
+    ) {
+      requestURL = new URL(
+        `.${requestURL.pathname}`,
+        `${originURL}catalogjs/ui/`
+      );
+    }
+
+    debug(`serving request ${requestURL} from filesystem`);
     let response = await serveFile(requestURL, fs);
-    if (response.status === 404) {
+    if (response.status === 404 && buildManager.rebuilder) {
       // TODO talk with Ed about this. The InternalFileNode looks for a project
       // that starts with the projectOutputRoot.href, however if one project has
       // an output root that is a subdirectory of another child, we will pull in
@@ -55,12 +66,12 @@ export function handleFileRequest(fs: FileSystem, buildManager: BuildManager) {
       // project's URL as our root
       requestURL = new URL(
         `.${requestURL.pathname}`,
-        makeURLEndInDir(buildManager.projects[0][1])
+        makeURLEndInDir(buildManager.projects()![0][1])
       );
       response = await serveFile(requestURL, fs);
     }
-    if (response.status === 404) {
-      for (let [input, output] of buildManager.projects) {
+    if (response.status === 404 && buildManager.rebuilder) {
+      for (let [input, output] of buildManager.projects()!) {
         // we serve each project's input files as a fallback to their output
         // files, which lets you not worry about assets that are unchanged by the
         // build.

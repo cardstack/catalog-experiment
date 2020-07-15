@@ -71,6 +71,9 @@ function handleUICommand(event: MessageEvent) {
     case "hide":
       iframe.style.transform = `translate(0, 0)`;
       break;
+    case "home":
+      location.href = "/catalogjs/ui/";
+      break;
     default:
       assertNever(command);
   }

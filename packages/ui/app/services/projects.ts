@@ -17,9 +17,7 @@ export default class ProjectsService extends Service {
       });
       yield this.waitForActivation.perform(yield navigator.serviceWorker.ready);
     }
-    let projects = yield (yield fetch("/projects")).json();
-    console.log("projects", projects);
-    this.listing = projects;
+    this.listing = yield (yield fetch("/projects")).json();
   });
 
   // EC waitForProperty() doesn't seem to work when checking the serviceWorker's
@@ -32,13 +30,13 @@ export default class ProjectsService extends Service {
     }
   }).drop() as any;
 
-  start = task(function* (
-    this: ProjectsService,
-    _projectRoots: [string, string][]
-  ) {
+  start = task(function* (this: ProjectsService, projects: [string, string][]) {
     yield this.initialize.lastPerformed;
 
-    // TODO tell the service worker which app to load...
+    yield fetch("/projects", {
+      method: "POST",
+      body: JSON.stringify(projects),
+    });
 
     // doing this instead of reloading as we shouldn't assume what the current
     // location is. This will load the selected projects.

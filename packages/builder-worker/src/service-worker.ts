@@ -6,15 +6,16 @@ import {
 import { FileSystem } from "./filesystem";
 import { addEventListener } from "./event-bus";
 import { log, error } from "./logger";
-import { handleFileRequest } from "./request-handlers/file-request-handler";
+import { handleFile } from "./request-handlers/file-request-handler";
 import { handleClientRegister } from "./request-handlers/client-register-handler";
-import { handleLogLevelRequest } from "./request-handlers/log-level-handler";
-import { handleBuilderRestartRequest } from "./request-handlers/builder-restart-handler";
+import { handleLogLevel } from "./request-handlers/log-level-handler";
+import { handleBuilderRestart } from "./request-handlers/builder-restart-handler";
 import { ClientEventHandler } from "./client-event-handler";
 import { Handler } from "./request-handlers/request-handler";
 import { HttpFileSystemDriver } from "./filesystem-drivers/http-driver";
 import { BuildManager } from "./build-manager";
-import { handleListingRequest } from "./request-handlers/project-listing-handler";
+import { handleListing } from "./request-handlers/project-listing-handler";
+import { handleSetProjects } from "./request-handlers/set-projects-handler";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 const fs = new FileSystem();
@@ -25,19 +26,6 @@ let isDisabled = false;
 let volume: FileDaemonClientVolume | undefined;
 let eventHandler: ClientEventHandler;
 let originURL = new URL(worker.origin);
-
-// TODO this should be set from the app
-let projects: [URL, URL][] = [
-  [
-    new URL("https://local-disk/test-app/"),
-    new URL(`${originURL.href}test-app/`),
-  ],
-  [
-    new URL("https://local-disk/test-lib/"),
-    new URL(`${originURL.href}test-lib/`),
-  ],
-];
-
 let buildManager: BuildManager;
 let activated: () => void;
 let activating: Promise<void>;
@@ -49,7 +37,7 @@ worker.addEventListener("install", () => {
   eventHandler = new ClientEventHandler();
   addEventListener(eventHandler.handleEvent.bind(eventHandler));
 
-  log(`installing`);
+  log(`installing service worker`);
   websocketURL = new URL(defaultWebsocketURL);
 
   // force moving on to activation even if another service worker had control
@@ -79,10 +67,8 @@ async function activate() {
   // connected and sync events in a special folder that we can monitor.
   volume = clientVolume as FileDaemonClientVolume;
 
-  buildManager = new BuildManager(fs, projects);
-  await buildManager.rebuilder.start();
-  await buildManager.rebuilder.isIdle();
-  await fs.displayListing();
+  buildManager = new BuildManager(fs);
+  await fs.displayListing(log);
   activated();
 }
 
@@ -100,14 +86,15 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
         if (!volume) {
           throw new Error(`bug: the FileDaemonClientVolume is unavailable`);
         }
-        await buildManager.rebuilder.isIdle();
+        await buildManager.isIdle();
 
         let stack: Handler[] = [
           handleClientRegister(eventHandler, volume),
-          handleListingRequest(fs, buildManager),
-          handleBuilderRestartRequest(buildManager),
-          handleLogLevelRequest(),
-          handleFileRequest(fs, buildManager),
+          handleListing(fs, buildManager),
+          handleSetProjects(buildManager),
+          handleBuilderRestart(buildManager),
+          handleLogLevel(),
+          handleFile(fs, buildManager),
         ];
         let response: Response | undefined;
         for (let handler of stack) {

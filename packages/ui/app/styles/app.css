@@ -28,6 +28,7 @@ body {
   cursor: pointer;
 }
 
+.home-btn,
 .restart-btn {
   cursor: pointer;
   opacity: 0.75;

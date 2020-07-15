@@ -4,6 +4,7 @@ import {
   Ready,
   Show,
   Hide,
+  Home,
   eventGroup as group,
 } from "builder-worker/src/ui-manager";
 
@@ -34,5 +35,10 @@ export default class UIManagerService extends Service {
   hide() {
     let hideEvent: Event<Hide> = { group, args: { type: "hide" } };
     window.parent.postMessage(hideEvent, "*");
+  }
+
+  home() {
+    let homeEvent: Event<Home> = { group, args: { type: "home" } };
+    window.parent.postMessage(homeEvent, "*");
   }
 }

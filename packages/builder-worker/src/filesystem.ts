@@ -10,7 +10,6 @@ import {
   Stat,
 } from "./filesystem-drivers/filesystem-driver";
 import { MemoryDriver } from "./filesystem-drivers/memory-driver";
-import { log } from "./logger";
 
 export const eventGroup = "fs";
 export const eventCategory = "fs";
@@ -324,7 +323,7 @@ export class FileSystem {
     throw new Error("bug: should never get here");
   }
 
-  async displayListing(): Promise<void> {
+  async displayListing(logFn: (l: string) => void): Promise<void> {
     let listing = (await this.listAllOrigins(true)).map(({ url, stat }) => ({
       type: stat.type,
       size: stat.type === "directory" ? "-" : stat.size,
@@ -335,7 +334,7 @@ export class FileSystem {
       etag: stat.etag ?? "-",
       url,
     }));
-    log(columnify(listing));
+    logFn(columnify(listing));
   }
 }
 

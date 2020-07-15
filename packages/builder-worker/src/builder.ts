@@ -421,6 +421,7 @@ export class Rebuilder<Input> {
   }
 
   get status():
+    | { name: "not started" }
     | { name: "succeeded" }
     | { name: "failed"; exception: Error }
     | { name: "running" } {
@@ -428,6 +429,8 @@ export class Rebuilder<Input> {
       return this.state.lastBuildSucceeded
         ? { name: "succeeded" }
         : { name: "failed", exception: this.state.error };
+    } else if (this.state.name === "created") {
+      return { name: "not started" };
     } else {
       return { name: "running" };
     }
@@ -437,6 +440,17 @@ export class Rebuilder<Input> {
     if (this.state.name === "created") {
       this.run();
     }
+  }
+
+  // used to manually request a build
+  async build() {
+    if (this.status.name === "not started") {
+      this.start();
+    } else {
+      await this.isIdle();
+      this.setState({ name: "rebuild-requested" });
+    }
+    await this.isIdle();
   }
 
   @bind
