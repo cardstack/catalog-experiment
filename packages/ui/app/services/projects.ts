@@ -1,7 +1,7 @@
 import Service from "@ember/service";
 import { tracked } from "@glimmer/tracking";
 // @ts-ignore
-import { task, race, timeout } from "ember-concurrency";
+import { task, timeout } from "ember-concurrency";
 
 interface Projects {
   activeProjects: [string, string][];
@@ -15,30 +15,21 @@ export default class ProjectsService extends Service {
       navigator.serviceWorker.register("/service-worker.js", {
         scope: "/",
       });
-      yield navigator.serviceWorker.ready;
+      yield this.waitForActivation.perform(yield navigator.serviceWorker.ready);
     }
-    let projects = yield race([timeout(10000), this.getProjects.perform()]) as
-      | Projects
-      | undefined;
-    if (!projects) {
-      throw new Error(
-        `timed-out while waiting for service worker to provide projects information`
-      );
-    }
+    let projects = yield (yield fetch("/projects")).json();
     console.log("projects", projects);
     this.listing = projects;
   });
 
-  getProjects = task(function* () {
-    // looks like we are talking to the outside work and not the service worker
-    // at startup (the initialize() task should be preventing that from
-    // happening....) Adding a poll the service worker until we get a non-404
-    // response for the time being.
-    let response: Response | undefined;
-    while (!response || !response.ok) {
-      response = yield fetch("/projects");
+  // EC waitForProperty() doesn't seem to work when checking the serviceWorker's
+  // state, so doing it manually...
+  waitForActivation = task(function* (registration: ServiceWorkerRegistration) {
+    let state: string | undefined;
+    while (state !== "activated") {
+      yield timeout(100);
+      state = registration.active?.state;
     }
-    return yield response.json();
   }).drop() as any;
 
   start = task(function* (
