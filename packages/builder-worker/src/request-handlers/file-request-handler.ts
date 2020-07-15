@@ -38,7 +38,19 @@ export function handleFileRequest(fs: FileSystem, buildManager: BuildManager) {
     log(`serving request ${requestURL} from filesystem`);
     let response = await serveFile(requestURL, fs);
     if (response.status === 404) {
-      // TODO talk with Ed about this-- think this is actually a bug...
+      // TODO talk with Ed about this. The InternalFileNode looks for a project
+      // that starts with the projectOutputRoot.href, however if one project has
+      // an output root that is a subdirectory of another child, we will pull in
+      // the wrong project, which is what is happening when you make the
+      // test-app's output http://localhost:4200 and the test-lib's output
+      // http://localhost:4200/test-lib. what we are doing here is allowing the
+      // first project to be able to reside at the root of the origin (by adding
+      // a fallback to look for files there), but maybe we need something more
+      // explicit so the user can specify which project they want at the origin
+      // (or maybe we manufacture an output root for a project whose output was
+      // specified to be at the root of the origin, and then use this to smooth
+      // things over when serving files).
+
       // if the response is for the selected project's outputs then we use that
       // project's URL as our root
       requestURL = new URL(

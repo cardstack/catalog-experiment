@@ -40,11 +40,12 @@ let projects: [URL, URL][] = [
 
 let buildManager: BuildManager;
 let activated: () => void;
-let activating = new Promise<void>((res) => (activated = res));
+let activating: Promise<void>;
 
 console.log(`service worker evaluated`);
 
 worker.addEventListener("install", () => {
+  activating = new Promise<void>((res) => (activated = res));
   eventHandler = new ClientEventHandler();
   addEventListener(eventHandler.handleEvent.bind(eventHandler));
 
