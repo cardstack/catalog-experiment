@@ -6,12 +6,20 @@
   <div class="projects">
     {{#each this.availableProjects as |project|}}
     <div class="project">
-      <Input @type="checkbox" @checked={{has-project project this.activeProjects}}
-        {{on 'click' (fn this.toggleProject project)}} />
-      <span class="project-input">{{project}}</span>
-      output URL:
-      <Input @type="text" size="50" @value={{project-output-url project this.selectedProjects}}
-        @key-up={{fn this.setProjectOutput project}} />
+      <dl>
+        <dt>
+          <label>
+            <Input @type="checkbox" @checked={{has-project project this.activeProjects}}
+              {{on 'click' (fn this.toggleProject project)}} />
+            <span class="project-input">{{project}}</span>
+          </label>
+        </dt>
+        <dd>
+          output URL:
+          <Input @type="text" size="50" @value={{project-output-url project this.selectedProjects}}
+            @key-up={{fn this.setProjectOutput project}} />
+        </dd>
+      </dl>
     </div>
     {{/each}}
   </div>

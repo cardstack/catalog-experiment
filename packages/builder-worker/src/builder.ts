@@ -14,6 +14,7 @@ import { FileDescriptor } from "./filesystem-drivers/filesystem-driver";
 import { Deferred } from "./deferred";
 import { assertNever } from "shared/util";
 import { error } from "./logger";
+import sortBy from "lodash/sortBy";
 
 type BoolForEach<T> = {
   [P in keyof T]: boolean;
@@ -609,14 +610,20 @@ class InternalFileNode<Input> implements BuilderNode<string> {
   }
 
   deps() {
-    for (let _rootNode of Object.values(this.roots)) {
-      let rootNode = _rootNode as BuilderNode;
-      if (
+    let matchingRoots = (Object.values(this.roots) as BuilderNode[]).filter(
+      (rootNode) =>
         rootNode.projectOutputRoot &&
         this.url.href.startsWith(rootNode.projectOutputRoot.href)
-      ) {
-        return { dependsOnProject: rootNode };
-      }
+    );
+    // find the closest matching root to our file URL, which will be the root
+    // that has the longest URL (in this case one project has an output URL that
+    // is the parent of another project)
+    if (matchingRoots.length > 0) {
+      let rootNode = sortBy(
+        matchingRoots,
+        (rootNode) => rootNode.projectOutputRoot!.href.length
+      ).pop()!;
+      return { dependsOnProject: rootNode };
     }
     return undefined;
   }

@@ -40,9 +40,15 @@ export default class ProjectSelectorComponent extends Component {
         ([input]) => input !== projectInput
       );
     } else {
+      let output: string;
+      if (hasOutputURL(`${location.origin}/`, this.selectedProjects)) {
+        output = `${location.origin}/${baseName(projectInput)}/`;
+      } else {
+        output = `${location.origin}/`;
+      }
       this.selectedProjects = [
         ...this.selectedProjects,
-        [projectInput, `${location.origin}/${baseName(projectInput)}/`],
+        [projectInput, output],
       ];
     }
   }
@@ -66,4 +72,7 @@ function getProject(
 
 function hasInputURL(url: string, projectRoots: [string, string][]): boolean {
   return Boolean(getProject(url, projectRoots));
+}
+function hasOutputURL(url: string, projectRoots: [string, string][]): boolean {
+  return Boolean(projectRoots.find(([, output]) => output === url));
 }
