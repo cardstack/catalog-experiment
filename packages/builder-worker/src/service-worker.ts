@@ -94,11 +94,9 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
     return;
   }
 
-  // TODO we are getting 404's when we try to ask for the /projects too soon.
-  // presumably we should be awaiting the file daemon client's mount before we
-  // serve the /project. perhaps the 404 is happening because the service worker
-  // hasn't spun up yet and the browser is trying to actually talk to the
-  // outside world?
+  // TODO we are getting 404's when we try to ask for the /projects too soon. it
+  // looks like the 404 is happening because the service worker hasn't spun up
+  // yet and the browser is trying to actually talk to the outside world...
 
   event.respondWith(
     (async () => {

@@ -30,12 +30,10 @@ export default class ProjectsService extends Service {
   });
 
   getProjects = task(function* () {
-    // there is a certain amount of time required for the service worker to
-    // mount the filesystem, until then there is no guarantee that the service
-    // worker is ready to start handling requests (the ability to register
-    // ourselves to be able to recieve message from the service worker is also
-    // bound up in this wait time). Just poll the service worker until we get a
-    // non-404 response.
+    // looks like we are talking to the outside work and not the service worker
+    // at startup (the initialize() task should be preventing that from
+    // happening....) Adding a poll the service worker until we get a non-404
+    // response for the time being.
     let response: Response | undefined;
     while (!response || !response.ok) {
       response = yield fetch("/projects");
