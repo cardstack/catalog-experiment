@@ -8,6 +8,7 @@ QUnit.module("logger", function (hooks) {
   });
 
   test("can log a message", async function (assert) {
+    Logger.setLogLevel("info");
     Logger.log("message");
     assert.equal(
       Logger.messages().length,
@@ -22,18 +23,21 @@ QUnit.module("logger", function (hooks) {
   });
 
   test("can log a debug message", async function (assert) {
+    Logger.setLogLevel("debug");
     debug("message");
     let [message] = Logger.messages();
     assert.equal(message.level, "debug", "the log level is correct");
   });
 
   test("can log a warning message", async function (assert) {
+    Logger.setLogLevel("warn");
     warn("message");
     let [message] = Logger.messages();
     assert.equal(message.level, "warn", "the log level is correct");
   });
 
   test("can log an error  message", async function (assert) {
+    Logger.setLogLevel("error");
     error("message");
     let [message] = Logger.messages();
     assert.equal(message.level, "error", "the log level is correct");
