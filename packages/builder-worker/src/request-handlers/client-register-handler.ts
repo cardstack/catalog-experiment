@@ -5,7 +5,7 @@ import {
   FileDaemonClientEvent,
   eventCategory as fileDaemonClientEventCategory,
   FileDaemonClientVolume,
-} from "../filesystem-drivers/file-daemon-client-driver";
+} from "../../../file-daemon-client/src/index";
 import { LogMessage, eventGroup as logGroup } from "../logger";
 import { ClientEventHandler } from "../client-event-handler";
 

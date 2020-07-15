@@ -4,7 +4,7 @@ import {
   NextNode,
   AllNode,
   annotationRegex,
-  ConstantNode,
+  NodeOutput,
 } from "./common";
 import { EntrypointsJSONNode, HTMLEntrypoint, Entrypoint } from "./entrypoint";
 import { FileNode } from "./file";
@@ -14,30 +14,34 @@ import { File } from "@babel/types";
 import { decodeModuleDescription } from "../description-encoder";
 
 export class ModuleResolutionsNode implements BuilderNode {
-  cacheKey = this;
+  cacheKey: string;
 
-  constructor(private projectRoots: [URL, URL][]) {}
-
-  deps() {
-    return this.projectRoots.map(
-      ([inputRoot, outputRoot]) =>
-        new EntrypointsJSONNode(inputRoot, outputRoot)
-    );
+  constructor(private projectInput: URL, private projectOutput: URL) {
+    this.cacheKey = `module-resolutions:input=${projectInput.href},output=${projectOutput.href}`;
   }
 
-  async run(projects: {
-    [index: string]: Entrypoint[];
+  deps() {
+    return {
+      entrypoints: new EntrypointsJSONNode(
+        this.projectInput,
+        this.projectOutput
+      ),
+    };
+  }
+
+  async run({
+    entrypoints,
+  }: {
+    entrypoints: Entrypoint[];
   }): Promise<NextNode<ModuleResolution[]>> {
     let jsEntrypoints: Set<string> = new Set();
-    for (let project of Object.values(projects)) {
-      for (let entrypoint of project) {
-        if (entrypoint instanceof HTMLEntrypoint) {
-          for (let js of entrypoint.jsEntrypoints.keys()) {
-            jsEntrypoints.add(js);
-          }
-        } else {
-          jsEntrypoints.add(entrypoint.url.href);
+    for (let entrypoint of entrypoints) {
+      if (entrypoint instanceof HTMLEntrypoint) {
+        for (let jsHref of entrypoint.jsEntrypoints.keys()) {
+          jsEntrypoints.add(jsHref);
         }
+      } else {
+        jsEntrypoints.add(entrypoint.url.href);
       }
     }
     let resolutions = [...jsEntrypoints].map(
@@ -63,33 +67,33 @@ export class Resolver {
 
 export class ModuleAnnotationNode implements BuilderNode {
   cacheKey: string;
-  constructor(private url: URL) {
-    this.cacheKey = `module-annotation:${url.href}`;
+  constructor(private fileNode: FileNode) {
+    this.cacheKey = `module-annotation:${fileNode.url.href}`;
   }
   deps() {
-    return { source: new FileNode(this.url) };
+    return { source: this.fileNode };
   }
   async run({
     source,
   }: {
     source: string;
-  }): Promise<NextNode<ModuleDescription>> {
+  }): Promise<NodeOutput<ModuleDescription>> {
     let match = annotationRegex.exec(source);
     if (match) {
       let desc = decodeModuleDescription(match[1]);
-      return { node: new ConstantNode(desc) };
+      return { value: desc };
     }
-    return { node: new ModuleDescriptionNode(this.url) };
+    return { node: new ModuleDescriptionNode(this.fileNode) };
   }
 }
 
 export class ModuleDescriptionNode implements BuilderNode {
   cacheKey: string;
-  constructor(private url: URL) {
-    this.cacheKey = `module-description:${url.href}`;
+  constructor(private fileNode: FileNode) {
+    this.cacheKey = `module-description:${fileNode.url.href}`;
   }
   deps() {
-    return { parsed: new JSParseNode(new FileNode(this.url)) };
+    return { parsed: new JSParseNode(this.fileNode) };
   }
   async run({ parsed }: { parsed: File }): Promise<Value<ModuleDescription>> {
     return { value: describeModule(parsed) };
@@ -103,7 +107,7 @@ export class ModuleResolutionNode implements BuilderNode {
   }
   deps() {
     let fileNode = new FileNode(this.url);
-    return { desc: new ModuleAnnotationNode(this.url), source: fileNode };
+    return { desc: new ModuleAnnotationNode(fileNode), source: fileNode };
   }
   async run({
     desc,
@@ -115,6 +119,7 @@ export class ModuleResolutionNode implements BuilderNode {
     let imports = await Promise.all(
       desc.imports.map(async (imp) => {
         let depURL = await this.resolver.resolve(imp.specifier, this.url);
+        // how do we know the dependencies for this new node are actually not from another project?
         return new ModuleResolutionNode(depURL, this.resolver);
       })
     );

@@ -5,13 +5,12 @@ import {
   Volume,
   Stat,
 } from "../../builder-worker/src/filesystem-drivers/filesystem-driver";
-import { assertURLEndsInDir } from "../../builder-worker/src/path";
+import { makeURLEndInDir } from "../../builder-worker/src/path";
 import { dispatchEvent } from "../../builder-worker/src/event-bus";
 import {
-  FileSystem,
   eventCategory as category,
   eventGroup,
-  Event as FSEvent,
+  FSEvent,
 } from "../../builder-worker/src/filesystem";
 import { DOMToNodeReadable, NodeReadableToDOM } from "file-daemon/stream-shims";
 import { Readable } from "stream";
@@ -40,8 +39,8 @@ const utf8 = new TextDecoder("utf8");
 export class NodeFileSystemDriver implements FileSystemDriver {
   constructor(private path: string) {}
 
-  async mountVolume(_fs: FileSystem, id: string, url: URL) {
-    return new NodeVolume(id, this.path, url);
+  async mountVolume(url: URL) {
+    return new NodeVolume(this.path, url);
   }
 }
 
@@ -62,7 +61,7 @@ export function closeAll() {
 export class NodeVolume implements Volume {
   root: NodeDirectoryDescriptor;
 
-  constructor(readonly id: string, rootPath: string, url: URL) {
+  constructor(rootPath: string, url: URL) {
     this.root = new NodeDirectoryDescriptor(this, url, opendirSync(rootPath));
   }
 
@@ -75,7 +74,7 @@ export class NodeVolume implements Volume {
     }
     let path = join(parentDir.path, name);
     ensureDirSync(path);
-    let url = new URL(name, assertURLEndsInDir(parent.url));
+    let url = new URL(name, makeURLEndInDir(parent.url));
     return new NodeDirectoryDescriptor(this, url, opendirSync(path));
   }
 
@@ -87,9 +86,11 @@ export class NodeVolume implements Volume {
       );
     }
     let path = join(parentDir.path, name);
-    let url = new URL(name, assertURLEndsInDir(parent.url));
+    let url = new URL(name, makeURLEndInDir(parent.url));
     return new NodeFileDescriptor(this, url, openSync(path, "w+"));
   }
+
+  async willUnmount() {}
 }
 
 export class NodeDirectoryDescriptor implements DirectoryDescriptor {
@@ -129,7 +130,7 @@ export class NodeDirectoryDescriptor implements DirectoryDescriptor {
     if (entry && entry.isFile()) {
       return new NodeFileDescriptor(
         this.volume,
-        new URL(name, assertURLEndsInDir(this.url)),
+        new URL(name, makeURLEndInDir(this.url)),
         openSync(join(this.dir.path, name), "r+")
       );
     }
@@ -142,7 +143,7 @@ export class NodeDirectoryDescriptor implements DirectoryDescriptor {
     if (entry && entry.isDirectory()) {
       return new NodeDirectoryDescriptor(
         this.volume,
-        new URL(name, assertURLEndsInDir(this.url)),
+        new URL(name, makeURLEndInDir(this.url)),
         opendirSync(join(this.dir.path, name))
       );
     }

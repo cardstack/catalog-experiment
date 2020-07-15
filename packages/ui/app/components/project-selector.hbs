@@ -1,0 +1,21 @@
+<div>
+  {{#if this.projects.initialize.isRunning}}
+  Starting up...
+  {{else}}
+  <h3>Available Projects</h3>
+  <div class="projects">
+    {{#each this.availableProjects as |project|}}
+    <div class="project">
+      <Input @type="checkbox" @checked={{has-project project this.activeProjects}}
+        {{on 'click' (fn this.toggleProject project)}} />
+      <span class="project-input">{{project}}</span>
+      output URL:
+      <Input @type="text" size="50" @value={{project-output-url project this.selectedProjects}}
+        @key-up={{fn this.setProjectOutput project}} />
+    </div>
+    {{/each}}
+  </div>
+  {{/if}}
+
+  <button onclick={{action startSelectedProject}}>Start</button>
+</div>

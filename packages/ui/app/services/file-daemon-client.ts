@@ -4,18 +4,13 @@ import UIManagerService from "./ui-manager";
 //@ts-ignore
 import { task, timeout } from "ember-concurrency";
 import { assertNever } from "shared/util";
-import {
-  FilesChangedEvent,
-  isFileDaemonEvent,
-  FileDaemonClientEvent,
-} from "builder-worker/src/filesystem-drivers/file-daemon-client-driver";
+import { isFileDaemonEvent, FileDaemonClientEvent } from "file-daemon-client";
 
 export default class FileDaemonClientService extends Service {
   @service uiManager!: UIManagerService;
   @tracked connected = false;
   @tracked isSyncing = false;
   @tracked syncedFiles: string[] = [];
-  @tracked lastChange?: FilesChangedEvent;
 
   startListening() {
     navigator.serviceWorker.addEventListener("message", (event) => {
@@ -53,12 +48,6 @@ export default class FileDaemonClientService extends Service {
         this.uiManager.show();
         yield timeout(10000);
         this.syncedFiles = [];
-        break;
-      case "files-changed":
-        this.lastChange = event;
-        this.uiManager.show();
-        yield timeout(10000);
-        this.lastChange = undefined;
         break;
       default:
         assertNever(event);

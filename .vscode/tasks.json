@@ -77,6 +77,24 @@
     },
     {
       "type": "typescript",
+      "tsconfig": "packages/file-daemon-client/tsconfig.json",
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "option": "watch",
+      "problemMatcher": {
+        "base": "$tsc-watch",
+        "applyTo": "allDocuments"
+      },
+      "group": "build",
+      "label": "tsc: watch - file-daemon-client",
+      "isBackground": true,
+      "presentation": {
+        "panel": "new"
+      }
+    },
+    {
+      "type": "typescript",
       "tsconfig": "packages/shared/tsconfig.json",
       "runOptions": {
         "runOn": "folderOpen"

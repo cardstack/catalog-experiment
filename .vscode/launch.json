@@ -8,10 +8,19 @@
       "type": "node",
       "request": "launch",
       "name": "Serve test-app",
-      "cwd": "${workspaceRoot}/packages/app",
+      "cwd": "${workspaceRoot}/packages/test-app",
+      "env": {},
+      "program": "${workspaceRoot}/packages/file-daemon/bin/file-daemon.js",
+      "args": [".", "../test-lib"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Serve test-lib",
+      "cwd": "${workspaceRoot}/packages/test-lib",
       "env": {},
       "program": "${workspaceRoot}/packages/file-daemon/index.js",
-      "args": ["-d", "."]
+      "args": ["."]
     },
     {
       "type": "node",
@@ -34,19 +43,39 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "Start Test File Daemon",
-      "cwd": "${workspaceRoot}/packages/builder/test/test-app",
+      "name": "Run node build",
+      "cwd": "${workspaceRoot}",
       "env": {},
-      "program": "${workspaceRoot}/packages/file-daemon/index.js",
+      "program": "${workspaceRoot}/packages/builder-node/bin/build.js",
       "args": [
-        "-d",
-        ".",
+        "--project=packages/test-app,http://build-output",
+        "--project=packages/test-lib,http://localhost:4200/test-lib/"
+      ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Run file-daemon QUnit",
+      "cwd": "${workspaceRoot}/packages/file-daemon",
+      "env": {},
+      "program": "${workspaceRoot}/node_modules/.bin/qunit",
+      "args": ["test/index.js"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Start Test File Daemon",
+      "cwd": "${workspaceRoot}/packages/file-daemon-client/test/test-app",
+      "env": {},
+      "program": "${workspaceRoot}/packages/file-daemon/bin/file-daemon.js",
+      "args": [
         "-p",
-        "4201",
+        "4202",
         "-w",
-        "3001",
+        "3002",
         "-k",
-        "7J+SZeMa6nmaJMpls8Qi6fKLMsNsLJoPcd8SsOUpDW0="
+        "7J+SZeMa6nmaJMpls8Qi6fKLMsNsLJoPcd8SsOUpDW0=",
+        "."
       ]
     },
     {

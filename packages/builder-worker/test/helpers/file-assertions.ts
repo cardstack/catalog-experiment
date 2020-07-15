@@ -1,7 +1,7 @@
 import "qunit";
 import { Memoize } from "typescript-memoize";
 import { FileSystem } from "../../src/filesystem";
-import { assertURLEndsInDir } from "../../src/path";
+import { makeURLEndInDir } from "../../src/path";
 import { FileDescriptor } from "../../src/filesystem-drivers/filesystem-driver";
 
 export const origin = "http://localhost:4200";
@@ -16,6 +16,7 @@ export function url(path: string, base = origin): URL {
 
 export interface FileAssert extends Assert {
   setupFiles(scenario?: Scenario, baseURL?: URL): Promise<void>;
+  resetFilesystem(): void;
   readonly fs: FileSystem;
   readonly baseURL: URL;
   file(relativeURL: string): BoundFileAssert;
@@ -34,7 +35,7 @@ export class BoundFileAssert {
 
   @Memoize()
   get fullURL(): URL {
-    return new URL(this.relativeURL, assertURLEndsInDir(this.assert.baseURL));
+    return new URL(this.relativeURL, makeURLEndInDir(this.assert.baseURL));
   }
 
   @Memoize()
@@ -179,18 +180,21 @@ function makeBoundFile(this: FileAssert, relativeURL: string) {
 
 export function installFileAssertions(hooks: NestedHooks) {
   let baseURL = new URL(origin);
-  let fs: FileSystem;
+  let fs = new FileSystem();
+
+  function resetFilesystem() {
+    fs = new FileSystem();
+  }
 
   async function setupFiles(
     scenario: Scenario = {},
     b = new URL(origin)
   ): Promise<void> {
-    fs = new FileSystem();
     baseURL = b;
     for (let [path, text] of Object.entries(scenario)) {
       let url = new URL(path, baseURL);
       let file = (await fs.open(url, true)) as FileDescriptor;
-      file.write(text);
+      await file.write(text);
     }
   }
 
@@ -210,6 +214,7 @@ export function installFileAssertions(hooks: NestedHooks) {
     }
     assert.file = makeBoundFile;
     assert.setupFiles = setupFiles;
+    assert.resetFilesystem = resetFilesystem;
   }
 
   // we need "before" if we want to be available in the user's "before" hook.

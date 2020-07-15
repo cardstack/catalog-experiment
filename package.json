@@ -3,14 +3,32 @@
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",
-  "workspaces": [
-    "packages/*"
-  ],
+  "workspaces": {
+    "packages": [
+      "packages/*"
+    ],
+    "_comment_": "We can't hoist these packages because they contain types and those types or their dependencies pull in <ref lib='dom'>, and TS discovers all of them across all monorepo packages.",
+    "nohoist": [
+      "**/@types/superagent",
+      "**/@types/supertest",
+      "**/@types/ember",
+      "**/@types/ember/**",
+      "**/@types/ember-qunit",
+      "**/@types/ember-qunit/**",
+      "**/@types/ember__test-helpers",
+      "**/@types/ember__test-helpers/**",
+      "**/@types/qunit",
+      "**/@types/rsvp",
+      "**/ember-load-initializers",
+      "**/ember-load-initializers/**"
+    ]
+  },
   "private": true,
   "scripts": {
     "clean": "git clean -x -f",
     "build": "npm-run-all build:*",
     "build:file-daemon": "cd packages/file-daemon && tsc",
+    "build:file-daemon-client": "cd packages/file-daemon-client && tsc",
     "build:builder-worker": "cd packages/builder-worker && tsc",
     "build:builder-dom": "cd packages/builder-dom && tsc",
     "build:builder-node": "cd packages/builder-node && tsc",
@@ -18,16 +36,17 @@
     "build:tarstream": "cd packages/tarstream && tsc",
     "build:ui": "cd packages/ui && tsc",
     "test": "npm-run-all test:*",
+    "test:file-daemon": "cd packages/file-daemon && yarn test",
+    "test:file-daemon-client": "cd packages/file-daemon-client && yarn test",
     "test:builder-worker": "cd packages/builder-worker && yarn test",
     "test:builder-node": "cd packages/builder-worker && yarn webpack && yarn qunit assets/node-test.js",
-    "test:test-app": "node ./packages/builder-node/bin/build.js packages/test-app --overlay && testem ci",
-    "test:test-lib": "node ./packages/builder-node/bin/build.js packages/test-lib && testem ci",
+    "test:test-app": "node ./packages/builder-node/bin/build.js --project=packages/test-app,http://build-output --project=packages/test-lib,http://localhost:4200/test-lib/ && testem ci",
+    "test:test-lib": "node ./packages/builder-node/bin/build.js --project=packages/test-lib,http://build-output && testem ci",
     "builder": "cd packages/builder-worker && yarn start",
     "serve": "cd packages/test-app && yarn start",
     "ui": "cd packages/ui && yarn start"
   },
   "devDependencies": {
-    "@types/ember__engine": "^3.0.5",
     "npm-run-all": "^4.1.5",
     "testem": "^3.1.0"
   },

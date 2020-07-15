@@ -1,16 +1,5 @@
 const { resolve, join } = require("path");
 const { readFileSync, existsSync } = require("fs");
-const { DefinePlugin } = require("webpack");
-
-const fileDaemonKeyFile = join(__dirname, ".file-daemon-key");
-let fileDaemonKey;
-if (existsSync(fileDaemonKeyFile)) {
-  fileDaemonKey = readFileSync(join(__dirname, ".file-daemon-key")).toString();
-} else {
-  console.warn(
-    `The file daemon key file '${fileDaemonKeyFile}' is missing, file daemon testing will not work without this file.`
-  );
-}
 
 let config = {
   mode: "development",
@@ -34,13 +23,7 @@ let config = {
     // for @babel/core
     fs: "empty",
   },
-  plugins: [
-    new DefinePlugin({
-      FILE_DAEMON_KEY: JSON.stringify(
-        fileDaemonKey || "FILE_DAEMON_KEY_NOT_SET"
-      ),
-    }),
-  ],
+  plugins: [],
   module: {
     rules: [
       {

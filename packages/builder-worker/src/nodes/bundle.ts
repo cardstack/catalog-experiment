@@ -1,7 +1,6 @@
 import {
   BuilderNode,
   Value,
-  AllNode,
   NextNode,
   ConstantNode,
   annotationEnd,
@@ -17,25 +16,26 @@ import {
   JSEntrypoint,
   HTMLEntrypoint,
 } from "./entrypoint";
-import flatten from "lodash/flatten";
 import { JSParseNode } from "./js";
 import { encodeModuleDescription } from "../description-encoder";
-import { baseName } from "../path";
 
 export class BundleAssignmentsNode implements BuilderNode {
-  cacheKey = this;
+  cacheKey: string;
 
-  constructor(private projectRoots: [URL, URL][]) {}
+  constructor(private projectInput: URL, private projectOutput: URL) {
+    this.cacheKey = `bundle-assignments:input=${projectInput.href},output=${projectOutput.href}`;
+  }
 
   deps() {
     return {
-      entrypoints: new AllNode(
-        this.projectRoots.map(
-          ([inputRoot, outputRoot]) =>
-            new EntrypointsJSONNode(inputRoot, outputRoot)
-        )
+      entrypoints: new EntrypointsJSONNode(
+        this.projectInput,
+        this.projectOutput
       ),
-      resolutions: new ModuleResolutionsNode(this.projectRoots),
+      resolutions: new ModuleResolutionsNode(
+        this.projectInput,
+        this.projectOutput
+      ),
     };
   }
 
@@ -47,22 +47,22 @@ export class BundleAssignmentsNode implements BuilderNode {
     entrypoints: Entrypoint[];
   }): Promise<Value<BundleAssignment[]>> {
     let assignments = new Map<string, BundleAssignment>();
-    let jsEntrypoints = flatten(entrypoints).filter(
+    let jsEntrypointHrefs = (entrypoints.filter(
       (e) => !(e instanceof HTMLEntrypoint)
-    ) as JSEntrypoint[];
-    let jsEntrypointHrefs = jsEntrypoints.map((e) => e.url.href);
+    ) as JSEntrypoint[]).map((e) => e.url.href);
     for (let [index, module] of resolutions.entries()) {
-      // place the bundles in the first project's output, under dist.
-      let root = this.projectRoots[0][1];
+      let root = this.projectOutput;
       let bundleURL: URL;
       if (jsEntrypointHrefs.includes(module.url.href)) {
-        let entrypoint = jsEntrypoints.find(
-          (e) => e.url.href === module.url.href
-        )!;
+        // merge the bundle's path into the root's folder structure if they
+        // share a common root folder structure in the path part of the URL
+        let commonRootParts = commonStart(
+          module.url.pathname.split("/"),
+          root.pathname.split("/")
+        );
+        let commonRoot = commonRootParts.join("/");
         bundleURL = new URL(
-          `./dist/${encodeURIComponent(entrypoint.packageName)}/${baseName(
-            module.url
-          )}`,
+          `.${module.url.pathname.slice(commonRoot.length)}`,
           root
         );
       } else {
@@ -96,30 +96,40 @@ export class BundleAssignmentsNode implements BuilderNode {
   }
 }
 
-export class BundleNode {
-  cacheKey: BundleNode;
-  constructor(private bundle: URL, private assignments: BundleAssignment[]) {
-    this.cacheKey = this;
+export class BundleNode implements BuilderNode {
+  cacheKey: string;
+
+  constructor(
+    private bundle: URL,
+    private inputRoot: URL,
+    private outputRoot: URL
+  ) {
+    this.cacheKey = `bundle-node:url=${this.bundle.href},inputRoot=${this.inputRoot.href},outputRoot=${this.outputRoot.href}`;
   }
 
   deps() {
-    // right now BundleNode is entirely volatile and gets constructed with all
-    // the info it needs, so it has no deps. But this means we aren't saving any
-    // of its work in between rebuilds. We plan to make it cache better, which
-    // justifies keeping BundleNode as a separate node.
-    return null;
+    return {
+      bundleAssignments: new BundleAssignmentsNode(
+        this.inputRoot,
+        this.outputRoot
+      ),
+    };
   }
 
-  async run(): Promise<NextNode<string>> {
+  async run({
+    bundleAssignments,
+  }: {
+    bundleAssignments: BundleAssignment[];
+  }): Promise<NextNode<string>> {
     return {
       node: new BundleSerializerNode(
-        combineModules(this.bundle, this.assignments).code
+        combineModules(this.bundle, bundleAssignments).code
       ),
     };
   }
 }
 
-export class BundleSerializerNode {
+export class BundleSerializerNode implements BuilderNode {
   cacheKey = this;
 
   constructor(private unannotatedSrc: string) {}
@@ -222,4 +232,16 @@ function defaultName(
     return match[1];
   }
   return "a";
+}
+
+function commonStart(arr1: string[], arr2: string[]): string[] {
+  let result: string[] = [];
+  for (let i = 0; i < Math.min(arr1.length - 1, arr2.length - 1); i++) {
+    if (arr1[i] === arr2[i]) {
+      result.push(arr1[i]);
+    } else {
+      break;
+    }
+  }
+  return result;
 }

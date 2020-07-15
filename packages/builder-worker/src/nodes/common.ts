@@ -19,24 +19,34 @@ export interface BuilderNode<Output = unknown, Input = unknown> {
   readonly cacheKey: any;
   deps(): Input;
   run(input: OutputTypes<Input>): Promise<NodeOutput<Output>>;
+
+  // if true, your `run` will always be called even when your inputs are all
+  // unchanged
+  volatile?: boolean;
+
+  // optional and only valid on the root BuilderNodes that are passed directly
+  // to the Builder. Used to link multiple projects together so that reads from
+  // within your project's outputRoot will defer until your project has built.
+  readonly projectOutputRoot?: URL;
 }
 
 const debugNames: WeakMap<BuilderNode, string> = new WeakMap();
 let debugNameCounter = 0;
 
 export function debugName(node: BuilderNode): string {
-  const maxCacheKeyLen = 60;
-  let cacheKey = node.cacheKey;
-  if (typeof cacheKey === "string") {
-    if (cacheKey.length > maxCacheKeyLen) {
-      return `${cacheKey.slice(0, maxCacheKeyLen)}...`;
-    } else {
-      return cacheKey;
-    }
-  }
   let name = debugNames.get(node);
   if (!name) {
-    name = `${node.constructor.name}:${debugNameCounter++}`;
+    let cacheKey = node.cacheKey;
+    if (typeof cacheKey === "string") {
+      const maxCacheKeyLen = 60;
+      if (cacheKey.length > maxCacheKeyLen) {
+        name = `${cacheKey.slice(0, maxCacheKeyLen)}...`;
+      } else {
+        name = cacheKey;
+      }
+    } else {
+      name = `${node.constructor.name}:${debugNameCounter++}`;
+    }
     debugNames.set(node, name);
   }
   return name;

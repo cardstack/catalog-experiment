@@ -155,12 +155,6 @@ To encapsulate the complexity of all the ways packages get distributed and build
 
 # TODO
 
-0. Serialize and deserialize bundle metadata.
-
-1. Make a test library that has both JS and HTML entrypoints, and get to the point where the builder can build it.
-
-   The JS entrypoint gets built into a bundle that's locally layered in the FS so the tests (and other projects) can use it directly before it has been published to CDN.
-
 2. Add the test library to the test app. Run it in the mode where both projects are being passed into Builder.forProjects(), this gives live editing of both pieces together.
 
    - this implies that when you add the library to the app, the app gets a lockfile.

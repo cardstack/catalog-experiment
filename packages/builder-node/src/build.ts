@@ -13,36 +13,38 @@ if (!globalThis.fetch) {
 
 Logger.echoInConsole(true);
 Logger.setLogLevel("info");
-let inputURL = new URL("https://app-src/");
-let outputURL = new URL("https://build-output");
 
-let appDir: string;
 let outputDir = join(process.cwd(), "dist");
+let projectRoots: [URL, URL][] = [];
 
-let { _: projectDirs, overlay } = yargs
+let { project: rawProjects } = yargs
+  .usage(
+    "Usage: $0 --project=<filePath_1>,<outputURL_1> ... --project=<filePath_N>,<outputURL_N>"
+  )
   .options({
-    overlay: {
-      alias: "o",
-      type: "boolean",
+    project: {
+      alias: "p",
+      type: "string",
       default: false,
       description:
-        "overlay output on top of input (otherwise input is not included in the output)",
+        "the project to include as a comma separated string of file path (where the input lives on disk) and output URL (where other projects can find this project). Use the output URL of http://build-output to write to the dist/ folder.",
     },
   })
-  .boolean("overlay").argv;
+  .boolean("overlay")
+  .array("project")
+  .demandOption(["project"]).argv;
 
-console.log(`overlay: ${overlay}`);
-
-if (projectDirs.length === 0) {
-  error(
-    "Error: must specify the app directory to be built as a commandline argument"
+if (!rawProjects || rawProjects.filter(Boolean).length === 0) {
+  console.log(
+    `You must supply a list of projects to build. each project should be in the form of 'project_file_path,http://project/output/url'`
   );
   process.exit(1);
-} else {
-  appDir = resolve(projectDirs[0]);
 }
+let projects = (rawProjects as unknown) as string[];
 
+let fs = new FileSystem();
 (async () => {
+  await prepare();
   await build();
   log(`build complete: ${outputDir}`);
   process.exit(0);
@@ -51,23 +53,31 @@ if (projectDirs.length === 0) {
   process.exit(1);
 });
 
+async function prepare() {
+  let count = 0;
+  for (let project of projects) {
+    let [path, outputHref] = project.split(",");
+    if (!path || !outputHref) {
+      console.error(
+        `project '${project}' needs to be in the form of 'project_file_path,http://project/output/url'`
+      );
+      process.exit(1);
+    }
+    let inputURL = new URL(`http://project-src${count++}`);
+    let driver = new NodeFileSystemDriver(resolve(path));
+    await fs.mount(inputURL, driver);
+    projectRoots.push([inputURL, new URL(outputHref)]);
+  }
+}
+
 async function build() {
-  log(`building app: ${appDir}`);
+  log(
+    `building projects: ${projects.map((p) => p.split(",").shift()).join(", ")}`
+  );
   removeSync(outputDir);
   ensureDirSync(outputDir);
-  let fs = new FileSystem();
-  await fs.mount(inputURL, new NodeFileSystemDriver(appDir));
-  await fs.mount(outputURL, new NodeFileSystemDriver(outputDir));
+  await fs.mount(projectRoots[0][1], new NodeFileSystemDriver(outputDir));
 
-  let builder;
-  if (overlay) {
-    // this ensures that we can provide resource layering that emulates how our
-    // service worker web server works
-    await fs.copy(inputURL, outputURL);
-    builder = Builder.forProjects(fs, [[outputURL, outputURL]]);
-  } else {
-    builder = Builder.forProjects(fs, [[inputURL, outputURL]]);
-  }
-
+  let builder = Builder.forProjects(fs, projectRoots);
   await builder.build();
 }

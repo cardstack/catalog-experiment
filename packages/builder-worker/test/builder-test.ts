@@ -4,11 +4,15 @@ import {
   url,
   FileAssert,
 } from "./helpers/file-assertions";
-import { Builder, Rebuilder } from "../src/builder";
+import { Builder, Rebuilder, explainAsDot } from "../src/builder";
 import { FileSystem } from "../src/filesystem";
 import { FileDescriptor } from "../src/filesystem-drivers/filesystem-driver";
 import { flushEvents, removeAllEventListeners } from "../src/event-bus";
 import { annotationRegex } from "../src/nodes/common";
+import { Logger } from "../src/logger";
+
+Logger.setLogLevel("debug");
+Logger.echoInConsole(true);
 
 const outputOrigin = `http://output`;
 
@@ -30,31 +34,41 @@ QUnit.module("module builder", function (origHooks) {
     return etags;
   }
 
-  function makeBuilder(fs: FileSystem) {
-    return Builder.forProjects(fs, [
-      [new URL(origin), new URL("/output/", origin)],
-    ]);
+  function makeBuilder(
+    fs: FileSystem,
+    outputURL = new URL("/output/", origin)
+  ) {
+    return Builder.forProjects(fs, [[new URL(origin), outputURL]]);
   }
 
-  function makeRebuilder(fs: FileSystem) {
-    return Rebuilder.forProjects(fs, [
-      [new URL(origin), new URL("/output/", outputOrigin)],
-    ]);
+  function makeRebuilder(
+    fs: FileSystem,
+    outputURL = new URL("/output/", outputOrigin)
+  ) {
+    return Rebuilder.forProjects(fs, [[new URL(origin), outputURL]]);
   }
 
   async function buildBundle(
     assert: FileAssert,
-    bundlePath: string,
+    bundleURL: URL,
     bundleFiles: { [filename: string]: string }
   ): Promise<string> {
     await assert.setupFiles(bundleFiles);
     builder = makeBuilder(assert.fs);
     await builder.build();
     let bundleSrc = await ((await assert.fs.open(
-      url(`output/dist/${bundlePath}`)
+      bundleURL
     )) as FileDescriptor).readText();
     await assert.fs.remove(url("/"));
     return bundleSrc;
+  }
+
+  async function buildDidFinish(rebuilder: Rebuilder<unknown>) {
+    await flushEvents();
+    await rebuilder.isIdle();
+    if (rebuilder.status.name === "failed") {
+      throw rebuilder.status.exception;
+    }
   }
 
   origHooks.beforeEach(async () => {
@@ -213,7 +227,6 @@ QUnit.module("module builder", function (origHooks) {
       await assert.setupFiles({
         "entrypoints.json": `
         {
-          "name": "pets-lib",
           "js": ["pets.js"]
         }
         `,
@@ -230,12 +243,12 @@ QUnit.module("module builder", function (origHooks) {
       });
       builder = makeBuilder(assert.fs);
       await builder.build();
-      await assert.file("output/dist/pets-lib/pets.js").exists();
+      await assert.file("output/pets.js").exists();
     });
 
     test("bundles for js entrypoints have the same exports as the js entrypoint", async function (assert) {
       await assert.setupFiles({
-        "entrypoints.json": `{ "js": ["index.js"], "name": "pets-lib" }`,
+        "entrypoints.json": `{ "js": ["index.js"] }`,
         "index.js": `
           import { puppies } from "./puppies.js";
 
@@ -249,15 +262,15 @@ QUnit.module("module builder", function (origHooks) {
       });
       builder = makeBuilder(assert.fs);
       await builder.build();
-      await assert.file("output/dist/pets-lib/index.js").doesNotMatch(/import/);
+      await assert.file("output/index.js").doesNotMatch(/import/);
       await assert
-        .file("output/dist/pets-lib/index.js")
+        .file("output/index.js")
         .matches(/export { getPuppies, getCats, getRats };/);
     });
 
     test("adds serialized analysis to bundle", async function (assert) {
       await assert.setupFiles({
-        "entrypoints.json": `{ "js": ["index.js"], "name": "pets-lib" }`,
+        "entrypoints.json": `{ "js": ["index.js"] }`,
         "index.js": `
           import { puppies } from "./puppies.js";
           function getPuppies() { return puppies; }
@@ -270,7 +283,7 @@ QUnit.module("module builder", function (origHooks) {
       builder = makeBuilder(assert.fs);
       await builder.build();
       let bundleSrc = await ((await assert.fs.open(
-        url("output/dist/pets-lib/index.js")
+        url("output/index.js")
       )) as FileDescriptor).readText();
       let match = annotationRegex.exec(bundleSrc);
       let annotation = Array.isArray(match) ? match[1] : undefined;
@@ -278,8 +291,8 @@ QUnit.module("module builder", function (origHooks) {
     });
 
     test("performs parse if annotation does not exist in bundle", async function (assert) {
-      let bundleSrc = await buildBundle(assert, "pets-lib/index.js", {
-        "entrypoints.json": `{ "js": ["index.js"], "name": "pets-lib" }`,
+      let bundleSrc = await buildBundle(assert, url("output/index.js"), {
+        "entrypoints.json": `{ "js": ["index.js"] }`,
         "index.js": `
           import { puppies } from "./puppies.js";
           function getPuppies() { return puppies; }
@@ -292,8 +305,8 @@ QUnit.module("module builder", function (origHooks) {
       bundleSrc = bundleSrc.replace(annotationRegex, "");
 
       await assert.setupFiles({
-        "entrypoints.json": `{ "js": ["index.js"], "name": "driver" }`,
-        "index.js": `
+        "entrypoints.json": `{ "js": ["driver.js"] }`,
+        "driver.js": `
           import { getPuppies } from "./lib.js";
           console.log(getPuppies());
         `,
@@ -301,15 +314,12 @@ QUnit.module("module builder", function (origHooks) {
       });
       builder = makeBuilder(assert.fs);
       await builder.build();
-
-      assert.ok(
-        builder.cachedNodeStates.includes(`module-description:${url("lib.js")}`)
-      );
+      assert.ok(builder.explain().get(`module-description:${url("lib.js")}`));
     });
 
     test("skips parse if annotation exists in bundle", async function (assert) {
-      let bundleSrc = await buildBundle(assert, "pets-lib/index.js", {
-        "entrypoints.json": `{ "js": ["index.js"], "name": "pets-lib" }`,
+      let bundleSrc = await buildBundle(assert, url("output/index.js"), {
+        "entrypoints.json": `{ "js": ["index.js"] }`,
         "index.js": `
           import { puppies } from "./puppies.js";
           function getPuppies() { return puppies; }
@@ -321,8 +331,8 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       await assert.setupFiles({
-        "entrypoints.json": `{ "js": ["index.js"], "name": "driver" }`,
-        "index.js": `
+        "entrypoints.json": `{ "js": ["driver.js"] }`,
+        "driver.js": `
           import { getPuppies } from "./lib.js";
           console.log(getPuppies());
         `,
@@ -332,13 +342,19 @@ QUnit.module("module builder", function (origHooks) {
       await builder.build();
 
       assert.notOk(
-        builder.cachedNodeStates.includes(`module-description:${url("lib.js")}`)
+        builder.explain().get(`module-description:${url("lib.js")}`)
+      );
+
+      // experimental control: make sure we can detect the node for modules that
+      // definitely do need to be parsed
+      assert.ok(
+        builder.explain().get(`module-description:${url("driver.js")}`)
       );
     });
 
     test("uses bundle annotation to tree shake unused exports from bundle", async function (assert) {
-      let bundleSrc = await buildBundle(assert, "pets-lib/index.js", {
-        "entrypoints.json": `{ "js": ["index.js"], "name": "pets-lib" }`,
+      let bundleSrc = await buildBundle(assert, url("output/index.js"), {
+        "entrypoints.json": `{ "js": ["index.js"] }`,
         "index.js": `
           import { puppies } from "./puppies.js";
           function getPuppies() { return puppies; }
@@ -350,8 +366,8 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       await assert.setupFiles({
-        "entrypoints.json": `{ "js": ["index.js"], "name": "driver" }`,
-        "index.js": `
+        "entrypoints.json": `{ "js": ["driver.js"] }`,
+        "driver.js": `
           import { getPuppies } from "./lib.js";
           console.log(getPuppies());
         `,
@@ -361,16 +377,97 @@ QUnit.module("module builder", function (origHooks) {
       await builder.build();
 
       await assert
-        .file("output/dist/driver/index.js")
+        .file("output/driver.js")
         .matches(/const puppies = \["mango", "van gogh"\];/);
       await assert
-        .file("output/dist/driver/index.js")
+        .file("output/driver.js")
         .matches(/function getPuppies\(\) { return puppies; }/);
       await assert
-        .file("output/dist/driver/index.js")
+        .file("output/driver.js")
         .matches(/console\.log\(getPuppies\(\)\);/);
-      await assert.file("output/dist/driver/index.js").doesNotMatch(/getCats/);
-      await assert.file("output/dist/driver/index.js").doesNotMatch(/getRats/);
+      await assert.file("output/driver.js").doesNotMatch(/getCats/);
+      await assert.file("output/driver.js").doesNotMatch(/getRats/);
+    });
+
+    test("declared entrypoints.json dependency can trigger build of bundle for dependency", async function (assert) {
+      const namesOutputURL = url("output/names");
+      const petsOutputURL = url("output/pets");
+
+      await assert.setupFiles({
+        // names bundle
+        "names/entrypoints.json": `{ "js": ["./index.js"] }`,
+        "names/index.js": `
+          export const cutie1 = "mango";
+          export const cutie2 = "van gogh";
+          export const cutie3 = "ringo";
+        `,
+
+        // pets bundle
+        "pets/entrypoints.json": `{
+          "js": ["./index.js"],
+          "dependencies": {
+            "names": "${namesOutputURL.href}"
+          }
+        }`,
+        "pets/index.js": `
+          import { puppies } from "./puppies.js";
+          function getPuppies() { return puppies; }
+          function getCats() { return ["jojo"]; }
+          function getRats() { return ["pizza rat"]; }
+          export { getPuppies, getCats, getRats };
+        `,
+        "pets/puppies.js": `
+          import { cutie1, cutie2 } from "${namesOutputURL.href}/index.js";
+          export const puppies = [cutie1, cutie2];
+         `,
+
+        // TODO remove dependencies from the tests in entrypoint.json
+        // driver bundle
+        "driver/entrypoints.json": `{
+          "js": ["./index.js"],
+          "dependencies": {
+            "test-lib": "${petsOutputURL.href}"
+          }
+        }`,
+        "driver/index.js": `
+          import { getPuppies } from "${petsOutputURL.href}/index.js";
+          console.log(getPuppies());
+        `,
+      });
+
+      let builder = Builder.forProjects(assert.fs, [
+        [url("driver/"), url("/output/driver")],
+        [url("pets/"), petsOutputURL],
+        [url("names/"), namesOutputURL],
+      ]);
+
+      await builder.build();
+
+      await assert.file("output/names/index.js").exists();
+      await assert
+        .file("output/names/index.js")
+        .matches(/export { cutie1, cutie2, cutie3 };/);
+
+      await assert.file("output/pets/index.js").exists();
+      await assert
+        .file("output/pets/index.js")
+        .matches(/export { getPuppies, getCats, getRats };/);
+
+      await assert
+        .file("output/driver/index.js")
+        .matches(/const puppies = \[cutie1, cutie2\];/);
+      await assert
+        .file("output/driver/index.js")
+        .matches(/const cutie1 = "mango";/);
+      await assert
+        .file("output/driver/index.js")
+        .matches(/function getPuppies\(\) { return puppies; }/);
+      await assert
+        .file("output/driver/index.js")
+        .matches(/console\.log\(getPuppies\(\)\);/);
+      await assert.file("output/driver/index.js").doesNotMatch(/getCats/);
+      await assert.file("output/driver/index.js").doesNotMatch(/getRats/);
+      await assert.file("output/driver/index.js").doesNotMatch(/cutie3/);
     });
   });
 
@@ -390,7 +487,7 @@ QUnit.module("module builder", function (origHooks) {
       rebuilder = makeRebuilder(assert.fs);
 
       rebuilder.start();
-      await rebuilder.isIdle();
+      await buildDidFinish(rebuilder);
 
       await assert.file(`${outputOrigin}/output/index.html`).exists();
       await assert
@@ -416,14 +513,14 @@ QUnit.module("module builder", function (origHooks) {
       rebuilder = makeRebuilder(assert.fs);
 
       rebuilder.start();
-      await rebuilder.isIdle();
+      await buildDidFinish(rebuilder);
 
       let file = (await assert.fs.open(url("ui.js"))) as FileDescriptor;
       await file.write(`export const message = "Bye mars";`);
       file.close();
-      await flushEvents();
-      await rebuilder.isIdle();
+      await buildDidFinish(rebuilder);
 
+      console.log(explainAsDot(rebuilder.explain()));
       await assert.file(`${outputOrigin}/output/dist/0.js`).matches(/Bye mars/);
     });
 

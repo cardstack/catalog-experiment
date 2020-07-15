@@ -15,7 +15,18 @@ module("application test bed", function (hooks) {
   test("renders app", async function (assert) {
     await renderApp();
 
-    let el1 = document.getElementById("test-1");
-    assert.equal(el1.textContent, "Hello world", "text content is correct");
+    let el = document.getElementById("test-1");
+    assert.equal(el.textContent, "Hello world", "text content is correct");
+  });
+
+  test("can use exports from specified dependency", async function (assert) {
+    await renderApp();
+
+    let el = document.getElementById("test-2");
+    assert.equal(
+      el.textContent,
+      "The cutest puppies are mango and van gogh!",
+      "text content is correct"
+    );
   });
 });

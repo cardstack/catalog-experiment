@@ -14,23 +14,27 @@ import { Memoize } from "typescript-memoize";
 import { maybeURL, maybeRelativeURL } from "../path";
 import { BundleAssignment } from "./bundle";
 
+export interface Dependencies {
+  [name: string]: string;
+}
+
 interface EntrypointsJSON {
   html?: string[];
   js?: string[];
-  name?: string;
+  dependencies?: Dependencies;
 }
 
 export class EntrypointsJSONNode implements BuilderNode {
   cacheKey: string;
 
-  constructor(private inputRoot: URL, private outputRoot: URL) {
-    this.cacheKey = `entrypoints-json:${this.inputRoot.href}:${this.outputRoot.href}`;
+  constructor(private input: URL, private output: URL) {
+    this.cacheKey = `entrypoints-json:${this.input.href}:${this.output.href}`;
   }
 
   deps() {
     return {
       json: new JSONParseNode(
-        new FileNode(new URL("entrypoints.json", this.inputRoot))
+        new FileNode(new URL("entrypoints.json", this.input))
       ),
     };
   }
@@ -41,25 +45,35 @@ export class EntrypointsJSONNode implements BuilderNode {
       typeof json !== "object" ||
       (!("html" in json) && !("js" in json))
     ) {
-      throw new Error(`invalid entrypoints.json in ${this.inputRoot.href}`);
+      throw new Error(`invalid entrypoints.json in ${this.input.href}`);
     }
     if (
       "html" in json &&
       (!Array.isArray(json.html) ||
         !json.html.every((k: any) => typeof k === "string"))
     ) {
-      throw new Error(`invalid entrypoints.json in ${this.inputRoot.href}`);
+      throw new Error(
+        `invalid entrypoints.json in ${this.input.href}, 'html' must only contain strings`
+      );
     }
     if (
       "js" in json &&
       (!Array.isArray(json.js) ||
         !json.js.every((k: any) => typeof k === "string"))
     ) {
-      throw new Error(`invalid entrypoints.json in ${this.inputRoot.href}`);
-    }
-    if ("js" in json && typeof json.name !== "string") {
       throw new Error(
-        `invalid entrypoints.json in ${this.inputRoot.href}, a package with js entrypoints should have a 'name' property`
+        `invalid entrypoints.json in ${this.input.href}, 'js' must only contain strings`
+      );
+    }
+    if (
+      "dependencies" in json &&
+      (typeof json.dependencies !== "object" ||
+        !Object.values(json.dependencies).every(
+          (v: any) => typeof v === "string"
+        ))
+    ) {
+      throw new Error(
+        `invalid entrypoints.json in ${this.input.href}, the values of 'dependencies' must only contain strings`
       );
     }
   }
@@ -69,11 +83,7 @@ export class EntrypointsJSONNode implements BuilderNode {
     let entrypoints = [];
     for (let src of [...(json.html || []), ...(json.js || [])]) {
       entrypoints.push(
-        new EntrypointNode(
-          new URL(src, this.inputRoot),
-          new URL(src, this.outputRoot),
-          json.name
-        )
+        new EntrypointNode(new URL(src, this.input), new URL(src, this.output))
       );
     }
     return { node: new AllNode(entrypoints) };
@@ -83,12 +93,8 @@ export class EntrypointsJSONNode implements BuilderNode {
 export class EntrypointNode implements BuilderNode {
   cacheKey: string;
 
-  constructor(
-    private src: URL,
-    private dest: URL,
-    private packageName: string | undefined
-  ) {
-    this.cacheKey = `entrypoint:${this.dest.href}`;
+  constructor(private src: URL, private dest: URL) {
+    this.cacheKey = `entrypoint:${this.src.href}:${this.dest.href}`;
   }
 
   deps() {
@@ -120,13 +126,8 @@ export class EntrypointNode implements BuilderNode {
         value: new HTMLEntrypoint(this.src, this.dest, parsedHTML),
       };
     } else if (js) {
-      if (!this.packageName) {
-        throw new Error(
-          `bug: missing packageName, never passed into EntrypointsNode constructor`
-        );
-      }
       return {
-        value: { url: this.src, packageName: this.packageName },
+        value: { url: this.src },
       };
     } else {
       throw new Error("bug: should always have either parsed HTML or js");
@@ -154,7 +155,6 @@ export type Entrypoint = HTMLEntrypoint | JSEntrypoint;
 
 export interface JSEntrypoint {
   url: URL;
-  packageName: string;
 }
 
 export class HTMLEntrypoint {

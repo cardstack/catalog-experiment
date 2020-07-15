@@ -1,15 +1,15 @@
-import { dispatchEvent as _dispatchEvent } from "./event-bus";
+import { dispatchEvent as _dispatchEvent, Event } from "./event-bus";
 import { splitURL, baseName, dirName, ROOT } from "./path";
 import columnify from "columnify";
 import moment from "moment";
 import {
   FileSystemDriver,
   Volume,
-  DefaultDriver,
   FileDescriptor,
   DirectoryDescriptor,
   Stat,
 } from "./filesystem-drivers/filesystem-driver";
+import { MemoryDriver } from "./filesystem-drivers/memory-driver";
 import { log } from "./logger";
 
 export const eventGroup = "fs";
@@ -22,9 +22,13 @@ export class FileSystem {
   private volumes: Map<string, Volume> = new Map();
 
   constructor() {
-    let volume = new DefaultDriver().mountVolumeSync(undefined, ROOT);
+    let volume = new MemoryDriver().mountVolumeSync(ROOT);
     this.root = volume.root;
-    this.volumes.set(this.root.inode, volume);
+    this.volumes.set(this.volumeKey(this.root), volume);
+  }
+
+  private volumeKey(dir: DirectoryDescriptor) {
+    return `${dir.volume.root.url.href}#${dir.inode}`;
   }
 
   async mount(url: URL, driver: FileSystemDriver): Promise<Volume> {
@@ -34,23 +38,25 @@ export class FileSystem {
         `'${url}' is not a directory (it's a file and we were expecting it to be a directory)`
       );
     }
-    let dir = await this.open(url, true);
-    let volume = await driver.mountVolume(this, dir.inode, url);
-    this.volumes.set(volume.id, volume);
+    let dir = (await this.open(url, true)) as DirectoryDescriptor;
+    let volume = await driver.mountVolume(url);
+    this.volumes.set(this.volumeKey(dir), volume);
     dir.close();
 
     return volume;
   }
 
-  async unmount(volumeId: string): Promise<void> {
-    if (volumeId === this.root.inode) {
-      throw new Error("Cannot unmount the root volume");
-    }
-    let volume = this.volumes.get(volumeId);
-    if (volume) {
-      let url = volume.root.url;
-      this.volumes.delete(volumeId);
-      await this.remove(url);
+  async unmount(url: URL): Promise<void> {
+    for (let [key, volume] of this.volumes) {
+      if (volume.root.url.href === url.href) {
+        if (url.href === ROOT.href) {
+          throw new Error("Cannot unmount the root volume");
+        }
+        await this.volumes.get(key)!.willUnmount();
+        this.volumes.delete(key);
+        await this.remove(url);
+        break;
+      }
     }
   }
 
@@ -153,18 +159,19 @@ export class FileSystem {
       startingURL = url;
     }
     let resource = await this.open(url);
-    if (this.volumes.has(resource.inode)) {
-      let volumeRoot = this.volumes.get(resource.inode)!.root;
+    if (resource.type === "file") {
+      resource.close();
+      return [{ url: resource.url, stat: await resource.stat() }];
+    }
+
+    let volumeRoot = this.volumes.get(this.volumeKey(resource))?.root;
+    if (volumeRoot) {
       if (volumeRoot.type === "directory") {
         resource = volumeRoot;
       } else {
         resource.close();
         return [{ url: volumeRoot.url, stat: await volumeRoot.stat() }];
       }
-    }
-    if (resource.type === "file") {
-      resource.close();
-      return [{ url: resource.url, stat: await resource.stat() }];
     }
 
     let results: ListingEntry[] = [];
@@ -222,16 +229,15 @@ export class FileSystem {
 
     parent = parent || this.root;
     let descriptor: FileDescriptor | DirectoryDescriptor;
-    let volume: Volume;
 
     if (name === ROOT.href && pathSegments.length === 0) {
       return this.root;
     }
 
-    if (this.volumes.has(parent.inode)) {
+    let volume = this.volumes.get(this.volumeKey(parent));
+    if (volume) {
       // we have crossed a volume boundary, use the driver for this path and
       // the parent should be the root of the volume
-      volume = this.volumes.get(parent.inode)!;
       if (volume.root.type === "directory") {
         parent = volume.root;
       } else {
@@ -307,33 +313,15 @@ export class FileSystem {
     ) {
       // the leaf is a directory that exists
       let descriptor = (await parent.getDirectory(name))!;
-      if (this.volumes.has(descriptor.inode)) {
-        return this.volumes.get(descriptor.inode)!.root;
+      let overMounted = this.volumes.get(this.volumeKey(descriptor));
+      if (overMounted) {
+        return overMounted.root;
       }
       return descriptor;
     } else {
       notFound(initialHref);
     }
     throw new Error("bug: should never get here");
-  }
-
-  async tempURL(): Promise<URL> {
-    let tempURL: URL;
-    let tempOrigin = "https://tmp";
-    while (true) {
-      tempURL = new URL(
-        `${tempOrigin}${Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)}`
-      );
-
-      try {
-        (await this.open(tempURL)).close();
-      } catch (err) {
-        if (err instanceof FileSystemError && err.code === "NOT_FOUND") {
-          return tempURL;
-        }
-        throw err;
-      }
-    }
   }
 
   async displayListing(): Promise<void> {
@@ -387,14 +375,25 @@ export interface WriteEvent extends BaseFSEvent {
   type: "write";
 }
 
-export type Event = CreateEvent | RemoveEvent | WriteEvent;
+export function isFileEvent(event: any): event is Event<FSEvent> {
+  return (
+    typeof event === "object" &&
+    "group" in event &&
+    event.group === eventGroup &&
+    "args" in event &&
+    "category" in event.args &&
+    event.args.category === eventCategory
+  );
+}
 
-export type EventListener = (event: Event) => void;
+export type FSEvent = CreateEvent | RemoveEvent | WriteEvent;
+
+export type EventListener = (event: FSEvent) => void;
 
 function notFound(href: string) {
   throw new FileSystemError("NOT_FOUND", `'${href}' does not exist`);
 }
 
-function dispatchEvent(event: Event) {
+function dispatchEvent(event: FSEvent) {
   _dispatchEvent(eventGroup, event);
 }

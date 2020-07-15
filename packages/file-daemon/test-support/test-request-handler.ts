@@ -6,7 +6,7 @@ import { ensureFileSync, outputFileSync, removeSync } from "fs-extra";
 import { createWriteStream, mkdirSync } from "fs";
 
 export type HandlerMaker = (
-  directory: string,
+  directory: string, // might want to think about making this multiple dirs...
   key: string
 ) => (request: http.IncomingMessage, response: http.ServerResponse) => boolean;
 

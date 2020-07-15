@@ -1,20 +1,93 @@
 import WebSocket from "ws";
-import Watcher from "./watcher";
+import sane, { Watcher } from "sane";
+import { Stats } from "fs";
+import { ProjectMapping } from "./daemon";
+import bind from "bind-decorator";
+import { FileInfo } from "./interfaces";
+import { REGTYPE } from "tarstream/constants";
+import { unixTime } from "./utils";
+import flatMap from "lodash/flatMap";
 
 export default class FileWatcherServer {
-  watcher: Watcher;
-  constructor(private port: number, directory: string) {
-    this.watcher = new Watcher(directory);
+  private sockets: Set<WebSocket> = new Set();
+  private watchers: Watcher[] = [];
+  private notificationQueue: FileInfo[] = [];
+  // initializing this to a Promise.resolve so we don't hang if we try to flush
+  // notifications and the server hasn't actually received any notifications
+  // yet.
+  private flushNotifications: Promise<void[]> = Promise.resolve([]);
+
+  constructor(private port: number, mapping: ProjectMapping) {
+    for (let [name, path] of mapping.nameToPath) {
+      let watcher = sane(path);
+      watcher.on("add", this.notify("add", name));
+      watcher.on("change", this.notify("change", name));
+      watcher.on("delete", this.notify("delete", name));
+      this.watchers.push(watcher);
+    }
   }
+
   async start() {
     const wss = new WebSocket.Server({ port: this.port });
     console.log(`Websocket server listening on port: ${this.port}`);
     wss.on("connection", (ws) => {
       console.log("socket connected!");
-      this.watcher.add(ws);
+      this.sockets.add(ws);
 
-      ws.on("close", () => this.watcher.remove(ws));
-      ws.on("error", () => this.watcher.remove(ws));
+      ws.on("close", () => {
+        console.log("socket closed");
+        this.sockets.delete(ws);
+      });
+      ws.on("error", () => {
+        this.sockets.delete(ws);
+      });
     });
+  }
+
+  async close() {
+    await this.flushNotifications;
+    for (let watcher of this.watchers) {
+      watcher.close();
+    }
+  }
+
+  @bind
+  private notify(action: "add" | "change" | "delete", name: string) {
+    return (path: string, _root: string, stat?: Stats) => {
+      if (this.watchers.length === 0 || (stat && stat.isDirectory())) {
+        return;
+      }
+      path = `${name}/${path}`;
+      let fileHash = stat ? `${stat.size}_${stat.mtime.valueOf()}` : null;
+      let info: FileInfo = {
+        name: path,
+        etag: fileHash,
+      };
+      if (action !== "delete" && stat) {
+        info.header = {
+          name: path,
+          mode: stat.mode,
+          type: REGTYPE,
+          size: stat.size,
+          modifyTime: unixTime(stat.mtime.getTime()),
+        };
+      }
+
+      this.notificationQueue.push(info);
+      (async () => await this.drainNotificationQueue())();
+    };
+  }
+
+  private async drainNotificationQueue(): Promise<void> {
+    await this.flushNotifications;
+
+    // use a new array so that any new notifications will be processed on the next turn
+    let notifications = [...this.notificationQueue];
+    this.notificationQueue = [];
+    this.flushNotifications = Promise.all(
+      flatMap(notifications, (info) =>
+        [...this.sockets].map((socket) => socket.send(JSON.stringify(info)))
+      )
+    );
   }
 }
