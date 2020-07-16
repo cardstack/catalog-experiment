@@ -17,7 +17,7 @@ Logger.setLogLevel("info");
 let outputDir = join(process.cwd(), "dist");
 let projectRoots: [URL, URL][] = [];
 
-let { project: rawProjects } = yargs
+let { project: rawProjects, overlay } = yargs
   .usage(
     "Usage: $0 --project=<filePath_1>,<outputURL_1> ... --project=<filePath_N>,<outputURL_N>"
   )
@@ -25,9 +25,15 @@ let { project: rawProjects } = yargs
     project: {
       alias: "p",
       type: "string",
-      default: false,
       description:
         "the project to include as a comma separated string of file path (where the input lives on disk) and output URL (where other projects can find this project). Use the output URL of http://build-output to write to the dist/ folder.",
+    },
+    overlay: {
+      alias: "o",
+      type: "boolean",
+      default: false,
+      description:
+        "a flag indicating if the unbuilt assets in the input URL should be included in the output URL. This is would include application assets like images. Otherwise the build output is purely aretifacts emitted from the build.",
     },
   })
   .boolean("overlay")
@@ -70,6 +76,12 @@ async function prepare() {
   }
 }
 
+async function doOverlay() {
+  for (let [input, output] of projectRoots) {
+    await fs.copy(input, output);
+  }
+}
+
 async function build() {
   log(
     `building projects: ${projects.map((p) => p.split(",").shift()).join(", ")}`
@@ -77,6 +89,9 @@ async function build() {
   removeSync(outputDir);
   ensureDirSync(outputDir);
   await fs.mount(projectRoots[0][1], new NodeFileSystemDriver(outputDir));
+  if (overlay) {
+    await doOverlay();
+  }
 
   let builder = Builder.forProjects(fs, projectRoots);
   await builder.build();
