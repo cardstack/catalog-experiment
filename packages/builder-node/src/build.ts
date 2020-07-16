@@ -88,7 +88,10 @@ async function build() {
   );
   removeSync(outputDir);
   ensureDirSync(outputDir);
-  await fs.mount(projectRoots[0][1], new NodeFileSystemDriver(outputDir));
+  await fs.mount(
+    new URL("http://build-output"),
+    new NodeFileSystemDriver(outputDir)
+  );
   if (overlay) {
     await doOverlay();
   }

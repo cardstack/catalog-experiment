@@ -610,6 +610,7 @@ class InternalFileNode<Input> implements BuilderNode<string> {
   }
 
   deps() {
+    // TODO a more rigorous way to do this is to match the entrypoints.json file directly
     let matchingRoots = (Object.values(this.roots) as BuilderNode[]).filter(
       (rootNode) =>
         rootNode.projectOutputRoot &&
