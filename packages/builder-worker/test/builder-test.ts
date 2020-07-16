@@ -469,6 +469,245 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file("output/driver/index.js").doesNotMatch(/getRats/);
       await assert.file("output/driver/index.js").doesNotMatch(/cutie3/);
     });
+
+    test("dynamically imported module assigned to separate bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          async function getPuppies() {
+            const { puppies } = await import "./puppies.js";
+            return puppies;
+          }
+
+          export { getPuppies };
+        `,
+        "puppies.js": `export const puppies = ["mango", "van gogh"];`,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(/const { puppies } = await import "\.\/puppies\.js";/);
+      await assert
+        .file("output/puppies.js")
+        .matches(/export const puppies = \["mango", "van gogh"\];/);
+    });
+
+    test("dynamically imported module's unshared static imports are assigned to same bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          async function getPuppies() {
+            const { puppies } = await import "./puppies.js";
+            return puppies;
+          }
+
+          export { getPuppies };
+        `,
+        "puppies.js": `
+          import { cutie1, cutie2 } from './names.js';
+          export const puppies = [ cutie1, cutie2 ];
+        `,
+        "names.js": `
+          export const cutie1 = 'van gogh';
+          export const cutie2 = 'mango';
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/puppies.js")
+        .matches(/const cutie1 = 'van gogh'/);
+      await assert.file("output/puppies.js").matches(/const cutie2 = 'mango'/);
+    });
+
+    test("module shared by entrypoint and a dynamic imported module is exported from entrypoint's bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { cutie1 } from './names.js';
+          async function getPuppies() {
+            const { puppies } = await import "./puppies.js";
+            return puppies;
+          }
+          console.log(cutie1);
+
+          export { getPuppies };
+        `,
+        // note how we are using different exports in the shared module from the
+        // entrypoint...
+        "puppies.js": `
+          import { cutie2 } from './names.js';
+          export const puppies = [ cutie2 ];
+        `,
+        "names.js": `
+          export const cutie1 = 'van gogh';
+          export const cutie2 = 'mango';
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(/const cutie1 = 'van gogh';/);
+      await assert.file("output/index.js").matches(/const cutie2 = 'mango';/);
+      await assert.file("output/index.js").matches(/export { cutie2 };/);
+      await assert
+        .file("output/puppies.js")
+        .matches(/import { cutie2 } from "\.\/index\.js";/);
+    });
+
+    test("modules shared by dynamic imported modules are grouped into bundles", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          async function getA() {
+            const { a } = await import "./a.js";
+            return a;
+          }
+          async function getB() {
+            const { b } = await import "./b.js";
+            return b;
+          }
+          async function getC() {
+            const { c } = await import "./c.js";
+            return c;
+          }
+
+          export { getA, getB, getC };
+        `,
+        "a.js": `
+          import "./ab.js";
+          import "./ab2.js";
+          import "./abc.js";
+          export const a = "a";
+        `,
+        "b.js": `
+          import "./ab.js";
+          import "./ab2.js";
+          import "./bc.js";
+          import "./abc.js";
+          export const b = "b";
+        `,
+        "c.js": `
+          import "./bc.js";
+          import "./abc.js";
+          export const c = "c";
+        `,
+        "ab.js": `
+          console.log('ab');
+        `,
+        "ab2.js": `
+          console.log('ab2');
+        `,
+        "bc.js": `
+          console.log('bc');
+        `,
+        "abc.js": `
+          console.log('abc');
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+
+      // assumes shared bundle for a & b is 0.js
+      // assumes shared bundle for b & c is 1.js
+      // assumes shared bundle for a, b, & c is 2.js
+      await assert.file("output/a.js").matches(/import ".\/0\.js";/);
+      await assert.file("output/a.js").matches(/import ".\/2\.js";/);
+      await assert.file("output/b.js").matches(/import ".\/1\.js";/);
+      await assert.file("output/b.js").matches(/import ".\/2\.js";/);
+      await assert.file("output/b.js").matches(/import ".\/1\.js";/);
+      await assert.file("output/b.js").matches(/import ".\/2\.js";/);
+
+      await assert.file("output/0.js").matches(/console\.log\('ab'\);/);
+      await assert.file("output/0.js").matches(/console\.log\('ab2'\);/);
+      await assert.file("output/1.js").matches(/console\.log\('bc'\);/);
+      await assert.file("output/2.js").matches(/console\.log\('abc'\);/);
+    });
+
+    test("creates separate bundles for dynamically imported modules that depend on eachother", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          async function getA() {
+            const { a } = await import "./a.js";
+            return a;
+          }
+          async function getB() {
+            const { b } = await import "./b.js";
+            return b;
+          }
+
+          export { getA };
+        `,
+        // assuming a3 is pruned since it is not consumed in the module, it is
+        // not imported by other modules, and a.js is not part of the API for
+        // this project (it's not an entrypoint)
+        "a.js": `
+          export const a = "a";
+          export const a2 = "a2";
+          export const a3 = "a3";
+        `,
+        "b.js": `
+          import { a2 } from "./a.js";
+          export const b = a2 + 'b';
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(/const { a } = await import "\.\/a\.js";/);
+      await assert
+        .file("output/index.js")
+        .matches(/const { b } = await import "\.\/b\.js";/);
+      await assert.file("output/a.js").matches(/const a = "a";/);
+      await assert.file("output/a.js").matches(/const a2 = "a2";/);
+      await assert.file("output/a.js").doesNotMatch(/const a3 = "a3";/);
+      await assert.file("output/a.js").matches(/export { a, a2 };/);
+      await assert
+        .file("output/b.js")
+        .matches(/import { a2 } from "\.\/a\.js";/);
+      await assert.file("output/b.js").doesNotMatch(/const b = a2 + 'b';/);
+      await assert.file("output/a.js").matches(/export { b };/);
+    });
+
+    test("creates separate bundles for dynamically imported module that in turn has a dynamic import", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          async function handleA(event) {
+            const { a } = await import "./a.js";
+            event.on('bleep', a());
+          }
+
+          export { handleA };
+        `,
+        "a.js": `
+          export function a() {
+            return async function() {
+              const { b } = await import "./b.js";
+              console.log(b);
+            };
+          }
+        `,
+        "b.js": `
+          export const b = 'b';
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(/const { a } = await import "\.\/a\.js";/);
+      await assert
+        .file("output/a.js")
+        .matches(/const { b } = await import "\.\/b\.js";/);
+      await assert.file("output/a.js").matches(/export { a };/);
+      await assert.file("output/b.js").matches(/const b = 'b';/);
+      await assert.file("output/b.js").matches(/export { b };/);
+    });
   });
 
   QUnit.module("rebuild", function () {
