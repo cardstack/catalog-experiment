@@ -29,4 +29,11 @@ module("application test bed", function (hooks) {
       "text content is correct"
     );
   });
+
+  test("application assets are included", async function (assert) {
+    await renderApp();
+
+    let response = await fetch("/images/bike.jpg");
+    assert.ok(response.ok);
+  });
 });

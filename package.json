@@ -40,7 +40,7 @@
     "test:file-daemon-client": "cd packages/file-daemon-client && yarn test",
     "test:builder-worker": "cd packages/builder-worker && yarn test",
     "test:builder-node": "cd packages/builder-worker && yarn webpack && yarn qunit assets/node-test.js",
-    "test:test-app": "node ./packages/builder-node/bin/build.js --project=packages/test-app,http://build-output --project=packages/test-lib,http://localhost:4200/test-lib/ && testem ci",
+    "test:test-app": "node ./packages/builder-node/bin/build.js --project=packages/test-app,http://build-output --project=packages/test-lib,http://localhost:4200/test-lib/ --overlay && testem ci",
     "test:test-lib": "node ./packages/builder-node/bin/build.js --project=packages/test-lib,http://build-output && testem ci",
     "builder": "cd packages/builder-worker && yarn start",
     "serve": "cd packages/test-app && yarn start",
