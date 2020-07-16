@@ -13,12 +13,13 @@ let uiWidth: number;
 // been activated. The responsibility for this module is to render the ui's edge
 // route in an iframe, add a build reload-page listener, and respond to window positioning. requests.
 
-let iframe = document.createElement("iframe");
-iframe.setAttribute("src", `${window.origin}/catalogjs/ui/#/edge`);
-iframe.setAttribute("id", "catalogjs-ui");
-iframe.setAttribute(
-  "style",
-  `position: fixed;
+if (navigator.serviceWorker.controller) {
+  let iframe = document.createElement("iframe");
+  iframe.setAttribute("src", `${window.origin}/catalogjs/ui/#/edge`);
+  iframe.setAttribute("id", "catalogjs-ui");
+  iframe.setAttribute(
+    "style",
+    `position: fixed;
    top: 0;
    bottom: 0;
    right: -100%;
@@ -26,55 +27,56 @@ iframe.setAttribute(
    border: none;
    transition: transform 300ms;
   `
-);
-if (!document.body) {
-  document.body = document.createElement("body");
-}
-document.body.setAttribute("style", "overflow-x: hidden;");
-document.body.append(iframe);
-window.addEventListener("message", handleUICommand, false);
-navigator.serviceWorker.addEventListener("message", handleUICommand);
-
-(async () => {
-  await fetch("/register-client/reload");
-})();
-
-function handleUICommand(event: MessageEvent) {
-  if (event.origin !== window.origin) {
-    return;
+  );
+  if (!document.body) {
+    document.body = document.createElement("body");
   }
-  let { data } = event;
-  if (isReloadEvent(data)) {
-    window.location.reload();
-    return;
-  }
+  document.body.setAttribute("style", "overflow-x: hidden;");
+  document.body.append(iframe);
+  window.addEventListener("message", handleUICommand, false);
+  navigator.serviceWorker.addEventListener("message", handleUICommand);
 
-  if (!isUIManagerEvent(data)) {
-    return;
-  }
+  (async () => {
+    await fetch("/register-client/reload");
+  })();
 
-  let iframe = document.getElementById("catalogjs-ui");
-  if (!iframe) {
-    throw new Error("bug: cannot find the catalogjs ui iframe");
-  }
+  function handleUICommand(event: MessageEvent) {
+    if (event.origin !== window.origin) {
+      return;
+    }
+    let { data } = event;
+    if (isReloadEvent(data)) {
+      window.location.reload();
+      return;
+    }
 
-  let command = data.args;
-  switch (command.type) {
-    case "ready":
-      uiWidth = command.width;
-      iframe.style.width = `${command.width}px`;
-      iframe.style.right = `${-1 * command.width}px`;
-      break;
-    case "show":
-      iframe.style.transform = `translate(${-1 * uiWidth}px, 0)`;
-      break;
-    case "hide":
-      iframe.style.transform = `translate(0, 0)`;
-      break;
-    case "home":
-      location.href = "/catalogjs/ui/";
-      break;
-    default:
-      assertNever(command);
+    if (!isUIManagerEvent(data)) {
+      return;
+    }
+
+    let iframe = document.getElementById("catalogjs-ui");
+    if (!iframe) {
+      throw new Error("bug: cannot find the catalogjs ui iframe");
+    }
+
+    let command = data.args;
+    switch (command.type) {
+      case "ready":
+        uiWidth = command.width;
+        iframe.style.width = `${command.width}px`;
+        iframe.style.right = `${-1 * command.width}px`;
+        break;
+      case "show":
+        iframe.style.transform = `translate(${-1 * uiWidth}px, 0)`;
+        break;
+      case "hide":
+        iframe.style.transform = `translate(0, 0)`;
+        break;
+      case "home":
+        location.href = "/catalogjs/ui/";
+        break;
+      default:
+        assertNever(command);
+    }
   }
 }
