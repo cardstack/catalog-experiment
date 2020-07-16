@@ -89,7 +89,7 @@ export class Logger {
       logger._messages.push(logMessage);
       dispatchEvent<LogMessage[]>(eventGroup, [logMessage]);
 
-      if (logger.echoInConsole) {
+      if (logger.echoInConsole || level === "error") {
         switch (level) {
           case "debug":
             if (error !== undefined) {
@@ -133,7 +133,12 @@ export class Logger {
     return Logger.instance;
   }
   static messages(): LogMessage[] {
-    return [...Logger.getInstance()._messages]; // prevent mutation of internal state
+    let instance = Logger.getInstance();
+    return [
+      ...instance._messages.filter(
+        (m) => levelValue[m.level] >= levelValue[instance.logLevel]
+      ),
+    ]; // prevent mutation of internal state
   }
 
   static setLogLevel(level: LogLevel) {
@@ -144,7 +149,7 @@ export class Logger {
     Logger.getInstance().echoInConsole = echoInConsole;
   }
 
-  logLevel: LogLevel = "debug";
+  logLevel: LogLevel = "info";
   echoInConsole: boolean;
   private _messages: LogMessage[] = [];
 

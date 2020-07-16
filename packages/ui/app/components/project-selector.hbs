@@ -1,20 +1,33 @@
 <div>
-  {{#if this.projects.initialize.isRunning}}
-  Starting up...
+  {{#if this.initialize.isRunning}}
+  Loading projects...
   {{else}}
   <h3>Available Projects</h3>
   <div class="projects">
     {{#each this.availableProjects as |project|}}
     <div class="project">
-      <Input @type="checkbox" @checked={{has-project project this.activeProjects}}
-        {{on 'click' (fn this.toggleProject project)}} />
-      <span class="project-input">{{project}}</span>
-      output URL:
-      <Input @type="text" size="50" @value={{project-output-url project this.selectedProjects}}
-        @key-up={{fn this.setProjectOutput project}} />
+      <dl>
+        <dt>
+          <label>
+            <Input @type="checkbox" @checked={{has-project project this.activeProjects}}
+              {{on 'click' (fn this.toggleProject project)}} />
+            <span class="project-input">{{project}}</span>
+          </label>
+        </dt>
+        <dd>
+          output URL:
+          <Input @type="text" size="50" @value={{project-output-url project this.selectedProjects}}
+            @key-up={{fn this.setProjectOutput project}} />
+        </dd>
+      </dl>
     </div>
     {{/each}}
   </div>
-  <button onclick={{action startSelectedProject}}>Start</button>
+  {{#if this.projects.start.isRunning}}
+  <div>Starting...</div>
+  {{else}}
+  <button onclick={{action startSelectedProject}}
+    disabled={{if (eq this.selectedProjects.length 0) 'true'}}>Start</button>
+  {{/if}}
   {{/if}}
 </div>

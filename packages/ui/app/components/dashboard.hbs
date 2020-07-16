@@ -2,6 +2,9 @@
   {{did-insert this.setScrollPosition this.logger.messages}}>
   <div class="buttons">
     <CloseButton />
+    <button type="button" class="home-btn" {{on 'click' this.home}}>
+      Manage Projects
+    </button>
     <button type="button" class="restart-btn" {{on 'click' this.restart}}>
       Restart Builder
     </button>

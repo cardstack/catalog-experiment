@@ -1,5 +1,4 @@
 import { helper } from "@ember/component/helper";
-import { baseName } from "./base-name";
 
 export function projectOutputURL([projectInputURL, projectRoots]: [
   string,
@@ -10,7 +9,7 @@ export function projectOutputURL([projectInputURL, projectRoots]: [
   if (output) {
     return output;
   }
-  return `${location.origin}/${baseName(projectInputURL)}/`;
+  return `${location.origin}/`;
 }
 
 export default helper(projectOutputURL);

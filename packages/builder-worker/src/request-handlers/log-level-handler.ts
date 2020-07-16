@@ -3,7 +3,7 @@ import { Handler } from "./request-handler";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 
-export function handleLogLevelRequest() {
+export function handleLogLevel() {
   return (async ({ request }) => {
     let requestURL = new URL(request.url);
     if (requestURL.origin !== worker.origin) {

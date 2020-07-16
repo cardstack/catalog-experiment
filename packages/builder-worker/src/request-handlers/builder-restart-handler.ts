@@ -2,7 +2,7 @@ import { Handler } from "./request-handler";
 import { BuildManager } from "../build-manager";
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 
-export function handleBuilderRestartRequest(buildManager: BuildManager) {
+export function handleBuilderRestart(buildManager: BuildManager) {
   return (async ({ request }) => {
     let requestURL = new URL(request.url);
     if (requestURL.origin !== worker.origin) {

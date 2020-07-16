@@ -4,11 +4,23 @@ import { tracked } from "@glimmer/tracking";
 import { action } from "@ember/object";
 import ProjectsService from "../services/projects";
 import { baseName } from "../helpers/base-name";
+// @ts-ignore
+import { task } from "ember-concurrency";
 
-export default class Dashboard extends Component {
+export default class ProjectSelectorComponent extends Component {
   defaultOrigin = location.origin;
   @service projects!: ProjectsService;
   @tracked selectedProjects: [string, string][] = [];
+
+  constructor(owner: unknown, args: any) {
+    super(owner, args);
+    this.initialize.perform();
+  }
+
+  initialize = task(function* (this: ProjectSelectorComponent) {
+    yield this.projects.initialize.last;
+    this.selectedProjects = [...this.activeProjects!];
+  }) as any;
 
   get availableProjects() {
     return this.projects.listing?.availableProjects;
@@ -18,9 +30,7 @@ export default class Dashboard extends Component {
   }
 
   startSelectedProject() {
-    this.projects.start.perform([
-      [new URL("http://local-disk/test-app/"), new URL(location.origin)],
-    ]);
+    this.projects.start.perform(this.selectedProjects);
   }
 
   @action
@@ -30,10 +40,16 @@ export default class Dashboard extends Component {
         ([input]) => input !== projectInput
       );
     } else {
-      this.selectedProjects.push([
-        projectInput,
-        `${location.origin}/${baseName(projectInput)}/`,
-      ]);
+      let output: string;
+      if (hasOutputURL(`${location.origin}/`, this.selectedProjects)) {
+        output = `${location.origin}/${baseName(projectInput)}/`;
+      } else {
+        output = `${location.origin}/`;
+      }
+      this.selectedProjects = [
+        ...this.selectedProjects,
+        [projectInput, output],
+      ];
     }
   }
 
@@ -56,4 +72,7 @@ function getProject(
 
 function hasInputURL(url: string, projectRoots: [string, string][]): boolean {
   return Boolean(getProject(url, projectRoots));
+}
+function hasOutputURL(url: string, projectRoots: [string, string][]): boolean {
+  return Boolean(projectRoots.find(([, output]) => output === url));
 }

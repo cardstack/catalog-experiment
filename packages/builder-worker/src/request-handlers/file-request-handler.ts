@@ -6,15 +6,15 @@ import {
   DirectoryDescriptor,
   Stat,
 } from "../filesystem-drivers/filesystem-driver";
-import { log } from "../logger";
+import { debug } from "../logger";
 import { HttpStat } from "../filesystem-drivers/http-driver";
-import { relativeURL, makeURLEndInDir } from "../path";
 import { BuildManager } from "../build-manager";
+import sortBy from "lodash/sortBy";
 
 const builderOrigin = "http://localhost:8080";
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 
-export function handleFileRequest(fs: FileSystem, buildManager: BuildManager) {
+export function handleFile(fs: FileSystem, buildManager: BuildManager) {
   return (async ({ request }) => {
     // turning this into a URL so we can normalize comparisons (trailing slashes
     // wont mess with us that way)
@@ -35,43 +35,39 @@ export function handleFileRequest(fs: FileSystem, buildManager: BuildManager) {
       return await fetch(request);
     }
 
-    log(`serving request ${requestURL} from filesystem`);
-    let response = await serveFile(requestURL, fs);
-    if (response.status === 404) {
-      // TODO talk with Ed about this. The InternalFileNode looks for a project
-      // that starts with the projectOutputRoot.href, however if one project has
-      // an output root that is a subdirectory of another child, we will pull in
-      // the wrong project, which is what is happening when you make the
-      // test-app's output http://localhost:4200 and the test-lib's output
-      // http://localhost:4200/test-lib. what we are doing here is allowing the
-      // first project to be able to reside at the root of the origin (by adding
-      // a fallback to look for files there), but maybe we need something more
-      // explicit so the user can specify which project they want at the origin
-      // (or maybe we manufacture an output root for a project whose output was
-      // specified to be at the root of the origin, and then use this to smooth
-      // things over when serving files).
-
-      // if the response is for the selected project's outputs then we use that
-      // project's URL as our root
+    // if the projects have not been built yet, then serve the UI
+    if (
+      !buildManager.rebuilder &&
+      !requestURL.href.startsWith(`${originURL}catalogjs/ui/`)
+    ) {
       requestURL = new URL(
         `.${requestURL.pathname}`,
-        makeURLEndInDir(buildManager.projects[0][1])
+        `${originURL}catalogjs/ui/`
       );
-      response = await serveFile(requestURL, fs);
     }
-    if (response.status === 404) {
-      for (let [input, output] of buildManager.projects) {
-        // we serve each project's input files as a fallback to their output
-        // files, which lets you not worry about assets that are unchanged by the
-        // build.
-        if (requestURL.href.startsWith(output.href)) {
-          let fallbackResponse = await serveFile(
-            new URL(relativeURL(requestURL, output)!, input),
-            fs
-          );
-          if (fallbackResponse.status !== 404) {
-            return fallbackResponse;
-          }
+
+    debug(`serving request ${requestURL} from filesystem`);
+    let response = await serveFile(requestURL, fs);
+
+    // we serve each project's input files as a fallback to their output
+    // files, which lets you not worry about assets that are unchanged by the
+    // build.
+    if (response.status === 404 && buildManager.rebuilder) {
+      // find the closest matching project output to our file URL, which will be the output
+      // that has the longest URL (in this case one project has an output URL that
+      // is the parent of another project)
+      let matchingProjects = buildManager
+        .projects()!
+        .filter(([, output]) => requestURL.href.startsWith(output.href));
+      if (matchingProjects.length > 0) {
+        let [input] = sortBy(
+          matchingProjects,
+          ([, output]) => output.href.length
+        ).pop()!;
+        requestURL = new URL(`${requestURL.pathname.slice(1)}`, input);
+        let fallbackResponse = await serveFile(requestURL, fs);
+        if (fallbackResponse.status !== 404) {
+          return fallbackResponse;
         }
       }
     }

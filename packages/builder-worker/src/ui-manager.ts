@@ -14,8 +14,11 @@ export interface Show {
 export interface Hide {
   type: "hide";
 }
+export interface Home {
+  type: "home";
+}
 
-export type UIManagerCommand = Ready | Show | Hide;
+export type UIManagerCommand = Ready | Show | Hide | Home;
 
 export function isUIManagerEvent(event: any): event is Event<UIManagerCommand> {
   return (

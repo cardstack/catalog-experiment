@@ -224,7 +224,7 @@ export class FileDaemonClientVolume implements Volume {
   }
 
   private tryConnect() {
-    log(`attempting to connect`);
+    log(`attempting to connect to web socket ${this.wsURL.href}`);
 
     let socket = new WebSocket(this.wsURL.href);
     let socketIsClosed: () => void;
@@ -324,7 +324,7 @@ export class FileDaemonClientVolume implements Volume {
     });
     await untar.done;
     this.rootCache = root;
-    log("completed full sync");
+    log(`completed full sync of ${this.mountURL.href}`);
     dispatchClientEvent({
       category: eventCategory,
       href: this.mountURL.href,

@@ -10,6 +10,13 @@ body {
   color: rgba(255, 255, 255, 0.75);
 }
 
+label,
+button,
+input[type="radio"],
+input[type="checkbox"] {
+  cursor: pointer;
+}
+
 .buttons {
   display: flex;
   justify-content: space-between;
@@ -28,6 +35,7 @@ body {
   cursor: pointer;
 }
 
+.home-btn,
 .restart-btn {
   cursor: pointer;
   opacity: 0.75;
