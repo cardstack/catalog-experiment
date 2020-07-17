@@ -19,6 +19,12 @@ import {
 import { JSParseNode } from "./js";
 import { encodeModuleDescription } from "../description-encoder";
 
+interface Bundle {
+  modules: Set<ModuleResolution>;
+  staticallyImportedBy: Set<Bundle>;
+  dynamicallyImportedBy: Set<Bundle>;
+}
+
 export class BundleAssignmentsNode implements BuilderNode {
   cacheKey: string;
 
@@ -74,8 +80,12 @@ export class BundleAssignmentsNode implements BuilderNode {
         exposedNames: new Map(),
       });
     }
+
+    let { bundles, leaves } = makeBundles(resolutions);
+
     expandAssignments(assignments, [...assignments.values()]);
 
+    // TODO dynamic modules should have this logic too...
     // For lib builds, the exports of the JS entrypoint become the exports of
     // the resulting bundle
     for (let jsEntrypointHref of jsEntrypointHrefs) {
@@ -194,15 +204,29 @@ export function expandAssignments(
       }
     }
 
-    for (let dep of assignment.module.resolvedImports) {
-      if (!assignments.get(dep.url.href)) {
-        let a = {
+    for (let [index, dep] of assignment.module.resolvedImports.entries()) {
+      let depAssignment = assignments.get(dep.url.href);
+      if (!depAssignment) {
+        depAssignment = {
           bundleURL: assignment.bundleURL,
           module: dep,
           exposedNames: new Map(),
         };
-        assignments.set(dep.url.href, a);
-        queue.push(a);
+        assignments.set(dep.url.href, depAssignment);
+        queue.push(depAssignment);
+      }
+
+      // All the exports of a module that is dynamically imported should be
+      // exposed in its enclosing bundle. A dynamically imported module returns a
+      // promise to an object whose keys are the module's named exports (and a
+      // special property "default" for the default export). Statically
+      // determining the exports that are used from a dynamcially imported module
+      // is impossible--so we'll have to allow all the exports declared on a
+      // module that is imported dynmically to remain.
+      if (assignment.module.desc.imports[index].isDynamic) {
+        for (let exportedName of depAssignment.module.desc.exports.keys()) {
+          ensureExposed(exportedName, depAssignment);
+        }
       }
     }
   }
@@ -244,4 +268,49 @@ function commonStart(arr1: string[], arr2: string[]): string[] {
     }
   }
   return result;
+}
+
+// This outputs an identity map of bundles, where the key of the map is the
+// module href of the entrypoint to the bundle, as well as a set of leaf nodes
+// (bundles that don't import other bundles). This starts out with a bundle for
+// each module, we then need to optimize this stucture by aggregating modules
+// within the various bundles based on the consumption pattern of the aggregated
+// modules within each bundle.
+function makeBundles(
+  resolutions: ModuleResolution[],
+  bundles: Map<string, Bundle> = new Map(),
+  leaves: Set<Bundle> = new Set()
+): { bundles: Map<string, Bundle>; leaves: Set<Bundle> } {
+  for (let resolution of resolutions) {
+    let bundle: Bundle = {
+      modules: new Set<ModuleResolution>([resolution]),
+      staticallyImportedBy: new Set(),
+      dynamicallyImportedBy: new Set(),
+    };
+    bundles.set(resolution.url.href, bundle);
+    if (resolution.resolvedImports.length > 0) {
+      makeBundles(resolution.resolvedImports, bundles, leaves);
+
+      // since we are handling this on the exit of the recursion, all your deps
+      // will have entries in the identiy map
+      for (let [index, dep] of resolution.resolvedImports.entries()) {
+        let isDynamic = resolution.desc.imports[index].isDynamic;
+        let depBundle = bundles.get(dep.url.href)!;
+        if (isDynamic) {
+          depBundle.dynamicallyImportedBy.add(bundle);
+        } else {
+          depBundle.staticallyImportedBy.add(bundle);
+        }
+      }
+    } else {
+      leaves.add(bundle);
+    }
+  }
+  return { bundles, leaves };
+}
+
+function makeBundleURL(siblingBundleURL: URL, nonce: number) {
+  let segments = siblingBundleURL.href.split("/");
+  segments.pop();
+  return new URL(`chunk${nonce++}.js`, `${segments.join("/")}/`);
 }
