@@ -19,12 +19,6 @@ import {
 import { JSParseNode } from "./js";
 import { encodeModuleDescription } from "../description-encoder";
 
-interface Bundle {
-  modules: Set<ModuleResolution>;
-  staticallyImportedBy: Set<Bundle>;
-  dynamicallyImportedBy: Set<Bundle>;
-}
-
 export class BundleAssignmentsNode implements BuilderNode {
   cacheKey: string;
 
@@ -268,6 +262,12 @@ function commonStart(arr1: string[], arr2: string[]): string[] {
     }
   }
   return result;
+}
+
+interface Bundle {
+  modules: Set<ModuleResolution>;
+  staticallyImportedBy: Set<Bundle>;
+  dynamicallyImportedBy: Set<Bundle>;
 }
 
 // This outputs an identity map of bundles, where the key of the map is the
