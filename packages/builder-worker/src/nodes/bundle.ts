@@ -10,12 +10,7 @@ import { ModuleResolutionsNode, ModuleResolution } from "./resolution";
 import { combineModules } from "../combine-modules";
 import { File } from "@babel/types";
 import { NamespaceMarker, describeModule } from "../describe-module";
-import {
-  EntrypointsJSONNode,
-  Entrypoint,
-  JSEntrypoint,
-  HTMLEntrypoint,
-} from "./entrypoint";
+import { EntrypointsJSONNode, Entrypoint, HTMLEntrypoint } from "./entrypoint";
 import { JSParseNode } from "./js";
 import { encodeModuleDescription } from "../description-encoder";
 
@@ -105,18 +100,23 @@ interface InternalAssignment {
   enclosingBundles: Set<string>;
 }
 
-class Assigner {
+export class Assigner {
   private assignmentMap: Map<string, InternalAssignment> = new Map();
   private entrypoints: Map<string, { url: URL; isLibrary: boolean }>;
   private internalBundleCount = 0;
   private consumersOf: Consumers;
+  private requestedEntrypointURLs: URL[] = [];
 
   constructor(
     private projectInput: URL,
     private projectOutput: URL,
     resolutions: ModuleResolution[],
-    entrypoints: Entrypoint[]
+    entrypoints: Entrypoint[],
+    htmlJSEntrypointURLs?: URL[]
   ) {
+    if (htmlJSEntrypointURLs) {
+      this.requestedEntrypointURLs = [...htmlJSEntrypointURLs];
+    }
     this.entrypoints = this.mapEntrypoints(entrypoints);
     let { consumersOf, leaves } = invertDependencies(resolutions);
     this.consumersOf = consumersOf;
@@ -145,8 +145,12 @@ class Assigner {
     for (let entrypoint of entrypoints) {
       if (entrypoint instanceof HTMLEntrypoint) {
         for (let script of entrypoint.jsEntrypoints.keys()) {
+          let url =
+            this.requestedEntrypointURLs.length > 0
+              ? this.requestedEntrypointURLs.shift()!
+              : this.internalBundleURL();
           jsEntrypoints.set(script, {
-            url: this.internalBundleURL(),
+            url,
             isLibrary: false,
           });
         }
@@ -186,11 +190,13 @@ class Assigner {
       return internalAssignment;
     }
 
-    let consumers = [...this.consumersOf.get(module)!].map((consumer) => ({
-      module: consumer.module,
-      isDynamic: consumer.isDynamic,
-      internalAssignment: this.assignModule(consumer.module),
-    }));
+    let consumers = [...this.consumersOf.get(module.url.href)!].map(
+      (consumer) => ({
+        module: consumer.module,
+        isDynamic: consumer.isDynamic,
+        internalAssignment: this.assignModule(consumer.module),
+      })
+    );
 
     // trying each consumers to see if we can merge into it
     for (let consumer of consumers) {
@@ -307,64 +313,6 @@ export interface BundleAssignment {
   exposedNames: Map<string | NamespaceMarker, string>;
 }
 
-export function expandAssignments(
-  assignments: Map<string, BundleAssignment>,
-  queue: BundleAssignment[]
-) {
-  while (queue.length > 0) {
-    let assignment = queue.shift()!;
-
-    for (let source of assignment.module.desc.names.values()) {
-      if (source.type !== "import") {
-        continue;
-      }
-      let depResolution = assignment.module.resolvedImports[source.importIndex];
-      let depAssignment = assignments.get(depResolution.url.href);
-      if (depAssignment) {
-        // already assigned
-        if (depAssignment.bundleURL.href !== assignment.bundleURL.href) {
-          // already assigned to another bundle, so the name must be exposed
-          ensureExposed(source.name, depAssignment);
-        }
-      } else {
-        let a = {
-          bundleURL: assignment.bundleURL,
-          module: depResolution,
-          exposedNames: new Map(),
-        };
-        assignments.set(a.module.url.href, a);
-        queue.push(a);
-      }
-    }
-
-    for (let [index, dep] of assignment.module.resolvedImports.entries()) {
-      let depAssignment = assignments.get(dep.url.href);
-      if (!depAssignment) {
-        depAssignment = {
-          bundleURL: assignment.bundleURL,
-          module: dep,
-          exposedNames: new Map(),
-        };
-        assignments.set(dep.url.href, depAssignment);
-        queue.push(depAssignment);
-      }
-
-      // All the exports of a module that is dynamically imported should be
-      // exposed in its enclosing bundle. A dynamically imported module returns a
-      // promise to an object whose keys are the module's named exports (and a
-      // special property "default" for the default export). Statically
-      // determining the exports that are used from a dynamcially imported module
-      // is impossible--so we'll have to allow all the exports declared on a
-      // module that is imported dynmically to remain.
-      if (assignment.module.desc.imports[index].isDynamic) {
-        for (let exportedName of depAssignment.module.desc.exports.keys()) {
-          ensureExposed(exportedName, depAssignment);
-        }
-      }
-    }
-  }
-}
-
 function ensureExposed(
   exported: string | NamespaceMarker,
   assignment: BundleAssignment
@@ -391,20 +339,8 @@ function defaultName(
   return "a";
 }
 
-function commonStart(arr1: string[], arr2: string[]): string[] {
-  let result: string[] = [];
-  for (let i = 0; i < Math.min(arr1.length - 1, arr2.length - 1); i++) {
-    if (arr1[i] === arr2[i]) {
-      result.push(arr1[i]);
-    } else {
-      break;
-    }
-  }
-  return result;
-}
-
 type Consumers = Map<
-  ModuleResolution,
+  string,
   Set<{ isDynamic: boolean; module: ModuleResolution }>
 >;
 
@@ -423,14 +359,14 @@ function invertDependencies(
   leaves: Set<ModuleResolution>;
 } {
   for (let resolution of resolutions) {
-    consumersOf.set(resolution, new Set());
+    consumersOf.set(resolution.url.href, new Set());
     if (resolution.resolvedImports.length > 0) {
       invertDependencies(resolution.resolvedImports, consumersOf, leaves);
       // since we are handling this on the exit of the recursion, all your deps
       // will have entries in the identiy map
       for (let [index, dep] of resolution.resolvedImports.entries()) {
         let isDynamic = resolution.desc.imports[index].isDynamic;
-        consumersOf.get(dep)!.add({ isDynamic, module: resolution });
+        consumersOf.get(dep.url.href)!.add({ isDynamic, module: resolution });
       }
     } else {
       leaves.add(resolution);
