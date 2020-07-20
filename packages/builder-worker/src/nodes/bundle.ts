@@ -75,7 +75,7 @@ export class BundleAssignmentsNode implements BuilderNode {
       });
     }
 
-    let { bundles, leaves } = makeBundles(resolutions);
+    let { bundles, leaves } = modulesToBundles(resolutions);
 
     expandAssignments(assignments, [...assignments.values()]);
 
@@ -276,7 +276,7 @@ interface Bundle {
 // each module, we then need to optimize this stucture by aggregating modules
 // within the various bundles based on the consumption pattern of the aggregated
 // modules within each bundle.
-function makeBundles(
+function modulesToBundles(
   resolutions: ModuleResolution[],
   bundles: Map<string, Bundle> = new Map(),
   leaves: Set<Bundle> = new Set()
@@ -289,7 +289,7 @@ function makeBundles(
     };
     bundles.set(resolution.url.href, bundle);
     if (resolution.resolvedImports.length > 0) {
-      makeBundles(resolution.resolvedImports, bundles, leaves);
+      modulesToBundles(resolution.resolvedImports, bundles, leaves);
 
       // since we are handling this on the exit of the recursion, all your deps
       // will have entries in the identiy map
