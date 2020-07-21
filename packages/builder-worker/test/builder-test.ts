@@ -581,7 +581,7 @@ QUnit.module("module builder", function (origHooks) {
             return puppies[0];
           }
 
-          export { getPuppies };
+          export { getPuppy };
         `,
         "puppies.js": `
           import { cutie2 } from './names.js';
@@ -603,15 +603,15 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file("output/index.js").doesNotMatch(/export { cutie2 };/);
       await assert
         .file("output/index.js")
-        .matches(/import { cutie1 } from '\.\/names\.js';/);
+        .matches(/import { cutie1 } from "\.\/dist\/1\.js";/);
       await assert
         .file("output/index2.js")
-        .matches(/const { puppies } = await import\("\.\/puppies\.js"\);/);
+        .matches(/const { puppies } = await import\("\.\/dist\/0\.js"\);/);
       await assert
-        .file("output/puppies.js")
-        .matches(/import { cutie2 } from "\.\/names\.js";/);
+        .file("output/dist/0.js")
+        .matches(/import { cutie2 } from "\.\/1\.js";/);
       await assert
-        .file("output/names.js")
+        .file("output/dist/1.js")
         .matches(/export { cutie1, cutie2 };/);
     });
 

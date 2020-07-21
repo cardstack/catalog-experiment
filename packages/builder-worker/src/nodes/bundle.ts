@@ -392,7 +392,9 @@ function invertDependencies(
   leaves: Set<ModuleResolution>;
 } {
   for (let resolution of resolutions) {
-    consumersOf.set(resolution.url.href, new Set());
+    if (!consumersOf.has(resolution.url.href)) {
+      consumersOf.set(resolution.url.href, new Set());
+    }
     if (resolution.resolvedImports.length > 0) {
       invertDependencies(resolution.resolvedImports, consumersOf, leaves);
       // since we are handling this on the exit of the recursion, all your deps
