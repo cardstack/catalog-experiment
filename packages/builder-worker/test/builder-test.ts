@@ -519,9 +519,9 @@ QUnit.module("module builder", function (origHooks) {
       builder = makeBuilder(assert.fs);
       await builder.build();
       await assert
-        .file("output/puppies.js")
+        .file("output/dist/0.js")
         .matches(/const cutie1 = 'van gogh'/);
-      await assert.file("output/puppies.js").matches(/const cutie2 = 'mango'/);
+      await assert.file("output/dist/0.js").matches(/const cutie2 = 'mango'/);
     });
 
     test("module shared by entrypoint and a dynamic imported module is exported from entrypoint's bundle", async function (assert) {
@@ -554,10 +554,12 @@ QUnit.module("module builder", function (origHooks) {
         .file("output/index.js")
         .matches(/const cutie1 = 'van gogh';/);
       await assert.file("output/index.js").matches(/const cutie2 = 'mango';/);
-      await assert.file("output/index.js").matches(/export { cutie2 };/);
       await assert
-        .file("output/puppies.js")
-        .matches(/import { cutie2 } from "\.\/index\.js";/);
+        .file("output/index.js")
+        .matches(/export { getPuppies, cutie2 };/);
+      await assert
+        .file("output/dist/0.js")
+        .matches(/import { cutie2 } from "\.\.\/index\.js";/);
     });
 
     test("dynamically imported module consumption forces its static import to be bundled separately", async function (assert) {

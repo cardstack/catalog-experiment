@@ -214,29 +214,54 @@ export class Assigner {
         )
       ) {
         // we can merge with this consumer
-        this.assignmentMap.set(module.url.href, {
+        let bundleURL = consumer.internalAssignment.assignment.bundleURL;
+        let internalAssignment = {
           assignment: {
-            bundleURL: consumer.internalAssignment.assignment.bundleURL,
+            bundleURL,
             module,
             exposedNames: new Map(),
           },
           enclosingBundles: consumer.internalAssignment.enclosingBundles,
-        });
-        // TODO make sure we expose our exports if our module is consumed dynamically...
+        };
+        this.assignmentMap.set(module.url.href, internalAssignment);
+
+        // Expose the exports that are consumed by modules in different bundles.
+        // Your consumers will have already been assigned to bundles, since the
+        // assignment recursing into your consumers happened when you when to
+        // get the 'consumers' above.
+        for (let externalConsumer of consumers.filter(
+          (c) =>
+            c.internalAssignment.assignment.bundleURL.href !== bundleURL.href
+        )) {
+          for (let nameDesc of externalConsumer.module.desc.names.values()) {
+            if (
+              nameDesc.type !== "import" ||
+              externalConsumer.module.resolvedImports[nameDesc.importIndex].url
+                .href !== module.url.href
+            ) {
+              continue;
+            }
+            ensureExposed(nameDesc.name, internalAssignment.assignment);
+          }
+        }
+
         return consumer.internalAssignment;
       }
     }
 
     // we need to be our own bundle
+    let bundleURL = this.internalBundleURL();
+    let enclosingBundles = intersection(
+      consumers.map((c) => c.internalAssignment.enclosingBundles)
+    );
+    enclosingBundles.add(bundleURL.href); // we are also enclosed by our own bundle
     let internalAssignment = {
       assignment: {
-        bundleURL: this.internalBundleURL(),
+        bundleURL,
         module,
         exposedNames: new Map(),
       },
-      enclosingBundles: intersection(
-        consumers.map((c) => c.internalAssignment.enclosingBundles)
-      ),
+      enclosingBundles,
     };
     this.assignmentMap.set(module.url.href, internalAssignment);
     for (let exportedName of module.desc.exports.keys()) {
