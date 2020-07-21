@@ -48,48 +48,6 @@ export class BundleAssignmentsNode implements BuilderNode {
       resolutions,
       entrypoints
     );
-    // for (let [index, module] of resolutions.entries()) {
-    //   let root = this.projectOutput;
-    //   let bundleURL: URL;
-    //   if (jsEntrypointHrefs.includes(module.url.href)) {
-    //     // merge the bundle's path into the root's folder structure if they
-    //     // share a common root folder structure in the path part of the URL
-    //     let commonRootParts = commonStart(
-    //       module.url.pathname.split("/"),
-    //       root.pathname.split("/")
-    //     );
-    //     let commonRoot = commonRootParts.join("/");
-    //     bundleURL = new URL(
-    //       `.${module.url.pathname.slice(commonRoot.length)}`,
-    //       root
-    //     );
-    //   } else {
-    //     bundleURL = new URL(`./dist/${index}.js`, root);
-    //   }
-    //   assignments.set(module.url.href, {
-    //     bundleURL,
-    //     module,
-    //     exposedNames: new Map(),
-    //   });
-    // }
-
-    //  expandAssignments(assignments, [...assignments.values()]);
-
-    // TODO dynamic modules should have this logic too...
-    // For lib builds, the exports of the JS entrypoint become the exports of
-    // the resulting bundle
-    // for (let jsEntrypointHref of jsEntrypointHrefs) {
-    //   let assignment = assignments.get(jsEntrypointHref);
-    //   if (!assignment) {
-    //     throw new Error(
-    //       `bug: can't find bundle assignment for js entrypoint ${jsEntrypointHref}`
-    //     );
-    //   }
-    //   for (let exportedName of assignment.module.desc.exports.keys()) {
-    //     ensureExposed(exportedName, assignment);
-    //   }
-    // }
-
     return {
       value: assigner.assignments,
     };

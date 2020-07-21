@@ -69,8 +69,10 @@ export function combineModules(
       continue;
     }
 
-    removedBindings.add(bindingName);
-    removeBinding(bindingName, rewriters, bundle, state, assignments);
+    if (bindingName !== "default") {
+      removedBindings.add(bindingName);
+      removeBinding(bindingName, rewriters, bundle, state, assignments);
+    }
   }
 
   let output = [];
@@ -273,10 +275,16 @@ class ModuleRewriter {
           assignedDefaultName = this.sharedState.assignedImportedNames
             .get(this.module.url.href)
             ?.get("default");
+
+          // for dynamic imports, there is a manufactured "default" property
+          // that is added to the POJO returned by the import() expression for
+          // default exports. presumably you could never combine a module that
+          // is consumed dynamically with another module that is consumed
+          // dynamically--so there should be no possibilioty of a default export
+          // collision. modules that are consumed statically have default
+          // exports that are analyzable and renamed.
           if (!assignedDefaultName) {
-            throw new Error(
-              `bug: a name was never assigned to an unnamed default export in module ${this.module.url.href}`
-            );
+            assignedDefaultName = "default";
           }
           assignedName = assignedDefaultName;
         } else if (entry?.[0]) {
@@ -570,8 +578,14 @@ function assignedExports(assignments: BundleAssignment[], state: State) {
       let insideName = state.assignedImportedNames
         .get(assignment.module.url.href)
         ?.get(original);
-      if (!insideName) {
-        throw new Error(`bug: no internal mapping for ${exposed}`);
+
+      // this is to address the situtation where you have a module whose default
+      // export is consumed dynamically. This situation is pretty hands-off
+      // since dynamic imports are not statically analyzable.
+      if (!insideName && exposed === "default") {
+        continue;
+      } else if (!insideName) {
+        throw new Error(`bug: no internal mapping for '${exposed}'`);
       }
       exports.set(exposed, insideName);
     }

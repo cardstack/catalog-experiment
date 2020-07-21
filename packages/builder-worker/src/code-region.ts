@@ -375,32 +375,45 @@ export class RegionEditor {
   }
 
   removeImportsAndExports(defaultNameSuggestion: string | undefined) {
-    for (let { region, declaration } of this.desc.exportRegions) {
-      let defaultExport = this.desc.exports.get("default");
+    let defaultExport = this.desc.exports.get("default");
+    if (
+      defaultExport &&
+      defaultExport.name === "default" &&
+      defaultNameSuggestion === "default"
+    ) {
+      // this is the scenario where we are dealing with a module that is
+      // consumed dynamically. As such, we need to preserve its default export,
+      // since it will become an export of the overal bundle that encloses the
+      // module. (statically consumed default exports though are removed, and
+      // their consumers' bindings are reassigned). So we skip over the export.
+    } else {
+      for (let { region, declaration } of this.desc.exportRegions) {
+        let defaultExport = this.desc.exports.get("default");
 
-      if (
-        defaultExport &&
-        defaultExport.name === "default" &&
-        defaultExport.exportRegion === region
-      ) {
-        // the region we are considering is actually an unnamed default, so we
-        // assign it
-        if (!defaultNameSuggestion) {
-          throw new Error(
-            `Encountered an unnamed default export, but no default name suggestion was provided`
-          );
+        if (
+          defaultExport &&
+          defaultExport.name === "default" &&
+          defaultExport.exportRegion === region
+        ) {
+          // the region we are considering is actually an unnamed default, so we
+          // assign it
+          if (!defaultNameSuggestion) {
+            throw new Error(
+              `Encountered an unnamed default export, but no default name suggestion was provided`
+            );
+          }
+          this.dispositions[region] = {
+            state: "replaced start",
+            replacement: `const ${defaultNameSuggestion} = `,
+          };
+        } else if (declaration != null) {
+          this.dispositions[region] = {
+            state: "replaced start",
+            replacement: "",
+          };
+        } else {
+          this.dispositions[region] = { state: "removed" };
         }
-        this.dispositions[region] = {
-          state: "replaced start",
-          replacement: `const ${defaultNameSuggestion} = `,
-        };
-      } else if (declaration != null) {
-        this.dispositions[region] = {
-          state: "replaced start",
-          replacement: "",
-        };
-      } else {
-        this.dispositions[region] = { state: "removed" };
       }
     }
     for (let importDesc of this.desc.imports) {
