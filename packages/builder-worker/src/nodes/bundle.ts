@@ -222,6 +222,7 @@ export class Assigner {
           },
           enclosingBundles: consumer.internalAssignment.enclosingBundles,
         });
+        // TODO make sure we expose our exports if our module is consumed dynamically...
         return consumer.internalAssignment;
       }
     }
@@ -238,6 +239,9 @@ export class Assigner {
       ),
     };
     this.assignmentMap.set(module.url.href, internalAssignment);
+    for (let exportedName of module.desc.exports.keys()) {
+      ensureExposed(exportedName, internalAssignment.assignment);
+    }
     return internalAssignment;
   }
 

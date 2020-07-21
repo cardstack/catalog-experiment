@@ -100,6 +100,7 @@ export type ImportDescription =
   | {
       isDynamic: true;
       specifier: string;
+      specifierRegion: RegionPointer;
     };
 
 // @babel/traverse makes it very hard to talk about NodePath's generically,
@@ -380,7 +381,15 @@ export function describeModule(
         (i) => i.specifier === stringLiteral.value
       );
       if (!importDesc) {
+        if (!Array.isArray(path.parentPath.get("arguments"))) {
+          throw new Error(
+            `bug: Cannot determine path to dynamic import's specifier`
+          );
+        }
         importDesc = {
+          specifierRegion: builder.createCodeRegion(
+            (path.parentPath.get("arguments") as NodePath[])[0]
+          ),
           specifier: stringLiteral.value,
           isDynamic: true,
         };

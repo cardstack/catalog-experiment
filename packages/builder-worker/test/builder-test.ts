@@ -487,13 +487,14 @@ QUnit.module("module builder", function (origHooks) {
       await builder.build();
       await assert
         .file("output/index.js")
-        .matches(/const { puppies } = await import\("\.\/chunk0\.js"\);/);
+        .matches(/const { puppies } = await import\("\.\/dist\/0\.js"\);/);
       await assert
-        .file("output/chunk0.js")
-        .matches(/export const puppies = \["mango", "van gogh"\];/);
+        .file("output/dist/0.js")
+        .matches(/const puppies = \["mango", "van gogh"\];/);
+      await assert.file("output/dist/0.js").matches(/export { puppies };/);
     });
 
-    // test: consume a dynamically imported modules' default export
+    test("can consume dynamically imported module's default export", async function (assert) {});
 
     test("dynamically imported module's unshared static imports are assigned to same bundle", async function (assert) {
       await assert.setupFiles({

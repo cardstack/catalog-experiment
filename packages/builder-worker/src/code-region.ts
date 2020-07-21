@@ -370,7 +370,7 @@ export class RegionEditor {
     }
   }
 
-  private replace(region: RegionPointer, replacement: string): void {
+  replace(region: RegionPointer, replacement: string): void {
     this.dispositions[region] = { state: "replaced", replacement };
   }
 

@@ -216,7 +216,11 @@ interface State {
 class ModuleRewriter {
   readonly editor: RegionEditor;
 
-  constructor(readonly module: ModuleResolution, private sharedState: State) {
+  constructor(
+    readonly module: ModuleResolution,
+    private sharedState: State,
+    private assignments: BundleAssignment[]
+  ) {
     this.editor = new RegionEditor(
       module.source,
       module.desc,
@@ -300,6 +304,35 @@ class ModuleRewriter {
       this.claimAndRename(this.module.url.href, name, assignedName);
     }
 
+    // rewrite dynamic imports to use bundle specifiers
+    for (let [index, importDesc] of this.module.desc.imports.entries()) {
+      if (!importDesc.isDynamic) {
+        continue;
+      }
+      let myAssignment = this.assignments.find(
+        (a) => a.module.url.href === this.module.url.href
+      );
+      if (!myAssignment) {
+        throw new Error(
+          `bug: could not module assignment ${this.module.url.href}`
+        );
+      }
+      let dep = this.module.resolvedImports[index];
+      let depAssignment = this.assignments.find(
+        (a) => a.module.url.href === dep.url.href
+      );
+      if (!depAssignment) {
+        throw new Error(
+          `bug: could not find assignment for module ${dep.url.href} which is imported by ${this.module.url.href}`
+        );
+      }
+      let bundleSpecifier = `"${maybeRelativeURL(
+        depAssignment.bundleURL,
+        myAssignment.bundleURL
+      )}"`;
+      this.editor.replace(importDesc.specifierRegion, bundleSpecifier);
+    }
+
     this.editor.removeImportsAndExports(assignedDefaultName);
   }
 
@@ -375,7 +408,7 @@ function gatherModuleRewriters(
   // recursive function so that module bindings that are closest to the bundle
   // entrypoint have their names retained so that collisions are more likely the
   // farther away from the modul entrypoint that you go.
-  let rewriter = new ModuleRewriter(module, state);
+  let rewriter = new ModuleRewriter(module, state, assignments);
 
   for (let resolution of module.resolvedImports) {
     let assignment = assignments.find(
