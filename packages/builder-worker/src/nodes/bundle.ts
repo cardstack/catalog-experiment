@@ -13,6 +13,7 @@ import { NamespaceMarker, describeModule } from "../describe-module";
 import { EntrypointsJSONNode, Entrypoint, HTMLEntrypoint } from "./entrypoint";
 import { JSParseNode } from "./js";
 import { encodeModuleDescription } from "../description-encoder";
+import { makeURLEndInDir } from "../path";
 
 export class BundleAssignmentsNode implements BuilderNode {
   cacheKey: string;
@@ -131,7 +132,10 @@ export class Assigner {
 
   private inputToOutput(href: string): URL {
     return new URL(
-      href.replace(this.projectInput.href, this.projectOutput.href)
+      href.replace(
+        makeURLEndInDir(this.projectInput).href,
+        makeURLEndInDir(this.projectOutput).href
+      )
     );
   }
 
