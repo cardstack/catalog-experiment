@@ -1033,6 +1033,37 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
+  test("preserves side effect import if module with side effect is assigned to different bundle", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import './a.js';
+        const b = 'b';
+        console.log(b);
+      `,
+      "a.js": `
+        console.log('side effect');
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs, {
+      assignments: [
+        {
+          module: "a.js",
+          assignedToBundle: "dist/2.js",
+          nameMapping: {},
+        },
+      ],
+    });
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `import './2.js';
+       const b = 'b';
+       console.log(b);`
+    );
+  });
+
   test("strips unused exported function", async function (assert) {
     await assert.setupFiles({
       "index.js": `

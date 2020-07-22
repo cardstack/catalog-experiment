@@ -21,6 +21,7 @@ export function combineModules(
     assignedLocalNames: new Map(),
     usedNames: new Map(),
     assignedImportedNames: new Map(),
+    sideEffectImports: new Set(),
     bindingDependsOn: new Map(),
     bundleDependsOn: new Set(),
     seenModules: new Set(),
@@ -100,6 +101,7 @@ export function combineModules(
     output.push(exportDeclaration.join(" "));
   }
 
+  // Add assigned imports for this bundle
   let importDeclarations: string[] = [];
   for (let [bundleHref, mapping] of assignedImports(
     assignments,
@@ -124,6 +126,16 @@ export function combineModules(
     importDeclarations.push(importDeclaration.join(" "));
   }
   output.unshift(importDeclarations.join("\n"));
+
+  // add any imports for side effects of modules that were assigned to a
+  // different bundle
+  let sideEffectAssignments = [...state.sideEffectImports].map((href) =>
+    assignments.find((a) => a.module.url.href === href)
+  );
+  let sideEffectImports = sideEffectAssignments
+    .filter((a) => a?.bundleURL.href !== bundle.href)
+    .map((a) => `import "${maybeRelativeURL(a!.bundleURL, bundle)}";`);
+  output.unshift(sideEffectImports.join("\n"));
 
   const importAssignments = invertAssignedImportedNames(
     state.assignedImportedNames
@@ -193,6 +205,9 @@ interface State {
   bundle: URL;
 
   usedNames: Map<string, { moduleHref: string; name: string }>;
+
+  // this is a set of module href's that are imported for side effects
+  sideEffectImports: Set<string>;
 
   // outer map is the href of the exported module. the inner map goes from
   // exported name to our name. our name also must appear in usedNames.
@@ -310,6 +325,22 @@ class ModuleRewriter {
         nameAssignments.set(name, assignedName);
       }
       this.claimAndRename(this.module.url.href, name, assignedName);
+    }
+
+    // discover any static imports for side effects. these will be imports that
+    // are not dynamic and have no binding name associated with them.
+    for (let [index, importDesc] of this.module.desc.imports.entries()) {
+      if (
+        !importDesc.isDynamic &&
+        ![...this.module.desc.names.values()].find(
+          (nameDesc) =>
+            nameDesc.type === "import" && nameDesc.importIndex === index
+        )
+      ) {
+        this.sharedState.sideEffectImports.add(
+          this.module.resolvedImports[index].url.href
+        );
+      }
     }
 
     // rewrite dynamic imports to use bundle specifiers

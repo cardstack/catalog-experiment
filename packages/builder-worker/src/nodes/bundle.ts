@@ -9,7 +9,11 @@ import {
 import { ModuleResolutionsNode, ModuleResolution } from "./resolution";
 import { combineModules } from "../combine-modules";
 import { File } from "@babel/types";
-import { NamespaceMarker, describeModule } from "../describe-module";
+import {
+  NamespaceMarker,
+  describeModule,
+  ImportedNameDescription,
+} from "../describe-module";
 import { EntrypointsJSONNode, Entrypoint, HTMLEntrypoint } from "./entrypoint";
 import { JSParseNode } from "./js";
 import { encodeModuleDescription } from "../description-encoder";
@@ -132,6 +136,16 @@ export class Assigner {
       return alreadyAssigned;
     }
 
+    // entrypoints can be consumed by other entrypoints, so it's important that
+    // we assign consumers first, even if we are an entrypoint.
+    let consumers = [...this.consumersOf.get(module.url.href)!].map(
+      (consumer) => ({
+        module: consumer.module,
+        isDynamic: consumer.isDynamic,
+        internalAssignment: this.assignModule(consumer.module),
+      })
+    );
+
     let entrypoint = this.entrypoints.get(module.url.href);
     if (entrypoint) {
       // base case: we are an entrypoint
@@ -148,17 +162,20 @@ export class Assigner {
         for (let exportedName of module.desc.exports.keys()) {
           ensureExposed(exportedName, internalAssignment.assignment);
         }
+      } else {
+        for (let consumer of consumers) {
+          let myIndex = consumer.module.resolvedImports.findIndex(
+            (m) => m.url.href === module.url.href
+          );
+          for (let nameDesc of [...consumer.module.desc.names.values()].filter(
+            (desc) => desc.type === "import" && desc.importIndex === myIndex
+          ) as ImportedNameDescription[]) {
+            ensureExposed(nameDesc.name, internalAssignment.assignment);
+          }
+        }
       }
       return internalAssignment;
     }
-
-    let consumers = [...this.consumersOf.get(module.url.href)!].map(
-      (consumer) => ({
-        module: consumer.module,
-        isDynamic: consumer.isDynamic,
-        internalAssignment: this.assignModule(consumer.module),
-      })
-    );
 
     // trying each consumers to see if we can merge into it
     for (let consumer of consumers) {
@@ -335,12 +352,6 @@ type Consumers = Map<
   Set<{ isDynamic: boolean; module: ModuleResolution }>
 >;
 
-// This outputs an identity map of bundles, where the key of the map is the
-// module href of the entrypoint to the bundle, as well as a set of leaf nodes
-// (bundles that don't import other bundles). This starts out with a bundle for
-// each module, we then need to optimize this stucture by aggregating modules
-// within the various bundles based on the consumption pattern of the aggregated
-// modules within each bundle.
 function invertDependencies(
   resolutions: ModuleResolution[],
   consumersOf: Consumers = new Map(),

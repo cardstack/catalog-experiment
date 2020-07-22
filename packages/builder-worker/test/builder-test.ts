@@ -119,6 +119,76 @@ QUnit.module("module builder", function (origHooks) {
         .matches(/src=\"\.\.\/dist\/1.js\"/, "file contents are correct");
     });
 
+    test("an entrypoint can consume another entrypoint", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "html": ["index.html", "test/index.html"] }`,
+        "index.html": `<html><script type="module" src="./index.js"></script></html>`,
+        "index.js": `
+           import { planet } from "./a.js";
+           console.log("hello " + planet);
+        `,
+        "a.js": `export const planet = "mars"`,
+        "test/index.html": `<html><script type="module" src="./index.js"></script></html>`,
+        "test/index.js": `
+          import "../index.js";
+          console.log('hi');
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.html").exists();
+      await assert
+        .file("output/index.html")
+        .matches(/src=\"\.\/dist\/0.js\"/, "file contents are correct");
+      await assert.file("output/test/index.html").exists();
+      await assert
+        .file("output/test/index.html")
+        .matches(/src=\"\.\.\/dist\/1.js\"/, "file contents are correct");
+      await assert.file("output/dist/1.js").matches(/import "\.\/0\.js";/);
+    });
+
+    test("it preserves consumed exports from bundles derived from HTML entrypoints", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "html": ["index.html", "test/index.html"] }`,
+        "index.html": `<html><script type="module" src="./index.js"></script></html>`,
+        "index.js": `
+           export function boot() {
+             console.log('starting up!');
+           }
+        `,
+        "test/index.html": `<html><script type="module" src="./index.js"></script></html>`,
+        "test/index.js": `
+          import { boot } from "../index.js";
+          boot();
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/dist/0.js").matches(/export { boot };/);
+      await assert
+        .file("output/dist/1.js")
+        .matches(/import { boot } from "\.\/0\.js";/);
+    });
+
+    test("it prunes unconsumed exports from bundles derived from HTML entrypoints", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "html": ["index.html", "test/index.html"] }`,
+        "index.html": `<html><script type="module" src="./index.js"></script></html>`,
+        "index.js": `
+           export function boot() {
+             console.log('starting up!');
+           }
+        `,
+        "test/index.html": `<html><script type="module" src="./index.js"></script></html>`,
+        "test/index.js": `
+          console.log('hi');
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/dist/0.js").doesNotMatch(/export { boot };/);
+    });
+
     test("it does not change source files", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "html": ["index.html"] }`,
