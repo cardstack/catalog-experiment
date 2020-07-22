@@ -119,6 +119,76 @@ QUnit.module("module builder", function (origHooks) {
         .matches(/src=\"\.\.\/dist\/1.js\"/, "file contents are correct");
     });
 
+    test("an entrypoint can consume another entrypoint", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "html": ["index.html", "test/index.html"] }`,
+        "index.html": `<html><script type="module" src="./index.js"></script></html>`,
+        "index.js": `
+           import { planet } from "./a.js";
+           console.log("hello " + planet);
+        `,
+        "a.js": `export const planet = "mars"`,
+        "test/index.html": `<html><script type="module" src="./index.js"></script></html>`,
+        "test/index.js": `
+          import "../index.js";
+          console.log('hi');
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.html").exists();
+      await assert
+        .file("output/index.html")
+        .matches(/src=\"\.\/dist\/0.js\"/, "file contents are correct");
+      await assert.file("output/test/index.html").exists();
+      await assert
+        .file("output/test/index.html")
+        .matches(/src=\"\.\.\/dist\/1.js\"/, "file contents are correct");
+      await assert.file("output/dist/1.js").matches(/import "\.\/0\.js";/);
+    });
+
+    test("it preserves consumed exports from bundles derived from HTML entrypoints", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "html": ["index.html", "test/index.html"] }`,
+        "index.html": `<html><script type="module" src="./index.js"></script></html>`,
+        "index.js": `
+           export function boot() {
+             console.log('starting up!');
+           }
+        `,
+        "test/index.html": `<html><script type="module" src="./index.js"></script></html>`,
+        "test/index.js": `
+          import { boot } from "../index.js";
+          boot();
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/dist/0.js").matches(/export { boot };/);
+      await assert
+        .file("output/dist/1.js")
+        .matches(/import { boot } from "\.\/0\.js";/);
+    });
+
+    test("it prunes unconsumed exports from bundles derived from HTML entrypoints", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "html": ["index.html", "test/index.html"] }`,
+        "index.html": `<html><script type="module" src="./index.js"></script></html>`,
+        "index.js": `
+           export function boot() {
+             console.log('starting up!');
+           }
+        `,
+        "test/index.html": `<html><script type="module" src="./index.js"></script></html>`,
+        "test/index.js": `
+          console.log('hi');
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/dist/0.js").doesNotMatch(/export { boot };/);
+    });
+
     test("it does not change source files", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "html": ["index.html"] }`,
@@ -468,6 +538,210 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file("output/driver/index.js").doesNotMatch(/getCats/);
       await assert.file("output/driver/index.js").doesNotMatch(/getRats/);
       await assert.file("output/driver/index.js").doesNotMatch(/cutie3/);
+    });
+
+    test("dynamically imported module assigned to separate bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          async function getPuppies() {
+            const { puppies } = await import("./puppies.js");
+            return puppies;
+          }
+
+          export { getPuppies };
+        `,
+        "puppies.js": `export const puppies = ["mango", "van gogh"];`,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(/const { puppies } = await import\("\.\/dist\/0\.js"\);/);
+      await assert
+        .file("output/dist/0.js")
+        .matches(/const puppies = \["mango", "van gogh"\];/);
+      await assert.file("output/dist/0.js").matches(/export { puppies };/);
+    });
+
+    test("can consume dynamically imported module's default export", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          async function getPuppies() {
+            const { default: puppies } = await import("./puppies.js");
+            return puppies;
+          }
+
+          export { getPuppies };
+        `,
+        "puppies.js": `export default ["mango", "van gogh"];`,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(
+          /const { default: puppies } = await import\("\.\/dist\/0\.js"\);/
+        );
+      await assert
+        .file("output/dist/0.js")
+        .matches(/export default \["mango", "van gogh"\];/);
+    });
+
+    test("dynamically imported module's unshared static imports are assigned to same bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          async function getPuppies() {
+            const { puppies } = await import("./puppies.js");
+            return puppies;
+          }
+
+          export { getPuppies };
+        `,
+        "puppies.js": `
+          import { cutie1, cutie2 } from './names.js';
+          export const puppies = [ cutie1, cutie2 ];
+        `,
+        "names.js": `
+          export const cutie1 = 'van gogh';
+          export const cutie2 = 'mango';
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/dist/0.js")
+        .matches(/const cutie1 = 'van gogh'/);
+      await assert.file("output/dist/0.js").matches(/const cutie2 = 'mango'/);
+    });
+
+    test("module shared by entrypoint and a dynamic imported module is exported from entrypoint's bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { cutie1 } from './names.js';
+          async function getPuppies() {
+            const { puppies } = await import("./puppies.js");
+            return puppies;
+          }
+          console.log(cutie1);
+
+          export { getPuppies };
+        `,
+        // note how we are using different exports in the shared module from the
+        // entrypoint...
+        "puppies.js": `
+          import { cutie2 } from './names.js';
+          export const puppies = [ cutie2 ];
+        `,
+        "names.js": `
+          export const cutie1 = 'van gogh';
+          export const cutie2 = 'mango';
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(/const cutie1 = 'van gogh';/);
+      await assert.file("output/index.js").matches(/const cutie2 = 'mango';/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { getPuppies, cutie2 };/);
+      await assert
+        .file("output/dist/0.js")
+        .matches(/import { cutie2 } from "\.\.\/index\.js";/);
+    });
+
+    test("dynamically imported module consumption forces its static import to be bundled separately", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js", "index2.js"] }`,
+        "index.js": `
+          import { cutie1 } from './names.js';
+          async function getPuppies() {
+            const { puppies } = await import("./puppies.js");
+            return puppies;
+          }
+          console.log(cutie1);
+
+          export { getPuppies };
+        `,
+        "index2.js": `
+          async function getPuppy() {
+            const { puppies } = await import("./puppies.js");
+            return puppies[0];
+          }
+
+          export { getPuppy };
+        `,
+        "puppies.js": `
+          import { cutie2 } from './names.js';
+          export const puppies = [ cutie2 ];
+        `,
+        "names.js": `
+          export const cutie1 = 'van gogh';
+          export const cutie2 = 'mango';
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .doesNotMatch(/const cutie1 = 'van gogh';/);
+      await assert
+        .file("output/index.js")
+        .doesNotMatch(/const cutie2 = 'mango';/);
+      await assert.file("output/index.js").doesNotMatch(/export { cutie2 };/);
+      await assert
+        .file("output/index.js")
+        .matches(/import { cutie1 } from "\.\/dist\/1\.js";/);
+      await assert
+        .file("output/index2.js")
+        .matches(/const { puppies } = await import\("\.\/dist\/0\.js"\);/);
+      await assert
+        .file("output/dist/0.js")
+        .matches(/import { cutie2 } from "\.\/1\.js";/);
+      await assert
+        .file("output/dist/1.js")
+        .matches(/export { cutie1, cutie2 };/);
+    });
+
+    test("creates separate bundles for dynamically imported module that in turn has a dynamic import", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          async function handleA(event) {
+            const { a } = await import("./a.js");
+            event.on('bleep', a());
+          }
+
+          export { handleA };
+        `,
+        "a.js": `
+          export function a() {
+            return async function() {
+              const { b } = await import("./b.js");
+              console.log(b);
+            };
+          }
+        `,
+        "b.js": `
+          export const b = 'b';
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(/const { a } = await import\("\.\/dist\/0\.js"\);/);
+      await assert
+        .file("output/dist/0.js")
+        .matches(/const { b } = await import\("\.\/1\.js"\);/);
+      await assert.file("output/dist/0.js").matches(/export { a };/);
+      await assert.file("output/dist/1.js").matches(/const b = 'b';/);
+      await assert.file("output/dist/1.js").matches(/export { b };/);
     });
   });
 

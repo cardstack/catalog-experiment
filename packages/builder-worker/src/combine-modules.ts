@@ -21,6 +21,7 @@ export function combineModules(
     assignedLocalNames: new Map(),
     usedNames: new Map(),
     assignedImportedNames: new Map(),
+    sideEffectImports: new Set(),
     bindingDependsOn: new Map(),
     bundleDependsOn: new Set(),
     seenModules: new Set(),
@@ -69,8 +70,10 @@ export function combineModules(
       continue;
     }
 
-    removedBindings.add(bindingName);
-    removeBinding(bindingName, rewriters, bundle, state, assignments);
+    if (bindingName !== "default") {
+      removedBindings.add(bindingName);
+      removeBinding(bindingName, rewriters, bundle, state, assignments);
+    }
   }
 
   let output = [];
@@ -98,6 +101,7 @@ export function combineModules(
     output.push(exportDeclaration.join(" "));
   }
 
+  // Add assigned imports for this bundle
   let importDeclarations: string[] = [];
   for (let [bundleHref, mapping] of assignedImports(
     assignments,
@@ -122,6 +126,16 @@ export function combineModules(
     importDeclarations.push(importDeclaration.join(" "));
   }
   output.unshift(importDeclarations.join("\n"));
+
+  // add any imports for side effects of modules that were assigned to a
+  // different bundle
+  let sideEffectAssignments = [...state.sideEffectImports].map((href) =>
+    assignments.find((a) => a.module.url.href === href)
+  );
+  let sideEffectImports = sideEffectAssignments
+    .filter((a) => a?.bundleURL.href !== bundle.href)
+    .map((a) => `import "${maybeRelativeURL(a!.bundleURL, bundle)}";`);
+  output.unshift(sideEffectImports.join("\n"));
 
   const importAssignments = invertAssignedImportedNames(
     state.assignedImportedNames
@@ -192,6 +206,9 @@ interface State {
 
   usedNames: Map<string, { moduleHref: string; name: string }>;
 
+  // this is a set of module href's that are imported for side effects
+  sideEffectImports: Set<string>;
+
   // outer map is the href of the exported module. the inner map goes from
   // exported name to our name. our name also must appear in usedNames.
   assignedImportedNames: Map<string, Map<string | NamespaceMarker, string>>;
@@ -216,7 +233,11 @@ interface State {
 class ModuleRewriter {
   readonly editor: RegionEditor;
 
-  constructor(readonly module: ModuleResolution, private sharedState: State) {
+  constructor(
+    readonly module: ModuleResolution,
+    private sharedState: State,
+    private assignments: BundleAssignment[]
+  ) {
     this.editor = new RegionEditor(
       module.source,
       module.desc,
@@ -269,10 +290,16 @@ class ModuleRewriter {
           assignedDefaultName = this.sharedState.assignedImportedNames
             .get(this.module.url.href)
             ?.get("default");
+
+          // for dynamic imports, there is a manufactured "default" property
+          // that is added to the POJO returned by the import() expression for
+          // default exports. presumably you could never combine a module that
+          // is consumed dynamically with another module that is consumed
+          // dynamically--so there should be no possibilioty of a default export
+          // collision. modules that are consumed statically have default
+          // exports that are analyzable and renamed.
           if (!assignedDefaultName) {
-            throw new Error(
-              `bug: a name was never assigned to an unnamed default export in module ${this.module.url.href}`
-            );
+            assignedDefaultName = "default";
           }
           assignedName = assignedDefaultName;
         } else if (entry?.[0]) {
@@ -298,6 +325,51 @@ class ModuleRewriter {
         nameAssignments.set(name, assignedName);
       }
       this.claimAndRename(this.module.url.href, name, assignedName);
+    }
+
+    // discover any static imports for side effects. these will be imports that
+    // are not dynamic and have no binding name associated with them.
+    for (let [index, importDesc] of this.module.desc.imports.entries()) {
+      if (
+        !importDesc.isDynamic &&
+        ![...this.module.desc.names.values()].find(
+          (nameDesc) =>
+            nameDesc.type === "import" && nameDesc.importIndex === index
+        )
+      ) {
+        this.sharedState.sideEffectImports.add(
+          this.module.resolvedImports[index].url.href
+        );
+      }
+    }
+
+    // rewrite dynamic imports to use bundle specifiers
+    for (let [index, importDesc] of this.module.desc.imports.entries()) {
+      if (!importDesc.isDynamic) {
+        continue;
+      }
+      let myAssignment = this.assignments.find(
+        (a) => a.module.url.href === this.module.url.href
+      );
+      if (!myAssignment) {
+        throw new Error(
+          `bug: could not module assignment ${this.module.url.href}`
+        );
+      }
+      let dep = this.module.resolvedImports[index];
+      let depAssignment = this.assignments.find(
+        (a) => a.module.url.href === dep.url.href
+      );
+      if (!depAssignment) {
+        throw new Error(
+          `bug: could not find assignment for module ${dep.url.href} which is imported by ${this.module.url.href}`
+        );
+      }
+      let bundleSpecifier = `"${maybeRelativeURL(
+        depAssignment.bundleURL,
+        myAssignment.bundleURL
+      )}"`;
+      this.editor.replace(importDesc.specifierRegion, bundleSpecifier);
     }
 
     this.editor.removeImportsAndExports(assignedDefaultName);
@@ -375,7 +447,7 @@ function gatherModuleRewriters(
   // recursive function so that module bindings that are closest to the bundle
   // entrypoint have their names retained so that collisions are more likely the
   // farther away from the modul entrypoint that you go.
-  let rewriter = new ModuleRewriter(module, state);
+  let rewriter = new ModuleRewriter(module, state, assignments);
 
   for (let resolution of module.resolvedImports) {
     let assignment = assignments.find(
@@ -537,8 +609,14 @@ function assignedExports(assignments: BundleAssignment[], state: State) {
       let insideName = state.assignedImportedNames
         .get(assignment.module.url.href)
         ?.get(original);
-      if (!insideName) {
-        throw new Error(`bug: no internal mapping for ${exposed}`);
+
+      // this is to address the situtation where you have a module whose default
+      // export is consumed dynamically. This situation is pretty hands-off
+      // since dynamic imports are not statically analyzable.
+      if (!insideName && exposed === "default") {
+        continue;
+      } else if (!insideName) {
+        throw new Error(`bug: no internal mapping for '${exposed}'`);
       }
       exports.set(exposed, insideName);
     }

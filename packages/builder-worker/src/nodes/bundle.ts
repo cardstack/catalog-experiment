@@ -9,15 +9,15 @@ import {
 import { ModuleResolutionsNode, ModuleResolution } from "./resolution";
 import { combineModules } from "../combine-modules";
 import { File } from "@babel/types";
-import { NamespaceMarker, describeModule } from "../describe-module";
 import {
-  EntrypointsJSONNode,
-  Entrypoint,
-  JSEntrypoint,
-  HTMLEntrypoint,
-} from "./entrypoint";
+  NamespaceMarker,
+  describeModule,
+  ImportedNameDescription,
+} from "../describe-module";
+import { EntrypointsJSONNode, Entrypoint, HTMLEntrypoint } from "./entrypoint";
 import { JSParseNode } from "./js";
 import { encodeModuleDescription } from "../description-encoder";
+import { makeURLEndInDir } from "../path";
 
 export class BundleAssignmentsNode implements BuilderNode {
   cacheKey: string;
@@ -46,53 +46,210 @@ export class BundleAssignmentsNode implements BuilderNode {
     resolutions: ModuleResolution[];
     entrypoints: Entrypoint[];
   }): Promise<Value<BundleAssignment[]>> {
-    let assignments = new Map<string, BundleAssignment>();
-    let jsEntrypointHrefs = (entrypoints.filter(
-      (e) => !(e instanceof HTMLEntrypoint)
-    ) as JSEntrypoint[]).map((e) => e.url.href);
-    for (let [index, module] of resolutions.entries()) {
-      let root = this.projectOutput;
-      let bundleURL: URL;
-      if (jsEntrypointHrefs.includes(module.url.href)) {
-        // merge the bundle's path into the root's folder structure if they
-        // share a common root folder structure in the path part of the URL
-        let commonRootParts = commonStart(
-          module.url.pathname.split("/"),
-          root.pathname.split("/")
-        );
-        let commonRoot = commonRootParts.join("/");
-        bundleURL = new URL(
-          `.${module.url.pathname.slice(commonRoot.length)}`,
-          root
-        );
+    let assigner = new Assigner(
+      this.projectInput,
+      this.projectOutput,
+      resolutions,
+      entrypoints
+    );
+    return {
+      value: assigner.assignments,
+    };
+  }
+}
+
+interface InternalAssignment {
+  assignment: BundleAssignment;
+  enclosingBundles: Set<string>;
+}
+
+export class Assigner {
+  private assignmentMap: Map<string, InternalAssignment> = new Map();
+  private entrypoints: Map<string, { url: URL; isLibrary: boolean }>;
+  private internalBundleCount = 0;
+  private consumersOf: Consumers;
+  private requestedEntrypointURLs: URL[] = [];
+
+  constructor(
+    private projectInput: URL,
+    private projectOutput: URL,
+    resolutions: ModuleResolution[],
+    entrypoints: Entrypoint[],
+    htmlJSEntrypointURLs?: URL[]
+  ) {
+    if (htmlJSEntrypointURLs) {
+      this.requestedEntrypointURLs = [...htmlJSEntrypointURLs];
+    }
+    this.entrypoints = this.mapEntrypoints(entrypoints);
+    let { consumersOf, leaves } = invertDependencies(resolutions);
+    this.consumersOf = consumersOf;
+    for (let leaf of leaves) {
+      this.assignModule(leaf);
+    }
+  }
+
+  get assignments(): BundleAssignment[] {
+    return [...this.assignmentMap.values()].map((v) => v.assignment);
+  }
+
+  private inputToOutput(href: string): URL {
+    return new URL(
+      href.replace(
+        makeURLEndInDir(this.projectInput).href,
+        makeURLEndInDir(this.projectOutput).href
+      )
+    );
+  }
+
+  private mapEntrypoints(
+    entrypoints: Entrypoint[]
+  ): Map<string, { url: URL; isLibrary: boolean }> {
+    let jsEntrypoints: Map<
+      string,
+      { url: URL; isLibrary: boolean }
+    > = new Map();
+    for (let entrypoint of entrypoints) {
+      if (entrypoint instanceof HTMLEntrypoint) {
+        for (let script of entrypoint.jsEntrypoints.keys()) {
+          let url =
+            this.requestedEntrypointURLs.length > 0
+              ? this.requestedEntrypointURLs.shift()!
+              : this.internalBundleURL();
+          jsEntrypoints.set(script, {
+            url,
+            isLibrary: false,
+          });
+        }
       } else {
-        bundleURL = new URL(`./dist/${index}.js`, root);
+        jsEntrypoints.set(entrypoint.url.href, {
+          url: this.inputToOutput(entrypoint.url.href),
+          isLibrary: true,
+        });
       }
-      assignments.set(module.url.href, {
+    }
+    return jsEntrypoints;
+  }
+
+  private assignModule(module: ModuleResolution): InternalAssignment {
+    let alreadyAssigned = this.assignmentMap.get(module.url.href);
+    if (alreadyAssigned) {
+      return alreadyAssigned;
+    }
+
+    // entrypoints can be consumed by other entrypoints, so it's important that
+    // we assign consumers first, even if we are an entrypoint.
+    let consumers = [...this.consumersOf.get(module.url.href)!].map(
+      (consumer) => ({
+        module: consumer.module,
+        isDynamic: consumer.isDynamic,
+        internalAssignment: this.assignModule(consumer.module),
+      })
+    );
+
+    let entrypoint = this.entrypoints.get(module.url.href);
+    if (entrypoint) {
+      // base case: we are an entrypoint
+      let internalAssignment = {
+        assignment: {
+          bundleURL: entrypoint.url,
+          module,
+          exposedNames: new Map(),
+        },
+        enclosingBundles: new Set([entrypoint.url.href]),
+      };
+      this.assignmentMap.set(module.url.href, internalAssignment);
+      if (entrypoint.isLibrary) {
+        for (let exportedName of module.desc.exports.keys()) {
+          ensureExposed(exportedName, internalAssignment.assignment);
+        }
+      } else {
+        for (let consumer of consumers) {
+          let myIndex = consumer.module.resolvedImports.findIndex(
+            (m) => m.url.href === module.url.href
+          );
+          for (let nameDesc of [...consumer.module.desc.names.values()].filter(
+            (desc) => desc.type === "import" && desc.importIndex === myIndex
+          ) as ImportedNameDescription[]) {
+            ensureExposed(nameDesc.name, internalAssignment.assignment);
+          }
+        }
+      }
+      return internalAssignment;
+    }
+
+    // trying each consumers to see if we can merge into it
+    for (let consumer of consumers) {
+      if (
+        consumers.every(
+          (otherConsumer) =>
+            !otherConsumer.isDynamic &&
+            otherConsumer.internalAssignment.enclosingBundles.has(
+              consumer.internalAssignment.assignment.bundleURL.href
+            )
+        )
+      ) {
+        // we can merge with this consumer
+        let bundleURL = consumer.internalAssignment.assignment.bundleURL;
+        let internalAssignment = {
+          assignment: {
+            bundleURL,
+            module,
+            exposedNames: new Map(),
+          },
+          enclosingBundles: consumer.internalAssignment.enclosingBundles,
+        };
+        this.assignmentMap.set(module.url.href, internalAssignment);
+
+        // Expose the exports that are consumed by modules in different bundles.
+        // Your consumers will have already been assigned to bundles, since the
+        // assignment recursing into your consumers happened when you when to
+        // get the 'consumers' above.
+        for (let externalConsumer of consumers.filter(
+          (c) =>
+            c.internalAssignment.assignment.bundleURL.href !== bundleURL.href
+        )) {
+          for (let nameDesc of externalConsumer.module.desc.names.values()) {
+            if (
+              nameDesc.type !== "import" ||
+              externalConsumer.module.resolvedImports[nameDesc.importIndex].url
+                .href !== module.url.href
+            ) {
+              continue;
+            }
+            ensureExposed(nameDesc.name, internalAssignment.assignment);
+          }
+        }
+
+        return consumer.internalAssignment;
+      }
+    }
+
+    // we need to be our own bundle
+    let bundleURL = this.internalBundleURL();
+    let enclosingBundles = intersection(
+      consumers.map((c) => c.internalAssignment.enclosingBundles)
+    );
+    enclosingBundles.add(bundleURL.href); // we are also enclosed by our own bundle
+    let internalAssignment = {
+      assignment: {
         bundleURL,
         module,
         exposedNames: new Map(),
-      });
-    }
-    expandAssignments(assignments, [...assignments.values()]);
-
-    // For lib builds, the exports of the JS entrypoint become the exports of
-    // the resulting bundle
-    for (let jsEntrypointHref of jsEntrypointHrefs) {
-      let assignment = assignments.get(jsEntrypointHref);
-      if (!assignment) {
-        throw new Error(
-          `bug: can't find bundle assignment for js entrypoint ${jsEntrypointHref}`
-        );
-      }
-      for (let exportedName of assignment.module.desc.exports.keys()) {
-        ensureExposed(exportedName, assignment);
-      }
-    }
-
-    return {
-      value: [...assignments.values()],
+      },
+      enclosingBundles,
     };
+    this.assignmentMap.set(module.url.href, internalAssignment);
+    for (let exportedName of module.desc.exports.keys()) {
+      ensureExposed(exportedName, internalAssignment.assignment);
+    }
+    return internalAssignment;
+  }
+
+  private internalBundleURL(): URL {
+    return new URL(
+      `./dist/${this.internalBundleCount++}.js`,
+      this.projectOutput
+    );
   }
 }
 
@@ -164,50 +321,6 @@ export interface BundleAssignment {
   exposedNames: Map<string | NamespaceMarker, string>;
 }
 
-export function expandAssignments(
-  assignments: Map<string, BundleAssignment>,
-  queue: BundleAssignment[]
-) {
-  while (queue.length > 0) {
-    let assignment = queue.shift()!;
-
-    for (let source of assignment.module.desc.names.values()) {
-      if (source.type !== "import") {
-        continue;
-      }
-      let depResolution = assignment.module.resolvedImports[source.importIndex];
-      let depAssignment = assignments.get(depResolution.url.href);
-      if (depAssignment) {
-        // already assigned
-        if (depAssignment.bundleURL.href !== assignment.bundleURL.href) {
-          // already assigned to another bundle, so the name must be exposed
-          ensureExposed(source.name, depAssignment);
-        }
-      } else {
-        let a = {
-          bundleURL: assignment.bundleURL,
-          module: depResolution,
-          exposedNames: new Map(),
-        };
-        assignments.set(a.module.url.href, a);
-        queue.push(a);
-      }
-    }
-
-    for (let dep of assignment.module.resolvedImports) {
-      if (!assignments.get(dep.url.href)) {
-        let a = {
-          bundleURL: assignment.bundleURL,
-          module: dep,
-          exposedNames: new Map(),
-        };
-        assignments.set(dep.url.href, a);
-        queue.push(a);
-      }
-    }
-  }
-}
-
 function ensureExposed(
   exported: string | NamespaceMarker,
   assignment: BundleAssignment
@@ -234,14 +347,45 @@ function defaultName(
   return "a";
 }
 
-function commonStart(arr1: string[], arr2: string[]): string[] {
-  let result: string[] = [];
-  for (let i = 0; i < Math.min(arr1.length - 1, arr2.length - 1); i++) {
-    if (arr1[i] === arr2[i]) {
-      result.push(arr1[i]);
+type Consumers = Map<
+  string,
+  Set<{ isDynamic: boolean; module: ModuleResolution }>
+>;
+
+function invertDependencies(
+  resolutions: ModuleResolution[],
+  consumersOf: Consumers = new Map(),
+  leaves: Set<ModuleResolution> = new Set()
+): {
+  consumersOf: Consumers;
+  leaves: Set<ModuleResolution>;
+} {
+  for (let resolution of resolutions) {
+    if (!consumersOf.has(resolution.url.href)) {
+      consumersOf.set(resolution.url.href, new Set());
+    }
+    if (resolution.resolvedImports.length > 0) {
+      invertDependencies(resolution.resolvedImports, consumersOf, leaves);
+      // since we are handling this on the exit of the recursion, all your deps
+      // will have entries in the identiy map
+      for (let [index, dep] of resolution.resolvedImports.entries()) {
+        let isDynamic = resolution.desc.imports[index].isDynamic;
+        consumersOf.get(dep.url.href)!.add({ isDynamic, module: resolution });
+      }
     } else {
-      break;
+      leaves.add(resolution);
     }
   }
-  return result;
+  return { consumersOf, leaves };
+}
+
+function intersection<T>(sets: Set<T>[]): Set<T> {
+  let output: Set<T> = new Set();
+  let [first, ...rest] = sets;
+  for (let element of first) {
+    if (rest.every((s) => s.has(element))) {
+      output.add(element);
+    }
+  }
+  return output;
 }

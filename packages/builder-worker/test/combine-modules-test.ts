@@ -1,8 +1,10 @@
+import { parseDOM } from "htmlparser2";
 import { installFileAssertions } from "./helpers/file-assertions";
 import "./helpers/code-equality-assertions";
 import { combineModules, ImportAssignments } from "../src/combine-modules";
 import { Resolver, ModuleResolution } from "../src/nodes/resolution";
-import { BundleAssignment, expandAssignments } from "../src/nodes/bundle";
+import { HTMLEntrypoint } from "../src/nodes/entrypoint";
+import { BundleAssignment, Assigner } from "../src/nodes/bundle";
 import {
   describeModule,
   NamespaceMarker,
@@ -59,58 +61,64 @@ async function makeBundleAssignments(
     opts
   );
 
-  // keys are module.url.href
-  let assignments: Map<string, BundleAssignment> = new Map();
-
+  let resolutions: ModuleResolution[] = [];
   if (optsWithDefaults.containsEntrypoint) {
-    let module = await makeModuleResolutions(
-      fs,
-      url(optsWithDefaults.containsEntrypoint)
+    resolutions.push(
+      await makeModuleResolutions(fs, url(optsWithDefaults.containsEntrypoint))
     );
-    assignments.set(module.url.href, {
-      bundleURL: optsWithDefaults.bundleURL,
-      module,
-      exposedNames: new Map(),
-    });
   }
+
+  let entrypoint = new HTMLEntrypoint(
+    url("index.html"),
+    url("index.html"),
+    parseDOM(
+      `<script type="module" src="./${optsWithDefaults.containsEntrypoint}">`
+    )
+  );
+  let assigner = new Assigner(
+    url("/"),
+    url("/"),
+    resolutions,
+    [entrypoint],
+    optsWithDefaults.bundleURL ? [optsWithDefaults.bundleURL] : undefined
+  );
+  let { assignments } = assigner;
 
   if (opts?.exports) {
     for (let [outsideName, { file, name }] of Object.entries(
       optsWithDefaults.exports
     )) {
       let fileURL = url(file);
-      let assignment = assignments.get(fileURL.href);
+      let assignment = assignments.find(
+        (a) => a.module.url.href === fileURL.href
+      );
       if (!assignment) {
-        assignment = {
-          bundleURL: optsWithDefaults.bundleURL,
-          module: await makeModuleResolutions(fs, fileURL),
-          exposedNames: new Map(),
-        };
-        assignments.set(assignment.module.url.href, assignment);
+        throw new Error(
+          `invalid test setup, you tried to set an export for the module ${fileURL.href}}, but there is no assignment for that module`
+        );
       }
       assignment.exposedNames.set(name, outsideName);
     }
   }
-
   if (opts?.assignments) {
     for (let assignment of opts.assignments) {
       let fileURL = url(assignment.module);
-      if (assignments.get(fileURL.href)) {
-        throw new Error(
-          `invalid test setup, module ${assignment.module} is both inside and outside the default bundle`
-        );
-      }
       let a = {
         bundleURL: url(assignment.assignedToBundle),
         module: await makeModuleResolutions(fs, fileURL),
         exposedNames: new Map(Object.entries(assignment.nameMapping)),
       };
-      assignments.set(a.module.url.href, a);
+      let index = assignments.findIndex(
+        (a) => a.module.url.href === fileURL.href
+      );
+      if (index > -1) {
+        assignments[index] = a;
+      } else {
+        assignments.push(a);
+      }
     }
   }
-
-  expandAssignments(assignments, [...assignments.values()]);
-  return [...assignments.values()];
+  return assignments;
 }
 
 QUnit.module("combine modules", function (origHooks) {
@@ -1022,6 +1030,37 @@ QUnit.module("combine modules", function (origHooks) {
       `import { lib_a as a } from './2.js';
        const b = 'b';
        console.log(a + b);`
+    );
+  });
+
+  test("preserves side effect import if module with side effect is assigned to different bundle", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import './a.js';
+        const b = 'b';
+        console.log(b);
+      `,
+      "a.js": `
+        console.log('side effect');
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs, {
+      assignments: [
+        {
+          module: "a.js",
+          assignedToBundle: "dist/2.js",
+          nameMapping: {},
+        },
+      ],
+    });
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `import './2.js';
+       const b = 'b';
+       console.log(b);`
     );
   });
 
