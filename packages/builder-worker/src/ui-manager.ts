@@ -1,7 +1,5 @@
 import { Event } from "./event";
 
-export const eventGroup = "ui-manager";
-
 export interface Ready {
   type: "ready";
   width: number;
@@ -20,11 +18,16 @@ export interface Home {
 
 export type UIManagerCommand = Ready | Show | Hide | Home;
 
-export function isUIManagerEvent(event: any): event is Event<UIManagerCommand> {
+export function isUIManagerEvent(event: any): event is Event {
   return (
     typeof event === "object" &&
-    "group" in event &&
-    event.group === eventGroup &&
-    "args" in event
+    typeof event.uiManager === "object" &&
+    typeof event.uiManager.type === "string"
   );
+}
+
+declare module "./event" {
+  interface Event {
+    uiManager?: UIManagerCommand;
+  }
 }

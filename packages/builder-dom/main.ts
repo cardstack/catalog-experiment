@@ -50,33 +50,33 @@ if (navigator.serviceWorker.controller) {
       return;
     }
 
-    if (!isUIManagerEvent(data)) {
-      return;
-    }
+    if (isUIManagerEvent(data)) {
+      let iframe = document.getElementById("catalogjs-ui");
+      if (!iframe) {
+        throw new Error("bug: cannot find the catalogjs ui iframe");
+      }
 
-    let iframe = document.getElementById("catalogjs-ui");
-    if (!iframe) {
-      throw new Error("bug: cannot find the catalogjs ui iframe");
-    }
-
-    let command = data.args;
-    switch (command.type) {
-      case "ready":
-        uiWidth = command.width;
-        iframe.style.width = `${command.width}px`;
-        iframe.style.right = `${-1 * command.width}px`;
-        break;
-      case "show":
-        iframe.style.transform = `translate(${-1 * uiWidth}px, 0)`;
-        break;
-      case "hide":
-        iframe.style.transform = `translate(0, 0)`;
-        break;
-      case "home":
-        location.href = "/catalogjs/ui/";
-        break;
-      default:
-        assertNever(command);
+      let { uiManager: command } = data;
+      if (command) {
+        switch (command.type) {
+          case "ready":
+            uiWidth = command.width;
+            iframe.style.width = `${command.width}px`;
+            iframe.style.right = `${-1 * command.width}px`;
+            break;
+          case "show":
+            iframe.style.transform = `translate(${-1 * uiWidth}px, 0)`;
+            break;
+          case "hide":
+            iframe.style.transform = `translate(0, 0)`;
+            break;
+          case "home":
+            location.href = "/catalogjs/ui/";
+            break;
+          default:
+            assertNever(command);
+        }
+      }
     }
   }
 }

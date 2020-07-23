@@ -1,4 +1,3 @@
-import { FSEvent } from "../../../builder-worker/src/filesystem";
 import {
   Event,
   addEventListener,
@@ -23,8 +22,8 @@ export async function waitForFileEvent(
     change = res;
   });
 
-  let listener = (e: Event<FSEvent>) => {
-    if (e.group === "fs" && e.args.href === url.href) {
+  let listener = (e: Event) => {
+    if ("filesystem" in e && e.filesystem!.href === url.href) {
       change();
     }
   };

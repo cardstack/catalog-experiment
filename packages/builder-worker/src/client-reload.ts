@@ -1,13 +1,13 @@
 import { Event } from "./event";
-export const eventGroup = "reload";
 
-export interface ReloadEvent {}
-
-export function isReloadEvent(event: any): event is Event<ReloadEvent> {
+export function isReloadEvent(event: any): event is Event {
   return (
-    typeof event === "object" &&
-    "group" in event &&
-    event.group === eventGroup &&
-    "args" in event
+    typeof event === "object" && "reload" in event && event.reload === true
   );
+}
+
+declare module "./event" {
+  interface Event {
+    reload?: true;
+  }
 }

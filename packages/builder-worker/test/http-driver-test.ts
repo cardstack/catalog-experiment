@@ -13,7 +13,7 @@ import {
   HttpFileDescriptor,
   HttpDirectoryDescriptor,
 } from "../src/filesystem-drivers/http-driver";
-import { FileSystem, FSEvent, eventGroup } from "../src/filesystem";
+import { FileSystem } from "../src/filesystem";
 import { flushEvents, removeAllEventListeners, Event } from "../src/event-bus";
 import moment from "moment";
 import { FileDescriptor } from "../src/filesystem-drivers/filesystem-driver";
@@ -604,14 +604,18 @@ QUnit.module("filesystem - http driver", function (origHooks) {
     test("triggers a 'write' event when a file is written to", async function (assert) {
       assert.expect(2);
       let file = (await assert.fs.open(url("foo/bar"), true)) as FileDescriptor;
-      let listener = (e: Event<FSEvent>) => {
-        if (e.group === eventGroup) {
+      let listener = (e: Event) => {
+        if ("filesystem" in e) {
           assert.equal(
-            e.args.href,
+            e.filesystem!.href,
             `${origin}/foo/bar`,
             "the event url is correct"
           );
-          assert.equal(e.args.type, "write", "the event type is correct");
+          assert.equal(
+            e.filesystem!.type,
+            "write",
+            "the event type is correct"
+          );
         }
       };
       await withListener(listener, async () => {
