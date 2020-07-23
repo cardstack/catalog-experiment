@@ -1474,7 +1474,7 @@ QUnit.module("combine modules", function (origHooks) {
     );
     let bundleA = (await assert.fs.open(bundleAURL, true)) as FileDescriptor;
     await bundleA.write(codeA);
-    bundleA.close();
+    await bundleA.close();
 
     // make bundle B
     let bundleBURL = url("dist/bundleB.js");
@@ -1488,7 +1488,7 @@ QUnit.module("combine modules", function (origHooks) {
     );
     let bundleB = (await assert.fs.open(bundleBURL, true)) as FileDescriptor;
     await bundleB.write(codeB);
-    bundleB.close();
+    await bundleB.close();
 
     // make a combined bundle that includes bundle A and bundle B along with
     // their respective import assignments

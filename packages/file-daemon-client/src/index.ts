@@ -393,7 +393,9 @@ class ClientDirectoryDescriptor implements DirectoryDescriptor {
       type: "directory",
     };
   }
-  close(): void {}
+
+  async close() {}
+
   get inode(): string {
     return this.dir.path;
   }
@@ -481,7 +483,9 @@ class ClientFileDescriptor implements FileDescriptor {
       type: "file",
     };
   }
-  close(): void {}
+
+  async close() {}
+
   get inode(): string {
     return this.fileCache.path;
   }

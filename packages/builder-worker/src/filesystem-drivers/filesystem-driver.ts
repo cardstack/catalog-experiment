@@ -19,7 +19,7 @@ interface Descriptor {
   readonly url: URL;
   readonly volume: Volume;
   stat(): Promise<Stat>;
-  close(): void;
+  close(): Promise<void>;
 }
 
 // TODO split this between a FileStat and a DirectoryStat

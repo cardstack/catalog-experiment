@@ -126,7 +126,7 @@ QUnit.module("Node FileSystem", function (origHooks) {
 
     test("can create interior directories when creating a file", async function (assert) {
       await assert.file("/foo/").doesNotExist();
-      (await assert.fs.open(url("/foo/bar.txt"), true)).close();
+      await (await assert.fs.open(url("/foo/bar.txt"), true)).close();
 
       await assert.file("/foo/").exists();
       file = await assert.fs.open(url("/foo/"));
@@ -139,7 +139,7 @@ QUnit.module("Node FileSystem", function (origHooks) {
 
     test("can create interior directories when creating a directory", async function (assert) {
       await assert.file("/foo/").doesNotExist();
-      (await assert.fs.open(url("/foo/bar/"), true)).close();
+      await (await assert.fs.open(url("/foo/bar/"), true)).close();
 
       await assert.file("/foo/").exists();
       file = await assert.fs.open(url("/foo/"));
@@ -170,14 +170,14 @@ QUnit.module("Node FileSystem", function (origHooks) {
     QUnit.module("write", function () {
       test("can write to a file with a string", async function (assert) {
         await file.write("blah");
-        file.close();
+        await file.close();
         assert.file("/foo/bar").matches(/blah/);
       });
 
       test("can write to a file with a buffer", async function (assert) {
         let buffer = new TextEncoder().encode("bleep");
         await file.write(buffer);
-        file.close();
+        await file.close();
         assert.file("/foo/bar").matches(/bleep/);
       });
 
@@ -186,7 +186,7 @@ QUnit.module("Node FileSystem", function (origHooks) {
           createReadStream(join(testDir, "test"))
         );
         await file.write(stream);
-        file.close();
+        await file.close();
         assert.file("/foo/bar").matches(/bye mars/);
       });
     });

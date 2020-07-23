@@ -85,7 +85,7 @@ async function serveFile(url: URL, fs: FileSystem): Promise<Response> {
     }
     if (file.type === "directory" || maybeDirectory) {
       if (!(file instanceof Response)) {
-        file.close();
+        await file.close();
       }
       if (!url.href.endsWith("/")) {
         url = new URL(url.href + "/");
@@ -102,7 +102,7 @@ async function serveFile(url: URL, fs: FileSystem): Promise<Response> {
     return response;
   } finally {
     if (file && !(file instanceof Response)) {
-      file.close();
+      await file.close();
     }
   }
 }

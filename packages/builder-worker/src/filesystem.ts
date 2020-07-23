@@ -40,7 +40,7 @@ export class FileSystem {
     let dir = (await this.open(url, true)) as DirectoryDescriptor;
     let volume = await driver.mountVolume(url);
     this.volumes.set(this.volumeKey(dir), volume);
-    dir.close();
+    await dir.close();
 
     return volume;
   }
@@ -74,14 +74,14 @@ export class FileSystem {
       )) as DirectoryDescriptor;
       await destParent.add(name, source, sourceParent, sourceName);
       if (sourceParent.inode !== destParent.inode) {
-        sourceParent.close();
+        await sourceParent.close();
       }
     } else {
       await destParent.add(name, source);
     }
     await this.remove(sourceURL, false);
-    source.close();
-    destParent.close();
+    await source.close();
+    await destParent.close();
   }
 
   async copy(sourceURL: URL, destURL: URL): Promise<void> {
@@ -93,9 +93,9 @@ export class FileSystem {
     if (source.type === "file") {
       let clone = (await this.open(destURL, true)) as FileDescriptor;
       await clone.write(await source.getReadbleStream());
-      clone.close();
+      await clone.close();
     } else {
-      (await this.open(destURL, true)).close();
+      await (await this.open(destURL, true)).close();
     }
     if (source.type === "directory") {
       for (let childName of [...(await source.children())]) {
@@ -105,7 +105,7 @@ export class FileSystem {
         );
       }
     }
-    source.close();
+    await source.close();
   }
 
   async remove(url: URL, autoClose = true): Promise<void> {
@@ -131,7 +131,7 @@ export class FileSystem {
       }
       await sourceDir.remove(name);
       if (autoClose) {
-        sourceDir.close();
+        await sourceDir.close();
       }
       dispatchEvent({
         category: eventCategory,
@@ -159,7 +159,7 @@ export class FileSystem {
     }
     let resource = await this.open(url);
     if (resource.type === "file") {
-      resource.close();
+      await resource.close();
       return [{ url: resource.url, stat: await resource.stat() }];
     }
 
@@ -168,7 +168,7 @@ export class FileSystem {
       if (volumeRoot.type === "directory") {
         resource = volumeRoot;
       } else {
-        resource.close();
+        await resource.close();
         return [{ url: volumeRoot.url, stat: await volumeRoot.stat() }];
       }
     }
@@ -198,7 +198,7 @@ export class FileSystem {
         }
       }
     }
-    resource.close();
+    await resource.close();
     return results;
   }
 

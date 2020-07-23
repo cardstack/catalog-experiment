@@ -102,7 +102,7 @@ export class HttpDirectoryDescriptor implements DirectoryDescriptor {
     this.inode = underlyingURL.href;
   }
 
-  close() {}
+  async close() {}
 
   async stat(): Promise<Stat> {
     throw new Error(`directory stat is not supported for HTTP Volumes`);
@@ -175,7 +175,7 @@ export class HttpFileDescriptor implements FileDescriptor {
     this.inode = underlyingURL.href;
   }
 
-  close() {}
+  async close() {}
 
   async stat(): Promise<HttpStat> {
     let response = await this.getIfNoneMatch();

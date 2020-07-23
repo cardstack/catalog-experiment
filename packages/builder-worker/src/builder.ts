@@ -655,7 +655,7 @@ class InternalFileNode<Input> implements BuilderNode<string> {
       }
     } finally {
       if (fd) {
-        fd.close();
+        await fd.close();
       }
     }
   }
@@ -676,7 +676,7 @@ class InternalWriteFileNode implements BuilderNode<void> {
   async run({ source }: { source: string }): Promise<NodeOutput<void>> {
     let fd = (await this.fs.open(this.url, true)) as FileDescriptor;
     await fd.write(source);
-    fd.close();
+    await fd.close();
     return { value: undefined };
   }
 }

@@ -113,7 +113,7 @@ QUnit.module("filesystem - file daemon client driver", function (origHooks) {
       true
     );
     await (handle as FileDescriptor).write("New File!");
-    handle.close();
+    await handle.close();
     await waitForFileEvent(
       new URL(`${testDaemon.mountedAt.href}test-app/new-file.txt`)
     );
@@ -127,7 +127,7 @@ QUnit.module("filesystem - file daemon client driver", function (origHooks) {
       true
     );
     await (handle as FileDescriptor).write("this is a change");
-    handle.close();
+    await handle.close();
     await waitForFileEvent(
       new URL(`${testDaemon.mountedAt.href}test-app/new-file.txt`)
     );

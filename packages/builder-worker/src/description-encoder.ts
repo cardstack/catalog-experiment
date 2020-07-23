@@ -1,6 +1,13 @@
 // TODO move all of this out into a utility module
 
-import { encode, decode } from "@msgpack/msgpack";
+import {
+  encode as msgpackEncode,
+  decode as msgpackDecode,
+} from "@msgpack/msgpack";
+import {
+  encode as base64Encode,
+  decode as base64Decode,
+} from "base64-arraybuffer";
 import {
   ModuleDescription,
   NamespaceMarker,
@@ -117,15 +124,12 @@ export function encodeModuleDescription(desc: ModuleDescription): string {
         );
     }
   }
-  let d = Buffer.from(encode(encoded)).toString("hex");
-  return d;
+  return base64Encode(msgpackEncode(encoded));
 }
 
 export function decodeModuleDescription(encoded: string): ModuleDescription {
-  let buffer = new Uint8Array(
-    encoded.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
-  );
-  let encodedDesc = decode(buffer) as any[];
+  let buffer = base64Decode(encoded);
+  let encodedDesc = msgpackDecode(buffer) as any[];
 
   let imports: ModuleDescription["imports"] = [];
   let exports: ModuleDescription["exports"] = new Map();

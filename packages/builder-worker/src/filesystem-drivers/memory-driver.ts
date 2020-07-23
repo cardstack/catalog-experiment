@@ -113,7 +113,7 @@ export class MemoryDirectoryDescriptor implements DirectoryDescriptor {
     this.resource.etag = etag;
   }
 
-  close() {}
+  async close() {}
 
   async stat(): Promise<Stat> {
     return {
@@ -231,7 +231,7 @@ export class MemoryFileDescriptor implements FileDescriptor {
     });
   }
 
-  close() {}
+  async close() {}
 
   async read() {
     return this.resource.buffer ? this.resource.buffer : new Uint8Array();
