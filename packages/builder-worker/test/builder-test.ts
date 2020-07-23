@@ -791,7 +791,7 @@ QUnit.module("module builder", function (origHooks) {
 
       let file = (await assert.fs.open(url("ui.js"))) as FileDescriptor;
       await file.write(`export const message = "Bye mars";`);
-      file.close();
+      await file.close();
       await buildDidFinish(rebuilder);
 
       console.log(explainAsDot(rebuilder.explain()));

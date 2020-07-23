@@ -111,7 +111,7 @@ export class NodeDirectoryDescriptor implements DirectoryDescriptor {
     return readdirSync(this.dir.path, { withFileTypes: true });
   }
 
-  close() {
+  async close() {
     openDescriptors.delete(this.dir);
     this.dir.closeSync();
   }
@@ -218,7 +218,7 @@ export class NodeFileDescriptor implements FileDescriptor {
     openDescriptors.add(fd);
   }
 
-  close() {
+  async close() {
     openDescriptors.delete(this.fd);
     closeSync(this.fd);
   }
