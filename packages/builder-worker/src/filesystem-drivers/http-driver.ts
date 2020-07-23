@@ -1,10 +1,5 @@
 import { dispatchEvent } from "../event-bus";
-import {
-  eventCategory as category,
-  eventGroup,
-  FileSystemError,
-  FSEvent,
-} from "../filesystem";
+import { FileSystemError } from "../filesystem";
 import {
   FileSystemDriver,
   Volume,
@@ -234,10 +229,11 @@ export class HttpFileDescriptor implements FileDescriptor {
       );
     }
 
-    dispatchEvent<FSEvent>(eventGroup, {
-      category,
-      href: this.url.href,
-      type: "write",
+    dispatchEvent({
+      filesystem: {
+        href: this.url.href,
+        type: "write",
+      },
     });
   }
 

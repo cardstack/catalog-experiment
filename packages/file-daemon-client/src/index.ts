@@ -1,10 +1,4 @@
-import { Event, dispatchEvent } from "../../builder-worker/src/event-bus";
-import {
-  eventGroup,
-  eventCategory as fsEventCategory,
-  FSEvent,
-  BaseEvent as FSBaseEvent,
-} from "../../builder-worker/src/filesystem";
+import { dispatchEvent, Event } from "../../builder-worker/src/event-bus";
 import {
   FileSystemDriver,
   FileDescriptor,
@@ -19,12 +13,12 @@ import { REGTYPE } from "tarstream/constants";
 import { UnTar } from "tarstream";
 import { FileInfo } from "../../file-daemon/interfaces";
 import { makeURLEndInDir } from "../../builder-worker/src/path";
+import { FSEvent } from "../../builder-worker/src/filesystem";
 
 export const defaultOrigin = "http://localhost:4200";
 export const defaultWebsocketURL = "ws://localhost:3000";
 export const entrypointsPath = "/entrypoints.json";
 
-export const eventCategory = "file-daemon-client";
 const utf8 = new TextDecoder("utf8");
 const textEncoder = new TextEncoder();
 
@@ -246,7 +240,6 @@ export class FileDaemonClientVolume implements Volume {
       socketIsClosed();
       this.connected = false;
       dispatchClientEvent({
-        category: eventCategory,
         href: this.mountURL.href,
         type: "disconnected",
       });
@@ -254,7 +247,6 @@ export class FileDaemonClientVolume implements Volume {
     socket.onopen = (event) => {
       log(`websocket open: ${JSON.stringify(event)}`);
       dispatchClientEvent({
-        category: eventCategory,
         href: this.mountURL.href,
         type: "connected",
       });
@@ -305,7 +297,6 @@ export class FileDaemonClientVolume implements Volume {
 
   private async startFullSync() {
     dispatchClientEvent({
-      category: eventCategory,
       href: this.mountURL.href,
       type: "sync-started",
     });
@@ -326,7 +317,6 @@ export class FileDaemonClientVolume implements Volume {
     this.rootCache = root;
     log(`completed full sync of ${this.mountURL.href}`);
     dispatchClientEvent({
-      category: eventCategory,
       href: this.mountURL.href,
       type: "sync-finished",
       files: files.map((f) => this.mountedPath(f).href),
@@ -351,18 +341,20 @@ export class FileDaemonClientVolume implements Volume {
     // notification that the server has updated accordingly...
     if (isDelete) {
       cacheRemove(this.rootCache, info.name);
-      dispatchEvent<FSEvent>(eventGroup, {
-        category: fsEventCategory,
-        href: new URL(info.name, this.mountURL).href, // this URL works because we have left the leading slash off the name in notification message
-        type: "remove",
+      dispatchEvent({
+        filesystem: {
+          href: new URL(info.name, this.mountURL).href,
+          type: "remove",
+        } as FSEvent,
       });
     } else {
       let buffer = await this.getFile(`/${info.name}`);
       cacheInsert(this.rootCache, info.name, buffer);
-      dispatchEvent<FSEvent>(eventGroup, {
-        category: fsEventCategory,
-        href: new URL(info.name, this.mountURL).href, // this URL works because we have left the leading slash off the name in notification message
-        type: "write",
+      dispatchEvent({
+        filesystem: {
+          href: new URL(info.name, this.mountURL).href,
+          type: "write",
+        } as FSEvent,
       });
     }
   }
@@ -518,7 +510,7 @@ class ClientFileDescriptor implements FileDescriptor {
 }
 
 function dispatchClientEvent(event: FileDaemonClientEvent) {
-  dispatchEvent<FileDaemonClientEvent | FSEvent>(eventGroup, event);
+  dispatchEvent({ fileDaemonClient: event });
 }
 
 export type FileDaemonClientEvent =
@@ -527,10 +519,9 @@ export type FileDaemonClientEvent =
   | SyncStartedEvent
   | SyncCompleteEvent;
 
-interface BaseEvent extends FSBaseEvent {
-  category: "file-daemon-client";
+interface BaseEvent {
+  href: string; // this will eventually go over a postMessage boundary so we've downgraded the URL to a string
 }
-
 export interface ConnectedEvent extends BaseEvent {
   type: "connected";
 }
@@ -546,15 +537,17 @@ interface SyncCompleteEvent extends BaseEvent {
   files: string[];
 }
 
-export function isFileDaemonEvent(
-  event: any
-): event is Event<FileDaemonClientEvent> {
+export function isFileDaemonEvent(event: any): event is Event {
   return (
     typeof event === "object" &&
-    "group" in event &&
-    event.group === eventGroup &&
-    "args" in event &&
-    "category" in event.args &&
-    event.args.category === eventCategory
+    typeof event.fileDaemonClient === "object" &&
+    typeof event.fileDaemonClient.href === "string" &&
+    typeof event.fileDaemonClient.type === "string"
   );
+}
+
+declare module "../../builder-worker/src/event" {
+  interface Event {
+    fileDaemonClient?: FileDaemonClientEvent;
+  }
 }

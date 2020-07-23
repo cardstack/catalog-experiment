@@ -2,6 +2,7 @@ import { Event } from "./event-bus";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 
+// TODO merge this logic into the event bus
 export class ClientEventHandler {
   private clientIds: Set<string> = new Set();
 
@@ -14,7 +15,7 @@ export class ClientEventHandler {
     this.clientIds.delete(clientId);
   }
 
-  async sendEvent<T>(clientId: string, event: Event<T>) {
+  async sendEvent(clientId: string, event: Event) {
     let client = await worker.clients.get(clientId);
     if (!client) {
       return;
@@ -22,7 +23,7 @@ export class ClientEventHandler {
     client.postMessage(event);
   }
 
-  handleEvent(event: Event<unknown>) {
+  handleEvent(event: Event) {
     let self = this;
     (async () => {
       for (let clientId of self.clientIds) {

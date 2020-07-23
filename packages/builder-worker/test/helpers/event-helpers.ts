@@ -1,4 +1,3 @@
-import { FSEvent } from "../../src/filesystem";
 import {
   addEventListener,
   EventListener,
@@ -6,7 +5,7 @@ import {
 } from "../../src/event-bus";
 
 export async function withListener(
-  listener: EventListener<FSEvent>,
+  listener: EventListener,
   fn: () => Promise<void>
 ) {
   try {

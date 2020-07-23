@@ -1,4 +1,4 @@
-import { dispatchEvent as _dispatchEvent, Event } from "./event-bus";
+import { dispatchEvent as _dispatchEvent } from "./event-bus";
 import { splitURL, baseName, dirName, ROOT } from "./path";
 import columnify from "columnify";
 import moment from "moment";
@@ -10,9 +10,6 @@ import {
   Stat,
 } from "./filesystem-drivers/filesystem-driver";
 import { MemoryDriver } from "./filesystem-drivers/memory-driver";
-
-export const eventGroup = "fs";
-export const eventCategory = "fs";
 
 export class FileSystem {
   private root: DirectoryDescriptor;
@@ -134,7 +131,6 @@ export class FileSystem {
         await sourceDir.close();
       }
       dispatchEvent({
-        category: eventCategory,
         href: url.href,
         type: "remove",
       });
@@ -256,7 +252,6 @@ export class FileSystem {
       // create interior directories and descend
       descriptor = await volume.createDirectory(parent, name);
       dispatchEvent({
-        category: eventCategory,
         href: descriptor.url.href,
         type: "create",
       });
@@ -273,7 +268,6 @@ export class FileSystem {
       if (opts.create) {
         descriptor = await volume.createFile(parent, name);
         dispatchEvent({
-          category: eventCategory,
           href: descriptor.url.href,
           type: "create",
         });
@@ -297,7 +291,6 @@ export class FileSystem {
       if (opts.create) {
         descriptor = await volume.createDirectory(parent, name);
         dispatchEvent({
-          category: eventCategory,
           href: descriptor.url.href,
           type: "create",
         });
@@ -357,31 +350,26 @@ interface ListingEntry {
 interface Options {
   create?: true;
 }
-export interface BaseEvent {
+interface BaseEvent {
   href: string; // this will eventually go over a postMessage boundary so we've downgraded the URL to a string
 }
-export interface BaseFSEvent extends BaseEvent {
-  category: "fs";
-}
 
-export interface CreateEvent extends BaseFSEvent {
+export interface CreateEvent extends BaseEvent {
   type: "create";
 }
-export interface RemoveEvent extends BaseFSEvent {
+export interface RemoveEvent extends BaseEvent {
   type: "remove";
 }
-export interface WriteEvent extends BaseFSEvent {
+export interface WriteEvent extends BaseEvent {
   type: "write";
 }
 
-export function isFileEvent(event: any): event is Event<FSEvent> {
+export function isFileEvent(event: any): event is Event {
   return (
     typeof event === "object" &&
-    "group" in event &&
-    event.group === eventGroup &&
-    "args" in event &&
-    "category" in event.args &&
-    event.args.category === eventCategory
+    typeof event.filesystem === "object" &&
+    typeof event.filesystem.href === "string" &&
+    typeof event.filesystem.type === "string"
   );
 }
 
@@ -394,5 +382,11 @@ function notFound(href: string) {
 }
 
 function dispatchEvent(event: FSEvent) {
-  _dispatchEvent(eventGroup, event);
+  _dispatchEvent({ filesystem: event });
+}
+
+declare module "./event" {
+  interface Event {
+    filesystem?: FSEvent;
+  }
 }

@@ -1,5 +1,4 @@
 import { dispatchEvent } from "../event-bus";
-import { eventCategory as category, eventGroup, FSEvent } from "../filesystem";
 import { ROOT, makeURLEndInDir } from "../path";
 import {
   FileSystemDriver,
@@ -224,10 +223,11 @@ export class MemoryFileDescriptor implements FileDescriptor {
       this.resource.buffer = await readStream(streamOrBuffer);
     }
     this.resource.mtime = Math.floor(Date.now());
-    dispatchEvent<FSEvent>(eventGroup, {
-      category,
-      href: this.url.href,
-      type: "write",
+    dispatchEvent({
+      filesystem: {
+        href: this.url.href,
+        type: "write",
+      },
     });
   }
 

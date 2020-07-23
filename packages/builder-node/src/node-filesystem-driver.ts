@@ -7,11 +7,6 @@ import {
 } from "../../builder-worker/src/filesystem-drivers/filesystem-driver";
 import { makeURLEndInDir } from "../../builder-worker/src/path";
 import { dispatchEvent } from "../../builder-worker/src/event-bus";
-import {
-  eventCategory as category,
-  eventGroup,
-  FSEvent,
-} from "../../builder-worker/src/filesystem";
 import { DOMToNodeReadable, NodeReadableToDOM } from "file-daemon/stream-shims";
 import { Readable } from "stream";
 import { ensureDirSync, removeSync, move } from "fs-extra";
@@ -272,10 +267,11 @@ export class NodeFileDescriptor implements FileDescriptor {
         `bug: should never have a situation where you dont have a buffer or a readable stream when writing to a file`
       );
     }
-    dispatchEvent<FSEvent>(eventGroup, {
-      category,
-      href: this.url.href,
-      type: "write",
+    dispatchEvent({
+      filesystem: {
+        href: this.url.href,
+        type: "write",
+      },
     });
   }
 

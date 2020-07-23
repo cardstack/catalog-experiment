@@ -16,7 +16,7 @@ export default class FileDaemonClientService extends Service {
     navigator.serviceWorker.addEventListener("message", (event) => {
       let { data } = event;
       if (isFileDaemonEvent(data)) {
-        this.handleEvent.perform(data.args);
+        this.handleEvent.perform(data.fileDaemonClient);
       }
     });
   }

@@ -2,16 +2,16 @@ import bind from "bind-decorator";
 import { Event } from "./event"; // this is split out so that it can be consumed in from the packages in the DOM context
 export { Event }; // for convenience
 
-export function dispatchEvent<T>(group: string, args: T) {
-  EventBus.getInstance().dispatchEvent(group, args);
+export function dispatchEvent(event: Event) {
+  EventBus.getInstance().dispatchEvent(event);
 }
 
-export function addEventListener<T>(fn: EventListener<T>) {
-  EventBus.getInstance<T>().addEventListener(fn);
+export function addEventListener(fn: EventListener) {
+  EventBus.getInstance().addEventListener(fn);
 }
 
-export function removeEventListener<T>(fn: EventListener<T>) {
-  EventBus.getInstance<T>().removeEventListener(fn);
+export function removeEventListener(fn: EventListener) {
+  EventBus.getInstance().removeEventListener(fn);
 }
 
 export function removeAllEventListeners() {
@@ -22,33 +22,32 @@ export function flushEvents(): Promise<void> {
   return EventBus.getInstance().eventsFlushed();
 }
 
-export type EventListener<T> = (event: Event<T>) => void;
+export type EventListener = (event: Event) => void;
 
-export class EventBus<T> {
-  private static instance: EventBus<any>;
+export class EventBus {
+  private static instance: EventBus;
 
-  static getInstance<S>(): EventBus<S> {
+  static getInstance(): EventBus {
     if (!EventBus.instance) {
-      EventBus.instance = new EventBus<S>();
+      EventBus.instance = new EventBus();
     }
-    return EventBus.instance as EventBus<S>;
+    return EventBus.instance as EventBus;
   }
 
   private constructor() {}
 
-  private listeners: Set<EventListener<T>> = new Set();
+  private listeners: Set<EventListener> = new Set();
   private drainEvents?: Promise<void>;
   private eventQueue: {
-    group: string;
-    args: T;
-    listener: EventListener<T>;
+    event: Event;
+    listener: EventListener;
   }[] = [];
 
-  addEventListener(fn: EventListener<T>) {
+  addEventListener(fn: EventListener) {
     this.listeners.add(fn);
   }
 
-  removeEventListener(fn: EventListener<T>) {
+  removeEventListener(fn: EventListener) {
     this.listeners.delete(fn);
   }
 
@@ -57,15 +56,14 @@ export class EventBus<T> {
   }
 
   @bind
-  dispatchEvent(group: string, args: T): void {
+  dispatchEvent(event: Event): void {
     if (this.listeners.size === 0) {
       return;
     }
 
     for (let listener of this.listeners) {
       this.eventQueue.push({
-        group: group,
-        args,
+        event,
         listener,
       });
     }
@@ -79,17 +77,15 @@ export class EventBus<T> {
     this.drainEvents = new Promise((res) => (eventsDrained = res));
 
     while (this.eventQueue.length > 0) {
-      let event = this.eventQueue.shift();
-      if (event) {
-        let { group, args, listener } = event;
-        let dispatched: () => void;
-        let waitForDispatch = new Promise((res) => (dispatched = res));
-        setTimeout(() => {
-          listener({ args, group });
-          dispatched();
-        }, 0);
-        await waitForDispatch;
-      }
+      let item = this.eventQueue.shift()!;
+      let { event, listener } = item;
+      let dispatched: () => void;
+      let waitForDispatch = new Promise((res) => (dispatched = res));
+      setTimeout(() => {
+        listener(event);
+        dispatched();
+      }, 0);
+      await waitForDispatch;
     }
     eventsDrained!();
   }

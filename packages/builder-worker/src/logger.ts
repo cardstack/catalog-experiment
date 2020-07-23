@@ -1,7 +1,6 @@
 import { assertNever } from "shared/util";
-import { Event, dispatchEvent } from "./event-bus";
+import { dispatchEvent, Event } from "./event-bus";
 
-export const eventGroup = "log-messages";
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
 export function error(message: string, error?: Error): void {
@@ -87,7 +86,7 @@ export class Logger {
       };
 
       logger._messages.push(logMessage);
-      dispatchEvent<LogMessage[]>(eventGroup, [logMessage]);
+      dispatchEvent({ logger: [logMessage] });
 
       if (logger.echoInConsole || level === "error") {
         switch (level) {
@@ -158,12 +157,16 @@ export class Logger {
   }
 }
 
-export function isLogMessagesEvent(event: any): event is Event<LogMessage[]> {
+export function isLogMessagesEvent(event: any): event is Event {
   return (
     typeof event === "object" &&
-    "group" in event &&
-    event.group === eventGroup &&
-    "args" in event &&
-    Array.isArray(event.args)
+    typeof event.logger === "object" &&
+    Array.isArray(event.logger)
   );
+}
+
+declare module "./event" {
+  interface Event {
+    logger?: LogMessage[];
+  }
 }

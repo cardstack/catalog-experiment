@@ -1,6 +1,5 @@
-import { FileSystem, FSEvent, eventCategory, eventGroup } from "./filesystem";
+import { FileSystem, isFileEvent } from "./filesystem";
 import { addEventListener, Event, dispatchEvent } from "./event-bus";
-import { ReloadEvent, eventGroup as reloadEventGroup } from "./client-reload";
 import bind from "bind-decorator";
 import {
   OutputTypes,
@@ -323,13 +322,9 @@ class BuildRunner<Input> {
   }
 
   @bind
-  private fileDidChange(event: Event<FSEvent>) {
-    if (
-      event.group === eventGroup &&
-      event.args.category === eventCategory &&
-      this.watchedFiles.has(event.args.href)
-    ) {
-      this.recentlyChangedFiles.add(event.args.href);
+  private fileDidChange(event: Event) {
+    if (isFileEvent(event) && this.watchedFiles.has(event.filesystem!.href)) {
+      this.recentlyChangedFiles.add(event.filesystem!.href);
       this.inputDidChange?.();
     }
   }
@@ -484,7 +479,7 @@ export class Rebuilder<Input> {
             await this.runner.build();
             if (this.state.name === "working") {
               this.setState({ name: "idle", lastBuildSucceeded: true });
-              dispatchEvent<ReloadEvent>(reloadEventGroup, {});
+              dispatchEvent({ reload: true } as Event);
             }
           } catch (err) {
             if (this.state.name === "working") {

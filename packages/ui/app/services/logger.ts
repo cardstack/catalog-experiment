@@ -16,7 +16,7 @@ export default class LoggerService extends Service {
     navigator.serviceWorker.addEventListener("message", (event) => {
       let { data } = event;
       if (isLogMessagesEvent(data)) {
-        let newMessages = data.args;
+        let newMessages = data.logger!;
         this.messages = [...this.messages, ...newMessages];
       }
     });
