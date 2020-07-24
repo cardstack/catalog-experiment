@@ -1064,6 +1064,82 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
+  test("preserves side effect import if module is imported both for side effect only and imported for an unconsumed binding", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import './a.js';
+        import './b.js';
+        const b = 'b';
+        console.log(b);
+      `,
+      "a.js": `
+        console.log('side effect');
+        export const a = "A";
+      `,
+      "b.js": `
+        import { a } from './a.js';
+        console.log('hi');
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs, {
+      assignments: [
+        {
+          module: "a.js",
+          assignedToBundle: "dist/2.js",
+          nameMapping: { a: "a" },
+        },
+      ],
+    });
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `import './2.js';
+       console.log('hi');
+       const b = 'b';
+       console.log(b);`
+    );
+  });
+
+  test("strips a side-effect only import if the module is also imported for a consumed binding (the side effect comes along in the named import)", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import './a.js';
+        import './b.js';
+        const b = 'b';
+        console.log(b);
+      `,
+      "a.js": `
+        console.log('side effect');
+        export const a = "A";
+      `,
+      "b.js": `
+        import { a } from './a.js';
+        console.log(a);
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs, {
+      assignments: [
+        {
+          module: "a.js",
+          assignedToBundle: "dist/2.js",
+          nameMapping: { a: "a" },
+        },
+      ],
+    });
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `import { a } from './2.js';
+       console.log(a);
+       const b = 'b';
+       console.log(b);`
+    );
+  });
+
   test("strips unused exported function", async function (assert) {
     await assert.setupFiles({
       "index.js": `
