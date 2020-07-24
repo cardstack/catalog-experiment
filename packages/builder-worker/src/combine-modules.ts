@@ -121,22 +121,13 @@ export function combineModules(
       );
       importDeclaration.push("} from");
       importDeclaration.push(
-        `"${maybeRelativeURL(new URL(bundleHref, bundle), bundle)}";`
+        `"${maybeRelativeURL(new URL(bundleHref), bundle)}";`
       );
       importDeclarations.push(importDeclaration.join(" "));
-    } else {
-      let moduleHrefs = assignments
-        .filter((a) => a.bundleURL.href === bundleHref)
-        .map((a) => a.module.url.href);
-      if (
-        [...state.sideEffectOnlyImports].find((href) =>
-          moduleHrefs.includes(href)
-        )
-      ) {
-        importDeclarations.push(
-          `import "${maybeRelativeURL(new URL(bundleHref, bundle), bundle)}";`
-        );
-      }
+    } else if (state.sideEffectOnlyImports.has(bundleHref)) {
+      importDeclarations.push(
+        `import "${maybeRelativeURL(new URL(bundleHref), bundle)}";`
+      );
     }
   }
   output.unshift(importDeclarations.join("\n"));
@@ -210,7 +201,7 @@ interface State {
 
   usedNames: Map<string, { moduleHref: string; name: string }>;
 
-  // this is a set of module href's that are imported for side effects
+  // this is a set of bundle href's that are imported for side effects only
   sideEffectOnlyImports: Set<string>;
 
   // this is a set of bundles that are consumed by this bundle in dep-first
@@ -465,9 +456,7 @@ function gatherModuleRewriters(
               nameDesc.type === "import" && nameDesc.importIndex === index
           )
         ) {
-          state.sideEffectOnlyImports.add(
-            module.resolvedImports[index].url.href
-          );
+          state.sideEffectOnlyImports.add(assignment.bundleURL.href);
         }
       }
     }
