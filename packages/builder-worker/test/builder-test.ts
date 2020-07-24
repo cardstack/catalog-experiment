@@ -119,7 +119,7 @@ QUnit.module("module builder", function (origHooks) {
         .matches(/src=\"\.\.\/dist\/1.js\"/, "file contents are correct");
     });
 
-    test("an entrypoint can consume another entrypoint", async function (assert) {
+    test("an HTML entrypoint can consume another HTML entrypoint", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "html": ["index.html", "test/index.html"] }`,
         "index.html": `<html><script type="module" src="./index.js"></script></html>`,
@@ -615,6 +615,7 @@ QUnit.module("module builder", function (origHooks) {
         .file("output/dist/0.js")
         .matches(/const cutie1 = 'van gogh'/);
       await assert.file("output/dist/0.js").matches(/const cutie2 = 'mango'/);
+      await assert.file("output/dist/0.js").matches(/export { puppies };/); // importantly, cutie1 and cutie2 are not exported
     });
 
     test("module shared by entrypoint and a dynamic imported module is exported from entrypoint's bundle", async function (assert) {

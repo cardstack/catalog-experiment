@@ -21,7 +21,8 @@ export function combineModules(
     assignedLocalNames: new Map(),
     usedNames: new Map(),
     assignedImportedNames: new Map(),
-    sideEffectImports: new Set(),
+    sideEffectOnlyImports: new Set(),
+    consumedBundles: new Set(),
     bindingDependsOn: new Map(),
     bundleDependsOn: new Set(),
     seenModules: new Set(),
@@ -101,41 +102,44 @@ export function combineModules(
     output.push(exportDeclaration.join(" "));
   }
 
-  // Add assigned imports for this bundle
+  // Add imports for this bundle in dep-first order
   let importDeclarations: string[] = [];
-  for (let [bundleHref, mapping] of assignedImports(
-    assignments,
-    state,
-    removedBindings
-  )) {
-    let importDeclaration: string[] = [];
-    importDeclaration.push("import {");
-    importDeclaration.push(
-      [...mapping]
-        .map(([exportedName, localName]) =>
-          exportedName === localName
-            ? exportedName
-            : `${exportedName} as ${localName}`
+  let assignedImportsMap = assignedImports(assignments, state, removedBindings);
+  for (let bundleHref of state.consumedBundles) {
+    let mapping = assignedImportsMap.get(bundleHref);
+    if (mapping) {
+      let importDeclaration: string[] = [];
+      importDeclaration.push("import {");
+      importDeclaration.push(
+        [...mapping]
+          .map(([exportedName, localName]) =>
+            exportedName === localName
+              ? exportedName
+              : `${exportedName} as ${localName}`
+          )
+          .join(", ")
+      );
+      importDeclaration.push("} from");
+      importDeclaration.push(
+        `"${maybeRelativeURL(new URL(bundleHref, bundle), bundle)}";`
+      );
+      importDeclarations.push(importDeclaration.join(" "));
+    } else {
+      let moduleHrefs = assignments
+        .filter((a) => a.bundleURL.href === bundleHref)
+        .map((a) => a.module.url.href);
+      if (
+        [...state.sideEffectOnlyImports].find((href) =>
+          moduleHrefs.includes(href)
         )
-        .join(", ")
-    );
-    importDeclaration.push("} from");
-    importDeclaration.push(
-      `"${maybeRelativeURL(new URL(bundleHref, bundle), bundle)}";`
-    );
-    importDeclarations.push(importDeclaration.join(" "));
+      ) {
+        importDeclarations.push(
+          `import "${maybeRelativeURL(new URL(bundleHref, bundle), bundle)}";`
+        );
+      }
+    }
   }
   output.unshift(importDeclarations.join("\n"));
-
-  // add any imports for side effects of modules that were assigned to a
-  // different bundle
-  let sideEffectAssignments = [...state.sideEffectImports].map((href) =>
-    assignments.find((a) => a.module.url.href === href)
-  );
-  let sideEffectImports = sideEffectAssignments
-    .filter((a) => a?.bundleURL.href !== bundle.href)
-    .map((a) => `import "${maybeRelativeURL(a!.bundleURL, bundle)}";`);
-  output.unshift(sideEffectImports.join("\n"));
 
   const importAssignments = invertAssignedImportedNames(
     state.assignedImportedNames
@@ -207,10 +211,16 @@ interface State {
   usedNames: Map<string, { moduleHref: string; name: string }>;
 
   // this is a set of module href's that are imported for side effects
-  sideEffectImports: Set<string>;
+  sideEffectOnlyImports: Set<string>;
+
+  // this is a set of bundles that are consumed by this bundle in dep-first
+  // order of consumption. We use this structure to ensure that the order in
+  // which we write the imports in the bundle is maintained correctly.
+  consumedBundles: Set<string>;
 
   // outer map is the href of the exported module. the inner map goes from
-  // exported name to our name. our name also must appear in usedNames.
+  // exported name to our name. our name also must appear in usedNames. If the
+  // inner map is undefined, then this is a side effect-only import.
   assignedImportedNames: Map<string, Map<string | NamespaceMarker, string>>;
 
   // This is synonymous with assignedImportedNames, but it's used speicifically
@@ -325,22 +335,6 @@ class ModuleRewriter {
         nameAssignments.set(name, assignedName);
       }
       this.claimAndRename(this.module.url.href, name, assignedName);
-    }
-
-    // discover any static imports for side effects. these will be imports that
-    // are not dynamic and have no binding name associated with them.
-    for (let [index, importDesc] of this.module.desc.imports.entries()) {
-      if (
-        !importDesc.isDynamic &&
-        ![...this.module.desc.names.values()].find(
-          (nameDesc) =>
-            nameDesc.type === "import" && nameDesc.importIndex === index
-        )
-      ) {
-        this.sharedState.sideEffectImports.add(
-          this.module.resolvedImports[index].url.href
-        );
-      }
     }
 
     // rewrite dynamic imports to use bundle specifiers
@@ -458,6 +452,24 @@ function gatherModuleRewriters(
     }
     if (assignment.bundleURL.href === state.bundle.href) {
       gatherModuleRewriters(rewriters, resolution, state, assignments);
+    } else {
+      state.consumedBundles.add(assignment.bundleURL.href);
+
+      // discover any static imports for side effect only. these will be imports that
+      // are not dynamic and have no binding name associated with them.
+      for (let [index, importDesc] of module.desc.imports.entries()) {
+        if (
+          !importDesc.isDynamic &&
+          ![...module.desc.names.values()].find(
+            (nameDesc) =>
+              nameDesc.type === "import" && nameDesc.importIndex === index
+          )
+        ) {
+          state.sideEffectOnlyImports.add(
+            module.resolvedImports[index].url.href
+          );
+        }
+      }
     }
   }
 
