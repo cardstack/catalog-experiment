@@ -144,6 +144,7 @@ QUnit.module("combine modules", function (origHooks) {
       const a = 'a';
       const b = 'b';
       console.log(a + b);
+      export {};
       `
     );
   });
@@ -168,6 +169,7 @@ QUnit.module("combine modules", function (origHooks) {
       const [ { a } ] = foo();
       const b = 'b';
       console.log(a + b);
+      export {};
       `
     );
   });
@@ -194,6 +196,7 @@ QUnit.module("combine modules", function (origHooks) {
       const hello = 'hello';
       const b = hello + '!';
       console.log(hello + b);
+      export {};
       `
     );
   });
@@ -220,6 +223,7 @@ QUnit.module("combine modules", function (origHooks) {
       const hello = 'hello';
       const b = hello + '!';
       console.log(hello + b);
+      export {};
       `
     );
   });
@@ -239,6 +243,7 @@ QUnit.module("combine modules", function (origHooks) {
       "b.js": `
         let shared = 3;
         console.log(shared);
+        export {};
       `,
     });
 
@@ -254,6 +259,7 @@ QUnit.module("combine modules", function (origHooks) {
       console.log(shared0);
       let shared = 1;
       console.log(shared);
+      export {};
       `
     );
   });
@@ -283,6 +289,7 @@ QUnit.module("combine modules", function (origHooks) {
       const a = 'a';
       const b = hello + '!';
       console.log(hello + a + b);
+      export {};
       `
     );
   });
@@ -509,7 +516,7 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
-  test("it prevents collisions with mulitple bundle exported named statements", async function (assert) {
+  test("it prevents collisions with multiple bundle exported named statements", async function (assert) {
     await assert.setupFiles({
       "index.js": `
         import './lib.js';
@@ -551,7 +558,7 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
-  test("it prevents collisions with mulitple bundle exported variable declarations", async function (assert) {
+  test("it prevents collisions with multiple bundle exported variable declarations", async function (assert) {
     await assert.setupFiles({
       "index.js": `
         import './lib.js';
@@ -733,7 +740,7 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
-  test("collaspes reexports", async function (assert) {
+  test("collapses reexports", async function (assert) {
     await assert.setupFiles({
       "index.js": `
         import { hello } from './b.js';
@@ -755,6 +762,7 @@ QUnit.module("combine modules", function (origHooks) {
       const hello = 'hello';
       const hi = 'hi';
       console.log(hi + hello);
+      export {};
       `
     );
   });
@@ -788,6 +796,7 @@ QUnit.module("combine modules", function (origHooks) {
       console.log(b0);
       const hello = 'hi';
       console.log(hello + b);
+      export {};
       `
     );
   });
@@ -817,6 +826,7 @@ QUnit.module("combine modules", function (origHooks) {
       const a = 1;
       const b = 'internal';
       console.log(a + b);
+      export {};
       `
     );
   });
@@ -843,6 +853,7 @@ QUnit.module("combine modules", function (origHooks) {
       const goodbye = 'goodbye';
       const lib = { hello, goodbye };
       console.log(lib.hello + lib.goodbye);
+      export {};
       `
     );
   });
@@ -879,6 +890,7 @@ QUnit.module("combine modules", function (origHooks) {
       const a = 'a';
       const b = 'b';
       console.log(prop.propA + a + b);
+      export {};
       `
     );
   });
@@ -917,6 +929,7 @@ QUnit.module("combine modules", function (origHooks) {
       }
       a();
       b();
+      export {};
       `
     );
   });
@@ -959,6 +972,7 @@ QUnit.module("combine modules", function (origHooks) {
       let b = new B();
       a.display();
       b.display();
+      export {};
       `
     );
   });
@@ -996,6 +1010,7 @@ QUnit.module("combine modules", function (origHooks) {
       let a = new A();
       a.display();
       console.log(b);
+      export {};
       `
     );
   });
@@ -1042,6 +1057,7 @@ QUnit.module("combine modules", function (origHooks) {
       `,
       "a.js": `
         console.log('side effect');
+        export {};
       `,
     });
 
@@ -1160,6 +1176,7 @@ QUnit.module("combine modules", function (origHooks) {
       `
       function a() { return 1; }
       console.log(a());
+      export {};
       `
     );
   });
@@ -1184,6 +1201,7 @@ QUnit.module("combine modules", function (origHooks) {
       `
       function a() { return 1; }
       console.log(a());
+      export {};
       `
     );
   });
@@ -1208,6 +1226,7 @@ QUnit.module("combine modules", function (origHooks) {
       `
       function a() { return 1; }
       console.log(a());
+      export {};
       `
     );
   });
@@ -1235,6 +1254,7 @@ QUnit.module("combine modules", function (origHooks) {
       function b() { return 2; }
       b();
       console.log(a());
+      export {};
       `
     );
   });
@@ -1262,6 +1282,7 @@ QUnit.module("combine modules", function (origHooks) {
       `
       function a() { return 1; }
       console.log(a());
+      export {};
       `
     );
   });
@@ -1292,6 +1313,7 @@ QUnit.module("combine modules", function (origHooks) {
       `
       function a() { return 1; }
       console.log(a());
+      export {};
       `
     );
   });
@@ -1328,7 +1350,9 @@ QUnit.module("combine modules", function (origHooks) {
     assert.codeEqual(
       combined.code,
       `function b() { return 1; }
-       console.log(b());`
+       console.log(b());
+       export {};
+      `
     );
   });
 
@@ -1357,6 +1381,7 @@ QUnit.module("combine modules", function (origHooks) {
       `
       function a() { return 1; }
       console.log(a());
+      export {};
       `
     );
   });
@@ -1387,6 +1412,7 @@ QUnit.module("combine modules", function (origHooks) {
       let aValue;
       function a() { return aValue; }
       console.log(a());
+      export {};
       `
     );
   });
@@ -1419,6 +1445,7 @@ QUnit.module("combine modules", function (origHooks) {
       function a() { return 1; }
       const foo = 'bleep';
       console.log(a() + foo);
+      export {};
       `
     );
   });
@@ -1448,6 +1475,7 @@ QUnit.module("combine modules", function (origHooks) {
       function i() { return 1; }
       initCache();
       console.log(i());
+      export {};
       `
     );
   });
@@ -1602,6 +1630,7 @@ QUnit.module("combine modules", function (origHooks) {
       let bar2 = 4;
       let bar00 = 5
       console.log(b() + bar2 + bar00);
+      export {};
       `
     );
   });

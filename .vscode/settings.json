@@ -1,4 +1,10 @@
 {
   "eslint.validate": ["javascript", "typescript"],
-  "editor.formatOnSave": true
+  "editor.formatOnSave": true,
+  "cSpell.ignoreWords": [
+    "aurl",
+    "bundle",
+    "bundle aurl",
+    "jojo"
+  ]
 }

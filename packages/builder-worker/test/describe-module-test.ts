@@ -30,6 +30,23 @@ QUnit.module("describe-module", function (hooks) {
     unusedNameNonce = 0;
   });
 
+  // This tests our CJS detection logic. Eventually we will stop throwing and
+  // start analyzing this code.
+  test("throws when file does not appear to be an ES6 module", function (assert) {
+    try {
+      describeModule(`
+        console.log('i need to import or export something in order to be considered an ES6 module');
+      `);
+      throw new Error(`should not be able to describeModule()`);
+    } catch (e) {
+      assert.equal(
+        Boolean(e.message.match(/not an ES6 module/)),
+        true,
+        "throws when describing non-ES6 module"
+      );
+    }
+  });
+
   test("pure reexport examples", function (assert) {
     let { desc } = describeModule(`
       export { foo } from './bar';
@@ -157,6 +174,7 @@ QUnit.module("describe-module", function (hooks) {
   test("local names are discovered", function (assert) {
     let { desc } = describeModule(`
       function x() {}
+      export {};
     `);
     assert.equal(desc.names.get("x")?.type, "local");
   });
@@ -179,6 +197,7 @@ QUnit.module("describe-module", function (hooks) {
     let { desc } = describeModule(`
       function x() {}
       x();
+      export {};
     `);
     let out = desc.names.get("x");
     assert.equal(out?.type, "local");
@@ -209,6 +228,7 @@ QUnit.module("describe-module", function (hooks) {
     let { desc } = describeModule(`
       let a = foo();
       let { x = a, y = x } = bar();
+      export {};
     `);
     let out = desc.names.get("x")!;
     assert.ok(out.dependsOn.has("a"));
@@ -223,6 +243,7 @@ QUnit.module("describe-module", function (hooks) {
       console.log(1);
       function x() {}
       x();
+      export {};
     `);
     editor.rename("x", "y");
     assert.codeEqual(
@@ -231,6 +252,7 @@ QUnit.module("describe-module", function (hooks) {
       console.log(1);
       function y() {}
       y();
+      export {};
     `
     );
   });
@@ -243,6 +265,7 @@ QUnit.module("describe-module", function (hooks) {
       function y() {}
       a();
       y();
+      export {};
     `);
     editor.removeDeclaration("x");
     assert.codeEqual(
@@ -253,6 +276,7 @@ QUnit.module("describe-module", function (hooks) {
       function y() {}
       a();
       y();
+      export {};
     `
     );
   });
@@ -260,6 +284,7 @@ QUnit.module("describe-module", function (hooks) {
   test("pattern in function arguments doesn't create module scoped binding", function (assert) {
     let { desc } = describeModule(`
       function x({ a }) {}
+      export {};
     `);
     assert.ok(!desc.names.has("a"));
   });
@@ -268,6 +293,7 @@ QUnit.module("describe-module", function (hooks) {
     let { desc } = describeModule(`
       let a = 1;
       function x(a=a) {}
+      export {};
     `);
     let out = desc.names.get("x");
     assert.ok(out?.dependsOn.has("a"));
@@ -321,6 +347,7 @@ QUnit.module("describe-module", function (hooks) {
     let { editor } = describeModule(`
       const { a, b: c } = foo();
       console.log(a, c);
+      export {};
     `);
     editor.rename("a", "alpha");
     editor.rename("c", "charlie");
@@ -329,6 +356,7 @@ QUnit.module("describe-module", function (hooks) {
       `
       const { a: alpha, b: charlie } = foo();
       console.log(alpha, charlie);
+      export {};
     `
     );
   });
@@ -337,6 +365,7 @@ QUnit.module("describe-module", function (hooks) {
     let { editor } = describeModule(`
       const { a, b = a } = foo();
       console.log(a, b);
+      export {};
     `);
     editor.rename("a", "alpha");
     editor.rename("b", "bravo");
@@ -345,6 +374,7 @@ QUnit.module("describe-module", function (hooks) {
       `
       const { a: alpha, b: bravo = alpha } = foo();
       console.log(alpha, bravo);
+      export {};
     `
     );
   });
@@ -353,6 +383,7 @@ QUnit.module("describe-module", function (hooks) {
     let { editor } = describeModule(`
       const { a, b: bravo = a } = foo();
       console.log(a, bravo);
+      export {};
     `);
     editor.rename("bravo", "b");
     assert.codeEqual(
@@ -360,6 +391,7 @@ QUnit.module("describe-module", function (hooks) {
       `
       const { a, b = a } = foo();
       console.log(a, b);
+      export {};
     `
     );
   });
@@ -369,6 +401,7 @@ QUnit.module("describe-module", function (hooks) {
       const bar = makeBar();
       const { a, b = bar.blah } = foo();
       console.log(a, bar.blurb);
+      export {};
     `);
     editor.rename("bar", "bleep");
     assert.codeEqual(
@@ -377,6 +410,7 @@ QUnit.module("describe-module", function (hooks) {
       const bleep = makeBar();
       const { a, b = bleep.blah } = foo();
       console.log(a, bleep.blurb);
+      export {};
     `
     );
   });
@@ -385,6 +419,7 @@ QUnit.module("describe-module", function (hooks) {
     let { editor } = describeModule(`
       let [{ x }, { y }] = bar();
       console.log(y);
+      export {};
     `);
     editor.rename("y", "yas");
     assert.codeEqual(
@@ -392,6 +427,7 @@ QUnit.module("describe-module", function (hooks) {
       `
       let [{ x }, { y: yas }] = bar();
       console.log(yas);
+      export {};
     `
     );
   });
@@ -400,6 +436,7 @@ QUnit.module("describe-module", function (hooks) {
     let { editor } = describeModule(`
       let a = 1, b = 2;
       console.log(b);
+      export {};
     `);
     editor.removeDeclaration("a");
     assert.codeEqual(
@@ -407,6 +444,7 @@ QUnit.module("describe-module", function (hooks) {
       `
       let b = 2;
       console.log(b);
+      export {};
     `
     );
   });
@@ -414,12 +452,14 @@ QUnit.module("describe-module", function (hooks) {
   test("removing trailing variable declaration from a list", function (assert) {
     let { editor } = describeModule(`
       let a = 1, b = 2;
+      export {};
     `);
     editor.removeDeclaration("b");
     assert.codeEqual(
       editor.serialize(),
       `
       let a = 1;
+      export {};
     `
     );
   });
@@ -427,6 +467,7 @@ QUnit.module("describe-module", function (hooks) {
   test("removing adjacent variable declarations from a list", function (assert) {
     let { editor } = describeModule(`
       let a = 1, b = 2, c = 3, d = 4;
+      export {};
     `);
     editor.removeDeclaration("b");
     editor.removeDeclaration("c");
@@ -434,6 +475,7 @@ QUnit.module("describe-module", function (hooks) {
       editor.serialize(),
       `
       let a = 1, d = 4;
+      export {};
     `
     );
   });
@@ -441,6 +483,7 @@ QUnit.module("describe-module", function (hooks) {
   test("removing first 2 adjacent variable declarations from a list", function (assert) {
     let { editor } = describeModule(`
       let a = 1, b = 2, c = 3, d = 4;
+      export {};
     `);
     editor.removeDeclaration("a");
     editor.removeDeclaration("b");
@@ -448,6 +491,7 @@ QUnit.module("describe-module", function (hooks) {
       editor.serialize(),
       `
       let c = 3, d = 4;
+      export {};
     `
     );
   });
@@ -455,6 +499,7 @@ QUnit.module("describe-module", function (hooks) {
   test("removing a declaration from a list that includes a mix of LVal and non-LVal declarations", function (assert) {
     let { editor } = describeModule(`
       let { a } = foo, b = 2, { c } = blah, d = 4;
+      export {};
     `);
     editor.removeDeclaration("b");
     editor.removeDeclaration("c");
@@ -462,6 +507,7 @@ QUnit.module("describe-module", function (hooks) {
       editor.serialize(),
       `
       let { a } = foo, d = 4;
+      export {};
       `
     );
   });
@@ -470,12 +516,14 @@ QUnit.module("describe-module", function (hooks) {
     let { editor } = describeModule(`
       let a = 1;
       console.log(2);
+      export {};
     `);
     editor.removeDeclaration("a");
     assert.codeEqual(
       editor.serialize(),
       `
       console.log(2);
+      export {};
     `
     );
   });
@@ -484,12 +532,14 @@ QUnit.module("describe-module", function (hooks) {
     let { editor } = describeModule(`
       let [ ...{ ...a } ] = foo;
       console.log(2);
+      export {};
     `);
     editor.removeDeclaration("a");
     assert.codeEqual(
       editor.serialize(),
       `
       console.log(2);
+      export {};
     `
     );
   });
@@ -498,6 +548,7 @@ QUnit.module("describe-module", function (hooks) {
     let { editor } = describeModule(`
       let { x, y: a } = foo;
       console.log(2);
+      export {};
     `);
     editor.removeDeclaration("a");
     assert.codeEqual(
@@ -505,6 +556,7 @@ QUnit.module("describe-module", function (hooks) {
       `
       let { x } = foo;
       console.log(2);
+      export {};
     `
     );
   });
@@ -513,6 +565,7 @@ QUnit.module("describe-module", function (hooks) {
     let { editor } = describeModule(`
       let { x, y: { a } } = foo;
       console.log(2);
+      export {};
     `);
     editor.removeDeclaration("a");
     assert.codeEqual(
@@ -520,6 +573,7 @@ QUnit.module("describe-module", function (hooks) {
       `
       let { x } = foo;
       console.log(2);
+      export {};
     `
     );
   });
@@ -528,6 +582,7 @@ QUnit.module("describe-module", function (hooks) {
     let { editor } = describeModule(`
       let [ x, y, z ] = foo;
       console.log(2);
+      export {};
     `);
     editor.removeDeclaration("x");
     editor.removeDeclaration("y");
@@ -536,6 +591,7 @@ QUnit.module("describe-module", function (hooks) {
       `
       let [ , , z ] = foo;
       console.log(2);
+      export {};
     `
     );
   });
@@ -544,6 +600,7 @@ QUnit.module("describe-module", function (hooks) {
     let { editor } = describeModule(`
       let [ x, [ a ] ] = foo;
       console.log(2);
+      export {};
     `);
     editor.removeDeclaration("a");
     assert.codeEqual(
@@ -551,6 +608,7 @@ QUnit.module("describe-module", function (hooks) {
       `
       let [ x ] = foo;
       console.log(2);
+      export {};
     `
     );
   });
@@ -559,6 +617,7 @@ QUnit.module("describe-module", function (hooks) {
     let { editor } = describeModule(`
       let [ x, ...y ] = foo;
       console.log(2);
+      export {};
     `);
     editor.removeDeclaration("y");
     assert.codeEqual(
@@ -566,6 +625,7 @@ QUnit.module("describe-module", function (hooks) {
       `
       let [ x ] = foo;
       console.log(2);
+      export {};
     `
     );
   });
@@ -574,6 +634,7 @@ QUnit.module("describe-module", function (hooks) {
     let { editor } = describeModule(`
       let [ x, ...[ ...y ]] = foo;
       console.log(2);
+      export {};
     `);
     editor.removeDeclaration("y");
     assert.codeEqual(
@@ -581,6 +642,7 @@ QUnit.module("describe-module", function (hooks) {
       `
       let [ x ] = foo;
       console.log(2);
+      export {};
     `
     );
   });
@@ -589,6 +651,7 @@ QUnit.module("describe-module", function (hooks) {
     let { editor } = describeModule(`
       let { x, y = 1 } = foo;
       console.log(2);
+      export {};
     `);
     editor.removeDeclaration("y");
     assert.codeEqual(
@@ -596,6 +659,7 @@ QUnit.module("describe-module", function (hooks) {
       `
       let { x } = foo;
       console.log(2);
+      export {};
     `
     );
   });
@@ -604,6 +668,7 @@ QUnit.module("describe-module", function (hooks) {
     let { editor } = describeModule(`
       let { x, b: [ y = 1 ] } = foo;
       console.log(2);
+      export {};
     `);
     editor.removeDeclaration("y");
     assert.codeEqual(
@@ -611,6 +676,7 @@ QUnit.module("describe-module", function (hooks) {
       `
       let { x } = foo;
       console.log(2);
+      export {};
     `
     );
   });
@@ -618,6 +684,7 @@ QUnit.module("describe-module", function (hooks) {
   test("preserves side-effectful right-hand side when there is only one side effect at the beginning of the list", async function (assert) {
     let { editor } = describeModule(`
       let a = initCache(), b = true, c = 1, d = 'd', e = null, f = undefined, g = function() {}, h = class foo {};
+      export {};
     `);
 
     editor.removeDeclaration("a");
@@ -633,6 +700,7 @@ QUnit.module("describe-module", function (hooks) {
       editor.serialize(),
       `
       initCache();
+      export {};
       `
     );
   });
@@ -640,6 +708,7 @@ QUnit.module("describe-module", function (hooks) {
   test("preserves side-effectful right-hand side when there is only one side effect at the end of the list", async function (assert) {
     let { editor } = describeModule(`
       let b = true, c = 1, d = 'd', e = null, f = undefined, g = function() {}, h = class foo {}, a = initCache();
+      export {};
     `);
 
     editor.removeDeclaration("a");
@@ -655,6 +724,7 @@ QUnit.module("describe-module", function (hooks) {
       editor.serialize(),
       `
       initCache();
+      export {};
       `
     );
   });
@@ -662,6 +732,7 @@ QUnit.module("describe-module", function (hooks) {
   test("preserves side-effectful right-hand side when there is only one side effect in the middle of the list", async function (assert) {
     let { editor } = describeModule(`
       let b = true, c = 1, d = 'd', e = null, a = initCache(), f = undefined, g = function() {}, h = class foo {};
+      export {};
     `);
 
     editor.removeDeclaration("a");
@@ -677,6 +748,7 @@ QUnit.module("describe-module", function (hooks) {
       editor.serialize(),
       `
       initCache();
+      export {};
       `
     );
   });
@@ -684,6 +756,7 @@ QUnit.module("describe-module", function (hooks) {
   test("preserves side-effectful right-hand side when there are multiple effects in the list", async function (assert) {
     let { editor } = describeModule(`
       let a = initACache(), b = true, c = 1, d = 'd', e = initECache(), f = undefined, g = function() {}, h = class foo {};
+      export {};
     `);
 
     editor.removeDeclaration("a");
@@ -699,6 +772,7 @@ QUnit.module("describe-module", function (hooks) {
       editor.serialize(),
       `
       let unused0 = initACache(), unused1 = initECache();
+      export {};
       `
     );
   });
@@ -706,6 +780,7 @@ QUnit.module("describe-module", function (hooks) {
   test("preserves side-effectful right-hand side when it is the only declarator in a declaration", async function (assert) {
     let { editor } = describeModule(`
       let a = initCache();
+      export {};
     `);
 
     editor.removeDeclaration("a");
@@ -714,6 +789,7 @@ QUnit.module("describe-module", function (hooks) {
       editor.serialize(),
       `
       initCache();
+      export {};
       `
     );
   });
@@ -721,6 +797,7 @@ QUnit.module("describe-module", function (hooks) {
   test("preserves side-effectful right-hand side for ObjectPatten LVal", async function (assert) {
     let { editor } = describeModule(`
       let { x } = initCache();
+      export {};
     `);
 
     editor.removeDeclaration("x");
@@ -729,6 +806,7 @@ QUnit.module("describe-module", function (hooks) {
       editor.serialize(),
       `
       let { x: unused0 } = initCache();
+      export {};
       `
     );
   });
@@ -736,6 +814,7 @@ QUnit.module("describe-module", function (hooks) {
   test("preserves side-effectful right-hand side for ArrayPatten LVal", async function (assert) {
     let { editor } = describeModule(`
       let [ x ] = initCache();
+      export {};
     `);
 
     editor.removeDeclaration("x");
@@ -744,6 +823,7 @@ QUnit.module("describe-module", function (hooks) {
       editor.serialize(),
       `
       let [ unused0 ] = initCache();
+      export {};
       `
     );
   });
@@ -751,6 +831,7 @@ QUnit.module("describe-module", function (hooks) {
   test("preserves side-effectful right-hand side for RestElement LVal", async function (assert) {
     let { editor } = describeModule(`
       let { a: [ ...x ] } = initCache();
+      export {};
     `);
 
     editor.removeDeclaration("x");
@@ -759,13 +840,15 @@ QUnit.module("describe-module", function (hooks) {
       editor.serialize(),
       `
       let { a: [ ...unused0 ] }= initCache();
+      export {};
       `
     );
   });
 
-  test("preserves side-effectful right-hand side for mulitple LVal identifiers", async function (assert) {
+  test("preserves side-effectful right-hand side for multiple LVal identifiers", async function (assert) {
     let { editor } = describeModule(`
       let { x, y } = initCache();
+      export {};
     `);
 
     editor.removeDeclaration("x");
@@ -775,6 +858,7 @@ QUnit.module("describe-module", function (hooks) {
       editor.serialize(),
       `
       let { x: unused0, y: unused1 } = initCache();
+      export {};
       `
     );
   });
@@ -782,6 +866,7 @@ QUnit.module("describe-module", function (hooks) {
   test("preserves side-effectful initializer in LVal", async function (assert) {
     let { editor } = describeModule(`
       let { x = initCache() } = foo;
+      export {};
     `);
 
     editor.removeDeclaration("x");
@@ -790,6 +875,7 @@ QUnit.module("describe-module", function (hooks) {
       editor.serialize(),
       `
       let { x: unused0 = initCache() } = foo;
+      export {};
       `
     );
   });
@@ -797,6 +883,7 @@ QUnit.module("describe-module", function (hooks) {
   test("preserves side-effectful initializer in list that includes side-effectful LVal", async function (assert) {
     let { editor } = describeModule(`
       let { x = initCache() } = foo, y = 1, z = initZCache();
+      export {};
     `);
 
     editor.removeDeclaration("x");
@@ -807,6 +894,7 @@ QUnit.module("describe-module", function (hooks) {
       editor.serialize(),
       `
       let { x: unused0 = initCache() } = foo, unused1 = initZCache();
+      export {};
       `
     );
   });

@@ -182,6 +182,7 @@ QUnit.module("module builder", function (origHooks) {
         "test/index.html": `<html><script type="module" src="./index.js"></script></html>`,
         "test/index.js": `
           console.log('hi');
+          export {};
         `,
       });
       builder = makeBuilder(assert.fs);
