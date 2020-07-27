@@ -118,6 +118,7 @@ export function describeModule(
   ast: File,
   importAssignments?: ImportAssignments
 ): ModuleDescription {
+  let isES6Module = false;
   let builder: RegionBuilder;
   let desc: ModuleDescription;
   let consumedByModule: Set<string> = new Set();
@@ -186,7 +187,7 @@ export function describeModule(
             // we filter because babel gives you some things like
             // ExportNamedDeclaration here that aren't relevant to us, because
             // we never do fine-grained renaming within export statements anyway
-            // -- we re-synthesize entir export statements.
+            // -- we re-synthesize entire export statements.
             .referencePaths.filter((path) => path.type === "Identifier")
             .map((i) => builder.createCodeRegion(i)),
         ];
@@ -293,6 +294,9 @@ export function describeModule(
         };
       },
       exit() {
+        if (!isES6Module) {
+          throw new Error(`This file is not an ES6 module`);
+        }
         for (let name of consumedByModule) {
           let nameDesc = desc.names.get(name);
           if (nameDesc) {
@@ -352,6 +356,7 @@ export function describeModule(
       }
     },
     ImportDeclaration(path) {
+      isES6Module = true;
       let importDesc = desc.imports.find(
         (i) => i.specifier === path.node.source.value
       );
@@ -375,6 +380,7 @@ export function describeModule(
     },
 
     Import(path) {
+      isES6Module = true;
       let callExpression = path.parentPath as NodePath<CallExpression>;
       let stringLiteral = callExpression.node.arguments[0] as StringLiteral;
       let importDesc = desc.imports.find(
@@ -400,6 +406,7 @@ export function describeModule(
     },
     ExportDefaultDeclaration: {
       enter(path) {
+        isES6Module = true;
         let exportRegion = builder.createCodeRegion(path as NodePath);
         desc.exportRegions.push({
           region: exportRegion,
@@ -446,6 +453,7 @@ export function describeModule(
       exit: exitDeclaration,
     },
     ExportNamedDeclaration(path) {
+      isES6Module = true;
       let declaration: RegionPointer | undefined;
       let exportRegion = builder.createCodeRegion(path as NodePath);
       if (path.node.declaration != null) {

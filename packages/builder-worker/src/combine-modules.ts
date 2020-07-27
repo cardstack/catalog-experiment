@@ -132,6 +132,12 @@ export function combineModules(
   }
   output.unshift(importDeclarations.join("\n"));
 
+  // if there are no imports nor exports written to the bundle, then write
+  // "export {};" to signal that this is an ES6 module.
+  if (importDeclarations.length === 0 && exports.size === 0) {
+    output.push(`export {};`);
+  }
+
   const importAssignments = invertAssignedImportedNames(
     state.assignedImportedNames
   );
