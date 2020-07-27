@@ -15,7 +15,7 @@ import {
   ExportDescription,
   LocalNameDescription,
   ImportedNameDescription,
-} from "./describe-module";
+} from "./describe-file";
 import isEqual from "lodash/isEqual";
 import invert from "lodash/invert";
 import { RegionPointer, CodeRegion } from "./code-region";

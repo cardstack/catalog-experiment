@@ -6,10 +6,10 @@ import { Resolver, ModuleResolution } from "../src/nodes/resolution";
 import { HTMLEntrypoint } from "../src/nodes/entrypoint";
 import { BundleAssignment, Assigner } from "../src/nodes/bundle";
 import {
-  describeModule,
+  describeFile,
   NamespaceMarker,
   LocalNameDescription,
-} from "../src/describe-module";
+} from "../src/describe-file";
 import { url } from "./helpers/file-assertions";
 import { FileSystem } from "../src/filesystem";
 import { FileDescriptor } from "../src/filesystem-drivers/filesystem-driver";
@@ -27,7 +27,7 @@ async function makeModuleResolutions(
   if (parsed?.type !== "File") {
     throw new Error(`parsed js for ${moduleURL.href} is not a babel File type`);
   }
-  let desc = describeModule(parsed, importAssignments);
+  let desc = describeFile(parsed, importAssignments);
   let resolvedImports = await Promise.all(
     desc.imports.map(async (imp) => {
       let depURL = await resolver.resolve(imp.specifier, moduleURL);
@@ -1527,7 +1527,7 @@ QUnit.module("combine modules", function (origHooks) {
     if (parsed?.type !== "File") {
       throw new Error(`unexpected babel output`);
     }
-    let bundleDescription = describeModule(parsed, importAssignments);
+    let bundleDescription = describeFile(parsed, importAssignments);
     let nameDesc = bundleDescription.names.get("bar0") as LocalNameDescription;
     assert.deepEqual(nameDesc.original, {
       moduleHref: url("lib.js").href,

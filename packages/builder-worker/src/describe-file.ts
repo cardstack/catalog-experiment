@@ -31,7 +31,15 @@ export function isNamespaceMarker(
   return typeof value !== "string";
 }
 
-export interface ModuleDescription {
+export type FileDescription = ModuleDescription | CJSDescription;
+
+interface Description {
+  // storage of all the included CodeRegions. The order is always stable. Other
+  // places refer to a code region by its index in this list.
+  regions: CodeRegion[];
+}
+
+export interface ModuleDescription extends Description {
   imports: ImportDescription[];
 
   // all the names we export, and where they come from
@@ -44,10 +52,18 @@ export interface ModuleDescription {
 
   // all the names in module scope
   names: Map<string, LocalNameDescription | ImportedNameDescription>;
+}
 
-  // storage of all the included CodeRegions. The order is always stable. Other
-  // places refer to a code region by its index in this list.
-  regions: CodeRegion[];
+export interface CJSDescription extends Description {
+  requires: RequireDescription[];
+  names: Map<string, LocalNameDescription | RequiredNameDescription>;
+}
+
+export interface RequireDescription {
+  name: string | NamespaceMarker | undefined;
+  specifier: string;
+  isTopLevel: boolean;
+  requireRegion: RegionPointer;
 }
 
 export type ExportDescription =
@@ -91,6 +107,12 @@ export interface ImportedNameDescription extends NameDescription {
   name: string | NamespaceMarker;
 }
 
+export interface RequiredNameDescription extends NameDescription {
+  type: "require";
+  requireIndex: number;
+  name: string | NamespaceMarker | undefined;
+}
+
 export type ImportDescription =
   | {
       isDynamic: false;
@@ -114,13 +136,13 @@ interface DuckPath {
   isIdentifier(): this is NodePath<Identifier>;
 }
 
-export function describeModule(
+export function describeFile(
   ast: File,
   importAssignments?: ImportAssignments
-): ModuleDescription {
+): FileDescription {
   let isES6Module = false;
   let builder: RegionBuilder;
-  let desc: ModuleDescription;
+  let desc: ModuleDescription & CJSDescription;
   let consumedByModule: Set<string> = new Set();
   let currentModuleScopedDeclaration:
     | {
@@ -287,6 +309,7 @@ export function describeModule(
         builder = new RegionBuilder(path);
         desc = {
           imports: [],
+          requires: [],
           exports: new Map(),
           exportRegions: [],
           names: new Map(),
@@ -294,9 +317,6 @@ export function describeModule(
         };
       },
       exit() {
-        if (!isES6Module) {
-          throw new Error(`This file is not an ES6 module`);
-        }
         for (let name of consumedByModule) {
           let nameDesc = desc.names.get(name);
           if (nameDesc) {
@@ -578,7 +598,15 @@ export function describeModule(
       }
     },
   });
-  return desc!;
+
+  let { names, regions } = desc!;
+  if (!isES6Module) {
+    let { requires } = desc!;
+    return { names, regions, requires };
+  } else {
+    let { imports, exports, exportRegions } = desc!;
+    return { names, regions, imports, exports, exportRegions };
+  }
 }
 
 function setLValExportDesc(

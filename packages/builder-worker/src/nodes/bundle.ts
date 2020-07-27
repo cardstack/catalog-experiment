@@ -11,9 +11,9 @@ import { combineModules } from "../combine-modules";
 import { File } from "@babel/types";
 import {
   NamespaceMarker,
-  describeModule,
+  describeFile,
   ImportedNameDescription,
-} from "../describe-module";
+} from "../describe-file";
 import { EntrypointsJSONNode, Entrypoint, HTMLEntrypoint } from "./entrypoint";
 import { JSParseNode } from "./js";
 import { encodeModuleDescription } from "../description-encoder";
@@ -298,7 +298,7 @@ export class BundleSerializerNode implements BuilderNode {
   }
 
   async run({ parsed }: { parsed: File }): Promise<Value<string>> {
-    let desc = describeModule(parsed);
+    let desc = describeFile(parsed);
     let value = [
       this.unannotatedSrc,
       annotationStart,
@@ -367,7 +367,7 @@ function invertDependencies(
     if (resolution.resolvedImports.length > 0) {
       invertDependencies(resolution.resolvedImports, consumersOf, leaves);
       // since we are handling this on the exit of the recursion, all your deps
-      // will have entries in the identiy map
+      // will have entries in the identity map
       for (let [index, dep] of resolution.resolvedImports.entries()) {
         let isDynamic = resolution.desc.imports[index].isDynamic;
         consumersOf.get(dep.url.href)!.add({ isDynamic, module: resolution });

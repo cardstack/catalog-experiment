@@ -1,6 +1,6 @@
 import { BundleAssignment } from "./nodes/bundle";
 import { ModuleResolution } from "./nodes/resolution";
-import { NamespaceMarker, isNamespaceMarker } from "./describe-module";
+import { NamespaceMarker, isNamespaceMarker } from "./describe-file";
 import { maybeRelativeURL } from "./path";
 import { RegionEditor } from "./code-region";
 
