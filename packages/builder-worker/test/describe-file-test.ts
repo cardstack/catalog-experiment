@@ -39,7 +39,7 @@ QUnit.module("describe-file", function (hooks) {
       assert.equal(desc.requires.length, 1);
       let [req] = desc.requires;
       assert.equal(req.specifier, "./bar");
-      assert.equal(req.isTopLevel, true);
+      assert.equal(req.definitelyRuns, true);
       assert.deepEqual(req.name, NamespaceMarker);
     }
   });
@@ -119,7 +119,7 @@ QUnit.module("describe-file", function (hooks) {
     assert.ok("requires" in desc);
     if ("requires" in desc) {
       let [req] = desc.requires;
-      assert.equal(req.isTopLevel, false);
+      assert.equal(req.definitelyRuns, false);
     }
   });
 

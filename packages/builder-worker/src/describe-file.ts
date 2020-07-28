@@ -61,10 +61,9 @@ export interface CJSDescription extends Description {
 }
 
 export interface RequireDescription {
-  name: string | NamespaceMarker | undefined;
   specifier: string;
-  isTopLevel: boolean;
-  requireRegion: RegionPointer | undefined;
+  definitelyRuns: boolean;
+  requireRegion: RegionPointer;
 }
 
 export type ExportDescription =
@@ -111,7 +110,7 @@ export interface ImportedNameDescription extends NameDescription {
 export interface RequiredNameDescription extends NameDescription {
   type: "require";
   requireIndex: number;
-  name: string | NamespaceMarker | undefined;
+  name: string | NamespaceMarker;
 }
 
 export type ImportDescription =
@@ -392,6 +391,7 @@ export function describeFile(
           );
         }
         let { value: specifier } = specifierNode;
+        // this is wrong use the call expression region
         let requireRegion: RequireDescription["requireRegion"];
         // TODO need to add some more basic scenarios here (like LVal)
         // TODO what about multiple declarators? do we want to go there?
@@ -415,7 +415,7 @@ export function describeFile(
           name,
           specifier,
           requireRegion,
-          isTopLevel: path.scope.block.type === "Program",
+          definitelyRuns: path.scope.block.type === "Program",
         });
       }
     },
