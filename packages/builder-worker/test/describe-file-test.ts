@@ -44,20 +44,51 @@ QUnit.module("describe-file", function (hooks) {
     }
   });
 
-  test("can make a code region for the CJS require", function (assert) {
+  test("can make a code region for the declaration that uses CJS require", function (assert) {
     let { desc, editor } = describeFile(`
     const foo = require('./bar');
     `);
     assert.ok("requires" in desc);
     if ("requires" in desc) {
       let [req] = desc.requires;
-      editor.replace(req.requireRegion, `import foo from './bar';`);
+      editor.replace(req.requireRegion!, `import foo from './bar';`);
       assert.codeEqual(
         editor.serialize(),
         `
         import foo from './bar';
        `
       );
+    }
+  });
+
+  test("can make a code region for the LVal declaration that uses CJS require", function (assert) {
+    let { desc, editor } = describeFile(`
+    const { foo, bleep } = require('./bar');
+    `);
+    assert.ok("requires" in desc);
+    if ("requires" in desc) {
+      let [req] = desc.requires;
+      editor.replace(req.requireRegion!, `import foo from './bar';`);
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        import foo from './bar';
+       `
+      );
+    }
+  });
+
+  // I'm kinda on the fence around if we should tackle this or not....
+  test("can make a code region for a declaration that uses CJS require that has multiple declarators", function (assert) {});
+
+  test("cannot make a code region for the declaration that uses the require in more complex scenarios", function (assert) {
+    let { desc } = describeFile(`
+    const foo = { bar: require('./bar'), bleep: require('./bleep') };
+    `);
+    assert.ok("requires" in desc);
+    if ("requires" in desc) {
+      let [req] = desc.requires;
+      assert.equal(req.requireRegion, undefined);
     }
   });
 
@@ -94,7 +125,8 @@ QUnit.module("describe-file", function (hooks) {
 
   test("CJS require description can indicate the exported name for ObjectPattern LVal declaration", function (assert) {
     let { desc } = describeFile(`
-    const { foo } = require('./bar');
+    const somethingElse = require('blah');
+    const { foo, bleep } = require('./bar');
     `);
     assert.ok("requires" in desc);
     if ("requires" in desc) {
@@ -104,6 +136,14 @@ QUnit.module("describe-file", function (hooks) {
       assert.equal(nameDesc.type, "require");
       if (nameDesc.type === "require") {
         assert.equal(nameDesc.name, "foo");
+        assert.equal(nameDesc.requireIndex, 1);
+      }
+
+      nameDesc = desc.names.get("bleep")!;
+      assert.equal(nameDesc.type, "require");
+      if (nameDesc.type === "require") {
+        assert.equal(nameDesc.name, "bleep");
+        assert.equal(nameDesc.requireIndex, 1);
       }
     }
   });

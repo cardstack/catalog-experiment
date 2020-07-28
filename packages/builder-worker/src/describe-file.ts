@@ -16,6 +16,7 @@ import {
   StringLiteral,
   isVariableDeclarator,
   isIdentifier,
+  isStringLiteral,
   isLVal,
 } from "@babel/types";
 import { assertNever } from "shared/util";
@@ -63,7 +64,7 @@ export interface RequireDescription {
   name: string | NamespaceMarker | undefined;
   specifier: string;
   isTopLevel: boolean;
-  requireRegion: RegionPointer;
+  requireRegion: RegionPointer | undefined;
 }
 
 export type ExportDescription =
@@ -166,6 +167,7 @@ export function describeFile(
       | NodePath<ClassDeclaration>
       | NodePath<VariableDeclarator>
   ) {
+    // TODO also handle straightforward declarations that use a require
     let hasIdentifier = isIdentifier(path.node.id);
     if (isModuleScopedDeclaration(path as NodePath)) {
       builder.createCodeRegion(path as NodePath);
@@ -194,6 +196,7 @@ export function describeFile(
   }
 
   function exitDeclaration(path: DuckPath) {
+    // TODO also handle straightforward declarations that use a require
     if (currentModuleScopedDeclaration?.path !== path) {
       return;
     }
@@ -375,6 +378,47 @@ export function describeFile(
         }
       }
     },
+    CallExpression(path) {
+      let callee = path.get("callee");
+      if (
+        isIdentifier(callee.node) &&
+        callee.node.name === "require" &&
+        !path.scope.getBinding("require")
+      ) {
+        let [specifierNode] = path.node.arguments;
+        if (!isStringLiteral(specifierNode)) {
+          throw new Error(
+            `Cannot handle 'require()' whose specifier is not a string literal`
+          );
+        }
+        let { value: specifier } = specifierNode;
+        let requireRegion: RequireDescription["requireRegion"];
+        // TODO need to add some more basic scenarios here (like LVal)
+        // TODO what about multiple declarators? do we want to go there?
+        switch (path.parent.type) {
+          case "VariableDeclarator":
+            requireRegion = builder.createCodeRegion(
+              path.parentPath.parentPath as NodePath
+            );
+            break;
+        }
+
+        // TODO when it's clear that the require is just using a specific export
+        // (via a member expression or ObjectPattern LVal, then we can be more
+        // specific about the name). In more complex scenarios, we'll just have
+        // to set this to 'undefined' when we cannot make a determination if a
+        // specific "named export" export is being required, or the entire
+        // namespace is being required.
+        let name: RequireDescription["name"] = NamespaceMarker;
+
+        desc.requires.push({
+          name,
+          specifier,
+          requireRegion,
+          isTopLevel: path.scope.block.type === "Program",
+        });
+      }
+    },
     ImportDeclaration(path) {
       isES6Module = true;
       let importDesc = desc.imports.find(
@@ -398,7 +442,6 @@ export function describeFile(
     ImportNamespaceSpecifier(path) {
       addImportedName(desc, NamespaceMarker, path, builder);
     },
-
     Import(path) {
       isES6Module = true;
       let callExpression = path.parentPath as NodePath<CallExpression>;
