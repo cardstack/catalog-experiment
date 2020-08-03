@@ -4,6 +4,7 @@
 /packages/builder-worker/.file-daemon-key
 /packages/builder-worker/assets
 /packages/builder-node/test/testing
+/pkg-src
 
 /packages/*/node_modules
 /packages/*/dist

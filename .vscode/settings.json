@@ -5,6 +5,9 @@
     "aurl",
     "bundle",
     "bundle aurl",
-    "jojo"
+    "deduplicated",
+    "fullname",
+    "jojo",
+    "pkgs"
   ]
 }

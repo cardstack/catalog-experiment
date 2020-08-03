@@ -56,6 +56,15 @@
     {
       "type": "node",
       "request": "launch",
+      "name": "Run pkg install",
+      "cwd": "${workspaceRoot}",
+      "env": {},
+      "program": "${workspaceRoot}/packages/builder-node/bin/install.js",
+      "args": ["--nodeModules=./node_modules", "--pkg=@babel/core:^7.9.0"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
       "name": "Run file-daemon QUnit",
       "cwd": "${workspaceRoot}/packages/file-daemon",
       "env": {},

@@ -113,7 +113,7 @@ export class Logger {
             break;
           case "error":
             if (error !== undefined) {
-              console.error(message, error);
+              console.error(message, error, error.stack);
             } else {
               console.error(message);
             }
