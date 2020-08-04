@@ -39,22 +39,3 @@ export class WriteFileNode implements BuilderNode<void> {
     throw new Error(`bug: this isn't supposed to actually run`);
   }
 }
-
-export class FileExistsNode implements BuilderNode {
-  isFileExistsNode = true;
-  cacheKey: string;
-
-  static isFileExistsNode(node: BuilderNode): node is FileExistsNode {
-    return "isFileExistsNode" in node;
-  }
-
-  constructor(public url: URL) {
-    this.cacheKey = `file-exists:${this.url.href}`;
-  }
-
-  deps() {}
-
-  async run(): Promise<Value<boolean>> {
-    throw new Error(`bug: this isn't supposed to actually run`);
-  }
-}

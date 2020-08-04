@@ -60,7 +60,7 @@
       "cwd": "${workspaceRoot}",
       "env": {},
       "program": "${workspaceRoot}/packages/builder-node/bin/install.js",
-      "args": ["--nodeModules=./node_modules", "--pkg=@babel/core:^7.9.0"]
+      "args": ["--project=.", "@babel/core"]
     },
     {
       "type": "node",

@@ -7,12 +7,9 @@ import {
   NodeOutput,
   debugName,
 } from "./nodes/common";
-import { FileNode, WriteFileNode, FileExistsNode } from "./nodes/file";
+import { FileNode, WriteFileNode } from "./nodes/file";
 import { MakeProjectNode } from "./nodes/project";
-import {
-  FileDescriptor,
-  DirectoryDescriptor,
-} from "./filesystem-drivers/filesystem-driver";
+import { FileDescriptor } from "./filesystem-drivers/filesystem-driver";
 import { Deferred } from "./deferred";
 import { assertNever } from "shared/util";
 import { error } from "./logger";
@@ -222,10 +219,6 @@ class BuildRunner<Input> {
 
     if (WriteFileNode.isWriteFileNode(node)) {
       return new InternalWriteFileNode(node, this.fs);
-    }
-
-    if (FileExistsNode.isFileExistsNode(node)) {
-      return new InternalFileExistsNode(node.url, this.fs);
     }
 
     return node;
@@ -680,30 +673,5 @@ class InternalWriteFileNode implements BuilderNode<void> {
     await fd.write(source);
     await fd.close();
     return { value: undefined };
-  }
-}
-
-class InternalFileExistsNode implements BuilderNode<boolean> {
-  cacheKey: string;
-  constructor(private url: URL, private fs: FileSystem) {
-    this.cacheKey = `file-exists:${this.url.href}`;
-  }
-  deps() {}
-  async run(): Promise<NodeOutput<boolean>> {
-    let fd: FileDescriptor | DirectoryDescriptor | undefined;
-    let value = false;
-    try {
-      fd = await this.fs.open(this.url);
-      value = true;
-    } catch (e) {
-      if (e.code !== "NOT_FOUND") {
-        throw e;
-      }
-    } finally {
-      if (fd) {
-        await fd.close();
-      }
-    }
-    return { value };
   }
 }
