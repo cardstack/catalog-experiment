@@ -61,7 +61,6 @@ let fs = new FileSystem();
   let builder = new Builder(fs, [builderRoot]);
   let output = await builder.build();
   debugger;
-  console.log(`\nbuild output:\n${JSON.stringify(output, null, 2)} `);
   console.log("done");
   process.exit(0);
 })().catch((err) => {

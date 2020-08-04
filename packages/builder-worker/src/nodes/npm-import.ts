@@ -18,11 +18,11 @@ export interface PackageEntry {
   name: string;
   semver: string;
 }
-export interface PackageInfo {
+export interface Package {
   package: PackageEntry;
   packageJSON: PackageJSON;
   packageSrc: URL;
-  dependencies: PackageInfo[];
+  dependencies: Package[];
 }
 export interface PackageJSON {
   name: string;
@@ -52,7 +52,7 @@ export class NpmImportProjectsNode implements BuilderNode {
 
   deps() {}
 
-  async run(): Promise<NextNode<PackageInfo[]>> {
+  async run(): Promise<NextNode<Package[]>> {
     let nodes = this.pkgs.map(
       (p) => new NpmImportProjectNode(p, this.nodeModulesURL, this.gitRoot)
     );
@@ -90,7 +90,7 @@ class NpmImportProjectNode implements BuilderNode {
     src: URL;
     pkgJSON: PackageJSON;
     pkgURL: URL;
-  }): Promise<NextNode<PackageInfo>> {
+  }): Promise<NextNode<Package>> {
     console.log(`loaded package.json for ${pkgJSON.name} ${this.pkg.semver}`);
     let dependencies = await Promise.all(
       Object.entries(pkgJSON.dependencies ?? []).map(
@@ -125,8 +125,8 @@ class FinishNpmImportNode implements BuilderNode {
     return this.dependencies;
   }
   async run(dependencies: {
-    [index: number]: PackageInfo;
-  }): Promise<Value<PackageInfo>> {
+    [index: number]: Package;
+  }): Promise<Value<Package>> {
     return {
       value: {
         package: this.pkg,
@@ -150,7 +150,7 @@ class PackageSrcNode implements BuilderNode {
 
   deps() {
     return {
-      src: new PreparePackageSrcNode(this.pkg, this.pkgJSONNode, this.gitRoot),
+      src: new PackageSrcFromGitNode(this.pkg, this.pkgJSONNode, this.gitRoot),
       pkgJSON: this.pkgJSONNode,
     };
   }
@@ -167,8 +167,9 @@ class PackageSrcNode implements BuilderNode {
   }
 }
 
-// Clone to gitRootURL. This is where our input project root will come from.
-class PreparePackageSrcNode implements BuilderNode {
+// TODO This is the node where all the yuck has ended up. we need to turn all these
+// one-off cases into recipes.
+class PackageSrcFromGitNode implements BuilderNode {
   cacheKey: string;
   constructor(
     private pkg: PackageEntry,
@@ -183,6 +184,12 @@ class PreparePackageSrcNode implements BuilderNode {
     };
   }
   async run({ pkgJSON }: { pkgJSON: PackageJSON }): Promise<NextNode<URL>> {
+    let repositoryHref: string;
+    // TODO move this stuff into a recipe...
+    if (!pkgJSON.repository && this.pkg.name === "gensync") {
+      pkgJSON.repository = "https://github.com/loganfsmyth/gensync";
+    }
+
     if (!pkgJSON.repository) {
       throw new Error(
         `the package.json for ${this.pkg.name} does not have a repository`
@@ -190,12 +197,13 @@ class PreparePackageSrcNode implements BuilderNode {
     }
     let remoteGitURL: URL;
     let subdir: string | undefined;
-    let repositoryHref: string;
     if (typeof pkgJSON.repository === "string") {
       repositoryHref = pkgJSON.repository;
     } else {
       repositoryHref = pkgJSON.repository.url;
     }
+
+    // TODO move this stuff into a recipe...
     if (repositoryHref.startsWith("git@github.com:")) {
       repositoryHref = `https://github.com/${repositoryHref.replace(
         "git@github.com:",
@@ -206,6 +214,8 @@ class PreparePackageSrcNode implements BuilderNode {
         "git://github.com/",
         ""
       )}`;
+    } else if (repositoryHref.startsWith("git+https://github.com/")) {
+      repositoryHref = repositoryHref.replace(/^git\+/, "");
     } else if (repositoryHref.startsWith("http://github.com")) {
       // seriously....
       repositoryHref = repositoryHref.replace(/^http:/, "https:");
@@ -235,27 +245,31 @@ class PreparePackageSrcNode implements BuilderNode {
       remoteGitURL = new URL(`https://github.com/${org}/${repo}.git`);
       subdir = remoteSubdir;
     }
+    let version: string | undefined = `v${pkgJSON.version}`;
+
+    // TODO recipe goes here
+    if (this.pkg.name === "path-parse") {
+      // ugh this repo doesn't even have releases or even branches...
+      version = undefined;
+    }
 
     return {
-      node: new GitCloneNode(
-        remoteGitURL,
-        `v${pkgJSON.version}`,
-        subdir,
-        this.gitRoot
-      ),
+      node: new GitCloneNode(remoteGitURL, version, subdir, this.gitRoot),
     };
   }
 }
 
 class GitCloneNode implements BuilderNode {
   cacheKey: string;
+  private version: string;
   constructor(
     private remoteGitURL: URL,
-    private version: string,
+    version: string | undefined,
     private subdir: string | undefined,
     private gitRoot: GitRoot
   ) {
     this.cacheKey = `git-clone:${remoteGitURL.href}/tree/${version}`;
+    this.version = version ?? "master";
   }
 
   deps() {}
@@ -276,42 +290,12 @@ class GitCloneNode implements BuilderNode {
       !fs.existsSync(path.join(dir, ".git")) ||
       fs.readdirSync(dir).length < 2
     ) {
-      let gitProgress: string;
-      let args = {
-        fs,
-        http,
-        dir,
-        url: this.remoteGitURL.href,
-        ref: this.version,
-        singleBranch: true,
-        onProgress: (event: GitProgressEvent) => {
-          if (gitProgress !== event.phase) {
-            gitProgress = event.phase;
-            log(`cloning ${this.remoteGitURL.href}: ${event.phase}`);
-          }
-        },
-      };
-      try {
-        fs.mkdirSync(dir, { recursive: true });
-        await git.clone(args);
-      } catch (e) {
-        // sometimes versions are not prefixed with a 'v'
-        if (e.code === "NotFoundError") {
-          args.ref = args.ref.slice(1);
-          try {
-            await git.clone(args);
-          } catch (ee) {
-            debugger;
-            throw ee;
-          }
-        } else {
-          debugger;
-          throw e;
-        }
-      }
+      fs.rmdirSync(dir, { recursive: true });
+      fs.mkdirSync(dir, { recursive: true });
+      // await isomorphicGitClone(dir, this.remoteGitURL, this.version);
+      await nativeGitClone(dir, this.remoteGitURL, this.version);
     }
 
-    // TODO need to take into account the git clone dir too...
     let src = new URL(
       `${repoDir}${this.subdir ? this.subdir + "/" : ""}`,
       this.gitRoot.fsURL
@@ -424,5 +408,82 @@ class PackageResolutionNode implements BuilderNode {
     throw new Error(
       `Cannot resolve package ${this.pkg.name} ${this.pkg.semver} from ${this.nodeModulesURL} or one of its ancestor node_modules folders`
     );
+  }
+}
+
+async function nativeGitClone(
+  repoDir: string,
+  remoteURL: URL,
+  version: string
+) {
+  const childProcess = await import("child_process");
+  const { promisify } = await import("util");
+  const exec = promisify(childProcess.exec);
+  log(`cloning ${remoteURL.href} ${version}`);
+  try {
+    await exec(`git clone ${remoteURL} ${repoDir} --no-checkout`, {
+      cwd: repoDir,
+    });
+    let { stdout } = await exec(`git tag -l ${version}`, {
+      cwd: repoDir,
+    });
+    let tag = stdout.trim();
+    if (!tag && version !== "master") {
+      // sometimes versions are not prefixed with a 'v'
+      version = version.slice(1);
+      ({ stdout } = await exec(`git tag -l ${version}`, {
+        cwd: repoDir,
+      }));
+      tag = stdout.trim();
+      if (!tag) {
+        throw new Error(
+          `Cannot find the tag '${version}' nor 'v${version}' in repo ${remoteURL}`
+        );
+      }
+    }
+    await exec(`git checkout ${version}`, { cwd: repoDir });
+  } catch (e) {
+    debugger;
+    throw e;
+  }
+}
+
+async function isomorphicGitClone(
+  repoDir: string,
+  remoteURL: URL,
+  version: string
+) {
+  let fs = await import("fs");
+  let gitProgress: string;
+  let args = {
+    fs,
+    http,
+    dir: repoDir,
+    url: remoteURL.href,
+    ref: version,
+    singleBranch: true,
+    onProgress: (event: GitProgressEvent) => {
+      if (gitProgress !== event.phase) {
+        gitProgress = event.phase;
+        log(`cloning ${remoteURL.href} ${version}: ${event.phase}`);
+      }
+    },
+  };
+  try {
+    await git.clone(args);
+  } catch (e) {
+    // sometimes versions are not prefixed with a 'v'
+    if (e.code === "NotFoundError") {
+      args.ref = args.ref.slice(1);
+      try {
+        await git.clone(args);
+      } catch (ee) {
+        debugger;
+        throw ee;
+      }
+    } else {
+      debugger;
+      throw e;
+    }
   }
 }
