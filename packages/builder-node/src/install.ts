@@ -35,7 +35,7 @@ let projectDir = resolve(join(process.cwd(), project));
   // TODO this should probably come from the command line. the src cloning is a
   // very expensive task, so it is beneficial to retain this directory for
   // future executions of this command
-  let workingDir = join(process.cwd(), "catalogjs-working");
+  let workingDir = join(process.cwd(), "working");
   ensureDirSync(workingDir);
 
   let builderRoot = new NpmImportProjectsNode(pkgs, projectDir, workingDir);

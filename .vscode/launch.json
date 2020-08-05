@@ -58,6 +58,7 @@
       "request": "launch",
       "name": "Run pkg install",
       "cwd": "${workspaceRoot}",
+      "console": "integratedTerminal",
       "env": {},
       "program": "${workspaceRoot}/packages/builder-node/bin/install.js",
       "args": ["--project=.", "@babel/core"]

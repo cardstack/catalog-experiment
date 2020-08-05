@@ -4,7 +4,7 @@
 /packages/builder-worker/.file-daemon-key
 /packages/builder-worker/assets
 /packages/builder-node/test/testing
-/catalogjs-working
+/working
 
 /packages/*/node_modules
 /packages/*/dist

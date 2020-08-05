@@ -3,6 +3,7 @@ import {
   NextNode,
   AllNode,
   Value,
+  NodeOutput,
 } from "../../builder-worker/src/nodes/common";
 import { log, debug } from "../../builder-worker/src/logger";
 import childProcess from "child_process";
@@ -10,6 +11,7 @@ import { promisify } from "util";
 import { ensureDirSync, existsSync, readJSONSync } from "fs-extra";
 import { join } from "path";
 import resolvePkg from "resolve-pkg";
+import { getRecipe, Recipe } from "./recipes";
 
 const exec = promisify(childProcess.exec);
 const githubRepoRegex = /^https:\/\/github.com\/(?<org>[^\/]+)\/(?<repo>[^\/]+)(\/tree\/(?<branch>[^\/]+)(?<subdir>\/.+|\/)?)?$/;
@@ -137,11 +139,18 @@ class PackageEntrypointsNode implements BuilderNode {
 
   deps() {
     return {
+      pkgJSON: this.pkgJSONNode,
       src: new PackageSrcNode(this.pkgPath, this.pkgJSONNode, this.workingDir),
     };
   }
 
-  async run({ src }: { src: string }): Promise<Value<string>> {
+  async run({
+    pkgJSON,
+    src,
+  }: {
+    pkgJSON: PackageJSON;
+    src: string;
+  }): Promise<Value<string>> {
     // TODO create entrypoints.json for this package
     return { value: src };
   }
@@ -163,34 +172,60 @@ class PackageSrcNode implements BuilderNode {
     };
   }
 
-  async run({ pkgJSON }: { pkgJSON: PackageJSON }): Promise<NextNode<string>> {
+  async run({
+    pkgJSON,
+  }: {
+    pkgJSON: PackageJSON;
+  }): Promise<NodeOutput<string>> {
+    let { name, version } = pkgJSON;
+    let recipe = getRecipe(name, version);
+    // TODO if recipe indicates that git source should be used then return
+    // PackageSrcFromGitNode, otherwise return this.pkgPath
     return {
-      node: new PackageSrcFromGitNode(pkgJSON, this.workingDir),
+      node: new PackageSrcFromGitNode(pkgJSON, this.workingDir, recipe),
     };
   }
 }
 
 class PackageSrcFromGitNode implements BuilderNode {
   cacheKey: string;
-  constructor(private pkgJSON: PackageJSON, private workingDir: string) {
+  constructor(
+    private pkgJSON: PackageJSON,
+    private workingDir: string,
+    private recipe: Recipe | undefined
+  ) {
     this.cacheKey = `prepare-pkg-source:${pkgJSON.name},${pkgJSON.version}`;
   }
 
   deps() {}
 
   async run(): Promise<NextNode<string>> {
-    // TODO move this stuff into a recipe...
-    if (!this.pkgJSON.repository && this.pkgJSON.name === "gensync") {
-      this.pkgJSON.repository = "https://github.com/loganfsmyth/gensync";
+    let pkgJSONRepoInfo = await repoFromPkgJSON(this.pkgJSON);
+    let recipeRepo =
+      typeof this.recipe?.srcRepo === "object"
+        ? this.recipe?.srcRepo
+        : undefined;
+    let repoURL = recipeRepo?.repoHref
+      ? new URL(recipeRepo.repoHref)
+      : pkgJSONRepoInfo.repoURL;
+    let repoSubdir = recipeRepo?.subdir ?? pkgJSONRepoInfo.repoSubdir;
+    if (!repoURL) {
+      throw new Error(
+        `Cannot determine source repository for ${this.pkgJSON.name}`
+      );
     }
-    let { repoURL, repoSubdir } = await repoFromPkgJSON(this.pkgJSON);
 
-    let version: string | undefined = `v${this.pkgJSON.version}`;
-
-    // TODO recipe goes here
-    if (this.pkgJSON.name === "path-parse") {
-      // ugh this repo doesn't even have releases or even branches...
-      version = undefined;
+    let version: string | undefined;
+    if (recipeRepo?.version) {
+      version = recipeRepo.version;
+    } else {
+      ({ version } = this.pkgJSON);
+      if (!recipeRepo?.bareVersion) {
+        version = `v${version}`;
+      }
+    }
+    if (!version) {
+      throw new Error(`Cannot determine version for ${this.pkgJSON.name}`);
     }
 
     return {
@@ -201,15 +236,13 @@ class PackageSrcFromGitNode implements BuilderNode {
 
 class GitCloneNode implements BuilderNode {
   cacheKey: string;
-  private version: string;
   constructor(
     private remoteGitURL: URL,
-    version: string | undefined,
+    private version: string,
     private repoSubdir: string | undefined,
     private workingDir: string
   ) {
     this.cacheKey = `git-clone:${remoteGitURL.href}/tree/${version}`;
-    this.version = version ?? "master";
   }
 
   deps() {}
@@ -246,11 +279,9 @@ class PackageJSONNode implements BuilderNode {
 // repo specific one-offs should be handled as recipe.
 async function repoFromPkgJSON(
   pkgJSON: PackageJSON
-): Promise<{ repoURL: URL; repoSubdir: string | undefined }> {
+): Promise<{ repoURL: URL | undefined; repoSubdir: string | undefined }> {
   if (!pkgJSON.repository) {
-    throw new Error(
-      `the package.json for ${pkgJSON.name} does not have a repository`
-    );
+    return { repoURL: undefined, repoSubdir: undefined };
   }
 
   let repoURL: URL;
@@ -271,11 +302,7 @@ async function repoFromPkgJSON(
     )}`;
   } else if (repoHref.startsWith("git+https://github.com/")) {
     repoHref = repoHref.replace(/^git\+/, "");
-  } else if (repoHref.startsWith("http://github.com")) {
-    // TODO remove this, it goes into a recipe
-    // seriously....
-    repoHref = repoHref.replace(/^http:/, "https:");
-  } else if (!repoHref.startsWith("https")) {
+  } else if (!repoHref.startsWith("https://")) {
     // try using the string as a path in the github origin
     let url = new URL(repoHref, "https://github.com");
     let response = await fetch(`${url.href}.git`);
@@ -315,24 +342,6 @@ async function nativeGitClone(
       await exec(`git clone ${remoteURL} ${repoDir} --no-checkout`, {
         cwd: repoDir,
       });
-    }
-    let { stdout } = await exec(`git tag -l ${version}`, {
-      cwd: repoDir,
-    });
-    let tag = stdout.trim();
-    if (!tag && version !== "master") {
-      // TODO move into a recipe...
-      // sometimes versions are not prefixed with a 'v'
-      version = version.slice(1);
-      ({ stdout } = await exec(`git tag -l ${version}`, {
-        cwd: repoDir,
-      }));
-      tag = stdout.trim();
-      if (!tag) {
-        throw new Error(
-          `Cannot find the tag '${version}' nor 'v${version}' in repo ${remoteURL}`
-        );
-      }
     }
 
     let versionDir = join(repoDir, version);

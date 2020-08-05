@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "recipes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/recipe"
+      },
+      "additionalItems": false
+    },
+    "recipe": {
+      "type": "object",
+      "required": [
+        "semverRange"
+      ],
+      "properties": {
+        "semverRange": {
+          "type": "string"
+        },
+        "srcRepo": {
+          "$ref": "#/definitions/srcRepo"
+        }
+      },
+      "additionalProperties": false
+    },
+    "srcRepo": {
+      "type": [
+        "object",
+        "boolean"
+      ],
+      "properties": {
+        "repoHref": {
+          "type": "string",
+          "format": "uri"
+        },
+        "bareVersion": {
+          "type": "boolean"
+        },
+        "version": {
+          "type": "string"
+        },
+        "subdir": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "additionalItems": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri-reference"
+    },
+    "recipes": {
+      "$ref": "#/definitions/recipes"
+    }
+  }
+}

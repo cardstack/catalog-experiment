@@ -1,0 +1,12 @@
+{
+  "$schema": "../recipe-schema.json",
+  "recipes": [
+    {
+      "semverRange": "*",
+      "srcRepo": {
+        "repoHref": "https://github.com/mozilla/source-map.git",
+        "bareVersion": true
+      }
+    }
+  ]
+}
