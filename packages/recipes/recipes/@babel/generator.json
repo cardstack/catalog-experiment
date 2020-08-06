@@ -1,10 +1,11 @@
 {
-  "$schema": "../recipe-schema.json",
+  "$schema": "../../recipe-schema.json",
   "recipes": [
     {
       "semverRange": "*",
+      "srcRepo": true,
       "entrypoints": [
-        "./index.js"
+        "./src/index.js"
       ]
     }
   ]

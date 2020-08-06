@@ -1,0 +1,9 @@
+{
+  "$schema": "../../recipe-schema.json",
+  "recipes": [
+    {
+      "semverRange": "*",
+      "srcRepo": true
+    }
+  ]
+}

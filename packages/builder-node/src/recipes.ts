@@ -34,7 +34,12 @@ export interface Recipe {
         subdir?: string;
       };
 
-  // TODO entry points:
+  // By default we'll use the package.json "main" property for the pkg
+  // entrypoints. If there is no "main" property, then we'll try "./index.js".
+  // Otherwise this can be set/overridden by the "entrypoints" property. Note that
+  // we are not using the "browser" property in the package.json because
+  // typically all the ES modules are compiled out of the browser module.
+  entrypoints?: string[];
 }
 
 export function getRecipe(

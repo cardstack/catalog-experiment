@@ -2,9 +2,99 @@
   "$schema": "../recipe-schema.json",
   "recipes": [
     {
-      "semverRange": "*",
+      "semverRange": ">=4.17.15",
       "srcRepo": {
-        "bareVersion": true
+        "version": "4.17.15-es"
+      }
+    },
+    {
+      "semverRange": "4.17.14",
+      "srcRepo": {
+        "version": "4.17.14-es"
+      }
+    },
+    {
+      "semverRange": "4.17.13",
+      "srcRepo": {
+        "version": "4.17.13-es"
+      }
+    },
+    {
+      "semverRange": "4.17.12",
+      "srcRepo": {
+        "version": "4.17.12-es"
+      }
+    },
+    {
+      "semverRange": "4.17.11",
+      "srcRepo": {
+        "version": "4.17.11-es"
+      }
+    },
+    {
+      "semverRange": "4.17.10",
+      "srcRepo": {
+        "version": "4.17.10-es"
+      }
+    },
+    {
+      "semverRange": "4.17.9",
+      "srcRepo": {
+        "version": "4.17.9-es"
+      }
+    },
+    {
+      "semverRange": "4.17.8",
+      "srcRepo": {
+        "version": "4.17.8-es"
+      }
+    },
+    {
+      "semverRange": "4.17.7",
+      "srcRepo": {
+        "version": "4.17.7-es"
+      }
+    },
+    {
+      "semverRange": "4.17.6",
+      "srcRepo": {
+        "version": "4.17.6-es"
+      }
+    },
+    {
+      "semverRange": "4.17.5",
+      "srcRepo": {
+        "version": "4.17.5-es"
+      }
+    },
+    {
+      "semverRange": "4.17.4",
+      "srcRepo": {
+        "version": "4.17.4-es"
+      }
+    },
+    {
+      "semverRange": "4.17.3",
+      "srcRepo": {
+        "version": "4.17.3-es"
+      }
+    },
+    {
+      "semverRange": "4.17.2",
+      "srcRepo": {
+        "version": "4.17.2-es"
+      }
+    },
+    {
+      "semverRange": "4.17.1",
+      "srcRepo": {
+        "version": "4.17.1-es"
+      }
+    },
+    {
+      "semverRange": "4.17.0",
+      "srcRepo": {
+        "version": "4.17.0-es"
       }
     }
   ]

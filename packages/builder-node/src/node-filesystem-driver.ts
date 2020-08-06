@@ -244,7 +244,7 @@ export class NodeFileDescriptor implements FileDescriptor {
       readableStream = new DOMToNodeReadable(streamOrBuffer);
     }
 
-    // need to trucate the file otherwise if we are overwriting a file and we
+    // need to truncate the file otherwise if we are overwriting a file and we
     // happen to write less bytes than what was previously there, the extra
     // bytes will still exist in the file
     ftruncateSync(this.fd);
@@ -264,7 +264,7 @@ export class NodeFileDescriptor implements FileDescriptor {
       await done;
     } else {
       throw new Error(
-        `bug: should never have a situation where you dont have a buffer or a readable stream when writing to a file`
+        `bug: should never have a situation where you don't have a buffer or a readable stream when writing to a file`
       );
     }
     dispatchEvent({

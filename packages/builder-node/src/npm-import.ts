@@ -8,8 +8,14 @@ import {
 import { log, debug } from "../../builder-worker/src/logger";
 import childProcess from "child_process";
 import { promisify } from "util";
-import { ensureDirSync, existsSync, readJSONSync } from "fs-extra";
-import { join } from "path";
+import {
+  ensureDirSync,
+  existsSync,
+  readJSONSync,
+  removeSync,
+  writeJSONSync,
+} from "fs-extra";
+import { join, resolve } from "path";
 import resolvePkg from "resolve-pkg";
 import { getRecipe, Recipe } from "./recipes";
 
@@ -25,6 +31,7 @@ export interface PackageJSON {
   name: string;
   version: string;
   repository?: string | { type: "string"; url: "string" };
+  main?: string;
   dependencies?: {
     [depName: string]: string;
   };
@@ -89,7 +96,7 @@ class NpmImportProjectNode implements BuilderNode {
     src: string;
     pkgJSON: PackageJSON;
   }): Promise<NextNode<Package>> {
-    log(`loading package ${pkgJSON.name} from: ${this.pkgPath}`);
+    log(`processing package ${pkgJSON.name} from: ${this.pkgPath}`);
     let dependencies = await Promise.all(
       Object.entries(pkgJSON.dependencies ?? []).map(
         async ([name]) =>
@@ -151,7 +158,31 @@ class PackageEntrypointsNode implements BuilderNode {
     pkgJSON: PackageJSON;
     src: string;
   }): Promise<Value<string>> {
-    // TODO create entrypoints.json for this package
+    let { name, version, main } = pkgJSON;
+    let recipe = getRecipe(name, version);
+    let entrypoints = recipe?.entrypoints ?? (main ? [main!] : ["./index.js"]);
+    if (entrypoints.length === 0) {
+      throw new Error(
+        `No entrypoints were specified for the package ${name} ${version} at ${this.pkgPath}`
+      );
+    }
+    let missingEntrypoints = entrypoints.filter(
+      (e) => !existsSync(resolve(join(src, e)))
+    );
+    if (missingEntrypoints.length > 0) {
+      throw new Error(
+        `The entrypoint(s) for the package ${name} ${version}: ${missingEntrypoints.join(
+          ", "
+        )} are missing from ${src}`
+      );
+    }
+    // TODO for CJS we might need to add an entrypoint for our ES module shim...
+
+    let entrypointsFile = join(src, "entrypoints.json");
+    log(`creating ${entrypointsFile}`);
+    removeSync(entrypointsFile);
+    writeJSONSync(entrypointsFile, { name, js: entrypoints });
+
     return { value: src };
   }
 }
@@ -159,7 +190,7 @@ class PackageEntrypointsNode implements BuilderNode {
 class PackageSrcNode implements BuilderNode {
   cacheKey: string;
   constructor(
-    pkgPath: string,
+    private pkgPath: string,
     private pkgJSONNode: PackageJSONNode,
     private workingDir: string
   ) {
@@ -179,11 +210,13 @@ class PackageSrcNode implements BuilderNode {
   }): Promise<NodeOutput<string>> {
     let { name, version } = pkgJSON;
     let recipe = getRecipe(name, version);
-    // TODO if recipe indicates that git source should be used then return
-    // PackageSrcFromGitNode, otherwise return this.pkgPath
-    return {
-      node: new PackageSrcFromGitNode(pkgJSON, this.workingDir, recipe),
-    };
+    if (recipe?.srcRepo) {
+      return {
+        node: new PackageSrcFromGitNode(pkgJSON, this.workingDir, recipe),
+      };
+    } else {
+      return { value: this.pkgPath };
+    }
   }
 }
 
