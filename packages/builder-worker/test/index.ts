@@ -6,7 +6,7 @@ import "./builder-test";
 import "./builder-nodes-test";
 import "./filesystem-test";
 import "./combine-modules-test";
-import "./describe-module-test";
+import "./describe-file-test";
 import "./http-driver-test";
 import "./logger-test";
 

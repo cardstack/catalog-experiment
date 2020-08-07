@@ -6,7 +6,7 @@
 import { NodePath } from "@babel/traverse";
 import { Program } from "@babel/types";
 import { assertNever } from "shared/util";
-import { ModuleDescription } from "./describe-module";
+import { ModuleDescription } from "./describe-file";
 
 export type RegionPointer = number;
 

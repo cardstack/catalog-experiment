@@ -9,7 +9,7 @@ import {
 import { EntrypointsJSONNode, HTMLEntrypoint, Entrypoint } from "./entrypoint";
 import { FileNode } from "./file";
 import { JSParseNode } from "./js";
-import { describeModule, ModuleDescription } from "../describe-module";
+import { describeFile, ModuleDescription } from "../describe-file";
 import { File } from "@babel/types";
 import { decodeModuleDescription } from "../description-encoder";
 
@@ -96,7 +96,7 @@ export class ModuleDescriptionNode implements BuilderNode {
     return { parsed: new JSParseNode(this.fileNode) };
   }
   async run({ parsed }: { parsed: File }): Promise<Value<ModuleDescription>> {
-    return { value: describeModule(parsed) };
+    return { value: describeFile(parsed) };
   }
 }
 

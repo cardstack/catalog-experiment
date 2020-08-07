@@ -16,6 +16,7 @@ import {
   StringLiteral,
   isVariableDeclarator,
   isIdentifier,
+  isStringLiteral,
   isLVal,
 } from "@babel/types";
 import { assertNever } from "shared/util";
@@ -31,7 +32,15 @@ export function isNamespaceMarker(
   return typeof value !== "string";
 }
 
-export interface ModuleDescription {
+export type FileDescription = ModuleDescription | CJSDescription;
+
+interface Description {
+  // storage of all the included CodeRegions. The order is always stable. Other
+  // places refer to a code region by its index in this list.
+  regions: CodeRegion[];
+}
+
+export interface ModuleDescription extends Description {
   imports: ImportDescription[];
 
   // all the names we export, and where they come from
@@ -44,10 +53,17 @@ export interface ModuleDescription {
 
   // all the names in module scope
   names: Map<string, LocalNameDescription | ImportedNameDescription>;
+}
 
-  // storage of all the included CodeRegions. The order is always stable. Other
-  // places refer to a code region by its index in this list.
-  regions: CodeRegion[];
+export interface CJSDescription extends Description {
+  requires: RequireDescription[];
+  names: Map<string, LocalNameDescription | RequiredNameDescription>;
+}
+
+export interface RequireDescription {
+  specifier: string;
+  definitelyRuns: boolean;
+  requireRegion: RegionPointer;
 }
 
 export type ExportDescription =
@@ -91,6 +107,12 @@ export interface ImportedNameDescription extends NameDescription {
   name: string | NamespaceMarker;
 }
 
+export interface RequiredNameDescription extends NameDescription {
+  type: "require";
+  requireIndex: number;
+  name: string | NamespaceMarker;
+}
+
 export type ImportDescription =
   | {
       isDynamic: false;
@@ -114,13 +136,13 @@ interface DuckPath {
   isIdentifier(): this is NodePath<Identifier>;
 }
 
-export function describeModule(
+export function describeFile(
   ast: File,
   importAssignments?: ImportAssignments
-): ModuleDescription {
+): FileDescription {
   let isES6Module = false;
   let builder: RegionBuilder;
-  let desc: ModuleDescription;
+  let desc: ModuleDescription & CJSDescription;
   let consumedByModule: Set<string> = new Set();
   let currentModuleScopedDeclaration:
     | {
@@ -144,6 +166,7 @@ export function describeModule(
       | NodePath<ClassDeclaration>
       | NodePath<VariableDeclarator>
   ) {
+    // TODO also handle straightforward declarations that use a require
     let hasIdentifier = isIdentifier(path.node.id);
     if (isModuleScopedDeclaration(path as NodePath)) {
       builder.createCodeRegion(path as NodePath);
@@ -172,6 +195,7 @@ export function describeModule(
   }
 
   function exitDeclaration(path: DuckPath) {
+    // TODO also handle straightforward declarations that use a require
     if (currentModuleScopedDeclaration?.path !== path) {
       return;
     }
@@ -287,6 +311,7 @@ export function describeModule(
         builder = new RegionBuilder(path);
         desc = {
           imports: [],
+          requires: [],
           exports: new Map(),
           exportRegions: [],
           names: new Map(),
@@ -294,9 +319,6 @@ export function describeModule(
         };
       },
       exit() {
-        if (!isES6Module) {
-          throw new Error(`This file is not an ES6 module`);
-        }
         for (let name of consumedByModule) {
           let nameDesc = desc.names.get(name);
           if (nameDesc) {
@@ -355,6 +377,48 @@ export function describeModule(
         }
       }
     },
+    CallExpression(path) {
+      let callee = path.get("callee");
+      if (
+        isIdentifier(callee.node) &&
+        callee.node.name === "require" &&
+        !path.scope.getBinding("require")
+      ) {
+        let [specifierNode] = path.node.arguments;
+        if (!isStringLiteral(specifierNode)) {
+          throw new Error(
+            `Cannot handle 'require()' whose specifier is not a string literal`
+          );
+        }
+        let { value: specifier } = specifierNode;
+        // this is wrong use the call expression region
+        let requireRegion: RequireDescription["requireRegion"];
+        // TODO need to add some more basic scenarios here (like LVal)
+        // TODO what about multiple declarators? do we want to go there?
+        switch (path.parent.type) {
+          case "VariableDeclarator":
+            requireRegion = builder.createCodeRegion(
+              path.parentPath.parentPath as NodePath
+            );
+            break;
+        }
+
+        // TODO when it's clear that the require is just using a specific export
+        // (via a member expression or ObjectPattern LVal, then we can be more
+        // specific about the name). In more complex scenarios, we'll just have
+        // to set this to 'undefined' when we cannot make a determination if a
+        // specific "named export" export is being required, or the entire
+        // namespace is being required.
+        let name: RequireDescription["name"] = NamespaceMarker;
+
+        desc.requires.push({
+          name,
+          specifier,
+          requireRegion,
+          definitelyRuns: path.scope.block.type === "Program",
+        });
+      }
+    },
     ImportDeclaration(path) {
       isES6Module = true;
       let importDesc = desc.imports.find(
@@ -378,7 +442,6 @@ export function describeModule(
     ImportNamespaceSpecifier(path) {
       addImportedName(desc, NamespaceMarker, path, builder);
     },
-
     Import(path) {
       isES6Module = true;
       let callExpression = path.parentPath as NodePath<CallExpression>;
@@ -578,7 +641,15 @@ export function describeModule(
       }
     },
   });
-  return desc!;
+
+  let { names, regions } = desc!;
+  if (!isES6Module) {
+    let { requires } = desc!;
+    return { names, regions, requires };
+  } else {
+    let { imports, exports, exportRegions } = desc!;
+    return { names, regions, imports, exports, exportRegions };
+  }
 }
 
 function setLValExportDesc(

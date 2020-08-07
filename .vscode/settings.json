@@ -9,6 +9,7 @@
     "fullname",
     "gensync",
     "jojo",
-    "pkgs"
+    "pkgs",
+    "msgpack"
   ]
 }
