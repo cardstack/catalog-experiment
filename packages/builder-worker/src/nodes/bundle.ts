@@ -13,10 +13,11 @@ import {
   NamespaceMarker,
   describeFile,
   ImportedNameDescription,
+  isModuleDescription,
 } from "../describe-file";
 import { EntrypointsJSONNode, Entrypoint, HTMLEntrypoint } from "./entrypoint";
 import { JSParseNode } from "./js";
-import { encodeModuleDescription } from "../description-encoder";
+import { encodeFileDescription } from "../description-encoder";
 import { makeURLEndInDir } from "../path";
 
 export class BundleAssignmentsNode implements BuilderNode {
@@ -131,6 +132,9 @@ export class Assigner {
   }
 
   private assignModule(module: ModuleResolution): InternalAssignment {
+    if (!isModuleDescription(module.desc)) {
+      throw new Error(`unimplemented`);
+    }
     let alreadyAssigned = this.assignmentMap.get(module.url.href);
     if (alreadyAssigned) {
       return alreadyAssigned;
@@ -302,7 +306,7 @@ export class BundleSerializerNode implements BuilderNode {
     let value = [
       this.unannotatedSrc,
       annotationStart,
-      encodeModuleDescription(desc),
+      encodeFileDescription(desc),
       annotationEnd,
     ].join("");
     return { value };
@@ -361,6 +365,9 @@ function invertDependencies(
   leaves: Set<ModuleResolution>;
 } {
   for (let resolution of resolutions) {
+    if (!isModuleDescription(resolution.desc)) {
+      throw new Error(`unimplemented`);
+    }
     if (!consumersOf.has(resolution.url.href)) {
       consumersOf.set(resolution.url.href, new Set());
     }

@@ -9,6 +9,7 @@ import {
   describeFile,
   NamespaceMarker,
   LocalNameDescription,
+  isModuleDescription,
 } from "../src/describe-file";
 import { url } from "./helpers/file-assertions";
 import { FileSystem } from "../src/filesystem";
@@ -28,6 +29,9 @@ async function makeModuleResolutions(
     throw new Error(`parsed js for ${moduleURL.href} is not a babel File type`);
   }
   let desc = describeFile(parsed, importAssignments);
+  if (!isModuleDescription(desc)) {
+    throw new Error("unimplemented");
+  }
   let resolvedImports = await Promise.all(
     desc.imports.map(async (imp) => {
       let depURL = await resolver.resolve(imp.specifier, moduleURL);

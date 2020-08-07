@@ -17,7 +17,7 @@ Logger.echoInConsole(true);
 const outputOrigin = `http://output`;
 
 QUnit.module("module builder", function (origHooks) {
-  let { test } = installFileAssertions(origHooks);
+  let { test, skip } = installFileAssertions(origHooks);
   let builder: Builder<unknown> | undefined;
   let rebuilder: Rebuilder<unknown> | undefined;
 
@@ -359,6 +359,10 @@ QUnit.module("module builder", function (origHooks) {
       let match = annotationRegex.exec(bundleSrc);
       let annotation = Array.isArray(match) ? match[1] : undefined;
       assert.ok(annotation, "bundle annotation exists");
+    });
+
+    skip("TODO: adds serialized CJS analysis to bundle", async function (_assert) {
+      // TODO
     });
 
     test("performs parse if annotation does not exist in bundle", async function (assert) {

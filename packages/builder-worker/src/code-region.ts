@@ -6,7 +6,7 @@
 import { NodePath } from "@babel/traverse";
 import { Program } from "@babel/types";
 import { assertNever } from "shared/util";
-import { ModuleDescription } from "./describe-file";
+import { FileDescription, isModuleDescription } from "./describe-file";
 
 export type RegionPointer = number;
 
@@ -337,7 +337,7 @@ export class RegionEditor {
 
   constructor(
     private src: string,
-    private desc: ModuleDescription,
+    private desc: FileDescription,
     private unusedNameLike: (name: string) => string
   ) {
     this.dispositions = desc.regions.map(() => ({
@@ -375,6 +375,11 @@ export class RegionEditor {
   }
 
   removeImportsAndExports(defaultNameSuggestion: string | undefined) {
+    if (!isModuleDescription(this.desc)) {
+      throw new Error(
+        `removeImportsAndExports() does not support CJSDescriptions`
+      );
+    }
     let defaultExport = this.desc.exports.get("default");
     if (
       defaultExport &&
@@ -383,7 +388,7 @@ export class RegionEditor {
     ) {
       // this is the scenario where we are dealing with a module that is
       // consumed dynamically. As such, we need to preserve its default export,
-      // since it will become an export of the overal bundle that encloses the
+      // since it will become an export of the overall bundle that encloses the
       // module. (statically consumed default exports though are removed, and
       // their consumers' bindings are reassigned). So we skip over the export.
     } else {
@@ -474,7 +479,7 @@ export class RegionEditor {
             //    child
             // 2. the all the previous children have been removed (so the
             //    current child is a candidate for being the first child)
-            // note that the part of us preceeding the first child and the part
+            // note that the part of us proceeding the first child and the part
             // of us following the last child should always be emitted.
             if (
               childDispositions.length > 0 &&

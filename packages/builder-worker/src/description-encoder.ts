@@ -9,12 +9,16 @@ import {
   decode as base64Decode,
 } from "base64-arraybuffer";
 import {
+  FileDescription,
   ModuleDescription,
+  CJSDescription,
   NamespaceMarker,
   ImportDescription,
   ExportDescription,
   LocalNameDescription,
   ImportedNameDescription,
+  isModuleDescription,
+  RequireDescription,
 } from "./describe-file";
 import isEqual from "lodash/isEqual";
 import invert from "lodash/invert";
@@ -23,6 +27,7 @@ import { assertNever } from "shared/util";
 
 const moduleDescLegend = [
   "imports", // array of import descriptions
+  "requires", // array of require descriptions
   "exports", // [name: string]: array of export descriptions
   "exportRegions", // [[number, number | null]]
   "names", // [name: string]: name desc array
@@ -44,6 +49,13 @@ const importDescLegend = [
   "region", // number | null
 ];
 
+const requireDescLegend = [
+  "specifier", // string
+  "definitelyRuns", //boolean
+  "requireRegion", // number
+  "specifierRegion", // number
+];
+
 const exportDescLegend = [
   "type", // "l" = "local" | "r" = "reexport"
   "name", // string | { n: true }
@@ -52,7 +64,7 @@ const exportDescLegend = [
 ];
 
 const nameDescLegend = [
-  "type", // "l" = local, "i" = import
+  "type", // "l" = local, "i" = import, "r" = require
   "dependsOn", // string[]
   "usedByModule", // boolean
   "declaration", // number
@@ -60,6 +72,7 @@ const nameDescLegend = [
   "references", // number[]
   "original", // [moduleHref: string, exportedName: string | { n:true} ]
   "importIndex", // number
+  "requireIndex", // number
   "name", // string | { n: true }
 ];
 
@@ -70,25 +83,42 @@ interface Pojo {
 // TODO we can generalize this even farther if we nest the legends, and make
 // general rules around how to deal with Maps, Sets, and arrays, and include
 // shorthand rules in the legend...
-export function encodeModuleDescription(desc: ModuleDescription): string {
+export function encodeFileDescription(desc: FileDescription): string {
   let encoded = [];
   for (let prop of moduleDescLegend) {
     switch (prop) {
+      case "requires":
+        encoded.push(
+          !isModuleDescription(desc)
+            ? desc.requires.map((i) => encodeObj(i, requireDescLegend))
+            : []
+        );
+        break;
       case "imports":
-        encoded.push(desc.imports.map((i) => encodeObj(i, importDescLegend)));
+        encoded.push(
+          isModuleDescription(desc)
+            ? desc.imports.map((i) => encodeObj(i, importDescLegend))
+            : []
+        );
         break;
       case "exports":
         let exports: Pojo = {};
-        for (let [key, val] of desc.exports) {
-          exports[key] = encodeObj(val, exportDescLegend, {
-            type: { local: "l", reexport: "r" },
-          });
+        if (isModuleDescription(desc)) {
+          for (let [key, val] of desc.exports) {
+            exports[key] = encodeObj(val, exportDescLegend, {
+              type: { local: "l", reexport: "r" },
+            });
+          }
         }
         encoded.push(exports);
         break;
       case "exportRegions":
         encoded.push(
-          desc.exportRegions.map((r) => encodeObj(r, ["region", "declaration"]))
+          isModuleDescription(desc)
+            ? desc.exportRegions.map((r) =>
+                encodeObj(r, ["region", "declaration"])
+              )
+            : []
         );
         break;
       case "names":
@@ -98,7 +128,7 @@ export function encodeModuleDescription(desc: ModuleDescription): string {
             val,
             nameDescLegend,
             {
-              type: { local: "l", import: "i" },
+              type: { local: "l", import: "i", require: "r" },
             },
             {
               original: {
@@ -127,11 +157,12 @@ export function encodeModuleDescription(desc: ModuleDescription): string {
   return base64Encode(msgpackEncode(encoded));
 }
 
-export function decodeModuleDescription(encoded: string): ModuleDescription {
+export function decodeModuleDescription(encoded: string): FileDescription {
   let buffer = base64Decode(encoded);
   let encodedDesc = msgpackDecode(buffer) as any[];
 
   let imports: ModuleDescription["imports"] = [];
+  let requires: CJSDescription["requires"] = [];
   let exports: ModuleDescription["exports"] = new Map();
   let exportRegions: ModuleDescription["exportRegions"] = [];
   let names: ModuleDescription["names"] = new Map();
@@ -140,6 +171,11 @@ export function decodeModuleDescription(encoded: string): ModuleDescription {
   for (let [index, prop] of moduleDescLegend.entries()) {
     let value = encodedDesc[index];
     switch (prop) {
+      case "requires":
+        requires = value.map(
+          (v: any[]) => decodeArray(v, requireDescLegend) as RequireDescription
+        );
+        break;
       case "imports":
         imports = value.map(
           (v: any[]) => decodeArray(v, importDescLegend) as ImportDescription
@@ -182,7 +218,7 @@ export function decodeModuleDescription(encoded: string): ModuleDescription {
               val,
               nameDescLegend,
               {
-                type: { local: "l", import: "i" },
+                type: { local: "l", import: "i", require: "r" },
               },
               { dependsOn: "Set" },
               {
@@ -209,13 +245,21 @@ export function decodeModuleDescription(encoded: string): ModuleDescription {
     }
   }
 
-  return {
-    imports,
-    exports,
-    exportRegions,
-    names,
-    regions,
-  };
+  if (requires.length === 0) {
+    return {
+      imports,
+      exports,
+      exportRegions,
+      names,
+      regions,
+    };
+  } else {
+    return {
+      requires,
+      names: names as CJSDescription["names"],
+      regions,
+    };
+  }
 }
 
 const encodedNamespaceMarker = Object.freeze({ n: true });

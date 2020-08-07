@@ -64,6 +64,7 @@ export interface RequireDescription {
   specifier: string;
   definitelyRuns: boolean;
   requireRegion: RegionPointer;
+  specifierRegion: RegionPointer;
 }
 
 export type ExportDescription =
@@ -124,6 +125,12 @@ export type ImportDescription =
       specifier: string;
       specifierRegion: RegionPointer;
     };
+
+export function isModuleDescription(
+  desc: FileDescription
+): desc is ModuleDescription {
+  return !("requires" in desc);
+}
 
 // @babel/traverse makes it very hard to talk about NodePath's generically,
 // because NodePath<AlmostAnything> is not a valid NodePath<Node>. Here we
@@ -384,37 +391,17 @@ export function describeFile(
         callee.node.name === "require" &&
         !path.scope.getBinding("require")
       ) {
-        let [specifierNode] = path.node.arguments;
-        if (!isStringLiteral(specifierNode)) {
+        let [specifierPath] = path.get("arguments");
+        if (!isStringLiteral(specifierPath.node)) {
           throw new Error(
             `Cannot handle 'require()' whose specifier is not a string literal`
           );
         }
-        let { value: specifier } = specifierNode;
-        // this is wrong use the call expression region
-        let requireRegion: RequireDescription["requireRegion"];
-        // TODO need to add some more basic scenarios here (like LVal)
-        // TODO what about multiple declarators? do we want to go there?
-        switch (path.parent.type) {
-          case "VariableDeclarator":
-            requireRegion = builder.createCodeRegion(
-              path.parentPath.parentPath as NodePath
-            );
-            break;
-        }
-
-        // TODO when it's clear that the require is just using a specific export
-        // (via a member expression or ObjectPattern LVal, then we can be more
-        // specific about the name). In more complex scenarios, we'll just have
-        // to set this to 'undefined' when we cannot make a determination if a
-        // specific "named export" export is being required, or the entire
-        // namespace is being required.
-        let name: RequireDescription["name"] = NamespaceMarker;
-
+        let { value: specifier } = specifierPath.node;
         desc.requires.push({
-          name,
           specifier,
-          requireRegion,
+          requireRegion: builder.createCodeRegion(path as NodePath),
+          specifierRegion: builder.createCodeRegion(specifierPath as NodePath),
           definitelyRuns: path.scope.block.type === "Program",
         });
       }

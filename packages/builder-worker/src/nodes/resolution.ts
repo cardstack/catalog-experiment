@@ -9,7 +9,11 @@ import {
 import { EntrypointsJSONNode, HTMLEntrypoint, Entrypoint } from "./entrypoint";
 import { FileNode } from "./file";
 import { JSParseNode } from "./js";
-import { describeFile, ModuleDescription } from "../describe-file";
+import {
+  describeFile,
+  FileDescription,
+  isModuleDescription,
+} from "../describe-file";
 import { File } from "@babel/types";
 import { decodeModuleDescription } from "../description-encoder";
 
@@ -55,7 +59,7 @@ export class ModuleResolutionsNode implements BuilderNode {
 export interface ModuleResolution {
   url: URL;
   source: string;
-  desc: ModuleDescription;
+  desc: FileDescription;
   resolvedImports: ModuleResolution[];
 }
 
@@ -77,17 +81,17 @@ export class ModuleAnnotationNode implements BuilderNode {
     source,
   }: {
     source: string;
-  }): Promise<NodeOutput<ModuleDescription>> {
+  }): Promise<NodeOutput<FileDescription>> {
     let match = annotationRegex.exec(source);
     if (match) {
       let desc = decodeModuleDescription(match[1]);
       return { value: desc };
     }
-    return { node: new ModuleDescriptionNode(this.fileNode) };
+    return { node: new FileDescriptionNode(this.fileNode) };
   }
 }
 
-export class ModuleDescriptionNode implements BuilderNode {
+export class FileDescriptionNode implements BuilderNode {
   cacheKey: string;
   constructor(private fileNode: FileNode) {
     this.cacheKey = `module-description:${fileNode.url.href}`;
@@ -95,7 +99,7 @@ export class ModuleDescriptionNode implements BuilderNode {
   deps() {
     return { parsed: new JSParseNode(this.fileNode) };
   }
-  async run({ parsed }: { parsed: File }): Promise<Value<ModuleDescription>> {
+  async run({ parsed }: { parsed: File }): Promise<Value<FileDescription>> {
     return { value: describeFile(parsed) };
   }
 }
@@ -113,16 +117,22 @@ export class ModuleResolutionNode implements BuilderNode {
     desc,
     source,
   }: {
-    desc: ModuleDescription;
+    desc: FileDescription;
     source: string;
   }): Promise<NextNode<ModuleResolution>> {
-    let imports = await Promise.all(
-      desc.imports.map(async (imp) => {
-        let depURL = await this.resolver.resolve(imp.specifier, this.url);
-        // how do we know the dependencies for this new node are actually not from another project?
-        return new ModuleResolutionNode(depURL, this.resolver);
-      })
-    );
+    // TODO traverse CJS files too...
+    let imports: ModuleResolutionNode[];
+    if (isModuleDescription(desc)) {
+      imports = await Promise.all(
+        desc.imports.map(async (imp) => {
+          let depURL = await this.resolver.resolve(imp.specifier, this.url);
+          // how do we know the dependencies for this new node are actually not from another project?
+          return new ModuleResolutionNode(depURL, this.resolver);
+        })
+      );
+    } else {
+      throw new Error(`unimplemented`);
+    }
     source = source.replace(annotationRegex, "");
 
     return {
@@ -136,7 +146,7 @@ class FinishResolutionNode implements BuilderNode {
   constructor(
     private url: URL,
     private imports: ModuleResolutionNode[],
-    private desc: ModuleDescription,
+    private desc: FileDescription,
     private source: string
   ) {
     this.cacheKey = this;

@@ -1,6 +1,10 @@
 import { BundleAssignment } from "./nodes/bundle";
 import { ModuleResolution } from "./nodes/resolution";
-import { NamespaceMarker, isNamespaceMarker } from "./describe-file";
+import {
+  NamespaceMarker,
+  isNamespaceMarker,
+  isModuleDescription,
+} from "./describe-file";
 import { maybeRelativeURL } from "./path";
 import { RegionEditor } from "./code-region";
 
@@ -207,7 +211,7 @@ interface State {
 
   usedNames: Map<string, { moduleHref: string; name: string }>;
 
-  // this is a set of bundle href's that are imported for side effects only
+  // this is a set of bundle hrefs that are imported for side effects only
   sideEffectOnlyImports: Set<string>;
 
   // this is a set of bundles that are consumed by this bundle in dep-first
@@ -220,7 +224,7 @@ interface State {
   // inner map is undefined, then this is a side effect-only import.
   assignedImportedNames: Map<string, Map<string | NamespaceMarker, string>>;
 
-  // This is synonymous with assignedImportedNames, but it's used speicifically
+  // This is synonymous with assignedImportedNames, but it's used specifically
   // to help us lookup local name assignments. outer map is the href of the
   // module. the inner map's key is the original name of the binding in the
   // module, and the value is it's assigned name in the resulting bundle.
@@ -259,6 +263,9 @@ class ModuleRewriter {
 
   rewriteScope(): void {
     let assignedDefaultName: string | undefined;
+    if (!isModuleDescription(this.module.desc)) {
+      throw new Error(`unimplemented`);
+    }
     for (let [name, nameDesc] of this.module.desc.names) {
       let assignedName: string;
 
@@ -302,7 +309,7 @@ class ModuleRewriter {
           // that is added to the POJO returned by the import() expression for
           // default exports. presumably you could never combine a module that
           // is consumed dynamically with another module that is consumed
-          // dynamically--so there should be no possibilioty of a default export
+          // dynamically--so there should be no possibility of a default export
           // collision. modules that are consumed statically have default
           // exports that are analyzable and renamed.
           if (!assignedDefaultName) {
@@ -429,6 +436,9 @@ function gatherModuleRewriters(
   state: State,
   assignments: BundleAssignment[]
 ) {
+  if (!isModuleDescription(module.desc)) {
+    throw new Error(`unimplemented`);
+  }
   if (state.seenModules.has(module.url.href)) {
     return;
   }
@@ -437,7 +447,7 @@ function gatherModuleRewriters(
   // we intentionally want to perform the module rewriting when we enter the
   // recursive function so that module bindings that are closest to the bundle
   // entrypoint have their names retained so that collisions are more likely the
-  // farther away from the modul entrypoint that you go.
+  // farther away from the module entrypoint that you go.
   let rewriter = new ModuleRewriter(module, state, assignments);
 
   for (let resolution of module.resolvedImports) {
@@ -513,6 +523,9 @@ function setBindingDependencies(
       if (typeof outsideName !== "string" || typeof desc.name !== "string") {
         continue; // namespaces don't have dependencies, just skip over it
       }
+      if (!isModuleDescription(currentModule.desc)) {
+        throw new Error(`unimplemented`);
+      }
       let exportDesc = currentModule.desc.exports.get(outsideName)!;
       let localName = exportDesc.name;
       if (typeof localName !== "string") {
@@ -527,7 +540,7 @@ function setBindingDependencies(
       let bindingsBundleURL = assignments.find(
         ({ module: m }) => m.url.href === currentModule.url.href
       )!.bundleURL;
-      // determine if the beining we are looking for is in our bundle or another bundle
+      // determine if the binding we are looking for is in our bundle or another bundle
       if (ourBundleURL === bindingsBundleURL) {
         name = state.assignedLocalNames
           .get(currentModule.url.href)
@@ -617,7 +630,7 @@ function assignedExports(assignments: BundleAssignment[], state: State) {
         .get(assignment.module.url.href)
         ?.get(original);
 
-      // this is to address the situtation where you have a module whose default
+      // this is to address the situation where you have a module whose default
       // export is consumed dynamically. This situation is pretty hands-off
       // since dynamic imports are not statically analyzable.
       if (!insideName && exposed === "default") {
@@ -678,6 +691,9 @@ function resolveReexport(
   name: string | NamespaceMarker,
   module: ModuleResolution
 ): { name: string | NamespaceMarker; module: ModuleResolution } {
+  if (!isModuleDescription(module.desc)) {
+    throw new Error(`unimplemented`);
+  }
   if (isNamespaceMarker(name)) {
     return { name, module };
   }
