@@ -32,6 +32,7 @@ const moduleDescLegend = [
   "exportRegions", // [[number, number | null]]
   "names", // [name: string]: name desc array
   "regions", // array of code regions
+  "cjsIdentifier", // string | null
 ];
 
 const codeRegionLegend = [
@@ -92,6 +93,11 @@ export function encodeFileDescription(desc: FileDescription): string {
           !isModuleDescription(desc)
             ? desc.requires.map((i) => encodeObj(i, requireDescLegend))
             : []
+        );
+        break;
+      case "cjsIdentifier":
+        encoded.push(
+          !isModuleDescription(desc) ? jsonSafe(desc.cjsIdentifier) : null
         );
         break;
       case "imports":
@@ -167,6 +173,7 @@ export function decodeModuleDescription(encoded: string): FileDescription {
   let exportRegions: ModuleDescription["exportRegions"] = [];
   let names: ModuleDescription["names"] = new Map();
   let regions: ModuleDescription["regions"] = [];
+  let cjsIdentifier: string | undefined;
 
   for (let [index, prop] of moduleDescLegend.entries()) {
     let value = encodedDesc[index];
@@ -175,6 +182,9 @@ export function decodeModuleDescription(encoded: string): FileDescription {
         requires = value.map(
           (v: any[]) => decodeArray(v, requireDescLegend) as RequireDescription
         );
+        break;
+      case "cjsIdentifier":
+        cjsIdentifier = decodeVal(value);
         break;
       case "imports":
         imports = value.map(
@@ -254,8 +264,14 @@ export function decodeModuleDescription(encoded: string): FileDescription {
       regions,
     };
   } else {
+    if (!cjsIdentifier) {
+      throw new Error(
+        `bug: No cjsIdentifier was found when decoding CJS description`
+      );
+    }
     return {
       requires,
+      cjsIdentifier,
       names: names as CJSDescription["names"],
       regions,
     };

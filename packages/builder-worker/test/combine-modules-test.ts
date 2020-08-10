@@ -21,23 +21,42 @@ let resolver = new Resolver(); // TODO need to resolve modules without '.js' ext
 async function makeModuleResolutions(
   fs: FileSystem,
   moduleURL: URL,
-  importAssignments?: ImportAssignments
+  {
+    importAssignments,
+    cjsIdentifier,
+  }: {
+    importAssignments?: ImportAssignments;
+    cjsIdentifier?: string;
+  } = {}
 ): Promise<ModuleResolution> {
   let source = await ((await fs.open(moduleURL)) as FileDescriptor).readText();
   let parsed = parse(source);
   if (parsed?.type !== "File") {
     throw new Error(`parsed js for ${moduleURL.href} is not a babel File type`);
   }
-  let desc = describeFile(parsed, importAssignments);
+  let desc = describeFile(parsed, { importAssignments, cjsIdentifier });
+  let resolvedImports: ModuleResolution[];
   if (!isModuleDescription(desc)) {
-    throw new Error("unimplemented");
+    resolvedImports = await Promise.all(
+      desc.requires.map(async (req) => {
+        let depURL = await resolver.resolve(req.specifier, moduleURL);
+        return makeModuleResolutions(fs, depURL, {
+          importAssignments,
+          cjsIdentifier,
+        });
+      })
+    );
+  } else {
+    resolvedImports = await Promise.all(
+      desc.imports.map(async (imp) => {
+        let depURL = await resolver.resolve(imp.specifier, moduleURL);
+        return makeModuleResolutions(fs, depURL, {
+          importAssignments,
+          cjsIdentifier,
+        });
+      })
+    );
   }
-  let resolvedImports = await Promise.all(
-    desc.imports.map(async (imp) => {
-      let depURL = await resolver.resolve(imp.specifier, moduleURL);
-      return makeModuleResolutions(fs, depURL, importAssignments);
-    })
-  );
   return { url: moduleURL, source, resolvedImports, desc };
 }
 
@@ -45,6 +64,7 @@ async function makeBundleAssignments(
   fs: FileSystem,
   opts?: {
     bundleURL?: URL;
+    cjsIdentifier?: string;
     exports?: {
       [outsideName: string]: { file: string; name: string | NamespaceMarker };
     };
@@ -64,11 +84,16 @@ async function makeBundleAssignments(
     },
     opts
   );
+  let { cjsIdentifier } = optsWithDefaults;
 
   let resolutions: ModuleResolution[] = [];
   if (optsWithDefaults.containsEntrypoint) {
     resolutions.push(
-      await makeModuleResolutions(fs, url(optsWithDefaults.containsEntrypoint))
+      await makeModuleResolutions(
+        fs,
+        url(optsWithDefaults.containsEntrypoint),
+        { cjsIdentifier }
+      )
     );
   }
 
@@ -109,8 +134,9 @@ async function makeBundleAssignments(
       let fileURL = url(assignment.module);
       let a = {
         bundleURL: url(assignment.assignedToBundle),
-        module: await makeModuleResolutions(fs, fileURL),
+        module: await makeModuleResolutions(fs, fileURL, { cjsIdentifier }),
         exposedNames: new Map(Object.entries(assignment.nameMapping)),
+        wrapsCJS: Boolean(cjsIdentifier),
       };
       let index = assignments.findIndex(
         (a) => a.module.url.href === fileURL.href
@@ -1531,7 +1557,7 @@ QUnit.module("combine modules", function (origHooks) {
     if (parsed?.type !== "File") {
       throw new Error(`unexpected babel output`);
     }
-    let bundleDescription = describeFile(parsed, importAssignments);
+    let bundleDescription = describeFile(parsed, { importAssignments });
     let nameDesc = bundleDescription.names.get("bar0") as LocalNameDescription;
     assert.deepEqual(nameDesc.original, {
       moduleHref: url("lib.js").href,
@@ -1604,21 +1630,19 @@ QUnit.module("combine modules", function (origHooks) {
     let combinedAssignments: BundleAssignment[] = [
       {
         bundleURL: combinedBundleURL,
-        module: await makeModuleResolutions(
-          assert.fs,
-          bundleAURL,
-          importAssignmentsA
-        ),
+        module: await makeModuleResolutions(assert.fs, bundleAURL, {
+          importAssignments: importAssignmentsA,
+        }),
         exposedNames: new Map(),
+        wrapsCJS: false,
       },
       {
         bundleURL: combinedBundleURL,
-        module: await makeModuleResolutions(
-          assert.fs,
-          bundleBURL,
-          importAssignmentsB
-        ),
+        module: await makeModuleResolutions(assert.fs, bundleBURL, {
+          importAssignments: importAssignmentsB,
+        }),
         exposedNames: new Map(),
+        wrapsCJS: false,
       },
     ];
     let combined = combineModules(combinedBundleURL, combinedAssignments);
@@ -1637,5 +1661,56 @@ QUnit.module("combine modules", function (origHooks) {
       export {};
       `
     );
+  });
+
+  test("CJS files are wrapped with runtime loader support", async function (assert) {
+    let cjsEntrypoint = url("index.cjs.js");
+    await assert.setupFiles({
+      "index.js": `
+        const { a } = require('./a.js');
+        function doA() {
+          console.log(\`\${a}1\`);
+        }
+        module.exports = { doA };
+      `,
+      "a.js": `module.exports.a = 'a';`,
+    });
+    let assignments = await makeBundleAssignments(assert.fs, {
+      bundleURL: cjsEntrypoint,
+      // we capture this in the entrypoints.json, as part of the npm-install
+      // build which the builder sees--but combine-modules is too low level to
+      // see entrypoints.json, so we'll just assert this identifier
+      cjsIdentifier: "node_modules/a",
+    });
+    let { code } = combineModules(cjsEntrypoint, assignments);
+    assert.codeEqual(
+      code,
+      `
+      import "./a.cjs.js";
+      import { require, define } from '@catalogjs/loader';
+      let module;
+      function implementation() {
+        origSource = \`
+        const { a } = require("./a.cjs.js");
+        function doA() {
+          console.log(\\\`\\\${a}1\\\`);
+        }
+        module.exports = { doA };
+      \`;
+        if (!module) {
+          module = { exports: {} }
+          Function("require", "module", "exports", \`\${origSource}\`)(require, module, module.exports);
+        }
+        return module.exports;
+      }
+      define('node_modules/a/index.js', implementation);
+      export default implementation;
+      `
+    );
+  });
+
+  test("CJS files ES import their require() call expressions", async function (_assert) {
+    // test both top level and non-top level requires
+    // test dupe require specifiers
   });
 });

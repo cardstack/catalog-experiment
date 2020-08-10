@@ -132,9 +132,6 @@ export class Assigner {
   }
 
   private assignModule(module: ModuleResolution): InternalAssignment {
-    if (!isModuleDescription(module.desc)) {
-      throw new Error(`unimplemented`);
-    }
     let alreadyAssigned = this.assignmentMap.get(module.url.href);
     if (alreadyAssigned) {
       return alreadyAssigned;
@@ -158,11 +155,12 @@ export class Assigner {
           bundleURL: entrypoint.url,
           module,
           exposedNames: new Map(),
+          wrapsCJS: !isModuleDescription(module.desc),
         },
         enclosingBundles: new Set([entrypoint.url.href]),
       };
       this.assignmentMap.set(module.url.href, internalAssignment);
-      if (entrypoint.isLibrary) {
+      if (entrypoint.isLibrary && isModuleDescription(module.desc)) {
         for (let exportedName of module.desc.exports.keys()) {
           ensureExposed(exportedName, internalAssignment.assignment);
         }
@@ -184,6 +182,7 @@ export class Assigner {
     // trying each consumers to see if we can merge into it
     for (let consumer of consumers) {
       if (
+        isModuleDescription(consumer.module.desc) &&
         consumers.every(
           (otherConsumer) =>
             !otherConsumer.isDynamic &&
@@ -199,6 +198,7 @@ export class Assigner {
             bundleURL,
             module,
             exposedNames: new Map(),
+            wrapsCJS: false,
           },
           enclosingBundles: consumer.internalAssignment.enclosingBundles,
         };
@@ -229,7 +229,15 @@ export class Assigner {
     }
 
     // we need to be our own bundle
-    let bundleURL = this.internalBundleURL();
+    let bundleURL: URL;
+    if (isModuleDescription(module.desc)) {
+      bundleURL = this.internalBundleURL();
+    } else {
+      bundleURL = this.inputToOutput(
+        module.url.href.replace(/\.js$/, ".cjs.js")
+      );
+    }
+
     let enclosingBundles = intersection(
       consumers.map((c) => c.internalAssignment.enclosingBundles)
     );
@@ -239,12 +247,15 @@ export class Assigner {
         bundleURL,
         module,
         exposedNames: new Map(),
+        wrapsCJS: !isModuleDescription(module.desc),
       },
       enclosingBundles,
     };
     this.assignmentMap.set(module.url.href, internalAssignment);
-    for (let exportedName of module.desc.exports.keys()) {
-      ensureExposed(exportedName, internalAssignment.assignment);
+    if (isModuleDescription(module.desc)) {
+      for (let exportedName of module.desc.exports.keys()) {
+        ensureExposed(exportedName, internalAssignment.assignment);
+      }
     }
     return internalAssignment;
   }
@@ -323,6 +334,8 @@ export interface BundleAssignment {
   // from name-as-originally exported to name-as-exposed-in-this-bundle, if any.
   // Not every export from every module will be publicly exposed by a bundle.
   exposedNames: Map<string | NamespaceMarker, string>;
+
+  wrapsCJS: boolean;
 }
 
 function ensureExposed(
@@ -365,9 +378,6 @@ function invertDependencies(
   leaves: Set<ModuleResolution>;
 } {
   for (let resolution of resolutions) {
-    if (!isModuleDescription(resolution.desc)) {
-      throw new Error(`unimplemented`);
-    }
     if (!consumersOf.has(resolution.url.href)) {
       consumersOf.set(resolution.url.href, new Set());
     }
@@ -376,7 +386,9 @@ function invertDependencies(
       // since we are handling this on the exit of the recursion, all your deps
       // will have entries in the identity map
       for (let [index, dep] of resolution.resolvedImports.entries()) {
-        let isDynamic = resolution.desc.imports[index].isDynamic;
+        let isDynamic =
+          isModuleDescription(resolution.desc) &&
+          resolution.desc.imports[index].isDynamic;
         consumersOf.get(dep.url.href)!.add({ isDynamic, module: resolution });
       }
     } else {

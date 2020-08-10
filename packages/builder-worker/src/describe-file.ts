@@ -58,6 +58,7 @@ export interface ModuleDescription extends Description {
 export interface CJSDescription extends Description {
   requires: RequireDescription[];
   names: Map<string, LocalNameDescription | RequiredNameDescription>;
+  cjsIdentifier: string;
 }
 
 export interface RequireDescription {
@@ -145,7 +146,13 @@ interface DuckPath {
 
 export function describeFile(
   ast: File,
-  importAssignments?: ImportAssignments
+  {
+    importAssignments,
+    cjsIdentifier,
+  }: {
+    importAssignments?: ImportAssignments;
+    cjsIdentifier?: string;
+  } = {}
 ): FileDescription {
   let isES6Module = false;
   let builder: RegionBuilder;
@@ -323,6 +330,7 @@ export function describeFile(
           exportRegions: [],
           names: new Map(),
           regions: builder.regions,
+          cjsIdentifier: "",
         };
       },
       exit() {
@@ -632,7 +640,12 @@ export function describeFile(
   let { names, regions } = desc!;
   if (!isES6Module) {
     let { requires } = desc!;
-    return { names, regions, requires };
+    if (!cjsIdentifier) {
+      throw new Error(
+        `bug: No cjsIdentifier was provided for CJS describeFile()`
+      );
+    }
+    return { names, regions, requires, cjsIdentifier };
   } else {
     let { imports, exports, exportRegions } = desc!;
     return { names, regions, imports, exports, exportRegions };
