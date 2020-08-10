@@ -126,7 +126,6 @@ export class ModuleResolutionNode implements BuilderNode {
       imports = await Promise.all(
         desc.imports.map(async (imp) => {
           let depURL = await this.resolver.resolve(imp.specifier, this.url);
-          // how do we know the dependencies for this new node are actually not from another project?
           return new ModuleResolutionNode(depURL, this.resolver);
         })
       );
