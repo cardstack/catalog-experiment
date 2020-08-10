@@ -1,5 +1,5 @@
 {
-  "name": "file-daemon",
+  "name": "@catalogjs/file-daemon",
   "license": "MIT",
   "version": "0.0.1",
   "bin": {
@@ -7,6 +7,7 @@
   },
   "dependencies": {
     "@babel/plugin-proposal-decorators": "^7.8.3",
+    "@catalogjs/tarstream": "0.0.1",
     "@types/fs-extra": "^8.1.0",
     "@types/http-proxy": "^1.17.4",
     "@types/koa": "^2.11.3",
@@ -33,7 +34,6 @@
     "qs": "^6.9.3",
     "sane": "^4.1.0",
     "supertest": "^4.0.2",
-    "tarstream": "0.0.1",
     "typescript": "^3.9.3",
     "typescript-memoize": "^1.0.0-alpha.3",
     "walk-sync": "^2.0.2",

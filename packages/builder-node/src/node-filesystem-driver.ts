@@ -7,7 +7,10 @@ import {
 } from "../../builder-worker/src/filesystem-drivers/filesystem-driver";
 import { makeURLEndInDir } from "../../builder-worker/src/path";
 import { dispatchEvent } from "../../builder-worker/src/event-bus";
-import { DOMToNodeReadable, NodeReadableToDOM } from "file-daemon/stream-shims";
+import {
+  DOMToNodeReadable,
+  NodeReadableToDOM,
+} from "@catalogjs/file-daemon/stream-shims";
 import { Readable } from "stream";
 import { ensureDirSync, removeSync, move } from "fs-extra";
 import {

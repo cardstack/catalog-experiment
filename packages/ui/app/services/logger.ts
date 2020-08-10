@@ -6,7 +6,7 @@ import {
   LogMessage,
   isLogMessagesEvent,
   LogLevel,
-} from "builder-worker/src/logger";
+} from "@catalogjs/builder-worker/src/logger";
 
 export default class LoggerService extends Service {
   @tracked messages: LogMessage[] = [];

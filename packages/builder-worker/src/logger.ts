@@ -1,4 +1,4 @@
-import { assertNever } from "shared/util";
+import { assertNever } from "@catalogjs/shared/util";
 import { dispatchEvent, Event } from "./event-bus";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";

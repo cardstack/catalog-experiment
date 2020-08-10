@@ -1,5 +1,5 @@
 {
-  "name": "file-daemon-client",
+  "name": "@catalogjs/file-daemon-client",
   "version": "0.0.1",
   "license": "MIT",
   "main": "src/index.js",
@@ -11,6 +11,7 @@
     "@babel/plugin-proposal-optional-chaining": "^7.9.0",
     "@babel/plugin-transform-typescript": "^7.9.4",
     "@babel/preset-env": "^7.9.0",
+    "@catalogjs/tarstream": "0.0.1",
     "@types/babel__core": "^7.1.7",
     "@types/columnify": "^1.5.0",
     "@types/qunit": "^2.9.1",
@@ -26,7 +27,6 @@
     "sinon": "^9.0.2",
     "start-server-and-test": "^1.11.0",
     "style-loader": "^1.1.3",
-    "tarstream": "0.0.1",
     "typescript": "^3.9.3",
     "webpack": "^4.42.1",
     "webpack-cli": "^3.3.11",
@@ -42,6 +42,7 @@
   },
   "dependencies": {
     "@babel/traverse": "^7.9.5",
+    "@catalogjs/shared": "0.0.1",
     "@msgpack/msgpack": "^1.12.2",
     "@types/babel__traverse": "^7.0.10",
     "@types/lodash": "^4.14.150",
@@ -50,7 +51,6 @@
     "dom-serializer": "^0.2.2",
     "htmlparser2": "^4.1.0",
     "lodash": "^4.17.19",
-    "moment": "^2.25.3",
-    "shared": "0.0.1"
+    "moment": "^2.25.3"
   }
 }

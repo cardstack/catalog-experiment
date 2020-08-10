@@ -23,7 +23,7 @@ import {
 import isEqual from "lodash/isEqual";
 import invert from "lodash/invert";
 import { RegionPointer, CodeRegion } from "./code-region";
-import { assertNever } from "shared/util";
+import { assertNever } from "@catalogjs/shared/util";
 
 const moduleDescLegend = [
   "imports", // array of import descriptions

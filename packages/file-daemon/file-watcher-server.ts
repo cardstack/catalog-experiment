@@ -4,7 +4,7 @@ import { Stats } from "fs";
 import { ProjectMapping } from "./daemon";
 import bind from "bind-decorator";
 import { FileInfo } from "./interfaces";
-import { REGTYPE } from "tarstream/constants";
+import { REGTYPE } from "@catalogjs/tarstream/constants";
 import { unixTime } from "./utils";
 import flatMap from "lodash/flatMap";
 

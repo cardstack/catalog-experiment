@@ -3,8 +3,11 @@ import { tracked } from "@glimmer/tracking";
 import UIManagerService from "./ui-manager";
 //@ts-ignore
 import { task, timeout } from "ember-concurrency";
-import { assertNever } from "shared/util";
-import { isFileDaemonEvent, FileDaemonClientEvent } from "file-daemon-client";
+import { assertNever } from "@catalogjs/shared/util";
+import {
+  isFileDaemonEvent,
+  FileDaemonClientEvent,
+} from "@catalogjs/file-daemon-client";
 
 export default class FileDaemonClientService extends Service {
   @service uiManager!: UIManagerService;

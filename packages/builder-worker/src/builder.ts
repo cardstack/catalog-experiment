@@ -11,7 +11,7 @@ import { FileNode, WriteFileNode } from "./nodes/file";
 import { MakeProjectNode } from "./nodes/project";
 import { FileDescriptor } from "./filesystem-drivers/filesystem-driver";
 import { Deferred } from "./deferred";
-import { assertNever } from "shared/util";
+import { assertNever } from "@catalogjs/shared/util";
 import { error } from "./logger";
 import sortBy from "lodash/sortBy";
 

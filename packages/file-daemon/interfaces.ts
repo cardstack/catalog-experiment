@@ -1,4 +1,4 @@
-import { BaseFileEntry } from "tarstream";
+import { BaseFileEntry } from "@catalogjs/tarstream";
 
 // interfaces we want to share with the client
 export type WatchInfo = {

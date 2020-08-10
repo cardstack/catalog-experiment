@@ -4,7 +4,10 @@ import {
   origin,
   url,
 } from "../../builder-worker/test/helpers/file-assertions";
-import { NodeReadableToDOM, DOMToNodeReadable } from "file-daemon/stream-shims";
+import {
+  NodeReadableToDOM,
+  DOMToNodeReadable,
+} from "@catalogjs/file-daemon/stream-shims";
 import { join } from "path";
 import {
   removeSync,

@@ -7,7 +7,7 @@ import {
   recordSize,
   paddingNeeded,
 } from "./types";
-import { assertNever } from "shared/util";
+import { assertNever } from "@catalogjs/shared/util";
 import { DIRTYPE, NULL_CHAR } from "./constants";
 
 type State =

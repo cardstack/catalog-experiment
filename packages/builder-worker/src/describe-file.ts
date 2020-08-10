@@ -19,7 +19,7 @@ import {
   isStringLiteral,
   isLVal,
 } from "@babel/types";
-import { assertNever } from "shared/util";
+import { assertNever } from "@catalogjs/shared/util";
 import traverse, { NodePath, Scope } from "@babel/traverse";
 import { CodeRegion, RegionPointer, RegionBuilder } from "./code-region";
 import { ImportAssignments } from "./combine-modules";

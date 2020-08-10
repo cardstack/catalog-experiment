@@ -1,5 +1,5 @@
 {
-  "name": "shared",
+  "name": "@catalogjs/shared",
   "version": "0.0.1",
   "license": "MIT",
   "devDependencies": {
