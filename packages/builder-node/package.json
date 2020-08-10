@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "esm": "^3.2.25",
+    "fixturify-project": "^2.1.0",
     "qunit": "^2.9.3",
     "typescript": "^3.9.3"
   },

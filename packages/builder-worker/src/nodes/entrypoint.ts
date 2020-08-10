@@ -21,6 +21,7 @@ export interface Dependencies {
 interface EntrypointsJSON {
   html?: string[];
   js?: string[];
+  cjsIdentifier?: string;
   dependencies?: Dependencies;
 }
 

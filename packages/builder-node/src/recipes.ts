@@ -46,7 +46,11 @@ export function getRecipe(
   pkgName: string,
   version: string
 ): Recipe | undefined {
-  let recipeFile = join(resolvePkg("recipes")!, "recipes", `${pkgName}.json`);
+  let recipeFile = join(
+    resolvePkg("@catalogjs/recipes")!,
+    "recipes",
+    `${pkgName}.json`
+  );
   if (!existsSync(recipeFile)) {
     return undefined;
   }

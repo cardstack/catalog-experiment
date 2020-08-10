@@ -25,6 +25,7 @@ const githubRepoRegex = /^https:\/\/github.com\/(?<org>[^\/]+)\/(?<repo>[^\/]+)(
 export interface Package {
   packageJSON: PackageJSON;
   packageSrc: string;
+  packageNodeModulesPath: string;
   dependencies: Package[];
 }
 export interface PackageJSON {
@@ -70,7 +71,12 @@ export class NpmImportProjectsNode implements BuilderNode {
 class NpmImportProjectNode implements BuilderNode {
   cacheKey: string;
   private pkgPath: string;
-  constructor(name: string, consumedFrom: string, private workingDir: string) {
+  constructor(
+    name: string,
+    consumedFrom: string,
+    private workingDir: string,
+    private topConsumerPath: string = consumedFrom
+  ) {
     let pkgPath = resolvePkg(name, { cwd: consumedFrom });
     if (!pkgPath) {
       throw new Error(
@@ -84,7 +90,12 @@ class NpmImportProjectNode implements BuilderNode {
   deps() {
     let pkgJSON = new PackageJSONNode(this.pkgPath);
     return {
-      src: new PackageEntrypointsNode(this.pkgPath, pkgJSON, this.workingDir),
+      src: new PackageEntrypointsNode(
+        this.pkgPath,
+        pkgJSON,
+        this.workingDir,
+        this.topConsumerPath
+      ),
       pkgJSON,
     };
   }
@@ -100,11 +111,16 @@ class NpmImportProjectNode implements BuilderNode {
     let dependencies = await Promise.all(
       Object.entries(pkgJSON.dependencies ?? []).map(
         async ([name]) =>
-          new NpmImportProjectNode(name, this.pkgPath, this.workingDir)
+          new NpmImportProjectNode(
+            name,
+            this.pkgPath,
+            this.workingDir,
+            this.topConsumerPath
+          )
       )
     );
     return {
-      node: new FinishNpmImportNode(pkgJSON, src, dependencies),
+      node: new FinishNpmImportNode(pkgJSON, this.pkgPath, src, dependencies),
     };
   }
 }
@@ -113,6 +129,7 @@ class FinishNpmImportNode implements BuilderNode {
   cacheKey: FinishNpmImportNode;
   constructor(
     private pkgJSON: PackageJSON,
+    private pkgNodeModulesPath: string,
     private src: string,
     private dependencies: NpmImportProjectNode[]
   ) {
@@ -127,6 +144,7 @@ class FinishNpmImportNode implements BuilderNode {
     return {
       value: {
         packageJSON: this.pkgJSON,
+        packageNodeModulesPath: this.pkgNodeModulesPath,
         packageSrc: this.src,
         dependencies: this.dependencies.map((_, index) => dependencies[index]),
       },
@@ -136,12 +154,15 @@ class FinishNpmImportNode implements BuilderNode {
 
 class PackageEntrypointsNode implements BuilderNode {
   cacheKey: string;
+  private cjsIdentifier: string;
   constructor(
     private pkgPath: string,
     private pkgJSONNode: PackageJSONNode,
-    private workingDir: string
+    private workingDir: string,
+    topConsumerPath: string
   ) {
     this.cacheKey = `pkg-entrypoints:${pkgPath}`;
+    this.cjsIdentifier = pkgPath.slice(topConsumerPath.length);
   }
 
   deps() {
@@ -181,7 +202,11 @@ class PackageEntrypointsNode implements BuilderNode {
     let entrypointsFile = join(src, "entrypoints.json");
     log(`creating ${entrypointsFile}`);
     removeSync(entrypointsFile);
-    writeJSONSync(entrypointsFile, { name, js: entrypoints });
+    writeJSONSync(entrypointsFile, {
+      name,
+      js: entrypoints,
+      cjsIdentifier: this.cjsIdentifier,
+    });
 
     return { value: src };
   }
