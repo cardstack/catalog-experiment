@@ -11,7 +11,7 @@ import { FileNode } from "./file";
 import { JSParseNode } from "./js";
 import {
   describeFile,
-  FileDescription,
+  ModuleDescription,
   isModuleDescription,
 } from "../describe-file";
 import { File } from "@babel/types";
@@ -59,7 +59,7 @@ export class ModuleResolutionsNode implements BuilderNode {
 export interface ModuleResolution {
   url: URL;
   source: string;
-  desc: FileDescription;
+  desc: ModuleDescription;
   resolvedImports: ModuleResolution[];
 }
 
@@ -81,17 +81,17 @@ export class ModuleAnnotationNode implements BuilderNode {
     source,
   }: {
     source: string;
-  }): Promise<NodeOutput<FileDescription>> {
+  }): Promise<NodeOutput<ModuleDescription>> {
     let match = annotationRegex.exec(source);
     if (match) {
-      let desc = decodeModuleDescription(match[1]);
-      return { value: desc };
+      let value = decodeModuleDescription(match[1]);
+      return { value };
     }
-    return { node: new FileDescriptionNode(this.fileNode) };
+    return { node: new ModuleDescriptionNode(this.fileNode) };
   }
 }
 
-export class FileDescriptionNode implements BuilderNode {
+export class ModuleDescriptionNode implements BuilderNode {
   cacheKey: string;
   constructor(private fileNode: FileNode) {
     this.cacheKey = `module-description:${fileNode.url.href}`;
@@ -99,8 +99,14 @@ export class FileDescriptionNode implements BuilderNode {
   deps() {
     return { parsed: new JSParseNode(this.fileNode) };
   }
-  async run({ parsed }: { parsed: File }): Promise<Value<FileDescription>> {
-    return { value: describeFile(parsed) };
+  async run({ parsed }: { parsed: File }): Promise<Value<ModuleDescription>> {
+    let desc = describeFile(parsed);
+    if (!isModuleDescription(desc)) {
+      throw Error(
+        `cannot build module description for CJS file ${this.fileNode.url.href}`
+      );
+    }
+    return { value: desc };
   }
 }
 
@@ -117,21 +123,16 @@ export class ModuleResolutionNode implements BuilderNode {
     desc,
     source,
   }: {
-    desc: FileDescription;
+    desc: ModuleDescription;
     source: string;
   }): Promise<NextNode<ModuleResolution>> {
-    // TODO traverse CJS files too...
     let imports: ModuleResolutionNode[];
-    if (isModuleDescription(desc)) {
-      imports = await Promise.all(
-        desc.imports.map(async (imp) => {
-          let depURL = await this.resolver.resolve(imp.specifier, this.url);
-          return new ModuleResolutionNode(depURL, this.resolver);
-        })
-      );
-    } else {
-      throw new Error(`unimplemented`);
-    }
+    imports = await Promise.all(
+      desc.imports.map(async (imp) => {
+        let depURL = await this.resolver.resolve(imp.specifier, this.url);
+        return new ModuleResolutionNode(depURL, this.resolver);
+      })
+    );
     source = source.replace(annotationRegex, "");
 
     return {
@@ -145,7 +146,7 @@ class FinishResolutionNode implements BuilderNode {
   constructor(
     private url: URL,
     private imports: ModuleResolutionNode[],
-    private desc: FileDescription,
+    private desc: ModuleDescription,
     private source: string
   ) {
     this.cacheKey = this;

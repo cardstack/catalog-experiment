@@ -18,10 +18,9 @@ export interface Dependencies {
   [name: string]: string;
 }
 
-interface EntrypointsJSON {
+export interface EntrypointsJSON {
   html?: string[];
   js?: string[];
-  cjsIdentifier?: string;
   dependencies?: Dependencies;
 }
 
@@ -47,11 +46,6 @@ export class EntrypointsJSONNode implements BuilderNode {
       (!("html" in json) && !("js" in json))
     ) {
       throw new Error(`invalid entrypoints.json in ${this.input.href}`);
-    }
-    if ("cjsIdentifier" in json && typeof json.cjsIdentifier !== "string") {
-      throw new Error(
-        `invalid entrypoints.json in ${this.input.href}, 'cjsIdentifier' must be a string`
-      );
     }
     if (
       "html" in json &&
@@ -89,11 +83,7 @@ export class EntrypointsJSONNode implements BuilderNode {
     let entrypoints = [];
     for (let src of [...(json.html || []), ...(json.js || [])]) {
       entrypoints.push(
-        new EntrypointNode(
-          new URL(src, this.input),
-          new URL(src, this.output),
-          json.cjsIdentifier
-        )
+        new EntrypointNode(new URL(src, this.input), new URL(src, this.output))
       );
     }
     return { node: new AllNode(entrypoints) };
@@ -103,11 +93,7 @@ export class EntrypointsJSONNode implements BuilderNode {
 export class EntrypointNode implements BuilderNode {
   cacheKey: string;
 
-  constructor(
-    private src: URL,
-    private dest: URL,
-    private cjsIdentifier: string | undefined
-  ) {
+  constructor(private src: URL, private dest: URL) {
     this.cacheKey = `entrypoint:${this.src.href}:${this.dest.href}`;
   }
 
@@ -141,7 +127,7 @@ export class EntrypointNode implements BuilderNode {
       };
     } else if (js) {
       return {
-        value: { url: this.src, cjsIdentifier: this.cjsIdentifier },
+        value: { url: this.src },
       };
     } else {
       throw new Error("bug: should always have either parsed HTML or js");
@@ -169,7 +155,6 @@ export type Entrypoint = HTMLEntrypoint | JSEntrypoint;
 
 export interface JSEntrypoint {
   url: URL;
-  cjsIdentifier: string | undefined;
 }
 
 export class HTMLEntrypoint {

@@ -17,7 +17,7 @@ import {
 } from "../describe-file";
 import { EntrypointsJSONNode, Entrypoint, HTMLEntrypoint } from "./entrypoint";
 import { JSParseNode } from "./js";
-import { encodeFileDescription } from "../description-encoder";
+import { encodeModuleDescription } from "../description-encoder";
 import { makeURLEndInDir } from "../path";
 
 export class BundleAssignmentsNode implements BuilderNode {
@@ -155,12 +155,11 @@ export class Assigner {
           bundleURL: entrypoint.url,
           module,
           exposedNames: new Map(),
-          wrapsCJS: !isModuleDescription(module.desc),
         },
         enclosingBundles: new Set([entrypoint.url.href]),
       };
       this.assignmentMap.set(module.url.href, internalAssignment);
-      if (entrypoint.isLibrary && isModuleDescription(module.desc)) {
+      if (entrypoint.isLibrary) {
         for (let exportedName of module.desc.exports.keys()) {
           ensureExposed(exportedName, internalAssignment.assignment);
         }
@@ -182,7 +181,6 @@ export class Assigner {
     // trying each consumers to see if we can merge into it
     for (let consumer of consumers) {
       if (
-        isModuleDescription(consumer.module.desc) &&
         consumers.every(
           (otherConsumer) =>
             !otherConsumer.isDynamic &&
@@ -229,15 +227,7 @@ export class Assigner {
     }
 
     // we need to be our own bundle
-    let bundleURL: URL;
-    if (isModuleDescription(module.desc)) {
-      bundleURL = this.internalBundleURL();
-    } else {
-      bundleURL = this.inputToOutput(
-        module.url.href.replace(/\.js$/, ".cjs.js")
-      );
-    }
-
+    let bundleURL = this.internalBundleURL();
     let enclosingBundles = intersection(
       consumers.map((c) => c.internalAssignment.enclosingBundles)
     );
@@ -247,15 +237,12 @@ export class Assigner {
         bundleURL,
         module,
         exposedNames: new Map(),
-        wrapsCJS: !isModuleDescription(module.desc),
       },
       enclosingBundles,
     };
     this.assignmentMap.set(module.url.href, internalAssignment);
-    if (isModuleDescription(module.desc)) {
-      for (let exportedName of module.desc.exports.keys()) {
-        ensureExposed(exportedName, internalAssignment.assignment);
-      }
+    for (let exportedName of module.desc.exports.keys()) {
+      ensureExposed(exportedName, internalAssignment.assignment);
     }
     return internalAssignment;
   }
@@ -314,10 +301,13 @@ export class BundleSerializerNode implements BuilderNode {
 
   async run({ parsed }: { parsed: File }): Promise<Value<string>> {
     let desc = describeFile(parsed);
+    if (!isModuleDescription(desc)) {
+      throw new Error(`Cannot encode description for CJS file`);
+    }
     let value = [
       this.unannotatedSrc,
       annotationStart,
-      encodeFileDescription(desc),
+      encodeModuleDescription(desc),
       annotationEnd,
     ].join("");
     return { value };
@@ -334,8 +324,6 @@ export interface BundleAssignment {
   // from name-as-originally exported to name-as-exposed-in-this-bundle, if any.
   // Not every export from every module will be publicly exposed by a bundle.
   exposedNames: Map<string | NamespaceMarker, string>;
-
-  wrapsCJS: boolean;
 }
 
 function ensureExposed(
@@ -386,9 +374,7 @@ function invertDependencies(
       // since we are handling this on the exit of the recursion, all your deps
       // will have entries in the identity map
       for (let [index, dep] of resolution.resolvedImports.entries()) {
-        let isDynamic =
-          isModuleDescription(resolution.desc) &&
-          resolution.desc.imports[index].isDynamic;
+        let isDynamic = resolution.desc.imports[index].isDynamic;
         consumersOf.get(dep.url.href)!.add({ isDynamic, module: resolution });
       }
     } else {

@@ -1,10 +1,6 @@
 import { BundleAssignment } from "./nodes/bundle";
 import { ModuleResolution } from "./nodes/resolution";
-import {
-  NamespaceMarker,
-  isNamespaceMarker,
-  isModuleDescription,
-} from "./describe-file";
+import { NamespaceMarker, isNamespaceMarker } from "./describe-file";
 import { maybeRelativeURL } from "./path";
 import { RegionEditor } from "./code-region";
 
@@ -138,11 +134,7 @@ export function combineModules(
 
   // if there are no imports nor exports written to the bundle, then write
   // "export {};" to signal that this is an ES6 module.
-  if (
-    importDeclarations.length === 0 &&
-    exports.size === 0 &&
-    ownAssignments.every((a) => !a.wrapsCJS)
-  ) {
+  if (importDeclarations.length === 0 && exports.size === 0) {
     output.push(`export {};`);
   }
 
@@ -258,67 +250,15 @@ class ModuleRewriter {
       module.desc,
       this.unusedNameLike.bind(this)
     );
-    if (isModuleDescription(this.module.desc)) {
-      this.rewriteScope();
-    } else {
-      this.rewriteCJS();
-    }
+    this.rewriteScope();
   }
 
   serialize(): string {
-    let src = this.editor.serialize();
-    if (isModuleDescription(this.module.desc)) {
-      return src;
-    } else {
-      return this.wrapCJS(src);
-    }
-  }
-
-  wrapCJS(src: string): string {
-    if (isModuleDescription(this.module.desc)) {
-      throw new Error(`bug: cannot wrapCJS on ES module file`);
-    }
-
-    src = src.replace(/`/g, "\\`").replace(/\$/g, "\\$");
-    let imports = this.module.desc.requires.map(
-      (r) => `import "${r.specifier.replace(/\.js$/, ".cjs.js")}";`
-    );
-    const start = `
-${imports.join("\n")}
-import { require, define } from '@catalogjs/loader';
-let module;
-function implementation() {
-  origSource = \``;
-    const end = `\`;
-  if (!module) {
-    module = { exports: {} }
-    Function("require", "module", "exports", \`\${origSource}\`)(require, module, module.exports);
-  }
-  return module.exports;
-}
-define('node_modules/a/index.js', implementation);
-export default implementation;`;
-    return `${start}${src}${end}`;
-  }
-
-  rewriteCJS(): void {
-    if (isModuleDescription(this.module.desc)) {
-      throw new Error(`bug: cannot rewriteCJS() on ES module file`);
-    }
-    for (let desc of this.module.desc.requires) {
-      // TODO need to support more sophisticated resolution...
-      this.editor.replace(
-        desc.specifierRegion,
-        `"${desc.specifier.replace(/\.js$/, ".cjs.js")}"`
-      );
-    }
+    return this.editor.serialize();
   }
 
   rewriteScope(): void {
     let assignedDefaultName: string | undefined;
-    if (!isModuleDescription(this.module.desc)) {
-      throw new Error(`bug: can't call rewriteScope on CJS file`);
-    }
     for (let [name, nameDesc] of this.module.desc.names) {
       let assignedName: string;
 
@@ -514,17 +454,15 @@ function gatherModuleRewriters(
 
       // discover any static imports for side effect only. these will be imports that
       // are not dynamic and have no binding name associated with them.
-      if (isModuleDescription(module.desc)) {
-        for (let [index, importDesc] of module.desc.imports.entries()) {
-          if (
-            !importDesc.isDynamic &&
-            ![...module.desc.names.values()].find(
-              (nameDesc) =>
-                nameDesc.type === "import" && nameDesc.importIndex === index
-            )
-          ) {
-            state.sideEffectOnlyImports.add(assignment.bundleURL.href);
-          }
+      for (let [index, importDesc] of module.desc.imports.entries()) {
+        if (
+          !importDesc.isDynamic &&
+          ![...module.desc.names.values()].find(
+            (nameDesc) =>
+              nameDesc.type === "import" && nameDesc.importIndex === index
+          )
+        ) {
+          state.sideEffectOnlyImports.add(assignment.bundleURL.href);
         }
       }
     }
@@ -539,9 +477,7 @@ function gatherModuleRewriters(
   // Additionally, at this point all of our dependencies should have been
   // assigned names, so we can populate the sharedState.bindingDependsOn
   // with our modules binding dependencies using their assigned names.
-  if (isModuleDescription(module.desc)) {
-    setBindingDependencies(rewriter.module, state, assignments);
-  }
+  setBindingDependencies(rewriter.module, state, assignments);
 }
 
 function setBindingDependencies(
@@ -576,9 +512,6 @@ function setBindingDependencies(
       }
       if (typeof outsideName !== "string" || typeof desc.name !== "string") {
         continue; // namespaces don't have dependencies, just skip over it
-      }
-      if (!isModuleDescription(currentModule.desc)) {
-        throw new Error(`unimplemented`);
       }
       let exportDesc = currentModule.desc.exports.get(outsideName)!;
       let localName = exportDesc.name;
@@ -745,9 +678,6 @@ function resolveReexport(
   name: string | NamespaceMarker,
   module: ModuleResolution
 ): { name: string | NamespaceMarker; module: ModuleResolution } {
-  if (!isModuleDescription(module.desc)) {
-    throw new Error(`unimplemented`);
-  }
   if (isNamespaceMarker(name)) {
     return { name, module };
   }

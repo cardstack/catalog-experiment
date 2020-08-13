@@ -4,22 +4,36 @@ import {
   AllNode,
   Value,
   NodeOutput,
+  ConstantNode,
 } from "../../builder-worker/src/nodes/common";
 import { log, debug } from "../../builder-worker/src/logger";
 import childProcess from "child_process";
 import { promisify } from "util";
-import {
+import fsExtra, {
   ensureDirSync,
   existsSync,
   readJSONSync,
-  removeSync,
-  writeJSONSync,
+  readFileSync,
 } from "fs-extra";
-import { join, resolve } from "path";
+import { join, resolve, basename } from "path";
 import resolvePkg from "resolve-pkg";
 import { getRecipe, Recipe } from "./recipes";
+import {
+  FileDescription,
+  describeFile,
+  isModuleDescription,
+  CJSDescription,
+} from "../../builder-worker/src/describe-file";
+import { JSParseNode } from "../../builder-worker/src/nodes/js";
+import { File } from "@babel/types";
+import { RegionEditor } from "../../builder-worker/src/code-region";
+import _glob from "glob";
 
+const glob = promisify(_glob);
 const exec = promisify(childProcess.exec);
+const writeFile = promisify(fsExtra.writeFile);
+const writeJSON = promisify(fsExtra.writeJSON);
+const remove = promisify(fsExtra.remove);
 const githubRepoRegex = /^https:\/\/github.com\/(?<org>[^\/]+)\/(?<repo>[^\/]+)(\/tree\/(?<branch>[^\/]+)(?<subdir>\/.+|\/)?)?$/;
 
 export interface Package {
@@ -75,6 +89,7 @@ class NpmImportProjectNode implements BuilderNode {
     name: string,
     consumedFrom: string,
     private workingDir: string,
+    // TODO do we need this?
     private topConsumerPath: string = consumedFrom
   ) {
     let pkgPath = resolvePkg(name, { cwd: consumedFrom });
@@ -89,22 +104,26 @@ class NpmImportProjectNode implements BuilderNode {
 
   deps() {
     let pkgJSON = new PackageJSONNode(this.pkgPath);
-    return {
-      src: new PackageEntrypointsNode(
-        this.pkgPath,
-        pkgJSON,
-        this.workingDir,
-        this.topConsumerPath
-      ),
+    // TODO need to generate lockfile. We should determine the pkg identifiers of
+    // our deps first (by resolving those here), which might mean that we should
+    // recurse into this node here in deps() instead of in run()
+    let entrypointsNode = new PackageEntrypointsNode(
+      this.pkgPath,
       pkgJSON,
+      this.workingDir
+    );
+    return {
+      srcPath: entrypointsNode,
+      pkgJSON,
+      files: new MakePkgESCompliantNode(this.pkgPath, entrypointsNode),
     };
   }
 
   async run({
-    src,
+    srcPath,
     pkgJSON,
   }: {
-    src: string;
+    srcPath: string;
     pkgJSON: PackageJSON;
   }): Promise<NextNode<Package>> {
     log(`processing package ${pkgJSON.name} from: ${this.pkgPath}`);
@@ -120,8 +139,180 @@ class NpmImportProjectNode implements BuilderNode {
       )
     );
     return {
-      node: new FinishNpmImportNode(pkgJSON, this.pkgPath, src, dependencies),
+      node: new FinishNpmImportNode(
+        pkgJSON,
+        this.pkgPath,
+        srcPath,
+        dependencies
+      ),
     };
+  }
+}
+
+class MakePkgESCompliantNode implements BuilderNode {
+  cacheKey: string;
+  constructor(
+    pkgPath: string,
+    private entrypointsNode: PackageEntrypointsNode
+  ) {
+    this.cacheKey = `make-pkg-es-compliant:${pkgPath}`;
+  }
+
+  deps() {
+    return {
+      srcPath: this.entrypointsNode,
+    };
+  }
+
+  async run({ srcPath }: { srcPath: string }): Promise<NodeOutput<void[]>> {
+    // using a glob here instead of trying to crawl deps from the file
+    // description to find files to introspect, because we're not ready to start
+    // resolving yet (and we don't want to be forced into node resolution for
+    // the CJS files).
+    let files = await glob("**/*.js", {
+      cwd: srcPath,
+      absolute: true,
+      ignore: `${srcPath}/node_modules/**`,
+    }); // TODO need to include .ts too...
+    return {
+      node: new AllNode(files.map((file) => new IntrospectSrcNode(file))),
+    };
+  }
+}
+
+class IntrospectSrcNode implements BuilderNode {
+  cacheKey: string;
+  constructor(private path: string) {
+    this.cacheKey = `introspect-src:${path}`;
+  }
+
+  deps() {
+    return {
+      desc: new AnalyzeFileNode(this.path),
+    };
+  }
+
+  async run({ desc }: { desc: FileDescription }): Promise<NodeOutput<void>> {
+    if (isModuleDescription(desc)) {
+      return { value: undefined };
+    } else {
+      return { node: new ESInteropNode(this.path, desc) };
+    }
+  }
+}
+
+class ESInteropNode implements BuilderNode {
+  cacheKey: string;
+  constructor(private path: string, private desc: CJSDescription) {
+    this.cacheKey = `es-interop:${path}`;
+  }
+
+  deps() {
+    let src = readFileSync(this.path, { encoding: "utf8" });
+    return {
+      rewrite: new RewriteCJSNode(this.path, this.desc, src),
+      shim: new ESModuleShimNode(this.path),
+    };
+  }
+
+  async run(): Promise<NodeOutput<void>> {
+    return { value: undefined };
+  }
+}
+
+function remapRequires(origSrc: string, desc: CJSDescription): string {
+  let editor = new RegionEditor(origSrc, desc, () => {
+    throw new Error(`Cannot obtain unused binding name for CJS file`);
+  });
+  // TODO need to make sure "dependencies" does not collide with another binding
+  // in origSrc--the parsed file should be able to tell us this...
+  for (let [index, require] of desc.requires.entries()) {
+    editor.replace(require.requireRegion, `dependencies[${index}]()`);
+  }
+  return editor.serialize();
+}
+
+function depFactoryName(specifier: string): string {
+  return `${specifier.replace(/\W/g, "_")}Factory`.replace(/^_+/, "");
+}
+
+class RewriteCJSNode implements BuilderNode {
+  cacheKey: string;
+  constructor(
+    private path: string,
+    private desc: CJSDescription,
+    private src: string
+  ) {
+    this.cacheKey = `rewrite-cjs:${path}`;
+  }
+
+  deps() {}
+
+  async run(): Promise<NodeOutput<void>> {
+    let imports = this.desc.requires.map(
+      ({ specifier }) =>
+        `import ${depFactoryName(specifier)} from "${specifier}$cjs$";`
+    );
+    let deps: string[] = this.desc.requires.map(({ specifier }) =>
+      depFactoryName(specifier)
+    );
+    let newSrc = `${imports.join("\n")}
+let module;
+function implementation() {
+  if (!module) {
+    module = { exports: {} };
+    Function(
+      "module",
+      "exports",
+      "dependencies",
+      \`${remapRequires(this.src, this.desc)
+        .replace(/`/g, "\\`")
+        .replace(/\$/g, "\\$")}\`
+    )(module, module.exports, [${deps.join(", ")}]);
+  }
+  return module.exports;
+}
+export default implementation;`;
+    await writeFile(this.path.replace(/\.js$/, ".cjs.js"), newSrc);
+    return { value: undefined };
+  }
+}
+
+class ESModuleShimNode implements BuilderNode {
+  cacheKey: string;
+  constructor(private path: string) {
+    this.cacheKey = `es-shim:${path}`;
+  }
+
+  deps() {}
+
+  async run(): Promise<NodeOutput<void>> {
+    await remove(this.path);
+    await writeFile(
+      this.path,
+      `import implementation from "./${basename(this.path)}$cjs$";
+export default implementation();`
+    );
+    return { value: undefined };
+  }
+}
+
+class AnalyzeFileNode implements BuilderNode {
+  cacheKey: string;
+  constructor(private path: string) {
+    this.cacheKey = `analyze-file:${path}`;
+  }
+
+  deps() {
+    return {
+      parsed: new JSParseNode(
+        new ConstantNode(readFileSync(this.path, { encoding: "utf8" }))
+      ),
+    };
+  }
+
+  async run({ parsed }: { parsed: File }): Promise<Value<FileDescription>> {
+    return { value: describeFile(parsed) };
   }
 }
 
@@ -130,7 +321,7 @@ class FinishNpmImportNode implements BuilderNode {
   constructor(
     private pkgJSON: PackageJSON,
     private pkgNodeModulesPath: string,
-    private src: string,
+    private srcPath: string,
     private dependencies: NpmImportProjectNode[]
   ) {
     this.cacheKey = this;
@@ -145,7 +336,7 @@ class FinishNpmImportNode implements BuilderNode {
       value: {
         packageJSON: this.pkgJSON,
         packageNodeModulesPath: this.pkgNodeModulesPath,
-        packageSrc: this.src,
+        packageSrc: this.srcPath,
         dependencies: this.dependencies.map((_, index) => dependencies[index]),
       },
     };
@@ -154,30 +345,31 @@ class FinishNpmImportNode implements BuilderNode {
 
 class PackageEntrypointsNode implements BuilderNode {
   cacheKey: string;
-  private cjsIdentifier: string;
   constructor(
     private pkgPath: string,
     private pkgJSONNode: PackageJSONNode,
-    private workingDir: string,
-    topConsumerPath: string
+    private workingDir: string
   ) {
     this.cacheKey = `pkg-entrypoints:${pkgPath}`;
-    this.cjsIdentifier = pkgPath.slice(topConsumerPath.length);
   }
 
   deps() {
     return {
       pkgJSON: this.pkgJSONNode,
-      src: new PackageSrcNode(this.pkgPath, this.pkgJSONNode, this.workingDir),
+      srcPath: new PackageSrcNode(
+        this.pkgPath,
+        this.pkgJSONNode,
+        this.workingDir
+      ),
     };
   }
 
   async run({
     pkgJSON,
-    src,
+    srcPath,
   }: {
     pkgJSON: PackageJSON;
-    src: string;
+    srcPath: string;
   }): Promise<Value<string>> {
     let { name, version, main } = pkgJSON;
     let recipe = getRecipe(name, version);
@@ -188,27 +380,26 @@ class PackageEntrypointsNode implements BuilderNode {
       );
     }
     let missingEntrypoints = entrypoints.filter(
-      (e) => !existsSync(resolve(join(src, e)))
+      (e) => !existsSync(resolve(join(srcPath, e)))
     );
     if (missingEntrypoints.length > 0) {
       throw new Error(
         `The entrypoint(s) for the package ${name} ${version}: ${missingEntrypoints.join(
           ", "
-        )} are missing from ${src}`
+        )} are missing from ${srcPath}`
       );
     }
-    // TODO for CJS we might need to add an entrypoint for our ES module shim...
-
-    let entrypointsFile = join(src, "entrypoints.json");
+    let entrypointsFile = join(srcPath, "entrypoints.json");
     log(`creating ${entrypointsFile}`);
-    removeSync(entrypointsFile);
-    writeJSONSync(entrypointsFile, {
+    await remove(entrypointsFile);
+
+    // TODO need to write dependencies...
+    await writeJSON(entrypointsFile, {
       name,
       js: entrypoints,
-      cjsIdentifier: this.cjsIdentifier,
     });
 
-    return { value: src };
+    return { value: srcPath };
   }
 }
 
@@ -311,8 +502,8 @@ class GitCloneNode implements BuilderNode {
     ensureDirSync(dir);
 
     let repoDir = await nativeGitClone(dir, this.remoteGitURL, this.version);
-    let src = this.repoSubdir ? join(repoDir, this.repoSubdir) : repoDir;
-    return { value: src };
+    let srcPath = this.repoSubdir ? join(repoDir, this.repoSubdir) : repoDir;
+    return { value: srcPath };
   }
 }
 

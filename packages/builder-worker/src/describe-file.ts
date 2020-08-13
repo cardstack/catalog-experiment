@@ -58,7 +58,6 @@ export interface ModuleDescription extends Description {
 export interface CJSDescription extends Description {
   requires: RequireDescription[];
   names: Map<string, LocalNameDescription | RequiredNameDescription>;
-  cjsIdentifier: string;
 }
 
 export interface RequireDescription {
@@ -148,10 +147,8 @@ export function describeFile(
   ast: File,
   {
     importAssignments,
-    cjsIdentifier,
   }: {
     importAssignments?: ImportAssignments;
-    cjsIdentifier?: string;
   } = {}
 ): FileDescription {
   let isES6Module = false;
@@ -330,7 +327,6 @@ export function describeFile(
           exportRegions: [],
           names: new Map(),
           regions: builder.regions,
-          cjsIdentifier: "",
         };
       },
       exit() {
@@ -640,12 +636,7 @@ export function describeFile(
   let { names, regions } = desc!;
   if (!isES6Module) {
     let { requires } = desc!;
-    if (!cjsIdentifier) {
-      throw new Error(
-        `bug: No cjsIdentifier was provided for CJS describeFile()`
-      );
-    }
-    return { names, regions, requires, cjsIdentifier };
+    return { names, regions, requires };
   } else {
     let { imports, exports, exportRegions } = desc!;
     return { names, regions, imports, exports, exportRegions };
