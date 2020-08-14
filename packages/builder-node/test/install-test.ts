@@ -2,7 +2,7 @@ import "../../builder-worker/test/helpers/code-equality-assertions";
 import Project from "fixturify-project";
 import { join } from "path";
 import { readJSONSync, readFileSync } from "fs-extra";
-import { NpmImportProjectsNode } from "../src/npm-import";
+import { NpmImportProjectsNode } from "../src/nodes/npm-import";
 import { Builder } from "../../builder-worker/src/builder";
 import { FileSystem } from "../../builder-worker/src/filesystem";
 import merge from "lodash/merge";
@@ -47,6 +47,7 @@ module.only("Install from npm", function () {
       project.dispose();
     });
 
+    // TODO sets the dependencies in entrypoints.json too
     test("updates node_modules packages with entrypoints.json", async function (assert) {
       let workingDir = join(project.root, "working");
       let builderRoot = new NpmImportProjectsNode(

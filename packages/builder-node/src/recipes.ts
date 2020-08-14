@@ -1,7 +1,7 @@
 import { satisfies, coerce } from "semver";
 import { readJSONSync, existsSync } from "fs-extra";
-import resolvePkg from "resolve-pkg";
-import { join } from "path";
+import { sync as resolve } from "resolve";
+import { join, dirname } from "path";
 
 export interface Recipe {
   semverRange: string;
@@ -47,7 +47,7 @@ export function getRecipe(
   version: string
 ): Recipe | undefined {
   let recipeFile = join(
-    resolvePkg("@catalogjs/recipes")!,
+    dirname(resolve("@catalogjs/recipes")),
     "recipes",
     `${pkgName}.json`
   );

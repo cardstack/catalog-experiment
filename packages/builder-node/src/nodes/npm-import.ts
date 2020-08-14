@@ -4,37 +4,35 @@ import {
   AllNode,
   Value,
   NodeOutput,
-  ConstantNode,
-} from "../../builder-worker/src/nodes/common";
-import { log, debug } from "../../builder-worker/src/logger";
+} from "../../../builder-worker/src/nodes/common";
+import { log, debug } from "../../../builder-worker/src/logger";
 import childProcess from "child_process";
 import { promisify } from "util";
-import fsExtra, {
-  ensureDirSync,
-  existsSync,
-  readJSONSync,
-  readFileSync,
-} from "fs-extra";
-import { join, resolve, basename } from "path";
-import resolvePkg from "resolve-pkg";
-import { getRecipe, Recipe } from "./recipes";
-import {
-  FileDescription,
-  describeFile,
-  isModuleDescription,
-  CJSDescription,
-} from "../../builder-worker/src/describe-file";
-import { JSParseNode } from "../../builder-worker/src/nodes/js";
-import { File } from "@babel/types";
-import { RegionEditor } from "../../builder-worker/src/code-region";
+import fsExtra, { ensureDirSync, existsSync, readJSONSync } from "fs-extra";
+import { join, resolve, sep } from "path";
+import { sync as resolveModule } from "resolve";
+import { getRecipe, Recipe } from "../recipes";
+import { MakePkgESCompliantNode } from "./cjs-interop";
 import _glob from "glob";
 
-const glob = promisify(_glob);
 const exec = promisify(childProcess.exec);
-const writeFile = promisify(fsExtra.writeFile);
 const writeJSON = promisify(fsExtra.writeJSON);
 const remove = promisify(fsExtra.remove);
 const githubRepoRegex = /^https:\/\/github.com\/(?<org>[^\/]+)\/(?<repo>[^\/]+)(\/tree\/(?<branch>[^\/]+)(?<subdir>\/.+|\/)?)?$/;
+
+function resolvePkg(pkgName: string, basedir?: string): string {
+  let entrypointPath = resolveModule(pkgName, { basedir });
+  let pathParts = entrypointPath.split(sep);
+  while (pathParts.pop() !== "node_modules") {
+    if (pathParts.length === 0) {
+      throw new Error(
+        `bug: could not find node_modules folder in module resolution ${entrypointPath}`
+      );
+    }
+  }
+
+  return [...pathParts, "node_modules", pkgName].join(sep);
+}
 
 export interface Package {
   packageJSON: PackageJSON;
@@ -85,14 +83,8 @@ export class NpmImportProjectsNode implements BuilderNode {
 class NpmImportProjectNode implements BuilderNode {
   cacheKey: string;
   private pkgPath: string;
-  constructor(
-    name: string,
-    consumedFrom: string,
-    private workingDir: string,
-    // TODO do we need this?
-    private topConsumerPath: string = consumedFrom
-  ) {
-    let pkgPath = resolvePkg(name, { cwd: consumedFrom });
+  constructor(name: string, consumedFrom: string, private workingDir: string) {
+    let pkgPath = resolvePkg(name, consumedFrom);
     if (!pkgPath) {
       throw new Error(
         `Could not resolve package '${name}' consumed from ${consumedFrom}`
@@ -130,12 +122,7 @@ class NpmImportProjectNode implements BuilderNode {
     let dependencies = await Promise.all(
       Object.entries(pkgJSON.dependencies ?? []).map(
         async ([name]) =>
-          new NpmImportProjectNode(
-            name,
-            this.pkgPath,
-            this.workingDir,
-            this.topConsumerPath
-          )
+          new NpmImportProjectNode(name, this.pkgPath, this.workingDir)
       )
     );
     return {
@@ -146,173 +133,6 @@ class NpmImportProjectNode implements BuilderNode {
         dependencies
       ),
     };
-  }
-}
-
-class MakePkgESCompliantNode implements BuilderNode {
-  cacheKey: string;
-  constructor(
-    pkgPath: string,
-    private entrypointsNode: PackageEntrypointsNode
-  ) {
-    this.cacheKey = `make-pkg-es-compliant:${pkgPath}`;
-  }
-
-  deps() {
-    return {
-      srcPath: this.entrypointsNode,
-    };
-  }
-
-  async run({ srcPath }: { srcPath: string }): Promise<NodeOutput<void[]>> {
-    // using a glob here instead of trying to crawl deps from the file
-    // description to find files to introspect, because we're not ready to start
-    // resolving yet (and we don't want to be forced into node resolution for
-    // the CJS files).
-    let files = await glob("**/*.js", {
-      cwd: srcPath,
-      absolute: true,
-      ignore: `${srcPath}/node_modules/**`,
-    }); // TODO need to include .ts too...
-    return {
-      node: new AllNode(files.map((file) => new IntrospectSrcNode(file))),
-    };
-  }
-}
-
-class IntrospectSrcNode implements BuilderNode {
-  cacheKey: string;
-  constructor(private path: string) {
-    this.cacheKey = `introspect-src:${path}`;
-  }
-
-  deps() {
-    return {
-      desc: new AnalyzeFileNode(this.path),
-    };
-  }
-
-  async run({ desc }: { desc: FileDescription }): Promise<NodeOutput<void>> {
-    if (isModuleDescription(desc)) {
-      return { value: undefined };
-    } else {
-      return { node: new ESInteropNode(this.path, desc) };
-    }
-  }
-}
-
-class ESInteropNode implements BuilderNode {
-  cacheKey: string;
-  constructor(private path: string, private desc: CJSDescription) {
-    this.cacheKey = `es-interop:${path}`;
-  }
-
-  deps() {
-    let src = readFileSync(this.path, { encoding: "utf8" });
-    return {
-      rewrite: new RewriteCJSNode(this.path, this.desc, src),
-      shim: new ESModuleShimNode(this.path),
-    };
-  }
-
-  async run(): Promise<NodeOutput<void>> {
-    return { value: undefined };
-  }
-}
-
-function remapRequires(origSrc: string, desc: CJSDescription): string {
-  let editor = new RegionEditor(origSrc, desc, () => {
-    throw new Error(`Cannot obtain unused binding name for CJS file`);
-  });
-  // TODO need to make sure "dependencies" does not collide with another binding
-  // in origSrc--the parsed file should be able to tell us this...
-  for (let [index, require] of desc.requires.entries()) {
-    editor.replace(require.requireRegion, `dependencies[${index}]()`);
-  }
-  return editor.serialize();
-}
-
-function depFactoryName(specifier: string): string {
-  return `${specifier.replace(/\W/g, "_")}Factory`.replace(/^_+/, "");
-}
-
-class RewriteCJSNode implements BuilderNode {
-  cacheKey: string;
-  constructor(
-    private path: string,
-    private desc: CJSDescription,
-    private src: string
-  ) {
-    this.cacheKey = `rewrite-cjs:${path}`;
-  }
-
-  deps() {}
-
-  async run(): Promise<NodeOutput<void>> {
-    let imports = this.desc.requires.map(
-      ({ specifier }) =>
-        `import ${depFactoryName(specifier)} from "${specifier}$cjs$";`
-    );
-    let deps: string[] = this.desc.requires.map(({ specifier }) =>
-      depFactoryName(specifier)
-    );
-    let newSrc = `${imports.join("\n")}
-let module;
-function implementation() {
-  if (!module) {
-    module = { exports: {} };
-    Function(
-      "module",
-      "exports",
-      "dependencies",
-      \`${remapRequires(this.src, this.desc)
-        .replace(/`/g, "\\`")
-        .replace(/\$/g, "\\$")}\`
-    )(module, module.exports, [${deps.join(", ")}]);
-  }
-  return module.exports;
-}
-export default implementation;`;
-    await writeFile(this.path.replace(/\.js$/, ".cjs.js"), newSrc);
-    return { value: undefined };
-  }
-}
-
-class ESModuleShimNode implements BuilderNode {
-  cacheKey: string;
-  constructor(private path: string) {
-    this.cacheKey = `es-shim:${path}`;
-  }
-
-  deps() {}
-
-  async run(): Promise<NodeOutput<void>> {
-    await remove(this.path);
-    await writeFile(
-      this.path,
-      `import implementation from "./${basename(this.path)}$cjs$";
-export default implementation();`
-    );
-    return { value: undefined };
-  }
-}
-
-class AnalyzeFileNode implements BuilderNode {
-  cacheKey: string;
-  constructor(private path: string) {
-    this.cacheKey = `analyze-file:${path}`;
-  }
-
-  deps() {
-    return {
-      parsed: new JSParseNode(
-        new ConstantNode(readFileSync(this.path, { encoding: "utf8" }))
-      ),
-    };
-  }
-
-  async run({ parsed }: { parsed: File }): Promise<Value<FileDescription>> {
-    return { value: describeFile(parsed) };
   }
 }
 
@@ -343,7 +163,7 @@ class FinishNpmImportNode implements BuilderNode {
   }
 }
 
-class PackageEntrypointsNode implements BuilderNode {
+export class PackageEntrypointsNode implements BuilderNode {
   cacheKey: string;
   constructor(
     private pkgPath: string,

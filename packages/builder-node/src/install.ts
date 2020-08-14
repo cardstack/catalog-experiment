@@ -3,7 +3,7 @@ import { Logger, error } from "../../builder-worker/src/logger";
 import { resolve, join } from "path";
 import { FileSystem } from "../../builder-worker/src/filesystem";
 import { Builder } from "../../builder-worker/src/builder";
-import { NpmImportProjectsNode } from "./npm-import";
+import { NpmImportProjectsNode } from "./nodes/npm-import";
 import { ensureDirSync } from "fs-extra";
 import fetch from "node-fetch";
 
