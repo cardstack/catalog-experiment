@@ -5,7 +5,6 @@ import {
   flushEvents,
   removeAllEventListeners,
 } from "../../builder-worker/src/event-bus";
-import { FileDescriptor } from "../../builder-worker/src/filesystem-drivers/filesystem-driver";
 import { FileSystem } from "../../builder-worker/src/filesystem";
 
 // we use two file daemons, because that lets us test end-to-end that we are
@@ -108,11 +107,11 @@ QUnit.module("filesystem - file daemon client driver", function (origHooks) {
       .matches(/hi guys/);
 
     // incremental update: add a file
-    let handle = await assert.fs.open(
+    let handle = await assert.fs.openFile(
       new URL(`${controlDaemon.mountedAt.href}test-app/new-file.txt`),
       true
     );
-    await (handle as FileDescriptor).write("New File!");
+    await handle.write("New File!");
     await handle.close();
     await waitForFileEvent(
       new URL(`${testDaemon.mountedAt.href}test-app/new-file.txt`)
@@ -122,11 +121,11 @@ QUnit.module("filesystem - file daemon client driver", function (origHooks) {
       .matches(/New File!/);
 
     // incremental update: modify a file
-    handle = await assert.fs.open(
+    handle = await assert.fs.openFile(
       new URL(`${controlDaemon.mountedAt.href}test-app/new-file.txt`),
       true
     );
-    await (handle as FileDescriptor).write("this is a change");
+    await handle.write("this is a change");
     await handle.close();
     await waitForFileEvent(
       new URL(`${testDaemon.mountedAt.href}test-app/new-file.txt`)

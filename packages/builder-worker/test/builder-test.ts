@@ -6,7 +6,6 @@ import {
 } from "./helpers/file-assertions";
 import { Builder, Rebuilder, explainAsDot } from "../src/builder";
 import { FileSystem } from "../src/filesystem";
-import { FileDescriptor } from "../src/filesystem-drivers/filesystem-driver";
 import { flushEvents, removeAllEventListeners } from "../src/event-bus";
 import { annotationRegex } from "../src/nodes/common";
 import { Logger } from "../src/logger";
@@ -56,9 +55,7 @@ QUnit.module("module builder", function (origHooks) {
     await assert.setupFiles(bundleFiles);
     builder = makeBuilder(assert.fs);
     await builder.build();
-    let bundleSrc = await ((await assert.fs.open(
-      bundleURL
-    )) as FileDescriptor).readText();
+    let bundleSrc = await (await assert.fs.openFile(bundleURL)).readText();
     await assert.fs.remove(url("/"));
     return bundleSrc;
   }
@@ -353,9 +350,9 @@ QUnit.module("module builder", function (origHooks) {
       });
       builder = makeBuilder(assert.fs);
       await builder.build();
-      let bundleSrc = await ((await assert.fs.open(
-        url("output/index.js")
-      )) as FileDescriptor).readText();
+      let bundleSrc = await (
+        await assert.fs.openFile(url("output/index.js"))
+      ).readText();
       let match = annotationRegex.exec(bundleSrc);
       let annotation = Array.isArray(match) ? match[1] : undefined;
       assert.ok(annotation, "bundle annotation exists");
@@ -795,7 +792,7 @@ QUnit.module("module builder", function (origHooks) {
       rebuilder.start();
       await buildDidFinish(rebuilder);
 
-      let file = (await assert.fs.open(url("ui.js"))) as FileDescriptor;
+      let file = await assert.fs.openFile(url("ui.js"));
       await file.write(`export const message = "Bye mars";`);
       await file.close();
       await buildDidFinish(rebuilder);

@@ -163,10 +163,8 @@ QUnit.module("Node FileSystem", function (origHooks) {
         "/foo/bar": "Hello World",
         test: "bye mars",
       });
-      directory = (await fileAssert.fs.open(
-        url("/foo/")
-      )) as DirectoryDescriptor;
-      file = (await fileAssert.fs.open(url("/foo/bar"))) as FileDescriptor;
+      directory = await fileAssert.fs.openDirectory(url("/foo/"));
+      file = await fileAssert.fs.openFile(url("/foo/bar"));
     });
 
     QUnit.module("write", function () {
@@ -693,7 +691,7 @@ QUnit.module("Node FileSystem", function (origHooks) {
 
     test("triggers a 'write' event when a file is written to", async function (assert) {
       assert.expect(2);
-      let file = (await assert.fs.open(url("test"), true)) as FileDescriptor;
+      let file = await assert.fs.openFile(url("test"), true);
       let listener = (e: Event) => {
         if ("filesystem" in e) {
           assert.equal(

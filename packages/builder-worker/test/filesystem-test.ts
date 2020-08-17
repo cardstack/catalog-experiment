@@ -11,7 +11,6 @@ import {
   removeEventListener,
   Event,
 } from "../src/event-bus";
-import { FileDescriptor } from "../src/filesystem-drivers/filesystem-driver";
 
 import {
   MemoryDriver,
@@ -230,7 +229,7 @@ QUnit.module("filesystem", function (origHooks) {
 
     test("triggers a 'write' event when a file is written to", async function (assert) {
       assert.expect(2);
-      let file = (await assert.fs.open(url("test"), true)) as FileDescriptor;
+      let file = await assert.fs.openFile(url("test"), true);
       let listener = (e: Event) => {
         if ("filesystem" in e) {
           assert.equal(

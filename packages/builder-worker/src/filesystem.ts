@@ -34,7 +34,7 @@ export class FileSystem {
         `'${url}' is not a directory (it's a file and we were expecting it to be a directory)`
       );
     }
-    let dir = (await this.open(url, true)) as DirectoryDescriptor;
+    let dir = await this.openDirectory(url, true);
     let volume = await driver.mountVolume(url);
     this.volumes.set(this.volumeKey(dir), volume);
     await dir.close();
@@ -60,15 +60,15 @@ export class FileSystem {
     let source = await this.open(sourceURL);
     let name = baseName(destURL);
     let destParentDirName = dirName(destURL);
-    let destParent = (destParentDirName
-      ? await this.open(new URL(destParentDirName), true)
-      : this.root) as DirectoryDescriptor;
+    let destParent = destParentDirName
+      ? await this.openDirectory(new URL(destParentDirName), true)
+      : this.root;
     if (source.type === "file") {
       let sourceName = baseName(sourceURL);
       let sourceParentDir = dirName(sourceURL);
-      let sourceParent = (await this.open(
+      let sourceParent = await this.openDirectory(
         sourceParentDir ? new URL(sourceParentDir) : ROOT
-      )) as DirectoryDescriptor;
+      );
       await destParent.add(name, source, sourceParent, sourceName);
       if (sourceParent.inode !== destParent.inode) {
         await sourceParent.close();
@@ -88,7 +88,7 @@ export class FileSystem {
     let source = await this.open(sourceURL);
 
     if (source.type === "file") {
-      let clone = (await this.open(destURL, true)) as FileDescriptor;
+      let clone = await this.openFile(destURL, true);
       await clone.write(await source.getReadbleStream());
       await clone.close();
     } else {
@@ -119,7 +119,7 @@ export class FileSystem {
     } else {
       let sourceDir: DirectoryDescriptor;
       try {
-        sourceDir = (await this.open(new URL(dir))) as DirectoryDescriptor;
+        sourceDir = await this.openDirectory(new URL(dir));
       } catch (err) {
         if (err.code !== "NOT_FOUND") {
           throw err;
@@ -196,6 +196,39 @@ export class FileSystem {
     }
     await resource.close();
     return results;
+  }
+
+  async openFile(url: URL): Promise<FileDescriptor>;
+  async openFile(url: URL, create: Options["create"]): Promise<FileDescriptor>;
+  async openFile(
+    url: URL,
+    create?: Options["create"]
+  ): Promise<FileDescriptor> {
+    if (url.href.slice(-1) === "/") {
+      throw new FileSystemError(
+        "IS_NOT_A_FILE",
+        `'${url.href}' is a directory and we were expecting a file`
+      );
+    }
+    return (await this.open(url, create)) as FileDescriptor;
+  }
+
+  async openDirectory(url: URL): Promise<DirectoryDescriptor>;
+  async openDirectory(
+    url: URL,
+    create: Options["create"]
+  ): Promise<DirectoryDescriptor>;
+  async openDirectory(
+    url: URL,
+    create?: Options["create"]
+  ): Promise<DirectoryDescriptor> {
+    if (url.href.slice(-1) !== "/") {
+      throw new FileSystemError(
+        "IS_NOT_A_DIRECTORY",
+        `'${url.href}' is a file and we were expecting a directory`
+      );
+    }
+    return (await this.open(url, create)) as DirectoryDescriptor;
   }
 
   async open(
@@ -342,7 +375,7 @@ export class FileSystemError extends Error {
   }
 }
 
-interface ListingEntry {
+export interface ListingEntry {
   url: URL;
   stat: Stat;
 }

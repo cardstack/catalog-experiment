@@ -13,7 +13,6 @@ import {
 } from "../src/describe-file";
 import { url } from "./helpers/file-assertions";
 import { FileSystem } from "../src/filesystem";
-import { FileDescriptor } from "../src/filesystem-drivers/filesystem-driver";
 import { parse } from "@babel/core";
 
 let resolver = new Resolver(); // TODO need to resolve modules without '.js' extension
@@ -27,7 +26,7 @@ async function makeModuleResolutions(
     importAssignments?: ImportAssignments;
   } = {}
 ): Promise<ModuleResolution> {
-  let source = await ((await fs.open(moduleURL)) as FileDescriptor).readText();
+  let source = await (await fs.openFile(moduleURL)).readText();
   let parsed = parse(source);
   if (parsed?.type !== "File") {
     throw new Error(`parsed js for ${moduleURL.href} is not a babel File type`);
@@ -1590,7 +1589,7 @@ QUnit.module("combine modules", function (origHooks) {
       bundleAURL,
       assignmentsA
     );
-    let bundleA = (await assert.fs.open(bundleAURL, true)) as FileDescriptor;
+    let bundleA = await assert.fs.openFile(bundleAURL, true);
     await bundleA.write(codeA);
     await bundleA.close();
 
@@ -1604,7 +1603,7 @@ QUnit.module("combine modules", function (origHooks) {
       bundleBURL,
       assignmentsB
     );
-    let bundleB = (await assert.fs.open(bundleBURL, true)) as FileDescriptor;
+    let bundleB = await assert.fs.openFile(bundleBURL, true);
     await bundleB.write(codeB);
     await bundleB.close();
 

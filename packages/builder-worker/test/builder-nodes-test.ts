@@ -2,7 +2,6 @@ import { installFileAssertions, origin } from "./helpers/file-assertions";
 import { Builder } from "../src/builder";
 import { JSONParseNode, ConstantNode } from "../src/nodes/common";
 import { FileNode } from "../src/nodes/file";
-import { FileDescriptor } from "../src/filesystem-drivers/filesystem-driver";
 import { flushEvents } from "../src/event-bus";
 
 QUnit.module("builder nodes", function (origHooks) {
@@ -24,9 +23,9 @@ QUnit.module("builder nodes", function (origHooks) {
     let builder = new Builder(assert.fs, { test: node });
     let result = await builder.build();
     assert.deepEqual(result, { test: `Hello world` });
-    let fd = await assert.fs.open(url);
+    let fd = await assert.fs.openFile(url);
     assert.equal(fd.type, "file");
-    await (fd as FileDescriptor).write(`I am updated`);
+    await fd.write(`I am updated`);
     await flushEvents();
     result = await builder.build();
     assert.deepEqual(result, { test: "I am updated" });
