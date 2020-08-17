@@ -1,16 +1,17 @@
 import "../../builder-worker/test/helpers/code-equality-assertions";
 import Project from "fixturify-project";
 import { join } from "path";
-import { readJSONSync, readFileSync } from "fs-extra";
 import { NpmImportProjectsNode } from "../src/nodes/npm-import";
 import { Builder } from "../../builder-worker/src/builder";
 import { FileSystem } from "../../builder-worker/src/filesystem";
+import { closeAll } from "../src/node-filesystem-driver";
 import merge from "lodash/merge";
+import { Package } from "../src/nodes/package";
 
 const { test, module, only } = QUnit;
 
 // FOR THE LOVE OF GOD, DON'T FORGET TO REMOVE THE ONLY!!!!!!
-module.only("Install from npm", function () {
+module("Install from npm", function () {
   module("entrypoints", function (hooks) {
     let project: Project;
     hooks.beforeEach(function () {
@@ -44,59 +45,62 @@ module.only("Install from npm", function () {
     });
 
     hooks.after(function () {
+      closeAll();
       project.dispose();
     });
 
-    // TODO sets the dependencies in entrypoints.json too
     test("updates node_modules packages with entrypoints.json", async function (assert) {
+      let fs = new FileSystem();
       let workingDir = join(project.root, "working");
       let builderRoot = new NpmImportProjectsNode(
         ["a", "c"],
         join(project.root, "test-lib"),
         workingDir
       );
-      let builder = new Builder(new FileSystem(), [builderRoot]);
-      await builder.build();
+      let builder = new Builder(fs, [builderRoot]);
+      let [pkgA, pkgC] = (await builder.build())[0];
 
-      let aEntrypoints = readJSONSync(
-        join(project.root, "test-lib", "node_modules", "a", "entrypoints.json")
+      let aEntrypoints = JSON.parse(
+        await (
+          await fs.openFile(new URL("entrypoints.json", pkgA?.packageURL))
+        ).readText()
       );
       assert.deepEqual(aEntrypoints.js, ["./index.js"]);
       assert.notOk(aEntrypoints.html);
+      assert.deepEqual(aEntrypoints.dependencies, {
+        b: { url: "https://catalogjs.com/pkgs/npm/b/", range: "4.5.6" },
+      });
 
-      let b1Entrypoints = readJSONSync(
-        join(
-          project.root,
-          "test-lib",
-          "node_modules",
-          "a",
-          "node_modules",
-          "b",
-          "entrypoints.json"
-        )
+      let [pkgB1] = pkgA!.dependencies;
+      let b1Entrypoints = JSON.parse(
+        await (
+          await fs.openFile(new URL("entrypoints.json", pkgB1?.packageURL))
+        ).readText()
       );
       assert.deepEqual(b1Entrypoints.js, ["./b.js"]);
       assert.notOk(b1Entrypoints.html);
+      assert.deepEqual(b1Entrypoints.dependencies, {});
 
-      let cEntrypoints = readJSONSync(
-        join(project.root, "test-lib", "node_modules", "c", "entrypoints.json")
+      let cEntrypoints = JSON.parse(
+        await (
+          await fs.openFile(new URL("entrypoints.json", pkgC?.packageURL))
+        ).readText()
       );
       assert.deepEqual(cEntrypoints.js, ["./index.js"]);
       assert.notOk(cEntrypoints.html);
+      assert.deepEqual(cEntrypoints.dependencies, {
+        b: { url: "https://catalogjs.com/pkgs/npm/b/", range: "7.8.9" },
+      });
 
-      let b2Entrypoints = readJSONSync(
-        join(
-          project.root,
-          "test-lib",
-          "node_modules",
-          "c",
-          "node_modules",
-          "b",
-          "entrypoints.json"
-        )
+      let [pkgB2] = pkgC!.dependencies;
+      let b2Entrypoints = JSON.parse(
+        await (
+          await fs.openFile(new URL("entrypoints.json", pkgB2?.packageURL))
+        ).readText()
       );
       assert.deepEqual(b2Entrypoints.js, ["./index.js"]);
       assert.notOk(b2Entrypoints.html);
+      assert.deepEqual(b2Entrypoints.dependencies, {});
     });
 
     test("build output returns package info", async function (assert) {
@@ -113,52 +117,54 @@ module.only("Install from npm", function () {
       assert.equal(pkgA.packageJSON.name, "a");
       assert.equal(pkgA.packageJSON.version, "1.2.3");
       assert.deepEqual(pkgA.packageJSON.dependencies, { b: "4.5.6" });
+      assert.equal(pkgA.packageIdentifier, "i9tBcKg3onG-i5rr04gKB6zt8Xk=");
       assert.equal(
-        pkgA.packageNodeModulesPath,
-        join(project.root, "test-lib", "node_modules", "a")
+        pkgA.packageURL,
+        `https://${pkgA.packageJSON.name}/${pkgA.packageIdentifier}/`
       );
-      assert.equal(pkgA.packageSrc, pkgA.packageNodeModulesPath);
       assert.equal(pkgA.dependencies.length, 1);
 
       let [pkgB1] = pkgA.dependencies;
       assert.equal(pkgB1.packageJSON.name, "b");
       assert.equal(pkgB1.packageJSON.version, "4.5.6");
       assert.deepEqual(pkgB1.packageJSON.dependencies, {});
+      assert.equal(pkgB1.packageIdentifier, "2siyqrpP4xKh59+-xZy84JZuSrI=");
       assert.equal(
-        pkgB1.packageNodeModulesPath,
-        join(project.root, "test-lib", "node_modules", "a", "node_modules", "b")
+        pkgB1.packageURL,
+        `https://${pkgB1.packageJSON.name}/${pkgB1.packageIdentifier}/`
       );
-      assert.equal(pkgB1.packageSrc, pkgB1.packageNodeModulesPath);
       assert.equal(pkgB1.dependencies.length, 0);
 
       assert.equal(pkgC.packageJSON.name, "c");
       assert.equal(pkgC.packageJSON.version, "1.2.3");
       assert.deepEqual(pkgC.packageJSON.dependencies, { b: "7.8.9" });
+      assert.equal(pkgC.packageIdentifier, "d0WnoD9OX2fXEjp6NbN1mg84LII=");
       assert.equal(
-        pkgC.packageNodeModulesPath,
-        join(project.root, "test-lib", "node_modules", "c")
+        pkgC.packageURL,
+        `https://${pkgC.packageJSON.name}/${pkgC.packageIdentifier}/`
       );
-      assert.equal(pkgC.packageSrc, pkgC.packageNodeModulesPath);
       assert.equal(pkgC.dependencies.length, 1);
 
       let [pkgB2] = pkgC.dependencies;
       assert.equal(pkgB2.packageJSON.name, "b");
       assert.equal(pkgB2.packageJSON.version, "7.8.9");
       assert.deepEqual(pkgB2.packageJSON.dependencies, {});
+      assert.equal(pkgB2.packageIdentifier, "SID-L9qoz0sA9HaYx7Nr5yTx-JI=");
       assert.equal(
-        pkgB2.packageNodeModulesPath,
-        join(project.root, "test-lib", "node_modules", "c", "node_modules", "b")
+        pkgB2.packageURL,
+        `https://${pkgB2.packageJSON.name}/${pkgB2.packageIdentifier}/`
       );
-      assert.equal(pkgB2.packageSrc, pkgB2.packageNodeModulesPath);
       assert.equal(pkgB2.dependencies.length, 0);
     });
   });
 
-  // FOR THE LOVE OF GOD, DON'T FORGET TO REMOVE THE ONLY!!!!!!
-  module.only("ES interop", function (hooks) {
+  module("ES interop", function (hooks) {
     let project: Project;
+    let fs: FileSystem;
+    let packages: Package[];
     hooks.beforeEach(async function () {
       project = new Project("test-lib");
+      fs = new FileSystem();
       let pkg = project.addDependency("test-pkg", "1.2.3");
       pkg.pkg = {
         name: "test-pkg",
@@ -194,25 +200,21 @@ module.only("Install from npm", function () {
         join(project.root, "test-lib"),
         workingDir
       );
-      let builder = new Builder(new FileSystem(), [builderRoot]);
-      await builder.build();
+      let builder = new Builder(fs, [builderRoot]);
+      packages = (await builder.build())[0];
     });
 
     hooks.after(function () {
+      closeAll();
       project.dispose();
     });
 
     test("it wraps CJS files with runtime loader", async function (assert) {
-      let src = readFileSync(
-        join(
-          project.root,
-          "test-lib",
-          "node_modules",
-          "test-pkg",
-          "index.cjs.js"
-        ),
-        { encoding: "utf8" }
-      );
+      let [testPkg] = packages;
+
+      let src = await (
+        await fs.openFile(new URL("index.cjs.js", testPkg.packageURL))
+      ).readText();
       assert.codeEqual(
         src,
         // this is the output of the remapRequires() function
@@ -243,10 +245,9 @@ module.only("Install from npm", function () {
         export default implementation;`
       );
 
-      src = readFileSync(
-        join(project.root, "test-lib", "node_modules", "test-pkg", "a.cjs.js"),
-        { encoding: "utf8" }
-      );
+      src = await (
+        await fs.openFile(new URL("a.cjs.js", testPkg.packageURL))
+      ).readText();
       assert.codeEqual(
         src,
         `
@@ -268,10 +269,10 @@ module.only("Install from npm", function () {
     });
 
     test("it generates ES module shim for CJS files", async function (assert) {
-      let src = readFileSync(
-        join(project.root, "test-lib", "node_modules", "test-pkg", "index.js"),
-        { encoding: "utf8" }
-      );
+      let [testPkg] = packages;
+      let src = await (
+        await fs.openFile(new URL("index.js", testPkg.packageURL))
+      ).readText();
       assert.codeEqual(
         src,
         `
@@ -279,10 +280,9 @@ module.only("Install from npm", function () {
         export default implementation();
         `
       );
-      src = readFileSync(
-        join(project.root, "test-lib", "node_modules", "test-pkg", "a.js"),
-        { encoding: "utf8" }
-      );
+      src = await (
+        await fs.openFile(new URL("a.js", testPkg.packageURL))
+      ).readText();
       assert.codeEqual(
         src,
         `

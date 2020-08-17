@@ -3,52 +3,22 @@ import {
   NextNode,
   AllNode,
   Value,
-  NodeOutput,
 } from "../../../builder-worker/src/nodes/common";
-import { log, debug } from "../../../builder-worker/src/logger";
-import childProcess from "child_process";
-import { promisify } from "util";
-import fsExtra, { ensureDirSync, existsSync, readJSONSync } from "fs-extra";
-import { join, resolve, sep } from "path";
-import { sync as resolveModule } from "resolve";
-import { getRecipe, Recipe } from "../recipes";
+import { MountNode } from "../../../builder-worker/src/nodes/file";
 import { MakePkgESCompliantNode } from "./cjs-interop";
+import {
+  Package,
+  PackageJSON,
+  PackageEntrypointsNode,
+  PackageSrcNode,
+  PackageIdentifierNode,
+  getPackageJSON,
+} from "./package";
 import _glob from "glob";
-
-const exec = promisify(childProcess.exec);
-const writeJSON = promisify(fsExtra.writeJSON);
-const remove = promisify(fsExtra.remove);
-const githubRepoRegex = /^https:\/\/github.com\/(?<org>[^\/]+)\/(?<repo>[^\/]+)(\/tree\/(?<branch>[^\/]+)(?<subdir>\/.+|\/)?)?$/;
-
-function resolvePkg(pkgName: string, basedir?: string): string {
-  let entrypointPath = resolveModule(pkgName, { basedir });
-  let pathParts = entrypointPath.split(sep);
-  while (pathParts.pop() !== "node_modules") {
-    if (pathParts.length === 0) {
-      throw new Error(
-        `bug: could not find node_modules folder in module resolution ${entrypointPath}`
-      );
-    }
-  }
-
-  return [...pathParts, "node_modules", pkgName].join(sep);
-}
-
-export interface Package {
-  packageJSON: PackageJSON;
-  packageSrc: string;
-  packageNodeModulesPath: string;
-  dependencies: Package[];
-}
-export interface PackageJSON {
-  name: string;
-  version: string;
-  repository?: string | { type: "string"; url: "string" };
-  main?: string;
-  dependencies?: {
-    [depName: string]: string;
-  };
-}
+import { join } from "path";
+import { resolveNodePkg } from "../resolve";
+import { NodeFileSystemDriver } from "../node-filesystem-driver";
+import { ensureDirSync } from "fs-extra";
 
 export class NpmImportProjectsNode implements BuilderNode {
   // TODO the cache key for this should probably be some kind of lock file hash.
@@ -83,54 +53,171 @@ export class NpmImportProjectsNode implements BuilderNode {
 class NpmImportProjectNode implements BuilderNode {
   cacheKey: string;
   private pkgPath: string;
+  private pkgJSON: PackageJSON;
   constructor(name: string, consumedFrom: string, private workingDir: string) {
-    let pkgPath = resolvePkg(name, consumedFrom);
+    let pkgPath = resolveNodePkg(name, consumedFrom);
     if (!pkgPath) {
       throw new Error(
         `Could not resolve package '${name}' consumed from ${consumedFrom}`
       );
     }
     this.pkgPath = pkgPath;
+    this.pkgJSON = getPackageJSON(pkgPath);
     this.cacheKey = `npm-import-project:${pkgPath}`;
   }
 
   deps() {
-    let pkgJSON = new PackageJSONNode(this.pkgPath);
-    // TODO need to generate lockfile. We should determine the pkg identifiers of
-    // our deps first (by resolving those here), which might mean that we should
-    // recurse into this node here in deps() instead of in run()
-    let entrypointsNode = new PackageEntrypointsNode(
-      this.pkgPath,
-      pkgJSON,
-      this.workingDir
-    );
     return {
-      srcPath: entrypointsNode,
-      pkgJSON,
-      files: new MakePkgESCompliantNode(this.pkgPath, entrypointsNode),
+      project: new MakeProjectNode(this.pkgPath, this.pkgJSON, this.workingDir),
     };
   }
 
   async run({
-    srcPath,
-    pkgJSON,
+    project: { pkgURL, pkgIdentifier },
   }: {
-    srcPath: string;
-    pkgJSON: PackageJSON;
+    project: {
+      pkgURL: URL;
+      pkgIdentifier: string;
+    };
   }): Promise<NextNode<Package>> {
-    log(`processing package ${pkgJSON.name} from: ${this.pkgPath}`);
-    let dependencies = await Promise.all(
-      Object.entries(pkgJSON.dependencies ?? []).map(
-        async ([name]) =>
-          new NpmImportProjectNode(name, this.pkgPath, this.workingDir)
-      )
+    let dependencies = Object.entries(this.pkgJSON.dependencies ?? {}).map(
+      ([name]) => new NpmImportProjectNode(name, this.pkgPath, this.workingDir)
     );
     return {
       node: new FinishNpmImportNode(
-        pkgJSON,
-        this.pkgPath,
-        srcPath,
+        this.pkgJSON,
+        pkgURL,
+        pkgIdentifier,
         dependencies
+      ),
+    };
+  }
+}
+
+class MakeProjectNode implements BuilderNode {
+  cacheKey: string;
+  constructor(
+    private pkgPath: string,
+    private pkgJSON: PackageJSON,
+    private workingDir: string
+  ) {
+    this.cacheKey = `make-project:${pkgPath}`;
+  }
+
+  deps() {
+    return {
+      pkgURL: new PrepareProjectNode(
+        this.pkgPath,
+        this.pkgJSON,
+        this.workingDir
+      ),
+      pkgIdentifier: new PackageIdentifierNode(this.pkgPath, this.pkgJSON),
+    };
+  }
+
+  async run({
+    pkgURL,
+    pkgIdentifier: [, pkgIdentifier],
+  }: {
+    pkgURL: URL;
+    pkgIdentifier: string[];
+  }): Promise<
+    NextNode<{ pkgURL: URL; pkgJSON: PackageJSON; pkgIdentifier: string }>
+  > {
+    return {
+      node: new FinishProjectNode(
+        this.pkgPath,
+        pkgURL,
+        pkgIdentifier,
+        this.pkgJSON,
+        this.workingDir
+      ),
+    };
+  }
+}
+
+class FinishProjectNode implements BuilderNode {
+  cacheKey: string;
+  constructor(
+    private pkgPath: string,
+    private pkgURL: URL,
+    private pkgIdentifier: string,
+    private pkgJSON: PackageJSON,
+    private workingDir: string
+  ) {
+    this.cacheKey = `finish-project:${pkgPath}`;
+  }
+
+  deps() {
+    // TODO need to generate lockfile. We should determine the pkg identifiers of
+    // our deps first (by resolving those here), which might mean that we should
+    // recurse into this node here in deps() instead of in run()
+    let pkgSourceNode = new PackageSrcNode(
+      this.pkgJSON,
+      this.pkgPath,
+      this.pkgURL,
+      this.workingDir
+    );
+    return {
+      entrypoints: new PackageEntrypointsNode(
+        this.pkgPath,
+        this.pkgJSON,
+        this.pkgURL,
+        pkgSourceNode
+      ),
+      esCompliant: new MakePkgESCompliantNode(this.pkgURL, pkgSourceNode),
+    };
+  }
+
+  async run(): Promise<
+    Value<{ pkgURL: URL; pkgJSON: PackageJSON; pkgIdentifier: string }>
+  > {
+    return {
+      value: {
+        pkgURL: this.pkgURL,
+        pkgJSON: this.pkgJSON,
+        pkgIdentifier: this.pkgIdentifier,
+      },
+    };
+  }
+}
+
+class PrepareProjectNode implements BuilderNode {
+  cacheKey: string;
+  constructor(
+    private pkgPath: string,
+    private pkgJSON: PackageJSON,
+    private workingDir: string
+  ) {
+    this.cacheKey = `prepare-project:${pkgPath}`;
+  }
+
+  deps() {
+    return {
+      pkgIdentifier: new PackageIdentifierNode(this.pkgPath, this.pkgJSON),
+    };
+  }
+
+  async run({
+    pkgIdentifier,
+  }: {
+    pkgIdentifier: [string, string];
+  }): Promise<NextNode<URL>> {
+    let [pkgName, pkgId] = pkgIdentifier;
+    let underlyingPkgPath = join(
+      this.workingDir,
+      "es-compat-pkgs",
+      pkgName,
+      pkgId
+    ); // this is just temp until we don't need to debug any longer..
+    ensureDirSync(underlyingPkgPath);
+    return {
+      node: new MountNode(
+        new URL(`https://${pkgName}/${pkgId}/`),
+        // TODO turn this into MemoryDriver after getting the node pre-build
+        // wired into the core build, using node fs for now because it easy to
+        // debug.
+        new NodeFileSystemDriver(underlyingPkgPath)
       ),
     };
   }
@@ -140,8 +227,8 @@ class FinishNpmImportNode implements BuilderNode {
   cacheKey: FinishNpmImportNode;
   constructor(
     private pkgJSON: PackageJSON,
-    private pkgNodeModulesPath: string,
-    private srcPath: string,
+    private pkgURL: URL,
+    private pkgIdentifier: string,
     private dependencies: NpmImportProjectNode[]
   ) {
     this.cacheKey = this;
@@ -155,286 +242,10 @@ class FinishNpmImportNode implements BuilderNode {
     return {
       value: {
         packageJSON: this.pkgJSON,
-        packageNodeModulesPath: this.pkgNodeModulesPath,
-        packageSrc: this.srcPath,
+        packageURL: this.pkgURL,
+        packageIdentifier: this.pkgIdentifier,
         dependencies: this.dependencies.map((_, index) => dependencies[index]),
       },
     };
-  }
-}
-
-export class PackageEntrypointsNode implements BuilderNode {
-  cacheKey: string;
-  constructor(
-    private pkgPath: string,
-    private pkgJSONNode: PackageJSONNode,
-    private workingDir: string
-  ) {
-    this.cacheKey = `pkg-entrypoints:${pkgPath}`;
-  }
-
-  deps() {
-    return {
-      pkgJSON: this.pkgJSONNode,
-      srcPath: new PackageSrcNode(
-        this.pkgPath,
-        this.pkgJSONNode,
-        this.workingDir
-      ),
-    };
-  }
-
-  async run({
-    pkgJSON,
-    srcPath,
-  }: {
-    pkgJSON: PackageJSON;
-    srcPath: string;
-  }): Promise<Value<string>> {
-    let { name, version, main } = pkgJSON;
-    let recipe = getRecipe(name, version);
-    let entrypoints = recipe?.entrypoints ?? (main ? [main!] : ["./index.js"]);
-    if (entrypoints.length === 0) {
-      throw new Error(
-        `No entrypoints were specified for the package ${name} ${version} at ${this.pkgPath}`
-      );
-    }
-    let missingEntrypoints = entrypoints.filter(
-      (e) => !existsSync(resolve(join(srcPath, e)))
-    );
-    if (missingEntrypoints.length > 0) {
-      throw new Error(
-        `The entrypoint(s) for the package ${name} ${version}: ${missingEntrypoints.join(
-          ", "
-        )} are missing from ${srcPath}`
-      );
-    }
-    let entrypointsFile = join(srcPath, "entrypoints.json");
-    log(`creating ${entrypointsFile}`);
-    await remove(entrypointsFile);
-
-    // TODO need to write dependencies...
-    await writeJSON(entrypointsFile, {
-      name,
-      js: entrypoints,
-    });
-
-    return { value: srcPath };
-  }
-}
-
-class PackageSrcNode implements BuilderNode {
-  cacheKey: string;
-  constructor(
-    private pkgPath: string,
-    private pkgJSONNode: PackageJSONNode,
-    private workingDir: string
-  ) {
-    this.cacheKey = `pkg-source:${pkgPath}`;
-  }
-
-  deps() {
-    return {
-      pkgJSON: this.pkgJSONNode,
-    };
-  }
-
-  async run({
-    pkgJSON,
-  }: {
-    pkgJSON: PackageJSON;
-  }): Promise<NodeOutput<string>> {
-    let { name, version } = pkgJSON;
-    let recipe = getRecipe(name, version);
-    if (recipe?.srcRepo) {
-      return {
-        node: new PackageSrcFromGitNode(pkgJSON, this.workingDir, recipe),
-      };
-    } else {
-      return { value: this.pkgPath };
-    }
-  }
-}
-
-class PackageSrcFromGitNode implements BuilderNode {
-  cacheKey: string;
-  constructor(
-    private pkgJSON: PackageJSON,
-    private workingDir: string,
-    private recipe: Recipe | undefined
-  ) {
-    this.cacheKey = `prepare-pkg-source:${pkgJSON.name},${pkgJSON.version}`;
-  }
-
-  deps() {}
-
-  async run(): Promise<NextNode<string>> {
-    let pkgJSONRepoInfo = await repoFromPkgJSON(this.pkgJSON);
-    let recipeRepo =
-      typeof this.recipe?.srcRepo === "object"
-        ? this.recipe?.srcRepo
-        : undefined;
-    let repoURL = recipeRepo?.repoHref
-      ? new URL(recipeRepo.repoHref)
-      : pkgJSONRepoInfo.repoURL;
-    let repoSubdir = recipeRepo?.subdir ?? pkgJSONRepoInfo.repoSubdir;
-    if (!repoURL) {
-      throw new Error(
-        `Cannot determine source repository for ${this.pkgJSON.name}`
-      );
-    }
-
-    let version: string | undefined;
-    if (recipeRepo?.version) {
-      version = recipeRepo.version;
-    } else {
-      ({ version } = this.pkgJSON);
-      if (!recipeRepo?.bareVersion) {
-        version = `v${version}`;
-      }
-    }
-    if (!version) {
-      throw new Error(`Cannot determine version for ${this.pkgJSON.name}`);
-    }
-
-    return {
-      node: new GitCloneNode(repoURL, version, repoSubdir, this.workingDir),
-    };
-  }
-}
-
-class GitCloneNode implements BuilderNode {
-  cacheKey: string;
-  constructor(
-    private remoteGitURL: URL,
-    private version: string,
-    private repoSubdir: string | undefined,
-    private workingDir: string
-  ) {
-    this.cacheKey = `git-clone:${remoteGitURL.href}/tree/${version}`;
-  }
-
-  deps() {}
-
-  async run(): Promise<Value<string>> {
-    let gitRoot = join(this.workingDir, "pkg-src");
-    let dir = join(gitRoot, this.remoteGitURL.pathname.replace(".git", ""));
-    ensureDirSync(dir);
-
-    let repoDir = await nativeGitClone(dir, this.remoteGitURL, this.version);
-    let srcPath = this.repoSubdir ? join(repoDir, this.repoSubdir) : repoDir;
-    return { value: srcPath };
-  }
-}
-
-class PackageJSONNode implements BuilderNode {
-  cacheKey: string;
-  constructor(private pkgPath: string) {
-    this.cacheKey = `package-json:${pkgPath}`;
-  }
-
-  deps() {}
-
-  async run(): Promise<Value<PackageJSON>> {
-    let pkgJSON = readJSONSync(
-      join(this.pkgPath, "package.json")
-    ) as PackageJSON;
-    return { value: pkgJSON };
-  }
-}
-
-// This function converts a repository as specified by the package.json API
-// (https://docs.npmjs.com/files/package.json#repository) into a HTTP URL. Any
-// repo specific one-offs should be handled as recipe.
-async function repoFromPkgJSON(
-  pkgJSON: PackageJSON
-): Promise<{ repoURL: URL | undefined; repoSubdir: string | undefined }> {
-  if (!pkgJSON.repository) {
-    return { repoURL: undefined, repoSubdir: undefined };
-  }
-
-  let repoURL: URL;
-  let repoSubdir: string | undefined;
-  let repoHref: string;
-  if (typeof pkgJSON.repository === "string") {
-    repoHref = pkgJSON.repository;
-  } else {
-    repoHref = pkgJSON.repository.url;
-  }
-
-  if (repoHref.startsWith("git@github.com:")) {
-    repoHref = `https://github.com/${repoHref.replace("git@github.com:", "")}`;
-  } else if (repoHref.startsWith("git://github.com/")) {
-    repoHref = `https://github.com/${repoHref.replace(
-      "git://github.com/",
-      ""
-    )}`;
-  } else if (repoHref.startsWith("git+https://github.com/")) {
-    repoHref = repoHref.replace(/^git\+/, "");
-  } else if (!repoHref.startsWith("https://")) {
-    // try using the string as a path in the github origin
-    let url = new URL(repoHref, "https://github.com");
-    let response = await fetch(`${url.href}.git`);
-    if (!response.ok) {
-      throw new Error(
-        `Cannot figure out HTTPS repo URL for '${repoHref}' of package ${pkgJSON.name}`
-      );
-    }
-    repoHref = url.href;
-  }
-
-  // strip off .git from the URL if it exists--we'll add it afterwards (pkgs
-  // seem to be inconsistent in terms of having ".git" in the URL)
-  repoHref = repoHref.replace(/\.git$/, "");
-
-  let match = githubRepoRegex.exec(repoHref);
-  if (!match) {
-    repoURL = new URL(repoHref);
-  } else {
-    let { org, repo, subdir } = match.groups!;
-    repoURL = new URL(`https://github.com/${org}/${repo}.git`);
-    repoSubdir = subdir;
-  }
-
-  return { repoURL, repoSubdir };
-}
-
-async function nativeGitClone(
-  repoDir: string,
-  remoteURL: URL,
-  version: string
-): Promise<string> {
-  // TODO remove this try/catch
-  try {
-    if (!existsSync(join(repoDir, ".git"))) {
-      log(`cloning ${remoteURL.href}`);
-      await exec(`git clone ${remoteURL} ${repoDir} --no-checkout`, {
-        cwd: repoDir,
-      });
-    }
-
-    let versionDir = join(repoDir, version);
-    if (!existsSync(versionDir)) {
-      let { stdout } = await exec(`git worktree list`, { cwd: repoDir });
-      let worktrees = stdout.trim();
-      let match = /\[(?<mainWorkTree>[^\]].+)\]/.exec(worktrees);
-      debug(`worktree-add ${remoteURL.href} ${version}`);
-
-      if (match?.groups?.mainWorkTree === version) {
-        // git worktrees don't allow you to add a worktree for the main branch,
-        // so we need to check to see if that is what is being requested and if
-        // so, just checkout the repo
-        await exec(`git checkout ${version}`, { cwd: repoDir });
-        return repoDir;
-      } else {
-        await exec(`git worktree add ${versionDir} ${version}`, {
-          cwd: repoDir,
-        });
-      }
-    }
-    return versionDir;
-  } catch (e) {
-    debugger;
-    throw e;
   }
 }

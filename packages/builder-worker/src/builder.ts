@@ -1,4 +1,4 @@
-import { FileSystem, isFileEvent } from "./filesystem";
+import { FileSystem, isFileEvent, ListingEntry } from "./filesystem";
 import { addEventListener, Event, dispatchEvent } from "./event-bus";
 import bind from "bind-decorator";
 import {
@@ -7,9 +7,18 @@ import {
   NodeOutput,
   debugName,
 } from "./nodes/common";
-import { FileNode, WriteFileNode } from "./nodes/file";
+import {
+  FileNode,
+  WriteFileNode,
+  MountNode,
+  FileExistsNode,
+  FileListingNode,
+} from "./nodes/file";
 import { MakeProjectNode } from "./nodes/project";
-import { FileDescriptor } from "./filesystem-drivers/filesystem-driver";
+import {
+  FileDescriptor,
+  FileSystemDriver,
+} from "./filesystem-drivers/filesystem-driver";
 import { Deferred } from "./deferred";
 import { assertNever } from "@catalogjs/shared/util";
 import { error } from "./logger";
@@ -219,6 +228,18 @@ class BuildRunner<Input> {
 
     if (WriteFileNode.isWriteFileNode(node)) {
       return new InternalWriteFileNode(node, this.fs);
+    }
+
+    if (MountNode.isMountNode(node)) {
+      return new InternalMountNode(node, this.fs);
+    }
+
+    if (FileExistsNode.isFileExistsNode(node)) {
+      return new InternalFileExistsNode(node, this.fs);
+    }
+
+    if (FileListingNode.isFileListingNode(node)) {
+      return new InternalFileListingNode(node, this.fs);
     }
 
     return node;
@@ -640,7 +661,7 @@ class InternalFileNode<Input> implements BuilderNode<string> {
     }
     let fd: FileDescriptor | undefined;
     try {
-      fd = (await this.fs.open(this.url)) as FileDescriptor;
+      fd = await this.fs.openFile(this.url);
       if (fd.type === "file") {
         return { value: await fd.readText() };
       } else {
@@ -659,19 +680,80 @@ class InternalFileNode<Input> implements BuilderNode<string> {
 class InternalWriteFileNode implements BuilderNode<void> {
   private source: BuilderNode<string>;
   private url: URL;
+  private nonce: string;
   cacheKey: string;
   constructor(writeFileNode: WriteFileNode, private fs: FileSystem) {
     this.source = writeFileNode.deps().source;
     this.url = writeFileNode.url;
-    this.cacheKey = `write-file:${this.url.href}`;
+    this.nonce = writeFileNode.nonce;
+    this.cacheKey = `write-file:${this.url.href}:${this.nonce}`;
   }
   deps() {
     return { source: this.source };
   }
   async run({ source }: { source: string }): Promise<NodeOutput<void>> {
-    let fd = (await this.fs.open(this.url, true)) as FileDescriptor;
+    let fd = await this.fs.openFile(this.url, true);
     await fd.write(source);
     await fd.close();
     return { value: undefined };
+  }
+}
+
+class InternalMountNode implements BuilderNode<URL> {
+  private mountURL: URL;
+  private driver: FileSystemDriver;
+  cacheKey: string;
+
+  constructor(mountNode: MountNode, private fs: FileSystem) {
+    this.mountURL = mountNode.mountURL;
+    this.driver = mountNode.driver;
+    this.cacheKey = `mount:${this.mountURL.href}`;
+  }
+
+  deps() {}
+
+  async run(): Promise<NodeOutput<URL>> {
+    await this.fs.mount(this.mountURL, this.driver);
+    return { value: this.mountURL };
+  }
+}
+
+class InternalFileExistsNode implements BuilderNode<boolean> {
+  private url: URL;
+  cacheKey: string;
+  constructor(fileExistsNode: FileExistsNode, private fs: FileSystem) {
+    this.url = fileExistsNode.url;
+    this.cacheKey = `file-exists:${this.url.href}`;
+  }
+
+  deps() {}
+
+  async run(): Promise<NodeOutput<boolean>> {
+    try {
+      await this.fs.open(this.url);
+      return { value: true };
+    } catch (e) {
+      if (e.code === "NOT_FOUND") {
+        return { value: false };
+      }
+      throw e;
+    }
+  }
+}
+
+class InternalFileListingNode implements BuilderNode<ListingEntry[]> {
+  private url: URL;
+  private recurse: boolean;
+  cacheKey: string;
+  constructor(fileListingNode: FileListingNode, private fs: FileSystem) {
+    this.url = fileListingNode.url;
+    this.recurse = Boolean(fileListingNode.recurse);
+    this.cacheKey = `file-listing:${this.url.href}`;
+  }
+
+  deps() {}
+
+  async run(): Promise<NodeOutput<ListingEntry[]>> {
+    return { value: await this.fs.list(this.url, this.recurse) };
   }
 }

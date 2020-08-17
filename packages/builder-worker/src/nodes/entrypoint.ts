@@ -15,13 +15,16 @@ import { maybeURL, maybeRelativeURL } from "../path";
 import { BundleAssignment } from "./bundle";
 
 export interface Dependencies {
-  [name: string]: string;
+  [name: string]: {
+    url: string;
+    range: string;
+  };
 }
 
 export interface EntrypointsJSON {
   html?: string[];
   js?: string[];
-  dependencies?: Dependencies;
+  dependencies: Dependencies;
 }
 
 export class EntrypointsJSONNode implements BuilderNode {
