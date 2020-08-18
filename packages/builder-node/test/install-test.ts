@@ -215,8 +215,8 @@ module("Install from npm", function () {
         ).readText()
       );
       assert.deepEqual(lock, {
-        a: `https://catalogjs.com/pkgs/npm/a/${pkgA.packageIdentifier}/`,
-        b: `https://catalogjs.com/pkgs/npm/b/${pkgB1.packageIdentifier}/`,
+        a: `https://catalogjs.com/pkgs/npm/a/1.2.3/${pkgA.packageIdentifier}/`,
+        b: `https://catalogjs.com/pkgs/npm/b/4.5.6/${pkgB1.packageIdentifier}/`,
       });
 
       lock = JSON.parse(
@@ -225,8 +225,8 @@ module("Install from npm", function () {
         ).readText()
       );
       assert.deepEqual(lock, {
-        b: `https://catalogjs.com/pkgs/npm/b/${pkgB1.packageIdentifier}/`,
-        d: `https://catalogjs.com/pkgs/npm/d/${pkgD.packageIdentifier}/`,
+        b: `https://catalogjs.com/pkgs/npm/b/4.5.6/${pkgB1.packageIdentifier}/`,
+        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/${pkgD.packageIdentifier}/`,
       });
 
       lock = JSON.parse(
@@ -235,8 +235,8 @@ module("Install from npm", function () {
         ).readText()
       );
       assert.deepEqual(lock, {
-        c: `https://catalogjs.com/pkgs/npm/c/${pkgC.packageIdentifier}/`,
-        b: `https://catalogjs.com/pkgs/npm/b/${pkgB2.packageIdentifier}/`,
+        c: `https://catalogjs.com/pkgs/npm/c/1.2.3/${pkgC.packageIdentifier}/`,
+        b: `https://catalogjs.com/pkgs/npm/b/7.8.9/${pkgB2.packageIdentifier}/`,
       });
 
       lock = JSON.parse(
@@ -245,8 +245,8 @@ module("Install from npm", function () {
         ).readText()
       );
       assert.deepEqual(lock, {
-        b: `https://catalogjs.com/pkgs/npm/b/${pkgB2.packageIdentifier}/`,
-        d: `https://catalogjs.com/pkgs/npm/d/${pkgD.packageIdentifier}/`,
+        b: `https://catalogjs.com/pkgs/npm/b/7.8.9/${pkgB2.packageIdentifier}/`,
+        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/${pkgD.packageIdentifier}/`,
       });
 
       lock = JSON.parse(
@@ -255,7 +255,7 @@ module("Install from npm", function () {
         ).readText()
       );
       assert.deepEqual(lock, {
-        d: `https://catalogjs.com/pkgs/npm/d/${pkgD.packageIdentifier}/`,
+        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/${pkgD.packageIdentifier}/`,
       });
     });
   });

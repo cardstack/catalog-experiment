@@ -41,7 +41,7 @@ export class Package {
   get lockURL(): URL {
     return new URL(
       // this class is specific to packages from npm, so the registry 'npm' is hardcoded in the URL.
-      `https://catalogjs.com/pkgs/npm/${this.packageJSON.name}/${this.packageIdentifier}/`
+      `https://catalogjs.com/pkgs/npm/${this.packageJSON.name}/${this.packageJSON.version}/${this.packageIdentifier}/`
     );
   }
 }
