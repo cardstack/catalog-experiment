@@ -95,14 +95,16 @@ class ESInteropNode implements BuilderNode {
   }
 }
 
-function remapRequires(origSrc: string, desc: CJSDescription): string {
+function remapRequires(
+  origSrc: string,
+  desc: CJSDescription,
+  depBindingName: string
+): string {
   let editor = new RegionEditor(origSrc, desc, () => {
     throw new Error(`Cannot obtain unused binding name for CJS file`);
   });
-  // TODO need to make sure "dependencies" does not collide with another binding
-  // in origSrc--the desc be able to tell us this...
   for (let [index, require] of desc.requires.entries()) {
-    editor.replace(require.requireRegion, `dependencies[${index}]()`);
+    editor.replace(require.requireRegion, `${depBindingName}[${index}]()`);
   }
   return editor.serialize();
 }
@@ -128,14 +130,21 @@ class RewriteCJSNode implements BuilderNode {
   }
 
   async run({ src }: { src: string }): Promise<NodeOutput<void>> {
-    let imports = this.desc.requires.map(
-      ({ specifier }) =>
-        `import ${depFactoryName(specifier)} from "${specifier}$cjs$";`
+    let imports = new Set<string>(
+      this.desc.requires.map(
+        ({ specifier }) =>
+          `import ${depFactoryName(specifier)} from "${specifier}$cjs$";`
+      )
     );
     let deps: string[] = this.desc.requires.map(({ specifier }) =>
       depFactoryName(specifier)
     );
-    let newSrc = `${imports.join("\n")}
+    let depBindingName = "dependencies";
+    let count = 0;
+    while (this.desc.names.has(depBindingName)) {
+      depBindingName = `dependencies${count++}`;
+    }
+    let newSrc = `${[...imports].join("\n")}
 let module;
 function implementation() {
   if (!module) {
@@ -143,8 +152,8 @@ function implementation() {
     Function(
       "module",
       "exports",
-      "dependencies",
-      \`${remapRequires(src, this.desc)
+      "${depBindingName}",
+      \`${remapRequires(src, this.desc, depBindingName)
         .replace(/`/g, "\\`")
         .replace(/\$/g, "\\$")}\`
     )(module, module.exports, [${deps.join(", ")}]);

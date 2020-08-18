@@ -180,6 +180,18 @@ module("Install from npm", function () {
           }
           module.exports = { doSomething };`,
         "a.js": `module.exports.a = 'a';`,
+        "b.js": `
+          const dep1 = require("test-pkg-dep").dep;
+          const dep2 = require("test-pkg-dep").dep2;
+          const { a } = require('./a');
+          function doSomething() {
+            console.log(\`\${a}\${dep1}\${dep2}\`);
+          }
+          module.exports = { doSomething };`,
+        "c.js": `
+          const { dep } = require('test-pkg-dep');
+          let dependencies = "don't collide with me" + dep;
+          module.exports.default = dependencies;`,
       });
 
       let pkgDep = pkg.addDependency("test-pkg-dep", "4.5.6");
@@ -190,6 +202,7 @@ module("Install from npm", function () {
       merge(pkgDep.files, {
         "index.js": `
           module.exports.dep = 'dep';
+          module.exports.dep2 = 'dep2';
         `,
         "b.js": `module.exports.b = 'b';`,
       });
@@ -292,8 +305,69 @@ module("Install from npm", function () {
       );
     });
 
-    // TODO test for binding name collision with "dependencies"
-    // TODO test for dupe requires()
+    test("it can wrap CJS that has duplicate require() call expressions", async function (assert) {
+      let [testPkg] = packages;
+
+      let src = await (
+        await fs.openFile(new URL("b.cjs.js", testPkg.packageURL))
+      ).readText();
+      assert.codeEqual(
+        src,
+        `
+        import test_pkg_depFactory from "test-pkg-dep$cjs$";
+        import aFactory from "./a$cjs$";
+        let module;
+        function implementation() {
+          if (!module) {
+            module = { exports: {} };
+            Function(
+              "module",
+              "exports",
+              "dependencies",
+              \`
+          const dep1 = dependencies[0]().dep;
+          const dep2 = dependencies[1]().dep2;
+          const { a } = dependencies[2]();
+          function doSomething() {
+            console.log(\\\`\\\${a}\\\${dep1}\\\${dep2}\\\`);
+          }
+          module.exports = { doSomething };\`
+            )(module, module.exports, [test_pkg_depFactory, test_pkg_depFactory, aFactory]);
+          }
+          return module.exports;
+        }
+        export default implementation;`
+      );
+    });
+
+    test("it can wrap CJS that has module scoped binding named 'dependencies' (collision)", async function (assert) {
+      let [testPkg] = packages;
+      let src = await (
+        await fs.openFile(new URL("c.cjs.js", testPkg.packageURL))
+      ).readText();
+      assert.codeEqual(
+        src,
+        `
+        import test_pkg_depFactory from "test-pkg-dep$cjs$";
+        let module;
+        function implementation() {
+          if (!module) {
+            module = { exports: {} };
+            Function(
+              "module",
+              "exports",
+              "dependencies0",
+              \`
+          const { dep } = dependencies0[0]();
+          let dependencies = "don't collide with me" + dep;
+          module.exports.default = dependencies;\`
+            )(module, module.exports, [test_pkg_depFactory]);
+          }
+          return module.exports;
+        }
+        export default implementation;`
+      );
+    });
   });
 
   module("lock files", function () {
