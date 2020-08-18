@@ -13,6 +13,7 @@ import {
   PackageSrcNode,
   PackageIdentifierNode,
   getPackageJSON,
+  LockFileNode,
 } from "./package";
 import _glob from "glob";
 import { join } from "path";
@@ -149,9 +150,6 @@ class FinishProjectNode implements BuilderNode {
   }
 
   deps() {
-    // TODO need to generate lockfile. We should determine the pkg identifiers of
-    // our deps first (by resolving those here), which might mean that we should
-    // recurse into this node here in deps() instead of in run()
     let pkgSourceNode = new PackageSrcNode(
       this.pkgJSON,
       this.pkgPath,
@@ -160,7 +158,6 @@ class FinishProjectNode implements BuilderNode {
     );
     return {
       entrypoints: new PackageEntrypointsNode(
-        this.pkgPath,
         this.pkgJSON,
         this.pkgURL,
         pkgSourceNode
@@ -238,14 +235,33 @@ class FinishNpmImportNode implements BuilderNode {
   }
   async run(dependencies: {
     [index: number]: Package;
-  }): Promise<Value<Package>> {
+  }): Promise<NextNode<Package>> {
     return {
-      value: {
-        packageJSON: this.pkgJSON,
-        packageURL: this.pkgURL,
-        packageIdentifier: this.pkgIdentifier,
-        dependencies: this.dependencies.map((_, index) => dependencies[index]),
-      },
+      node: new PackageLockNode(
+        new Package(
+          this.pkgJSON,
+          this.pkgURL,
+          this.pkgIdentifier,
+          this.dependencies.map((_, index) => dependencies[index])
+        )
+      ),
     };
+  }
+}
+
+class PackageLockNode implements BuilderNode {
+  cacheKey: string;
+  constructor(private pkg: Package) {
+    this.cacheKey = `pkg-lock:${pkg.packageURL.href}`;
+  }
+
+  deps() {
+    return {
+      lock: new LockFileNode(this.pkg),
+    };
+  }
+
+  async run(): Promise<Value<Package>> {
+    return { value: this.pkg };
   }
 }

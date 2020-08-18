@@ -4,6 +4,7 @@ import {
   Value,
   AllNode,
   ConstantNode,
+  NodeOutput,
 } from "../../../builder-worker/src/nodes/common";
 import { log, debug } from "../../../builder-worker/src/logger";
 import childProcess from "child_process";
@@ -29,12 +30,22 @@ const readFile = promisify(fs.readFile);
 const exec = promisify(childProcess.exec);
 const githubRepoRegex = /^https:\/\/github.com\/(?<org>[^\/]+)\/(?<repo>[^\/]+)(\/tree\/(?<branch>[^\/]+)(?<subdir>\/.+|\/)?)?$/;
 
-export interface Package {
-  packageJSON: PackageJSON;
-  packageURL: URL;
-  packageIdentifier: string;
-  dependencies: Package[];
+export class Package {
+  constructor(
+    readonly packageJSON: PackageJSON,
+    readonly packageURL: URL,
+    readonly packageIdentifier: string,
+    readonly dependencies: Package[]
+  ) {}
+
+  get lockURL(): URL {
+    return new URL(
+      // this class is specific to packages from npm, so the registry 'npm' is hardcoded in the URL.
+      `https://catalogjs.com/pkgs/npm/${this.packageJSON.name}/${this.packageIdentifier}/`
+    );
+  }
 }
+
 export interface PackageJSON {
   name: string;
   version: string;
@@ -45,15 +56,22 @@ export interface PackageJSON {
   };
 }
 
+export interface LockFile {
+  [pkgName: string]: string;
+}
+
+export function getPackageJSON(pkgPath: string): PackageJSON {
+  return readJSONSync(join(pkgPath, "package.json")) as PackageJSON;
+}
+
 export class PackageEntrypointsNode implements BuilderNode {
   cacheKey: string;
   constructor(
-    private pkgPath: string,
     private pkgJSON: PackageJSON,
     private pkgURL: URL,
     private pkgSourceNode: PackageSrcNode
   ) {
-    this.cacheKey = `pkg-entrypoints:${pkgPath}`;
+    this.cacheKey = `pkg-entrypoints:${pkgURL.href}`;
   }
 
   deps() {
@@ -62,7 +80,7 @@ export class PackageEntrypointsNode implements BuilderNode {
     let entrypoints = recipe?.entrypoints ?? (main ? [main!] : ["./index.js"]);
     if (entrypoints.length === 0) {
       throw new Error(
-        `No entrypoints were specified for the package ${name} ${version} at ${this.pkgPath}`
+        `No entrypoints were specified for the package ${name} ${version} at ${this.pkgURL.href}`
       );
     }
 
@@ -85,7 +103,7 @@ export class PackageEntrypointsNode implements BuilderNode {
     let { name, version } = this.pkgJSON;
     if (entrypointsExist.some((exist) => !exist)) {
       throw new Error(
-        `The missing entrypoint(s) for the package ${name} ${version} at ${this.pkgPath}`
+        `The missing entrypoint(s) for the package ${name} ${version} at ${this.pkgURL.href}`
       );
     }
     let dependencies: Dependencies = {};
@@ -114,8 +132,28 @@ export class PackageEntrypointsNode implements BuilderNode {
   }
 }
 
-export function getPackageJSON(pkgPath: string): PackageJSON {
-  return readJSONSync(join(pkgPath, "package.json")) as PackageJSON;
+export class LockFileNode implements BuilderNode {
+  cacheKey: string;
+  constructor(private pkg: Package) {
+    this.cacheKey = `pkg-lock-file:${pkg.packageURL.href}`;
+  }
+
+  deps() {}
+
+  async run(): Promise<NodeOutput<void>> {
+    let lockfile: LockFile = {
+      [this.pkg.packageJSON.name]: this.pkg.lockURL.href,
+    };
+    for (let dep of this.pkg.dependencies) {
+      lockfile[dep.packageJSON.name] = dep.lockURL.href;
+    }
+    return {
+      node: new WriteFileNode(
+        new ConstantNode(JSON.stringify(lockfile)),
+        new URL("catalogjs.lock", this.pkg.packageURL)
+      ),
+    };
+  }
 }
 
 export class PackageIdentifierNode implements BuilderNode {

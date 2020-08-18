@@ -8,13 +8,15 @@ import { closeAll } from "../src/node-filesystem-driver";
 import merge from "lodash/merge";
 import { Package } from "../src/nodes/package";
 
-const { test, module, only } = QUnit;
+const { test, module } = QUnit;
 
-// FOR THE LOVE OF GOD, DON'T FORGET TO REMOVE THE ONLY!!!!!!
 module("Install from npm", function () {
-  module("entrypoints", function (hooks) {
+  module("pkg dependencies", function (hooks) {
     let project: Project;
-    hooks.beforeEach(function () {
+    let fs: FileSystem;
+    let packages: Package[];
+
+    hooks.beforeEach(async function () {
       project = new Project("test-lib");
       let a = project.addDependency("a", "1.2.3");
       a.pkg = {
@@ -41,7 +43,28 @@ module("Install from npm", function () {
         version: "7.8.9",
       };
       b2.files["index.js"] = "console.log('b2')";
+      let d1 = b1.addDependency("d", "10.11.12");
+      d1.pkg = {
+        name: "d",
+        version: "10.11.12",
+      };
+      d1.files["index.js"] = "console.log('d')";
+      let d2 = b2.addDependency("d", "10.11.12");
+      d2.pkg = {
+        name: "d",
+        version: "10.11.12",
+      };
+      d2.files["index.js"] = "console.log('d')";
       project.writeSync();
+      fs = new FileSystem();
+      let workingDir = join(project.root, "working");
+      let builderRoot = new NpmImportProjectsNode(
+        ["a", "c"],
+        join(project.root, "test-lib"),
+        workingDir
+      );
+      let builder = new Builder(fs, [builderRoot]);
+      packages = (await builder.build())[0];
     });
 
     hooks.after(function () {
@@ -50,19 +73,10 @@ module("Install from npm", function () {
     });
 
     test("updates node_modules packages with entrypoints.json", async function (assert) {
-      let fs = new FileSystem();
-      let workingDir = join(project.root, "working");
-      let builderRoot = new NpmImportProjectsNode(
-        ["a", "c"],
-        join(project.root, "test-lib"),
-        workingDir
-      );
-      let builder = new Builder(fs, [builderRoot]);
-      let [pkgA, pkgC] = (await builder.build())[0];
-
+      let [pkgA, pkgC] = packages;
       let aEntrypoints = JSON.parse(
         await (
-          await fs.openFile(new URL("entrypoints.json", pkgA?.packageURL))
+          await fs.openFile(new URL("entrypoints.json", pkgA.packageURL))
         ).readText()
       );
       assert.deepEqual(aEntrypoints.js, ["./index.js"]);
@@ -71,19 +85,21 @@ module("Install from npm", function () {
         b: { url: "https://catalogjs.com/pkgs/npm/b/", range: "4.5.6" },
       });
 
-      let [pkgB1] = pkgA!.dependencies;
+      let [pkgB1] = pkgA.dependencies;
       let b1Entrypoints = JSON.parse(
         await (
-          await fs.openFile(new URL("entrypoints.json", pkgB1?.packageURL))
+          await fs.openFile(new URL("entrypoints.json", pkgB1.packageURL))
         ).readText()
       );
       assert.deepEqual(b1Entrypoints.js, ["./b.js"]);
       assert.notOk(b1Entrypoints.html);
-      assert.deepEqual(b1Entrypoints.dependencies, {});
+      assert.deepEqual(b1Entrypoints.dependencies, {
+        d: { url: "https://catalogjs.com/pkgs/npm/d/", range: "10.11.12" },
+      });
 
       let cEntrypoints = JSON.parse(
         await (
-          await fs.openFile(new URL("entrypoints.json", pkgC?.packageURL))
+          await fs.openFile(new URL("entrypoints.json", pkgC.packageURL))
         ).readText()
       );
       assert.deepEqual(cEntrypoints.js, ["./index.js"]);
@@ -92,32 +108,43 @@ module("Install from npm", function () {
         b: { url: "https://catalogjs.com/pkgs/npm/b/", range: "7.8.9" },
       });
 
-      let [pkgB2] = pkgC!.dependencies;
+      let [pkgB2] = pkgC.dependencies;
       let b2Entrypoints = JSON.parse(
         await (
-          await fs.openFile(new URL("entrypoints.json", pkgB2?.packageURL))
+          await fs.openFile(new URL("entrypoints.json", pkgB2.packageURL))
         ).readText()
       );
       assert.deepEqual(b2Entrypoints.js, ["./index.js"]);
       assert.notOk(b2Entrypoints.html);
-      assert.deepEqual(b2Entrypoints.dependencies, {});
+      assert.deepEqual(b1Entrypoints.dependencies, {
+        d: { url: "https://catalogjs.com/pkgs/npm/d/", range: "10.11.12" },
+      });
+
+      let [pkgD1] = pkgB1.dependencies;
+      let [pkgD2] = pkgB2.dependencies;
+      let d1Entrypoints = JSON.parse(
+        await (
+          await fs.openFile(new URL("entrypoints.json", pkgD1.packageURL))
+        ).readText()
+      );
+      let d2Entrypoints = JSON.parse(
+        await (
+          await fs.openFile(new URL("entrypoints.json", pkgD2.packageURL))
+        ).readText()
+      );
+      assert.deepEqual(d1Entrypoints, d2Entrypoints);
+      assert.deepEqual(d1Entrypoints.js, ["./index.js"]);
+      assert.deepEqual(d1Entrypoints.dependencies, {});
+      assert.notOk(d1Entrypoints.html);
     });
 
     test("build output returns package info", async function (assert) {
-      let workingDir = join(project.root, "working");
-      let builderRoot = new NpmImportProjectsNode(
-        ["a", "c"],
-        join(project.root, "test-lib"),
-        workingDir
-      );
-      let builder = new Builder(new FileSystem(), [builderRoot]);
-      let packages = (await builder.build())[0];
       assert.equal(packages.length, 2);
       let [pkgA, pkgC] = packages;
       assert.equal(pkgA.packageJSON.name, "a");
       assert.equal(pkgA.packageJSON.version, "1.2.3");
       assert.deepEqual(pkgA.packageJSON.dependencies, { b: "4.5.6" });
-      assert.equal(pkgA.packageIdentifier, "i9tBcKg3onG-i5rr04gKB6zt8Xk=");
+      assert.equal(pkgA.packageIdentifier, "651BAwceOf4ctC4Aru+5SCwhX5w=");
       assert.equal(
         pkgA.packageURL,
         `https://${pkgA.packageJSON.name}/${pkgA.packageIdentifier}/`
@@ -127,18 +154,31 @@ module("Install from npm", function () {
       let [pkgB1] = pkgA.dependencies;
       assert.equal(pkgB1.packageJSON.name, "b");
       assert.equal(pkgB1.packageJSON.version, "4.5.6");
-      assert.deepEqual(pkgB1.packageJSON.dependencies, {});
-      assert.equal(pkgB1.packageIdentifier, "2siyqrpP4xKh59+-xZy84JZuSrI=");
+      assert.deepEqual(pkgB1.packageJSON.dependencies, {
+        d: "10.11.12",
+      });
+      assert.equal(pkgB1.packageIdentifier, "7tZJmfXDuIqZnobQcW6vgc6XpR8=");
       assert.equal(
         pkgB1.packageURL,
         `https://${pkgB1.packageJSON.name}/${pkgB1.packageIdentifier}/`
       );
-      assert.equal(pkgB1.dependencies.length, 0);
+      assert.equal(pkgB1.dependencies.length, 1);
+
+      let [pkgD1] = pkgB1.dependencies;
+      assert.equal(pkgD1.packageJSON.name, "d");
+      assert.equal(pkgD1.packageJSON.version, "10.11.12");
+      assert.deepEqual(pkgD1.packageJSON.dependencies, {});
+      assert.equal(pkgD1.packageIdentifier, "hloD8imK3ZAOrPIM2sC5dT2ouY8=");
+      assert.equal(
+        pkgD1.packageURL,
+        `https://${pkgD1.packageJSON.name}/${pkgD1.packageIdentifier}/`
+      );
+      assert.equal(pkgD1.dependencies.length, 0);
 
       assert.equal(pkgC.packageJSON.name, "c");
       assert.equal(pkgC.packageJSON.version, "1.2.3");
       assert.deepEqual(pkgC.packageJSON.dependencies, { b: "7.8.9" });
-      assert.equal(pkgC.packageIdentifier, "d0WnoD9OX2fXEjp6NbN1mg84LII=");
+      assert.equal(pkgC.packageIdentifier, "apNVJQxLZdbFr32-hLWmICcfWSA=");
       assert.equal(
         pkgC.packageURL,
         `https://${pkgC.packageJSON.name}/${pkgC.packageIdentifier}/`
@@ -148,13 +188,75 @@ module("Install from npm", function () {
       let [pkgB2] = pkgC.dependencies;
       assert.equal(pkgB2.packageJSON.name, "b");
       assert.equal(pkgB2.packageJSON.version, "7.8.9");
-      assert.deepEqual(pkgB2.packageJSON.dependencies, {});
-      assert.equal(pkgB2.packageIdentifier, "SID-L9qoz0sA9HaYx7Nr5yTx-JI=");
+      assert.deepEqual(pkgB2.packageJSON.dependencies, {
+        d: "10.11.12",
+      });
+      assert.equal(pkgB2.packageIdentifier, "B0OQjsmiq-CP1KXT1OB4Ck0-8QQ=");
       assert.equal(
         pkgB2.packageURL,
         `https://${pkgB2.packageJSON.name}/${pkgB2.packageIdentifier}/`
       );
-      assert.equal(pkgB2.dependencies.length, 0);
+
+      assert.equal(pkgB2.dependencies.length, 1);
+
+      let [pkgD2] = pkgB2.dependencies;
+      assert.deepEqual(pkgD1, pkgD2);
+    });
+
+    test("it creates lock files for packages", async function (assert) {
+      let [pkgA, pkgC] = packages;
+      let [pkgB1] = pkgA.dependencies;
+      let [pkgB2] = pkgC.dependencies;
+      let [pkgD] = pkgB1.dependencies; // we proved in previous test that pkgD1 is deep equal to pkgD2
+
+      let lock = JSON.parse(
+        await (
+          await fs.openFile(new URL("catalogjs.lock", pkgA.packageURL))
+        ).readText()
+      );
+      assert.deepEqual(lock, {
+        a: `https://catalogjs.com/pkgs/npm/a/${pkgA.packageIdentifier}/`,
+        b: `https://catalogjs.com/pkgs/npm/b/${pkgB1.packageIdentifier}/`,
+      });
+
+      lock = JSON.parse(
+        await (
+          await fs.openFile(new URL("catalogjs.lock", pkgB1.packageURL))
+        ).readText()
+      );
+      assert.deepEqual(lock, {
+        b: `https://catalogjs.com/pkgs/npm/b/${pkgB1.packageIdentifier}/`,
+        d: `https://catalogjs.com/pkgs/npm/d/${pkgD.packageIdentifier}/`,
+      });
+
+      lock = JSON.parse(
+        await (
+          await fs.openFile(new URL("catalogjs.lock", pkgC.packageURL))
+        ).readText()
+      );
+      assert.deepEqual(lock, {
+        c: `https://catalogjs.com/pkgs/npm/c/${pkgC.packageIdentifier}/`,
+        b: `https://catalogjs.com/pkgs/npm/b/${pkgB2.packageIdentifier}/`,
+      });
+
+      lock = JSON.parse(
+        await (
+          await fs.openFile(new URL("catalogjs.lock", pkgB2.packageURL))
+        ).readText()
+      );
+      assert.deepEqual(lock, {
+        b: `https://catalogjs.com/pkgs/npm/b/${pkgB2.packageIdentifier}/`,
+        d: `https://catalogjs.com/pkgs/npm/d/${pkgD.packageIdentifier}/`,
+      });
+
+      lock = JSON.parse(
+        await (
+          await fs.openFile(new URL("catalogjs.lock", pkgD.packageURL))
+        ).readText()
+      );
+      assert.deepEqual(lock, {
+        d: `https://catalogjs.com/pkgs/npm/d/${pkgD.packageIdentifier}/`,
+      });
     });
   });
 
@@ -368,10 +470,5 @@ module("Install from npm", function () {
         export default implementation;`
       );
     });
-  });
-
-  module("lock files", function () {
-    // Make sure to use pkg that has dep--we need to roll up pkg identifier for deps before we can determine our pkg identifier
-    test("it creates lock file for packages", async function (assert) {});
   });
 });
