@@ -34,14 +34,14 @@ export class Package {
   constructor(
     readonly packageJSON: PackageJSON,
     readonly packageURL: URL,
-    readonly packageIdentifier: string,
+    readonly packageHash: string,
     readonly dependencies: Package[]
   ) {}
 
-  get lockURL(): URL {
+  get packageIdentifier(): URL {
     return new URL(
       // this class is specific to packages from npm, so the registry 'npm' is hardcoded in the URL.
-      `https://catalogjs.com/pkgs/npm/${this.packageJSON.name}/${this.packageJSON.version}/${this.packageIdentifier}/`
+      `https://catalogjs.com/pkgs/npm/${this.packageJSON.name}/${this.packageJSON.version}/${this.packageHash}/`
     );
   }
 }
@@ -142,10 +142,10 @@ export class LockFileNode implements BuilderNode {
 
   async run(): Promise<NodeOutput<void>> {
     let lockfile: LockFile = {
-      [this.pkg.packageJSON.name]: this.pkg.lockURL.href,
+      [this.pkg.packageJSON.name]: this.pkg.packageIdentifier.href,
     };
     for (let dep of this.pkg.dependencies) {
-      lockfile[dep.packageJSON.name] = dep.lockURL.href;
+      lockfile[dep.packageJSON.name] = dep.packageIdentifier.href;
     }
     return {
       node: new WriteFileNode(
@@ -156,7 +156,7 @@ export class LockFileNode implements BuilderNode {
   }
 }
 
-export class PackageIdentifierNode implements BuilderNode {
+export class PackageHashNode implements BuilderNode {
   cacheKey: string;
   constructor(private pkgPath: string, private pkgJSON: PackageJSON) {
     this.cacheKey = `package-identifier:${pkgPath}`;
@@ -165,27 +165,24 @@ export class PackageIdentifierNode implements BuilderNode {
   deps() {}
 
   async run(): Promise<NextNode<[string, string]>> {
-    // [pkgName, pkgId]
+    // [pkgName, pkgHash]
     let dependencies = Object.entries(this.pkgJSON.dependencies ?? {}).map(
       ([name]) => {
         let depPkgPath = resolveNodePkg(name, this.pkgPath);
-        return new PackageIdentifierNode(
-          depPkgPath,
-          getPackageJSON(depPkgPath)
-        );
+        return new PackageHashNode(depPkgPath, getPackageJSON(depPkgPath));
       }
     );
     return {
-      node: new FinishPackageIdentifierNode(this.pkgJSON, dependencies),
+      node: new FinishPackageHashNode(this.pkgJSON, dependencies),
     };
   }
 }
 
-class FinishPackageIdentifierNode implements BuilderNode {
-  cacheKey: FinishPackageIdentifierNode;
+class FinishPackageHashNode implements BuilderNode {
+  cacheKey: FinishPackageHashNode;
   constructor(
     private pkgJSON: PackageJSON,
-    private dependencies: PackageIdentifierNode[]
+    private dependencies: PackageHashNode[]
   ) {
     this.cacheKey = this;
   }

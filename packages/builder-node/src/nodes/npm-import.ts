@@ -11,7 +11,7 @@ import {
   PackageJSON,
   PackageEntrypointsNode,
   PackageSrcNode,
-  PackageIdentifierNode,
+  PackageHashNode,
   getPackageJSON,
   LockFileNode,
 } from "./package";
@@ -74,11 +74,11 @@ class NpmImportProjectNode implements BuilderNode {
   }
 
   async run({
-    project: { pkgURL, pkgIdentifier },
+    project: { pkgURL, pkgHash },
   }: {
     project: {
       pkgURL: URL;
-      pkgIdentifier: string;
+      pkgHash: string;
     };
   }): Promise<NextNode<Package>> {
     let dependencies = Object.entries(this.pkgJSON.dependencies ?? {}).map(
@@ -88,7 +88,7 @@ class NpmImportProjectNode implements BuilderNode {
       node: new FinishNpmImportNode(
         this.pkgJSON,
         pkgURL,
-        pkgIdentifier,
+        pkgHash,
         dependencies
       ),
     };
@@ -112,24 +112,24 @@ class MakeProjectNode implements BuilderNode {
         this.pkgJSON,
         this.workingDir
       ),
-      pkgIdentifier: new PackageIdentifierNode(this.pkgPath, this.pkgJSON),
+      pkgHash: new PackageHashNode(this.pkgPath, this.pkgJSON),
     };
   }
 
   async run({
     pkgURL,
-    pkgIdentifier: [, pkgIdentifier],
+    pkgHash: [, pkgHash],
   }: {
     pkgURL: URL;
-    pkgIdentifier: string[];
+    pkgHash: string[];
   }): Promise<
-    NextNode<{ pkgURL: URL; pkgJSON: PackageJSON; pkgIdentifier: string }>
+    NextNode<{ pkgURL: URL; pkgJSON: PackageJSON; pkgHash: string }>
   > {
     return {
       node: new FinishProjectNode(
         this.pkgPath,
         pkgURL,
-        pkgIdentifier,
+        pkgHash,
         this.pkgJSON,
         this.workingDir
       ),
@@ -142,7 +142,7 @@ class FinishProjectNode implements BuilderNode {
   constructor(
     private pkgPath: string,
     private pkgURL: URL,
-    private pkgIdentifier: string,
+    private pkgHash: string,
     private pkgJSON: PackageJSON,
     private workingDir: string
   ) {
@@ -167,13 +167,13 @@ class FinishProjectNode implements BuilderNode {
   }
 
   async run(): Promise<
-    Value<{ pkgURL: URL; pkgJSON: PackageJSON; pkgIdentifier: string }>
+    Value<{ pkgURL: URL; pkgJSON: PackageJSON; pkgHash: string }>
   > {
     return {
       value: {
         pkgURL: this.pkgURL,
         pkgJSON: this.pkgJSON,
-        pkgIdentifier: this.pkgIdentifier,
+        pkgHash: this.pkgHash,
       },
     };
   }
@@ -191,26 +191,26 @@ class PrepareProjectNode implements BuilderNode {
 
   deps() {
     return {
-      pkgIdentifier: new PackageIdentifierNode(this.pkgPath, this.pkgJSON),
+      pkgHash: new PackageHashNode(this.pkgPath, this.pkgJSON),
     };
   }
 
   async run({
-    pkgIdentifier,
+    pkgHash: pkgHash,
   }: {
-    pkgIdentifier: [string, string];
+    pkgHash: [string, string];
   }): Promise<NextNode<URL>> {
-    let [pkgName, pkgId] = pkgIdentifier;
+    let [pkgName, hash] = pkgHash;
     let underlyingPkgPath = join(
       this.workingDir,
       "es-compat-pkgs",
       pkgName,
-      pkgId
+      hash
     ); // this is just temp until we don't need to debug any longer..
     ensureDirSync(underlyingPkgPath);
     return {
       node: new MountNode(
-        new URL(`https://${pkgName}/${pkgId}/`),
+        new URL(`https://${pkgName}/${hash}/`),
         // TODO turn this into MemoryDriver after getting the node pre-build
         // wired into the core build, using node fs for now because it easy to
         // debug.
@@ -225,7 +225,7 @@ class FinishNpmImportNode implements BuilderNode {
   constructor(
     private pkgJSON: PackageJSON,
     private pkgURL: URL,
-    private pkgIdentifier: string,
+    private pkgHash: string,
     private dependencies: NpmImportProjectNode[]
   ) {
     this.cacheKey = this;
@@ -241,7 +241,7 @@ class FinishNpmImportNode implements BuilderNode {
         new Package(
           this.pkgJSON,
           this.pkgURL,
-          this.pkgIdentifier,
+          this.pkgHash,
           this.dependencies.map((_, index) => dependencies[index])
         )
       ),

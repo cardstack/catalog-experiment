@@ -144,10 +144,14 @@ module("Install from npm", function () {
       assert.equal(pkgA.packageJSON.name, "a");
       assert.equal(pkgA.packageJSON.version, "1.2.3");
       assert.deepEqual(pkgA.packageJSON.dependencies, { b: "4.5.6" });
-      assert.equal(pkgA.packageIdentifier, "651BAwceOf4ctC4Aru+5SCwhX5w=");
+      assert.equal(pkgA.packageHash, "651BAwceOf4ctC4Aru+5SCwhX5w=");
       assert.equal(
         pkgA.packageURL,
-        `https://${pkgA.packageJSON.name}/${pkgA.packageIdentifier}/`
+        `https://${pkgA.packageJSON.name}/${pkgA.packageHash}/`
+      );
+      assert.equal(
+        pkgA.packageIdentifier.href,
+        `https://catalogjs.com/pkgs/npm/${pkgA.packageJSON.name}/${pkgA.packageJSON.version}/${pkgA.packageHash}/`
       );
       assert.equal(pkgA.dependencies.length, 1);
 
@@ -157,10 +161,14 @@ module("Install from npm", function () {
       assert.deepEqual(pkgB1.packageJSON.dependencies, {
         d: "10.11.12",
       });
-      assert.equal(pkgB1.packageIdentifier, "7tZJmfXDuIqZnobQcW6vgc6XpR8=");
+      assert.equal(pkgB1.packageHash, "7tZJmfXDuIqZnobQcW6vgc6XpR8=");
       assert.equal(
         pkgB1.packageURL,
-        `https://${pkgB1.packageJSON.name}/${pkgB1.packageIdentifier}/`
+        `https://${pkgB1.packageJSON.name}/${pkgB1.packageHash}/`
+      );
+      assert.equal(
+        pkgB1.packageIdentifier.href,
+        `https://catalogjs.com/pkgs/npm/${pkgB1.packageJSON.name}/${pkgB1.packageJSON.version}/${pkgB1.packageHash}/`
       );
       assert.equal(pkgB1.dependencies.length, 1);
 
@@ -168,20 +176,28 @@ module("Install from npm", function () {
       assert.equal(pkgD1.packageJSON.name, "d");
       assert.equal(pkgD1.packageJSON.version, "10.11.12");
       assert.deepEqual(pkgD1.packageJSON.dependencies, {});
-      assert.equal(pkgD1.packageIdentifier, "hloD8imK3ZAOrPIM2sC5dT2ouY8=");
+      assert.equal(pkgD1.packageHash, "hloD8imK3ZAOrPIM2sC5dT2ouY8=");
       assert.equal(
         pkgD1.packageURL,
-        `https://${pkgD1.packageJSON.name}/${pkgD1.packageIdentifier}/`
+        `https://${pkgD1.packageJSON.name}/${pkgD1.packageHash}/`
+      );
+      assert.equal(
+        pkgD1.packageIdentifier.href,
+        `https://catalogjs.com/pkgs/npm/${pkgD1.packageJSON.name}/${pkgD1.packageJSON.version}/${pkgD1.packageHash}/`
       );
       assert.equal(pkgD1.dependencies.length, 0);
 
       assert.equal(pkgC.packageJSON.name, "c");
       assert.equal(pkgC.packageJSON.version, "1.2.3");
       assert.deepEqual(pkgC.packageJSON.dependencies, { b: "7.8.9" });
-      assert.equal(pkgC.packageIdentifier, "apNVJQxLZdbFr32-hLWmICcfWSA=");
+      assert.equal(pkgC.packageHash, "apNVJQxLZdbFr32-hLWmICcfWSA=");
       assert.equal(
         pkgC.packageURL,
-        `https://${pkgC.packageJSON.name}/${pkgC.packageIdentifier}/`
+        `https://${pkgC.packageJSON.name}/${pkgC.packageHash}/`
+      );
+      assert.equal(
+        pkgC.packageIdentifier.href,
+        `https://catalogjs.com/pkgs/npm/${pkgC.packageJSON.name}/${pkgC.packageJSON.version}/${pkgC.packageHash}/`
       );
       assert.equal(pkgC.dependencies.length, 1);
 
@@ -191,12 +207,15 @@ module("Install from npm", function () {
       assert.deepEqual(pkgB2.packageJSON.dependencies, {
         d: "10.11.12",
       });
-      assert.equal(pkgB2.packageIdentifier, "B0OQjsmiq-CP1KXT1OB4Ck0-8QQ=");
+      assert.equal(pkgB2.packageHash, "B0OQjsmiq-CP1KXT1OB4Ck0-8QQ=");
       assert.equal(
         pkgB2.packageURL,
-        `https://${pkgB2.packageJSON.name}/${pkgB2.packageIdentifier}/`
+        `https://${pkgB2.packageJSON.name}/${pkgB2.packageHash}/`
       );
-
+      assert.equal(
+        pkgB2.packageIdentifier.href,
+        `https://catalogjs.com/pkgs/npm/${pkgB2.packageJSON.name}/${pkgB2.packageJSON.version}/${pkgB2.packageHash}/`
+      );
       assert.equal(pkgB2.dependencies.length, 1);
 
       let [pkgD2] = pkgB2.dependencies;
@@ -215,8 +234,8 @@ module("Install from npm", function () {
         ).readText()
       );
       assert.deepEqual(lock, {
-        a: `https://catalogjs.com/pkgs/npm/a/1.2.3/${pkgA.packageIdentifier}/`,
-        b: `https://catalogjs.com/pkgs/npm/b/4.5.6/${pkgB1.packageIdentifier}/`,
+        a: `https://catalogjs.com/pkgs/npm/a/1.2.3/${pkgA.packageHash}/`,
+        b: `https://catalogjs.com/pkgs/npm/b/4.5.6/${pkgB1.packageHash}/`,
       });
 
       lock = JSON.parse(
@@ -225,8 +244,8 @@ module("Install from npm", function () {
         ).readText()
       );
       assert.deepEqual(lock, {
-        b: `https://catalogjs.com/pkgs/npm/b/4.5.6/${pkgB1.packageIdentifier}/`,
-        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/${pkgD.packageIdentifier}/`,
+        b: `https://catalogjs.com/pkgs/npm/b/4.5.6/${pkgB1.packageHash}/`,
+        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/${pkgD.packageHash}/`,
       });
 
       lock = JSON.parse(
@@ -235,8 +254,8 @@ module("Install from npm", function () {
         ).readText()
       );
       assert.deepEqual(lock, {
-        c: `https://catalogjs.com/pkgs/npm/c/1.2.3/${pkgC.packageIdentifier}/`,
-        b: `https://catalogjs.com/pkgs/npm/b/7.8.9/${pkgB2.packageIdentifier}/`,
+        c: `https://catalogjs.com/pkgs/npm/c/1.2.3/${pkgC.packageHash}/`,
+        b: `https://catalogjs.com/pkgs/npm/b/7.8.9/${pkgB2.packageHash}/`,
       });
 
       lock = JSON.parse(
@@ -245,8 +264,8 @@ module("Install from npm", function () {
         ).readText()
       );
       assert.deepEqual(lock, {
-        b: `https://catalogjs.com/pkgs/npm/b/7.8.9/${pkgB2.packageIdentifier}/`,
-        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/${pkgD.packageIdentifier}/`,
+        b: `https://catalogjs.com/pkgs/npm/b/7.8.9/${pkgB2.packageHash}/`,
+        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/${pkgD.packageHash}/`,
       });
 
       lock = JSON.parse(
@@ -255,7 +274,7 @@ module("Install from npm", function () {
         ).readText()
       );
       assert.deepEqual(lock, {
-        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/${pkgD.packageIdentifier}/`,
+        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/${pkgD.packageHash}/`,
       });
     });
   });
