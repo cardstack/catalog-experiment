@@ -23,6 +23,12 @@
         },
         "entrypoints": {
           "$ref": "#/definitions/entrypoints"
+        },
+        "srcIncludeGlob": {
+          "type": "string"
+        },
+        "srcIgnoreGlob": {
+          "type": "string"
         }
       },
       "additionalProperties": false

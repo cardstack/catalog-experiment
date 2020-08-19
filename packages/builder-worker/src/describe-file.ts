@@ -23,6 +23,7 @@ import { assertNever } from "@catalogjs/shared/util";
 import traverse, { NodePath, Scope } from "@babel/traverse";
 import { CodeRegion, RegionPointer, RegionBuilder } from "./code-region";
 import { ImportAssignments } from "./combine-modules";
+import { warn } from "./logger";
 
 export const NamespaceMarker = { isNamespace: true };
 export type NamespaceMarker = typeof NamespaceMarker;
@@ -61,7 +62,7 @@ export interface CJSDescription extends Description {
 }
 
 export interface RequireDescription {
-  specifier: string;
+  specifier: string | undefined;
   definitelyRuns: boolean;
   requireRegion: RegionPointer;
   specifierRegion: RegionPointer;
@@ -147,8 +148,10 @@ export function describeFile(
   ast: File,
   {
     importAssignments,
+    filename,
   }: {
     importAssignments?: ImportAssignments;
+    filename?: string;
   } = {}
 ): FileDescription {
   let isES6Module = false;
@@ -396,12 +399,16 @@ export function describeFile(
         !path.scope.getBinding("require")
       ) {
         let [specifierPath] = path.get("arguments");
-        if (!isStringLiteral(specifierPath.node)) {
-          throw new Error(
-            `Cannot handle 'require()' whose specifier is not a string literal`
+        let specifier: string | undefined;
+        if (isStringLiteral(specifierPath.node)) {
+          specifier = specifierPath.node.value;
+        } else {
+          warn(
+            `encountered a require() whose specifier is not a string literal${
+              filename ? " in file " + filename : ""
+            }. If this require() is evaluated, a runtime error will be thrown.`
           );
         }
-        let { value: specifier } = specifierPath.node;
         desc.requires.push({
           specifier,
           requireRegion: builder.createCodeRegion(path as NodePath),

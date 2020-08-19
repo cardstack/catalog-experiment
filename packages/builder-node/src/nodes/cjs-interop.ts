@@ -4,6 +4,7 @@ import {
   Value,
   NodeOutput,
   ConstantNode,
+  NextNode,
 } from "../../../builder-worker/src/nodes/common";
 import {
   FileListingNode,
@@ -30,8 +31,7 @@ export class MakePkgESCompliantNode implements BuilderNode {
 
   deps() {
     return {
-      listing: new FileListingNode(this.pkgURL, true),
-      src: this.pkgSrcNode,
+      listing: new PreparePkgForEsCompliance(this.pkgURL, this.pkgSrcNode),
     };
   }
 
@@ -39,7 +39,7 @@ export class MakePkgESCompliantNode implements BuilderNode {
     listing,
   }: {
     listing: ListingEntry[];
-  }): Promise<NodeOutput<void[]>> {
+  }): Promise<NodeOutput<(void | void[])[]>> {
     // get all files (and optionally filter thru recipes config) trying to crawl
     // deps from the file description to find files to introspect, because we're
     // not ready to start resolving yet (and we don't want to be forced into
@@ -51,14 +51,35 @@ export class MakePkgESCompliantNode implements BuilderNode {
       )
       .map((entry) => entry.url);
     return {
-      node: new AllNode(files.map((file) => new IntrospectSrcNode(file))),
+      node: new AllNode(
+        files.map((file) => new IntrospectSrcNode(file, this.pkgURL))
+      ),
+    };
+  }
+}
+
+class PreparePkgForEsCompliance implements BuilderNode {
+  cacheKey: string;
+  constructor(private pkgURL: URL, private pkgSrcNode: PackageSrcNode) {
+    this.cacheKey = `prepare-pkg-es-compliance:${pkgURL.href}`;
+  }
+
+  deps() {
+    return {
+      src: this.pkgSrcNode,
+    };
+  }
+
+  async run(): Promise<NextNode<ListingEntry[]>> {
+    return {
+      node: new FileListingNode(new URL("__stage2/", this.pkgURL), true),
     };
   }
 }
 
 class IntrospectSrcNode implements BuilderNode {
   cacheKey: string;
-  constructor(private url: URL) {
+  constructor(private url: URL, private pkgURL: URL) {
     this.cacheKey = `introspect-src:${url.href}`;
   }
 
@@ -68,30 +89,46 @@ class IntrospectSrcNode implements BuilderNode {
     };
   }
 
-  async run({ desc }: { desc: FileDescription }): Promise<NodeOutput<void>> {
+  async run({
+    desc,
+  }: {
+    desc: FileDescription;
+  }): Promise<NodeOutput<void | void[]>> {
+    let url = new URL(
+      this.url.href.slice(`${this.pkgURL.href}__stage2/`.length),
+      `${this.pkgURL}src/`
+    );
     if (isModuleDescription(desc)) {
-      return { value: undefined };
+      return { node: new WriteFileNode(new FileNode(this.url), url) };
     } else {
-      return { node: new ESInteropNode(this.url, desc) };
+      return { node: new ESInteropNode(this.url, url, desc) };
     }
   }
 }
 
 class ESInteropNode implements BuilderNode {
   cacheKey: string;
-  constructor(private url: URL, private desc: CJSDescription) {
-    this.cacheKey = `es-interop:${url.href}`;
+  constructor(
+    private inputURL: URL,
+    private outputURL: URL,
+    private desc: CJSDescription
+  ) {
+    this.cacheKey = `es-interop:${outputURL.href}`;
   }
 
   deps() {
     return {
-      rewrite: new RewriteCJSNode(this.url, this.desc, new FileNode(this.url)),
-      shim: new ESModuleShimNode(this.url),
+      src: new FileNode(this.inputURL),
     };
   }
 
-  async run(): Promise<NodeOutput<void>> {
-    return { value: undefined };
+  async run({ src }: { src: string }): Promise<NodeOutput<void[]>> {
+    return {
+      node: new AllNode([
+        new RewriteCJSNode(this.outputURL, this.desc, src),
+        new ESModuleShimNode(this.outputURL),
+      ]),
+    };
   }
 }
 
@@ -116,28 +153,27 @@ function depFactoryName(specifier: string): string {
 class RewriteCJSNode implements BuilderNode {
   cacheKey: string;
   constructor(
-    private url: URL,
+    private outputURL: URL,
     private desc: CJSDescription,
-    private srcNode: BuilderNode<string>
+    private src: string
   ) {
-    this.cacheKey = `rewrite-cjs:${url.href}`;
+    this.cacheKey = `rewrite-cjs:${outputURL.href}`;
   }
 
-  deps() {
-    return {
-      src: this.srcNode,
-    };
-  }
+  deps() {}
 
-  async run({ src }: { src: string }): Promise<NodeOutput<void>> {
+  async run(): Promise<NodeOutput<void>> {
     let imports = new Set<string>(
-      this.desc.requires.map(
-        ({ specifier }) =>
-          `import ${depFactoryName(specifier)} from "${specifier}$cjs$";`
+      this.desc.requires.map(({ specifier }) =>
+        specifier == null
+          ? `import { requireHasNonStringLiteralSpecifier } from "@catalogjs/loader";`
+          : `import ${depFactoryName(specifier)} from "${specifier}$cjs$";`
       )
     );
     let deps: string[] = this.desc.requires.map(({ specifier }) =>
-      depFactoryName(specifier)
+      specifier == null
+        ? `requireHasNonStringLiteralSpecifier("${this.outputURL.href}")`
+        : depFactoryName(specifier)
     );
     let depBindingName = "dependencies";
     let count = 0;
@@ -153,7 +189,7 @@ function implementation() {
       "module",
       "exports",
       "${depBindingName}",
-      \`${remapRequires(src, this.desc, depBindingName)
+      \`${remapRequires(this.src, this.desc, depBindingName)
         .replace(/`/g, "\\`")
         .replace(/\$/g, "\\$")}\`
     )(module, module.exports, [${deps.join(", ")}]);
@@ -164,7 +200,7 @@ export default implementation;`;
     return {
       node: new WriteFileNode(
         new ConstantNode(newSrc),
-        new URL(this.url.href.replace(/\.js$/, ".cjs.js"))
+        new URL(this.outputURL.href.replace(/\.js$/, ".cjs.js"))
       ),
     };
   }
@@ -172,18 +208,18 @@ export default implementation;`;
 
 class ESModuleShimNode implements BuilderNode {
   cacheKey: string;
-  constructor(private url: URL) {
-    this.cacheKey = `es-shim:${url.href}`;
+  constructor(private outputURL: URL) {
+    this.cacheKey = `es-shim:${outputURL.href}`;
   }
 
   deps() {}
 
   async run(): Promise<NodeOutput<void>> {
-    let basename = this.url.pathname.split("/").pop();
+    let basename = this.outputURL.pathname.split("/").pop();
     let src = `import implementation from "./${basename}$cjs$";
 export default implementation();`;
     return {
-      node: new WriteFileNode(new ConstantNode(src), this.url, "es-shim"),
+      node: new WriteFileNode(new ConstantNode(src), this.outputURL),
     };
   }
 }
@@ -201,6 +237,6 @@ class AnalyzeFileNode implements BuilderNode {
   }
 
   async run({ parsed }: { parsed: File }): Promise<Value<FileDescription>> {
-    return { value: describeFile(parsed) };
+    return { value: describeFile(parsed, { filename: this.url.href }) };
   }
 }

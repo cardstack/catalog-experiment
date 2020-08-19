@@ -86,12 +86,8 @@ export class WriteFileNode implements BuilderNode<void> {
     return "isWriteFileNode" in node;
   }
 
-  constructor(
-    private source: BuilderNode<string>,
-    public url: URL,
-    public nonce: string = "0"
-  ) {
-    this.cacheKey = `write-file:${this.url.href}:${this.nonce}`;
+  constructor(private source: BuilderNode<string>, public url: URL) {
+    this.cacheKey = `write-file:${this.url.href}`;
   }
 
   deps() {

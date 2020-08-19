@@ -16,34 +16,19 @@ import { getRecipe, Recipe } from "../recipes";
 import { resolveNodePkg } from "../resolve";
 import { createHash } from "crypto";
 import _glob from "glob";
-import {
-  WriteFileNode,
-  FileExistsNode,
-} from "../../../builder-worker/src/nodes/file";
-import {
-  EntrypointsJSON,
-  Dependencies,
-} from "../../../builder-worker/src/nodes/entrypoint";
+import { WriteFileNode } from "../../../builder-worker/src/nodes/file";
+import { SrcTransformNode } from "./src-transform";
 
 const glob = promisify(_glob);
 const readFile = promisify(fs.readFile);
 const exec = promisify(childProcess.exec);
 const githubRepoRegex = /^https:\/\/github.com\/(?<org>[^\/]+)\/(?<repo>[^\/]+)(\/tree\/(?<branch>[^\/]+)(?<subdir>\/.+|\/)?)?$/;
 
-export class Package {
-  constructor(
-    readonly packageJSON: PackageJSON,
-    readonly packageURL: URL,
-    readonly packageHash: string,
-    readonly dependencies: Package[]
-  ) {}
-
-  get packageIdentifier(): URL {
-    return new URL(
-      // this class is specific to packages from npm, so the registry 'npm' is hardcoded in the URL.
-      `https://catalogjs.com/pkgs/npm/${this.packageJSON.name}/${this.packageJSON.version}/${this.packageHash}/`
-    );
-  }
+export interface Package {
+  packageJSON: PackageJSON;
+  url: URL;
+  hash: string;
+  dependencies: Package[];
 }
 
 export interface PackageJSON {
@@ -64,93 +49,25 @@ export function getPackageJSON(pkgPath: string): PackageJSON {
   return readJSONSync(join(pkgPath, "package.json")) as PackageJSON;
 }
 
-export class PackageEntrypointsNode implements BuilderNode {
-  cacheKey: string;
-  constructor(
-    private pkgJSON: PackageJSON,
-    private pkgURL: URL,
-    private pkgSourceNode: PackageSrcNode
-  ) {
-    this.cacheKey = `pkg-entrypoints:${pkgURL.href}`;
-  }
-
-  deps() {
-    let { name, version, main } = this.pkgJSON;
-    let recipe = getRecipe(name, version);
-    let entrypoints = recipe?.entrypoints ?? (main ? [main!] : ["./index.js"]);
-    if (entrypoints.length === 0) {
-      throw new Error(
-        `No entrypoints were specified for the package ${name} ${version} at ${this.pkgURL.href}`
-      );
-    }
-
-    return {
-      src: this.pkgSourceNode,
-      entrypoints: new ConstantNode(entrypoints),
-      entrypointsExist: new AllNode(
-        entrypoints.map((e) => new FileExistsNode(new URL(e, this.pkgURL)))
-      ),
-    };
-  }
-
-  async run({
-    entrypoints,
-    entrypointsExist,
-  }: {
-    entrypoints: string[];
-    entrypointsExist: boolean[];
-  }): Promise<NextNode<void>> {
-    let { name, version } = this.pkgJSON;
-    if (entrypointsExist.some((exist) => !exist)) {
-      throw new Error(
-        `The missing entrypoint(s) for the package ${name} ${version} at ${this.pkgURL.href}`
-      );
-    }
-    let dependencies: Dependencies = {};
-    for (let [name, range] of Object.entries(this.pkgJSON.dependencies ?? {})) {
-      dependencies[name] = {
-        url: `https://catalogjs.com/pkgs/npm/${name}/`,
-        //TODO: this is a bit awkward as npm shoves a lot of things besides the
-        // range on the right-hand side of the dep name (src URL, SHA, tag,
-        // branch, etc). work with Ed to figure out a better/less npm-ish
-        // thing(s) to capture here
-        range: range,
-      };
-    }
-
-    let entrypointsJSON: EntrypointsJSON = {
-      js: entrypoints,
-      dependencies,
-    };
-
-    return {
-      node: new WriteFileNode(
-        new ConstantNode(JSON.stringify(entrypointsJSON, null, 2)),
-        new URL("entrypoints.json", this.pkgURL)
-      ),
-    };
-  }
-}
-
 export class LockFileNode implements BuilderNode {
   cacheKey: string;
   constructor(private pkg: Package) {
-    this.cacheKey = `pkg-lock-file:${pkg.packageURL.href}`;
+    this.cacheKey = `pkg-lock-file:${pkg.url.href}`;
   }
 
   deps() {}
 
   async run(): Promise<NodeOutput<void>> {
     let lockfile: LockFile = {
-      [this.pkg.packageJSON.name]: this.pkg.packageIdentifier.href,
+      [this.pkg.packageJSON.name]: this.pkg.url.href,
     };
     for (let dep of this.pkg.dependencies) {
-      lockfile[dep.packageJSON.name] = dep.packageIdentifier.href;
+      lockfile[dep.packageJSON.name] = dep.url.href;
     }
     return {
       node: new WriteFileNode(
         new ConstantNode(JSON.stringify(lockfile)),
-        new URL("catalogjs.lock", this.pkg.packageURL)
+        new URL("catalogjs.lock", `${this.pkg.url}src/`)
       ),
     };
   }
@@ -164,8 +81,7 @@ export class PackageHashNode implements BuilderNode {
 
   deps() {}
 
-  async run(): Promise<NextNode<[string, string]>> {
-    // [pkgName, pkgHash]
+  async run(): Promise<NextNode<string>> {
     let dependencies = Object.entries(this.pkgJSON.dependencies ?? {}).map(
       ([name]) => {
         let depPkgPath = resolveNodePkg(name, this.pkgPath);
@@ -191,21 +107,15 @@ class FinishPackageHashNode implements BuilderNode {
     return this.dependencies;
   }
 
-  async run(dependencies: {
-    [index: number]: [string, string];
-  }): Promise<Value<[string, string]>> {
-    let depIdentifiers = this.dependencies.map(
-      (_, index) => dependencies[index]
-    );
-    let identifier = createHash("sha1")
+  async run(dependencies: { [index: number]: string }): Promise<Value<string>> {
+    let depHashes = this.dependencies.map((_, index) => dependencies[index]);
+    let hash = createHash("sha1")
       .update(
-        `${this.pkgJSON.name}${this.pkgJSON.version}${depIdentifiers
-          .map(([, depIdentifier]) => depIdentifier)
-          .join("")}`
+        `${this.pkgJSON.name}${this.pkgJSON.version}${depHashes.join("")}`
       )
       .digest("base64")
       .replace(/\//g, "-");
-    return { value: [this.pkgJSON.name, identifier] };
+    return { value: hash };
   }
 }
 
@@ -220,6 +130,35 @@ export class PackageSrcNode implements BuilderNode {
     this.cacheKey = `pkg-source:${pkgPath}`;
   }
 
+  deps() {
+    return {
+      prepare: new PackageSrcPrepareNode(
+        this.pkgJSON,
+        this.pkgPath,
+        this.pkgURL,
+        this.workingDir
+      ),
+    };
+  }
+
+  async run(): Promise<NodeOutput<void>> {
+    return {
+      node: new PackageSrcFinishNode(this.pkgURL),
+    };
+  }
+}
+
+export class PackageSrcPrepareNode implements BuilderNode {
+  cacheKey: string;
+  constructor(
+    private pkgJSON: PackageJSON,
+    private pkgPath: string,
+    private pkgURL: URL,
+    private workingDir: string
+  ) {
+    this.cacheKey = `pkg-source-prepare:${pkgPath}`;
+  }
+
   deps() {}
 
   async run(): Promise<NextNode<void[]>> {
@@ -231,25 +170,50 @@ export class PackageSrcNode implements BuilderNode {
     } else {
       srcPath = this.pkgPath;
     }
+    let { srcIncludeGlob, srcIgnoreGlob } = recipe ?? {};
     // TODO need to include .ts too...
-    let files = await glob("**/*.{js,json}", {
+    srcIncludeGlob = srcIncludeGlob ?? "**/*.{js,json}";
+    srcIgnoreGlob = srcIgnoreGlob ?? "{node_modules,test}/**";
+
+    let files = await glob(srcIncludeGlob, {
       cwd: srcPath,
       absolute: true,
-      ignore: `${srcPath}/node_modules/**`,
+      ignore: `${srcPath}/${srcIgnoreGlob}`,
     });
     let contents = await Promise.all(
       files.map((file) => readFile(file, "utf8"))
     );
     return {
       node: new AllNode(
-        files.map(
-          (file, index) =>
-            new WriteFileNode(
-              new ConstantNode(contents[index]),
-              new URL(file.slice(srcPath.length + 1), this.pkgURL)
-            )
-        )
+        files.map((file, index) => {
+          let url = file.match(/\.json$/)
+            ? new URL(file.slice(srcPath.length + 1), `${this.pkgURL}src/`)
+            : new URL(
+                file.slice(srcPath.length + 1),
+                `${this.pkgURL}__stage1/`
+              );
+          return new WriteFileNode(new ConstantNode(contents[index]), url);
+        })
       ),
+    };
+  }
+}
+
+class PackageSrcFinishNode implements BuilderNode {
+  cacheKey: string;
+  constructor(private pkgURL: URL) {
+    this.cacheKey = `pkg-source-finish:${pkgURL.href}`;
+  }
+
+  deps() {
+    return {
+      transform: new SrcTransformNode(this.pkgURL),
+    };
+  }
+
+  async run(): Promise<NodeOutput<void>> {
+    return {
+      value: undefined,
     };
   }
 }
@@ -348,7 +312,7 @@ async function gitClone(
   version: string,
   workingDir: string
 ): Promise<string> {
-  let gitRoot = join(workingDir, "pkg-src");
+  let gitRoot = join(workingDir, "git");
   let repoDir = join(gitRoot, remoteURL.pathname.replace(".git", ""));
   ensureDirSync(repoDir);
 

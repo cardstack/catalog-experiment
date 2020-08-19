@@ -40,6 +40,16 @@ export interface Recipe {
   // we are not using the "browser" property in the package.json because
   // typically all the ES modules are compiled out of the browser module.
   entrypoints?: string[];
+
+  // This is a glob that describes all the files to include in the javascript
+  // build from the package. By default this is "**/*.{js,json}", and can be
+  // overridden using the "srcIncludeGlob" property.
+  srcIncludeGlob?: string;
+
+  // This is a glob that describes all the files to ignore in the javascript
+  // build from the package. By default this is "{node_modules,test}/**", and can be
+  // overridden using the "srcIgnoreGlob" property.
+  srcIgnoreGlob?: string;
 }
 
 export function getRecipe(

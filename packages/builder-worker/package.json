@@ -34,6 +34,9 @@
     "test:headless": "yarn node-qunit-puppeteer http://localhost:8080"
   },
   "dependencies": {
+    "@babel/plugin-proposal-logical-assignment-operators": "^7.11.0",
+    "@babel/plugin-proposal-numeric-separator": "^7.10.4",
+    "@babel/plugin-proposal-pipeline-operator": "^7.10.5",
     "@babel/traverse": "^7.9.5",
     "@catalogjs/shared": "0.0.1",
     "@msgpack/msgpack": "^1.12.2",

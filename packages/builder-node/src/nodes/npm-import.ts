@@ -9,7 +9,6 @@ import { MakePkgESCompliantNode } from "./cjs-interop";
 import {
   Package,
   PackageJSON,
-  PackageEntrypointsNode,
   PackageSrcNode,
   PackageHashNode,
   getPackageJSON,
@@ -20,8 +19,10 @@ import { join } from "path";
 import { resolveNodePkg } from "../resolve";
 import { NodeFileSystemDriver } from "../node-filesystem-driver";
 import { ensureDirSync } from "fs-extra";
+import { EntrypointsNode } from "./entrypoints";
+import { log } from "../../../builder-worker/src/logger";
 
-export class NpmImportProjectsNode implements BuilderNode {
+export class NpmImportPackagesNode implements BuilderNode {
   // TODO the cache key for this should probably be some kind of lock file hash.
   // Until we do that, treating this as volatile...
   volatile = true;
@@ -42,7 +43,7 @@ export class NpmImportProjectsNode implements BuilderNode {
 
   async run(): Promise<NextNode<Package[]>> {
     let nodes = this.pkgs.map(
-      (p) => new NpmImportProjectNode(p, this.consumedFrom, this.workingDir)
+      (p) => new NpmImportPackageNode(p, this.consumedFrom, this.workingDir)
     );
     return {
       // TODO add another node to unpack the PackageInfo and turn into project input/output roots
@@ -51,7 +52,7 @@ export class NpmImportProjectsNode implements BuilderNode {
   }
 }
 
-class NpmImportProjectNode implements BuilderNode {
+class NpmImportPackageNode implements BuilderNode {
   cacheKey: string;
   private pkgPath: string;
   private pkgJSON: PackageJSON;
@@ -64,50 +65,47 @@ class NpmImportProjectNode implements BuilderNode {
     }
     this.pkgPath = pkgPath;
     this.pkgJSON = getPackageJSON(pkgPath);
-    this.cacheKey = `npm-import-project:${pkgPath}`;
+    this.cacheKey = `npm-import-pkg:${pkgPath}`;
   }
 
   deps() {
     return {
-      project: new MakeProjectNode(this.pkgPath, this.pkgJSON, this.workingDir),
+      package: new MakePackageNode(this.pkgPath, this.pkgJSON, this.workingDir),
     };
   }
 
   async run({
-    project: { pkgURL, pkgHash },
+    package: { url, hash },
   }: {
-    project: {
-      pkgURL: URL;
-      pkgHash: string;
-    };
+    package: Omit<Package, "dependencies">;
   }): Promise<NextNode<Package>> {
     let dependencies = Object.entries(this.pkgJSON.dependencies ?? {}).map(
-      ([name]) => new NpmImportProjectNode(name, this.pkgPath, this.workingDir)
+      ([name]) => new NpmImportPackageNode(name, this.pkgPath, this.workingDir)
     );
     return {
-      node: new FinishNpmImportNode(
+      node: new FinishNpmImportPackageNode(
         this.pkgJSON,
-        pkgURL,
-        pkgHash,
+        url,
+        hash,
         dependencies
       ),
     };
   }
 }
 
-class MakeProjectNode implements BuilderNode {
+class MakePackageNode implements BuilderNode {
   cacheKey: string;
   constructor(
     private pkgPath: string,
     private pkgJSON: PackageJSON,
     private workingDir: string
   ) {
-    this.cacheKey = `make-project:${pkgPath}`;
+    this.cacheKey = `make-pkg:${pkgPath}`;
   }
 
   deps() {
     return {
-      pkgURL: new PrepareProjectNode(
+      pkgURL: new PreparePackageNode(
         this.pkgPath,
         this.pkgJSON,
         this.workingDir
@@ -118,15 +116,13 @@ class MakeProjectNode implements BuilderNode {
 
   async run({
     pkgURL,
-    pkgHash: [, pkgHash],
+    pkgHash,
   }: {
     pkgURL: URL;
-    pkgHash: string[];
-  }): Promise<
-    NextNode<{ pkgURL: URL; pkgJSON: PackageJSON; pkgHash: string }>
-  > {
+    pkgHash: string;
+  }): Promise<NextNode<Omit<Package, "dependencies">>> {
     return {
-      node: new FinishProjectNode(
+      node: new FinishPackageNode(
         this.pkgPath,
         pkgURL,
         pkgHash,
@@ -137,7 +133,7 @@ class MakeProjectNode implements BuilderNode {
   }
 }
 
-class FinishProjectNode implements BuilderNode {
+class FinishPackageNode implements BuilderNode {
   cacheKey: string;
   constructor(
     private pkgPath: string,
@@ -146,71 +142,70 @@ class FinishProjectNode implements BuilderNode {
     private pkgJSON: PackageJSON,
     private workingDir: string
   ) {
-    this.cacheKey = `finish-project:${pkgPath}`;
+    this.cacheKey = `finish-pkg:${pkgPath}`;
   }
 
   deps() {
-    let pkgSourceNode = new PackageSrcNode(
-      this.pkgJSON,
-      this.pkgPath,
+    let esCompliantNode = new MakePkgESCompliantNode(
       this.pkgURL,
-      this.workingDir
+      new PackageSrcNode(
+        this.pkgJSON,
+        this.pkgPath,
+        this.pkgURL,
+        this.workingDir
+      )
     );
     return {
-      entrypoints: new PackageEntrypointsNode(
+      entrypoints: new EntrypointsNode(
         this.pkgJSON,
         this.pkgURL,
-        pkgSourceNode
+        esCompliantNode
       ),
-      esCompliant: new MakePkgESCompliantNode(this.pkgURL, pkgSourceNode),
+      esCompliant: esCompliantNode,
     };
   }
 
-  async run(): Promise<
-    Value<{ pkgURL: URL; pkgJSON: PackageJSON; pkgHash: string }>
-  > {
+  async run(): Promise<Value<Omit<Package, "dependencies">>> {
     return {
       value: {
-        pkgURL: this.pkgURL,
-        pkgJSON: this.pkgJSON,
-        pkgHash: this.pkgHash,
+        url: this.pkgURL,
+        packageJSON: this.pkgJSON,
+        hash: this.pkgHash,
       },
     };
   }
 }
 
-class PrepareProjectNode implements BuilderNode {
+class PreparePackageNode implements BuilderNode {
   cacheKey: string;
   constructor(
     private pkgPath: string,
     private pkgJSON: PackageJSON,
     private workingDir: string
   ) {
-    this.cacheKey = `prepare-project:${pkgPath}`;
+    this.cacheKey = `prepare-pkg:${pkgPath}`;
   }
 
   deps() {
     return {
-      pkgHash: new PackageHashNode(this.pkgPath, this.pkgJSON),
+      hash: new PackageHashNode(this.pkgPath, this.pkgJSON),
     };
   }
 
-  async run({
-    pkgHash: pkgHash,
-  }: {
-    pkgHash: [string, string];
-  }): Promise<NextNode<URL>> {
-    let [pkgName, hash] = pkgHash;
+  async run({ hash }: { hash: string }): Promise<NextNode<URL>> {
+    log(`processing package ${this.pkgJSON.name} ${this.pkgJSON.version}`);
     let underlyingPkgPath = join(
       this.workingDir,
-      "es-compat-pkgs",
-      pkgName,
+      "cdn",
+      this.pkgJSON.name,
       hash
     ); // this is just temp until we don't need to debug any longer..
     ensureDirSync(underlyingPkgPath);
     return {
       node: new MountNode(
-        new URL(`https://${pkgName}/${hash}/`),
+        new URL(
+          `https://catalogjs.com/pkgs/npm/${this.pkgJSON.name}/${this.pkgJSON.version}/${hash}/`
+        ),
         // TODO turn this into MemoryDriver after getting the node pre-build
         // wired into the core build, using node fs for now because it easy to
         // debug.
@@ -220,13 +215,13 @@ class PrepareProjectNode implements BuilderNode {
   }
 }
 
-class FinishNpmImportNode implements BuilderNode {
-  cacheKey: FinishNpmImportNode;
+class FinishNpmImportPackageNode implements BuilderNode {
+  cacheKey: FinishNpmImportPackageNode;
   constructor(
     private pkgJSON: PackageJSON,
     private pkgURL: URL,
     private pkgHash: string,
-    private dependencies: NpmImportProjectNode[]
+    private dependencies: NpmImportPackageNode[]
   ) {
     this.cacheKey = this;
   }
@@ -237,14 +232,12 @@ class FinishNpmImportNode implements BuilderNode {
     [index: number]: Package;
   }): Promise<NextNode<Package>> {
     return {
-      node: new PackageLockNode(
-        new Package(
-          this.pkgJSON,
-          this.pkgURL,
-          this.pkgHash,
-          this.dependencies.map((_, index) => dependencies[index])
-        )
-      ),
+      node: new PackageLockNode({
+        packageJSON: this.pkgJSON,
+        url: this.pkgURL,
+        hash: this.pkgHash,
+        dependencies: this.dependencies.map((_, index) => dependencies[index]),
+      }),
     };
   }
 }
@@ -252,7 +245,7 @@ class FinishNpmImportNode implements BuilderNode {
 class PackageLockNode implements BuilderNode {
   cacheKey: string;
   constructor(private pkg: Package) {
-    this.cacheKey = `pkg-lock:${pkg.packageURL.href}`;
+    this.cacheKey = `pkg-lock:${pkg.url.href}`;
   }
 
   deps() {

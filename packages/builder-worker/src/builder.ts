@@ -680,21 +680,22 @@ class InternalFileNode<Input> implements BuilderNode<string> {
 class InternalWriteFileNode implements BuilderNode<void> {
   private source: BuilderNode<string>;
   private url: URL;
-  private nonce: string;
   cacheKey: string;
   constructor(writeFileNode: WriteFileNode, private fs: FileSystem) {
     this.source = writeFileNode.deps().source;
     this.url = writeFileNode.url;
-    this.nonce = writeFileNode.nonce;
-    this.cacheKey = `write-file:${this.url.href}:${this.nonce}`;
+    this.cacheKey = `write-file:${this.url.href}`;
   }
   deps() {
     return { source: this.source };
   }
   async run({ source }: { source: string }): Promise<NodeOutput<void>> {
     let fd = await this.fs.openFile(this.url, true);
-    await fd.write(source);
-    await fd.close();
+    try {
+      await fd.write(source);
+    } finally {
+      await fd.close();
+    }
     return { value: undefined };
   }
 }
@@ -730,7 +731,7 @@ class InternalFileExistsNode implements BuilderNode<boolean> {
 
   async run(): Promise<NodeOutput<boolean>> {
     try {
-      await this.fs.open(this.url);
+      await (await this.fs.open(this.url)).close();
       return { value: true };
     } catch (e) {
       if (e.code === "NOT_FOUND") {
