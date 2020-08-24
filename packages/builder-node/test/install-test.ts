@@ -301,6 +301,11 @@ module("Install from npm", function () {
           module.exports.boom = function(file) {
             require(file);
           }`,
+        "e.js": `
+          const fs = require('fs');
+          module.exports.nope = function(filename) {
+            return fs.readFileSync(filename);
+          }`,
       });
 
       let pkgDep = pkg.addDependency("test-pkg-dep", "4.5.6");
@@ -336,7 +341,7 @@ module("Install from npm", function () {
       let [testPkg] = packages;
 
       let src = await (
-        await fs.openFile(new URL("src/index.cjs.js", testPkg.url))
+        await fs.openFile(new URL("build-src/index.cjs.js", testPkg.url))
       ).readText();
       assert.codeEqual(
         src,
@@ -380,7 +385,7 @@ module.exports = {
       );
 
       src = await (
-        await fs.openFile(new URL("src/a.cjs.js", testPkg.url))
+        await fs.openFile(new URL("build-src/a.cjs.js", testPkg.url))
       ).readText();
       assert.codeEqual(
         src,
@@ -405,7 +410,7 @@ module.exports = {
     test("it generates ES module shim for CJS files", async function (assert) {
       let [testPkg] = packages;
       let src = await (
-        await fs.openFile(new URL("src/index.js", testPkg.url))
+        await fs.openFile(new URL("build-src/index.js", testPkg.url))
       ).readText();
       assert.codeEqual(
         src,
@@ -415,7 +420,7 @@ module.exports = {
         `
       );
       src = await (
-        await fs.openFile(new URL("src/a.js", testPkg.url))
+        await fs.openFile(new URL("build-src/a.js", testPkg.url))
       ).readText();
       assert.codeEqual(
         src,
@@ -430,7 +435,7 @@ module.exports = {
       let [testPkg] = packages;
 
       let src = await (
-        await fs.openFile(new URL("src/b.cjs.js", testPkg.url))
+        await fs.openFile(new URL("build-src/b.cjs.js", testPkg.url))
       ).readText();
       assert.codeEqual(
         src,
@@ -471,7 +476,7 @@ module.exports = {
     test("it can wrap CJS that has module scoped binding named 'dependencies' (collision)", async function (assert) {
       let [testPkg] = packages;
       let src = await (
-        await fs.openFile(new URL("src/c.cjs.js", testPkg.url))
+        await fs.openFile(new URL("build-src/c.cjs.js", testPkg.url))
       ).readText();
       assert.codeEqual(
         src,
@@ -502,7 +507,7 @@ module.exports.default = dependencies;\`
     test("it includes a runtime 'error' loader for require() with non-string literal specifier", async function (assert) {
       let [testPkg] = packages;
       let src = await (
-        await fs.openFile(new URL("src/d.cjs.js", testPkg.url))
+        await fs.openFile(new URL("build-src/d.cjs.js", testPkg.url))
       ).readText();
       assert.codeEqual(
         src,
@@ -520,6 +525,35 @@ module.exports.default = dependencies;\`
   dependencies[0]();
 };\`,
             )(module, module.exports, [requireHasNonStringLiteralSpecifier("https://catalogjs.com/pkgs/npm/test-pkg/1.2.3/FIuxK7Xk60rE9Nd6D9-8snnkWSU=/src/d.js")]);
+          }
+          return module.exports;
+        }
+        export default implementation;`
+      );
+    });
+
+    test("it includes a special runtime loader for require() of node builtin module", async function (assert) {
+      let [testPkg] = packages;
+      let src = await (
+        await fs.openFile(new URL("build-src/e.cjs.js", testPkg.url))
+      ).readText();
+      assert.codeEqual(
+        src,
+        `
+        import { requireHasNonStringLiteralSpecifier } from "@catalogjs/loader";
+        let module;
+        function implementation() {
+          if (!module) {
+            module = { exports: {} };
+            Function(
+              "module",
+              "exports",
+              "dependencies",
+              \`const fs = dependencies[0]();
+module.exports.nope = function(filename) {
+  return fs.readFileSync(filename);
+}\`,
+            )(module, module.exports, [requireNodeBuiltIn("fs")]);
           }
           return module.exports;
         }

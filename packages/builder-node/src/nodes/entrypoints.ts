@@ -4,7 +4,7 @@ import {
   AllNode,
   NextNode,
 } from "../../../builder-worker/src/nodes/common";
-import { PackageJSON } from "./package";
+import { PackageJSON, buildSrcDir } from "./package";
 import { MakePkgESCompliantNode } from "./cjs-interop";
 import { getRecipe } from "../recipes";
 import {
@@ -41,7 +41,7 @@ export class EntrypointsNode implements BuilderNode {
       entrypoints: new ConstantNode(entrypoints),
       entrypointsExist: new AllNode(
         entrypoints.map(
-          (e) => new FileExistsNode(new URL(e, `${this.pkgURL}es/`))
+          (e) => new FileExistsNode(new URL(e, `${this.pkgURL}${buildSrcDir}`))
         )
       ),
     };

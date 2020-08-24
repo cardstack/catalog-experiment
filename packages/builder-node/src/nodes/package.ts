@@ -20,6 +20,7 @@ import { WriteFileNode } from "../../../builder-worker/src/nodes/file";
 import { SrcTransformNode } from "./src-transform";
 import { LockFile } from "../../../builder-worker/src/resolver";
 
+export const buildSrcDir = `build_src/`;
 const glob = promisify(_glob);
 const readFile = promisify(fs.readFile);
 const exec = promisify(childProcess.exec);
@@ -50,10 +51,10 @@ export function getPackageJSON(pkgPath: string): PackageJSON {
   return readJSONSync(join(pkgPath, "package.json")) as PackageJSON;
 }
 
-export class LockFileNode implements BuilderNode {
+export class CreateLockFileNode implements BuilderNode {
   cacheKey: string;
   constructor(private pkg: Package) {
-    this.cacheKey = `pkg-lock-file:${pkg.url.href}`;
+    this.cacheKey = `create-pkg-lock-file:${pkg.url.href}`;
   }
 
   deps() {}
@@ -61,6 +62,9 @@ export class LockFileNode implements BuilderNode {
   async run(): Promise<NodeOutput<void[]>> {
     let lockfile: LockFile = {
       [this.pkg.packageJSON.name]: this.pkg.url.href,
+      // All node builds automatically get this as a dependency
+      "@catalogjs/loader":
+        "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/",
     };
     for (let dep of this.pkg.dependencies) {
       lockfile[dep.packageJSON.name] = dep.url.href;
@@ -76,7 +80,7 @@ export class LockFileNode implements BuilderNode {
         ),
         new WriteFileNode(
           new ConstantNode(JSON.stringify(lockfile, null, 2)),
-          new URL("es/catalogjs.lock", this.pkg.url)
+          new URL(`${buildSrcDir}catalogjs.lock`, this.pkg.url)
         ),
       ]),
     };
@@ -194,7 +198,7 @@ export class PackageSrcPrepareNode implements BuilderNode {
     } else {
       srcPath = this.pkgPath;
     }
-    let { srcIncludeGlob, srcIgnoreGlob } = recipe ?? {};
+    let { srcIncludeGlob, srcIgnoreGlob, hoistSrc } = recipe ?? {};
     // TODO need to include .ts too...
     srcIncludeGlob = srcIncludeGlob ?? "**/*.{js,json}";
     srcIgnoreGlob = srcIgnoreGlob ?? "{node_modules,test}/**";
@@ -210,8 +214,17 @@ export class PackageSrcPrepareNode implements BuilderNode {
     return {
       node: new AllNode(
         files.map((file, index) => {
+          if (hoistSrc) {
+            file = file.replace(
+              join(srcPath, hoistSrc.replace(/\/$/, "")),
+              srcPath
+            );
+          }
           let url = file.endsWith(".json")
-            ? new URL(file.slice(srcPath.length + 1), `${this.pkgURL}es/`)
+            ? new URL(
+                file.slice(srcPath.length + 1),
+                `${this.pkgURL}${buildSrcDir}`
+              )
             : new URL(
                 file.slice(srcPath.length + 1),
                 `${this.pkgURL}__stage1/`

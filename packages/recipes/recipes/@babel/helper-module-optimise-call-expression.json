@@ -3,7 +3,11 @@
   "recipes": [
     {
       "semverRange": "*",
-      "srcRepo": true
+      "srcRepo": true,
+      "entrypoints": [
+        "./index.js"
+      ],
+      "hoistSrc": "src/"
     }
   ]
 }

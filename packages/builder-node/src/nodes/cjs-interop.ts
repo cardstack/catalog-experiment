@@ -21,7 +21,10 @@ import {
 import { JSParseNode } from "../../../builder-worker/src/nodes/js";
 import { File } from "@babel/types";
 import { RegionEditor } from "../../../builder-worker/src/code-region";
-import { PackageSrcNode } from "./package";
+import { pkgInfoFromSpecifier } from "../../../builder-worker/src/resolver";
+import { PackageSrcNode, buildSrcDir } from "./package";
+// @ts-ignore repl.builtinModules is a new API added in node 14.5.0, looks like TS lint has not caught up
+import { builtinModules } from "repl";
 
 export class MakePkgESCompliantNode implements BuilderNode {
   cacheKey: string;
@@ -96,7 +99,7 @@ class IntrospectSrcNode implements BuilderNode {
   }): Promise<NodeOutput<void | void[]>> {
     let url = new URL(
       this.url.href.slice(`${this.pkgURL.href}__stage2/`.length),
-      `${this.pkgURL}es/`
+      `${this.pkgURL}${buildSrcDir}`
     );
     if (isModuleDescription(desc)) {
       return { node: new WriteFileNode(new FileNode(this.url), url) };
@@ -164,17 +167,27 @@ class RewriteCJSNode implements BuilderNode {
 
   async run(): Promise<NodeOutput<void>> {
     let imports = new Set<string>(
-      this.desc.requires.map(({ specifier }) =>
-        specifier == null
-          ? `import { requireHasNonStringLiteralSpecifier } from "@catalogjs/loader";`
-          : `import ${depFactoryName(specifier)} from "${specifier}$cjs$";`
-      )
+      this.desc.requires.map(({ specifier }) => {
+        if (specifier == null) {
+          return `import { requireHasNonStringLiteralSpecifier } from "@catalogjs/loader";`;
+        }
+        let pkgInfo = pkgInfoFromSpecifier(specifier);
+        if (builtinModules.includes(pkgInfo?.pkgName)) {
+          return `import { requireNodeBuiltin } from "@catalogjs/loader";`;
+        }
+        return `import ${depFactoryName(specifier)} from "${specifier}$cjs$";`;
+      })
     );
-    let deps: string[] = this.desc.requires.map(({ specifier }) =>
-      specifier == null
-        ? `requireHasNonStringLiteralSpecifier("${this.outputURL.href}")`
-        : depFactoryName(specifier)
-    );
+    let deps: string[] = this.desc.requires.map(({ specifier }) => {
+      if (specifier == null) {
+        return `requireHasNonStringLiteralSpecifier("${this.outputURL.href}")`;
+      }
+      let pkgInfo = pkgInfoFromSpecifier(specifier);
+      if (builtinModules.includes(pkgInfo?.pkgName)) {
+        return `requireNodeBuiltin("${pkgInfo!.pkgName}")`;
+      }
+      return depFactoryName(specifier);
+    });
     let depBindingName = "dependencies";
     let count = 0;
     while (this.desc.names.has(depBindingName)) {

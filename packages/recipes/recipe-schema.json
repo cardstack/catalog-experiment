@@ -35,6 +35,9 @@
         },
         "skipDependencies": {
           "$ref": "#/definitions/skipDependencies"
+        },
+        "hoistSrc": {
+          "type": "string"
         }
       },
       "additionalProperties": false

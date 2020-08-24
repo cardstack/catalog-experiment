@@ -5,8 +5,9 @@
       "semverRange": "*",
       "srcRepo": true,
       "entrypoints": [
-        "./src/index.js"
-      ]
+        "./index.js"
+      ],
+      "hoistSrc": "src/"
     }
   ]
 }

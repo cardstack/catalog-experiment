@@ -5,8 +5,9 @@
       "semverRange": "*",
       "srcIgnoreGlob": "{node_modules,test,lib}/**",
       "entrypoints": [
-        "./src/index.js"
-      ]
+        "./index.js"
+      ],
+      "hoistSrc": "src/"
     }
   ]
 }

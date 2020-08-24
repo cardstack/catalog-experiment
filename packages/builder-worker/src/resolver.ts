@@ -7,6 +7,11 @@ export interface LockFile {
   [pkgName: string]: string;
 }
 
+interface PkgInfo {
+  pkgName: string;
+  modulePath: string | undefined;
+}
+
 function resolveFileExtension(url: URL, useCJSInterop: boolean): URL {
   let { href } = url;
   let basename = href.split("/").pop()!;
@@ -38,12 +43,20 @@ export class Resolver {
     if (useCJSInterop) {
       specifier = specifier.replace(/\$cjs\$$/, "");
     }
-    if (specifier.startsWith(".") || specifier.startsWith("./")) {
+    let pkgInfo = pkgInfoFromSpecifier(specifier);
+    let pkgImport = pkgInfo?.pkgName && !pkgInfo.modulePath;
+    useCJSInterop = useCJSInterop && !pkgImport;
+
+    if (!pkgInfo) {
       // resolution is local to the source
       url = new URL(specifier, source);
     } else {
       // resolution is in a different package from the source
-      url = await this.resolveFromLockfile(specifier, source);
+      url = await this.resolveFromLockfile(pkgInfo, source);
+    }
+
+    if (url.href.endsWith("/")) {
+      url = new URL("index.js", url);
     }
 
     return resolveFileExtension(url, useCJSInterop);
@@ -67,7 +80,7 @@ export class Resolver {
   }
 
   private async resolveFromLockfile(
-    specifier: string,
+    { pkgName, modulePath }: PkgInfo,
     source: URL
   ): Promise<URL> {
     let lockFileDescriptor: FileDescriptor;
@@ -78,19 +91,12 @@ export class Resolver {
     } finally {
       await lockFileDescriptor!.close();
     }
-    let specifierParts = specifier.split("/");
-    let pkgName = specifierParts.shift()!;
-    if (pkgName.startsWith("@") && specifierParts.length > 0) {
-      pkgName = `${pkgName}/${specifierParts.shift()}`;
-    }
     let pkgHref = lockfile[pkgName];
     if (!pkgHref) {
       throw new Error(
         `Could not find package name '${pkgName}' in lockfile ${lockFileDescriptor.url} when resolving ${source}`
       );
     }
-    let modulePath =
-      specifierParts.length > 0 ? specifierParts.join("/") : undefined;
     if (modulePath != null) {
       return new URL(modulePath, pkgHref);
     }
@@ -116,4 +122,22 @@ export class Resolver {
     }
     return new URL(entrypoint, pkgHref);
   }
+}
+
+export function pkgInfoFromSpecifier(specifier: string): PkgInfo | undefined {
+  if (specifier.startsWith("https://")) {
+    throw new Error(`not implemented`);
+  }
+  if (specifier.startsWith(".") || specifier.startsWith("./")) {
+    return undefined;
+  }
+
+  let specifierParts = specifier.split("/");
+  let pkgName = specifierParts.shift()!;
+  if (pkgName.startsWith("@") && specifierParts.length > 0) {
+    pkgName = `${pkgName}/${specifierParts.shift()}`;
+  }
+  let modulePath =
+    specifierParts.length > 0 ? specifierParts.join("/") : undefined;
+  return { pkgName, modulePath };
 }

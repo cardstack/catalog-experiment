@@ -3,6 +3,7 @@ import {
   NextNode,
   AllNode,
   Value,
+  NodeOutput,
 } from "../../../builder-worker/src/nodes/common";
 import {
   MountNode,
@@ -16,7 +17,8 @@ import {
   PackageSrcNode,
   PackageHashNode,
   getPackageJSON,
-  LockFileNode,
+  CreateLockFileNode,
+  buildSrcDir,
 } from "./package";
 import _glob from "glob";
 import { join } from "path";
@@ -48,7 +50,11 @@ export class NpmImportPackagesNode implements BuilderNode {
     }
   }
 
-  deps() {}
+  deps() {
+    return {
+      mountLoader: new MountLoaderNode(),
+    };
+  }
 
   async run(): Promise<NextNode<Package[]>> {
     let nodes = this.pkgs.map(
@@ -263,6 +269,24 @@ class PreparePackageNode implements BuilderNode {
   }
 }
 
+// All node builds automatically include the @catalogjs/loader, so we
+// mount the loader so the core build has access to it.
+class MountLoaderNode implements BuilderNode {
+  cacheKey = `mount-loader`;
+
+  deps() {}
+
+  async run(): Promise<NodeOutput<URL>> {
+    let underlyingPkgPath = resolveNodePkg("@catalogjs/loader");
+    return {
+      node: new MountNode(
+        new URL(`https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/`),
+        new NodeFileSystemDriver(underlyingPkgPath)
+      ),
+    };
+  }
+}
+
 class FinishNpmImportPackageNode implements BuilderNode {
   cacheKey: FinishNpmImportPackageNode;
   constructor(
@@ -306,10 +330,10 @@ class CoreBuildNode implements BuilderNode {
 
   deps() {
     return {
-      lock: new LockFileNode(this.pkg),
+      lock: new CreateLockFileNode(this.pkg),
       entrypoints: new WriteFileNode(
         new FileNode(new URL("entrypoints.json", this.pkg.url)),
-        new URL("es/entrypoints.json", this.pkg.url)
+        new URL(`${buildSrcDir}entrypoints.json`, this.pkg.url)
       ),
     };
   }
@@ -330,7 +354,7 @@ class FinishCoreBuildNode implements BuilderNode {
   deps() {
     return {
       build: new MakeProjectNode(
-        new URL("es/", this.pkg.url),
+        new URL(buildSrcDir, this.pkg.url),
         this.pkg.url,
         this.resolver
       ),
