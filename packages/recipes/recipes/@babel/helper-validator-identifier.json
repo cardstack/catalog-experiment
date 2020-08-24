@@ -6,6 +6,11 @@
       "srcRepo": true,
       "entrypoints": [
         "./src/index.js"
+      ],
+      "srcIgnoreGlob": "{node_modules,test,scripts}/**",
+      "installDevDependencies": true,
+      "skipDependencies": [
+        "unicode-13.0.0"
       ]
     }
   ]

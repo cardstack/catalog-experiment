@@ -29,6 +29,12 @@
         },
         "srcIgnoreGlob": {
           "type": "string"
+        },
+        "installDevDependencies": {
+          "type": "boolean"
+        },
+        "skipDependencies": {
+          "$ref": "#/definitions/skipDependencies"
         }
       },
       "additionalProperties": false
@@ -56,6 +62,14 @@
       "additionalProperties": false
     },
     "entrypoints": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      },
+      "additionalItems": false
+    },
+    "skipDependencies": {
       "type": "array",
       "minItems": 1,
       "items": {

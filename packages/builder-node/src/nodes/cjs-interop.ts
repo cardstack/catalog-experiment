@@ -47,7 +47,7 @@ export class MakePkgESCompliantNode implements BuilderNode {
     let files = listing
       .filter(
         // TODO need to include .ts too...
-        (entry) => entry.stat.type === "file" && entry.url.href.match(/\.js$/)
+        (entry) => entry.stat.type === "file" && entry.url.href.endsWith(".js")
       )
       .map((entry) => entry.url);
     return {
@@ -96,7 +96,7 @@ class IntrospectSrcNode implements BuilderNode {
   }): Promise<NodeOutput<void | void[]>> {
     let url = new URL(
       this.url.href.slice(`${this.pkgURL.href}__stage2/`.length),
-      `${this.pkgURL}src/`
+      `${this.pkgURL}es/`
     );
     if (isModuleDescription(desc)) {
       return { node: new WriteFileNode(new FileNode(this.url), url) };

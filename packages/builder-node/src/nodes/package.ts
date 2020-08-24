@@ -18,6 +18,7 @@ import { createHash } from "crypto";
 import _glob from "glob";
 import { WriteFileNode } from "../../../builder-worker/src/nodes/file";
 import { SrcTransformNode } from "./src-transform";
+import { LockFile } from "../../../builder-worker/src/resolver";
 
 const glob = promisify(_glob);
 const readFile = promisify(fs.readFile);
@@ -29,6 +30,7 @@ export interface Package {
   url: URL;
   hash: string;
   dependencies: Package[];
+  devDependencies: Package[];
 }
 
 export interface PackageJSON {
@@ -39,10 +41,9 @@ export interface PackageJSON {
   dependencies?: {
     [depName: string]: string;
   };
-}
-
-export interface LockFile {
-  [pkgName: string]: string;
+  devDependencies?: {
+    [depName: string]: string;
+  };
 }
 
 export function getPackageJSON(pkgPath: string): PackageJSON {
@@ -57,18 +58,27 @@ export class LockFileNode implements BuilderNode {
 
   deps() {}
 
-  async run(): Promise<NodeOutput<void>> {
+  async run(): Promise<NodeOutput<void[]>> {
     let lockfile: LockFile = {
       [this.pkg.packageJSON.name]: this.pkg.url.href,
     };
     for (let dep of this.pkg.dependencies) {
       lockfile[dep.packageJSON.name] = dep.url.href;
     }
+    for (let dep of this.pkg.devDependencies) {
+      lockfile[dep.packageJSON.name] = dep.url.href;
+    }
     return {
-      node: new WriteFileNode(
-        new ConstantNode(JSON.stringify(lockfile)),
-        new URL("catalogjs.lock", `${this.pkg.url}src/`)
-      ),
+      node: new AllNode([
+        new WriteFileNode(
+          new ConstantNode(JSON.stringify(lockfile, null, 2)),
+          new URL("catalogjs.lock", this.pkg.url)
+        ),
+        new WriteFileNode(
+          new ConstantNode(JSON.stringify(lockfile, null, 2)),
+          new URL("es/catalogjs.lock", this.pkg.url)
+        ),
+      ]),
     };
   }
 }
@@ -82,14 +92,28 @@ export class PackageHashNode implements BuilderNode {
   deps() {}
 
   async run(): Promise<NextNode<string>> {
-    let dependencies = Object.entries(this.pkgJSON.dependencies ?? {}).map(
-      ([name]) => {
-        let depPkgPath = resolveNodePkg(name, this.pkgPath);
-        return new PackageHashNode(depPkgPath, getPackageJSON(depPkgPath));
+    let {
+      name,
+      version,
+      dependencies = {},
+      devDependencies = {},
+    } = this.pkgJSON;
+    let { installDevDependencies, skipDependencies } =
+      getRecipe(name, version) ?? {};
+    let allDependencies = installDevDependencies
+      ? { ...dependencies, ...devDependencies }
+      : dependencies;
+    if (Array.isArray(skipDependencies)) {
+      for (let skip of skipDependencies) {
+        delete allDependencies[skip];
       }
-    );
+    }
+    let deps = Object.entries(allDependencies).map(([name]) => {
+      let depPkgPath = resolveNodePkg(name, this.pkgPath);
+      return new PackageHashNode(depPkgPath, getPackageJSON(depPkgPath));
+    });
     return {
-      node: new FinishPackageHashNode(this.pkgJSON, dependencies),
+      node: new FinishPackageHashNode(this.pkgJSON, deps),
     };
   }
 }
@@ -186,8 +210,8 @@ export class PackageSrcPrepareNode implements BuilderNode {
     return {
       node: new AllNode(
         files.map((file, index) => {
-          let url = file.match(/\.json$/)
-            ? new URL(file.slice(srcPath.length + 1), `${this.pkgURL}src/`)
+          let url = file.endsWith(".json")
+            ? new URL(file.slice(srcPath.length + 1), `${this.pkgURL}es/`)
             : new URL(
                 file.slice(srcPath.length + 1),
                 `${this.pkgURL}__stage1/`

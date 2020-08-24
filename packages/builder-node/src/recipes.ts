@@ -50,6 +50,18 @@ export interface Recipe {
   // build from the package. By default this is "{node_modules,test}/**", and can be
   // overridden using the "srcIgnoreGlob" property.
   srcIgnoreGlob?: string;
+
+  // By default only the package.json's "dependencies" will be installed when
+  // processing a package. In order to also install the "devDependencies" set
+  // the "installDevDependencies" property to true.
+  installDevDependencies?: true;
+
+  // In the scenario where a package has defined a dependency that it doesn't
+  // actually consume, it can be skipped by including it in the
+  // "skipDependencies" list. By default all the package.json "dependencies"
+  // will be processed (as well as "devDependencies" if that has been enabled
+  // for this package).
+  skipDependencies?: string[];
 }
 
 export function getRecipe(

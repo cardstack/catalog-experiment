@@ -19,11 +19,16 @@ import { EntrypointsJSONNode, Entrypoint, HTMLEntrypoint } from "./entrypoint";
 import { JSParseNode } from "./js";
 import { encodeModuleDescription } from "../description-encoder";
 import { makeURLEndInDir } from "../path";
+import { Resolver } from "../resolver";
 
 export class BundleAssignmentsNode implements BuilderNode {
   cacheKey: string;
 
-  constructor(private projectInput: URL, private projectOutput: URL) {
+  constructor(
+    private projectInput: URL,
+    private projectOutput: URL,
+    private resolver: Resolver
+  ) {
     this.cacheKey = `bundle-assignments:input=${projectInput.href},output=${projectOutput.href}`;
   }
 
@@ -35,7 +40,8 @@ export class BundleAssignmentsNode implements BuilderNode {
       ),
       resolutions: new ModuleResolutionsNode(
         this.projectInput,
-        this.projectOutput
+        this.projectOutput,
+        this.resolver
       ),
     };
   }
@@ -261,7 +267,8 @@ export class BundleNode implements BuilderNode {
   constructor(
     private bundle: URL,
     private inputRoot: URL,
-    private outputRoot: URL
+    private outputRoot: URL,
+    private resolver: Resolver
   ) {
     this.cacheKey = `bundle-node:url=${this.bundle.href},inputRoot=${this.inputRoot.href},outputRoot=${this.outputRoot.href}`;
   }
@@ -270,7 +277,8 @@ export class BundleNode implements BuilderNode {
     return {
       bundleAssignments: new BundleAssignmentsNode(
         this.inputRoot,
-        this.outputRoot
+        this.outputRoot,
+        this.resolver
       ),
     };
   }

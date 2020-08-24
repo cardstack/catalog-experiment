@@ -16,11 +16,16 @@ import {
 } from "../describe-file";
 import { File } from "@babel/types";
 import { decodeModuleDescription } from "../description-encoder";
+import { Resolver } from "../resolver";
 
 export class ModuleResolutionsNode implements BuilderNode {
   cacheKey: string;
 
-  constructor(private projectInput: URL, private projectOutput: URL) {
+  constructor(
+    private projectInput: URL,
+    private projectOutput: URL,
+    private resolver: Resolver
+  ) {
     this.cacheKey = `module-resolutions:input=${projectInput.href},output=${projectOutput.href}`;
   }
 
@@ -50,7 +55,7 @@ export class ModuleResolutionsNode implements BuilderNode {
     }
     let resolutions = [...jsEntrypoints].map(
       (jsEntrypoint) =>
-        new ModuleResolutionNode(new URL(jsEntrypoint), new Resolver())
+        new ModuleResolutionNode(new URL(jsEntrypoint), this.resolver)
     );
     return { node: new AllNode(resolutions) };
   }
@@ -61,12 +66,6 @@ export interface ModuleResolution {
   source: string;
   desc: ModuleDescription;
   resolvedImports: ModuleResolution[];
-}
-
-export class Resolver {
-  async resolve(specifier: string, source: URL): Promise<URL> {
-    return new URL(specifier, source);
-  }
 }
 
 export class ModuleAnnotationNode implements BuilderNode {

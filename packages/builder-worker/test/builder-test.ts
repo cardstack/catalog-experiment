@@ -336,6 +336,75 @@ QUnit.module("module builder", function (origHooks) {
         .matches(/export { getPuppies, getCats, getRats };/);
     });
 
+    test("bundle exports derive from entrypoint reexports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          export { getPuppies, getCats, getRats } from "./puppies.js";
+        `,
+        "puppies.js": `
+          export function getPuppies() { return ["Van Gogh", "Mango"]; }
+          export function getCats() { return ["jojo"]; }
+          export function getRats() { return ["pizza rat"]; }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").doesNotMatch(/import/);
+      await assert
+        .file("output/index.js")
+        .matches(/function getRats\(\) { return \["pizza rat"\]; }/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { getPuppies, getCats, getRats };/);
+    });
+
+    test("bundle exports derive from entrypoint renamed reexports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          export { getPuppies as puppies, getCats as cats, getRats as rats } from "./puppies.js";
+        `,
+        "puppies.js": `
+          export function getPuppies() { return ["Van Gogh", "Mango"]; }
+          export function getCats() { return ["jojo"]; }
+          export function getRats() { return ["pizza rat"]; }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").doesNotMatch(/import/);
+      await assert
+        .file("output/index.js")
+        .matches(/function getRats\(\) { return \["pizza rat"\]; }/);
+      await assert
+        .file("output/index.js")
+        .matches(
+          /export { getPuppies as puppies, getCats as cats, getRats as rats };/
+        );
+    });
+
+    test("bundle exports derive from entrypoint default reexports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          export { default } from "./puppies.js";
+        `,
+        "puppies.js": `
+          export default function getPuppies() { return ["Van Gogh", "Mango"]; }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").doesNotMatch(/import/);
+      await assert
+        .file("output/index.js")
+        .matches(/function getPuppies\(\) { return \["Van Gogh", "Mango"\]; }/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { getPuppies as default };/);
+    });
+
     test("adds serialized analysis to bundle", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["index.js"] }`,
@@ -746,6 +815,12 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file("output/dist/1.js").matches(/const b = 'b';/);
       await assert.file("output/dist/1.js").matches(/export { b };/);
     });
+
+    test("can resolve local modules that don't have a file extension", async function (assert) {});
+    test("can resolve entrypoint module from pkg in declared dependency", async function (assert) {});
+    test("can resolve default export from entrypoint module from pkg in declared dependency", async function (assert) {});
+    test("can resolve non-entrypoint module from pkg in declared dependency", async function (assert) {});
+    test("can resolve CJS wrapped module", async function (assert) {});
   });
 
   QUnit.module("rebuild", function () {

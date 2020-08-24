@@ -23,6 +23,7 @@ import { Deferred } from "./deferred";
 import { assertNever } from "@catalogjs/shared/util";
 import { error } from "./logger";
 import sortBy from "lodash/sortBy";
+import { Resolver } from "./resolver";
 
 type BoolForEach<T> = {
   [P in keyof T]: boolean;
@@ -376,7 +377,7 @@ export class Builder<Input> {
 
   // roots lists [inputRoot, outputRoot]
   static forProjects(fs: FileSystem, roots: [URL, URL][]) {
-    return new this(fs, projectsToNodes(roots));
+    return new this(fs, projectsToNodes(roots, fs));
   }
 
   async build(): ReturnType<BuildRunner<Input>["build"]> {
@@ -434,7 +435,7 @@ export class Rebuilder<Input> {
         );
       }
     }
-    return new this(fs, projectsToNodes(roots));
+    return new this(fs, projectsToNodes(roots, fs));
   }
 
   get status():
@@ -605,8 +606,10 @@ export function explainAsDot(explanation: Explanation): string {
   return output.join("\n");
 }
 
-function projectsToNodes(roots: [URL, URL][]) {
-  return roots.map(([input, output]) => new MakeProjectNode(input, output));
+function projectsToNodes(roots: [URL, URL][], fs: FileSystem) {
+  return roots.map(
+    ([input, output]) => new MakeProjectNode(input, output, new Resolver(fs))
+  );
 }
 
 class InternalFileNode<Input> implements BuilderNode<string> {

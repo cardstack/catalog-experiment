@@ -2,7 +2,8 @@ import { parseDOM } from "htmlparser2";
 import { installFileAssertions } from "./helpers/file-assertions";
 import "./helpers/code-equality-assertions";
 import { combineModules, ImportAssignments } from "../src/combine-modules";
-import { Resolver, ModuleResolution } from "../src/nodes/resolution";
+import { ModuleResolution } from "../src/nodes/resolution";
+import { Resolver } from "../src/resolver";
 import { HTMLEntrypoint } from "../src/nodes/entrypoint";
 import { BundleAssignment, Assigner } from "../src/nodes/bundle";
 import {
@@ -15,8 +16,6 @@ import { url } from "./helpers/file-assertions";
 import { FileSystem } from "../src/filesystem";
 import { parse } from "@babel/core";
 
-let resolver = new Resolver(); // TODO need to resolve modules without '.js' extension
-
 async function makeModuleResolutions(
   fs: FileSystem,
   moduleURL: URL,
@@ -26,6 +25,7 @@ async function makeModuleResolutions(
     importAssignments?: ImportAssignments;
   } = {}
 ): Promise<ModuleResolution> {
+  let resolver = new Resolver(fs);
   let source = await (await fs.openFile(moduleURL)).readText();
   let parsed = parse(source);
   if (parsed?.type !== "File") {

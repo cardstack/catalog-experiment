@@ -6,8 +6,8 @@ import { Builder } from "../../builder-worker/src/builder";
 import { NpmImportPackagesNode } from "./nodes/npm-import";
 import { ensureDirSync } from "fs-extra";
 import fetch from "node-fetch";
-import { Package } from "./nodes/package";
 import { closeAll } from "./node-filesystem-driver";
+import { Resolver } from "../../builder-worker/src/resolver";
 
 if (!globalThis.fetch) {
   (globalThis.fetch as any) = fetch;
@@ -40,13 +40,15 @@ let projectDir = resolve(join(process.cwd(), project));
   let workingDir = join(process.cwd(), "working");
   ensureDirSync(workingDir);
   let fs = new FileSystem();
-  let builderRoot = new NpmImportPackagesNode(pkgs, projectDir, workingDir);
-  let nodeBuilder = new Builder(fs, [builderRoot]);
-  let packages = (await nodeBuilder.build())[0];
-  debugger;
-  let projects = packagesToProjects(packages);
-  let coreBuilder = Builder.forProjects(fs, projects);
-  await coreBuilder.build();
+  let resolver = new Resolver(fs);
+  let builderRoot = new NpmImportPackagesNode(
+    pkgs,
+    projectDir,
+    workingDir,
+    resolver
+  );
+  let builder = new Builder(fs, [builderRoot]);
+  await builder.build();
 
   console.log("done");
   process.exit(0);
@@ -56,16 +58,3 @@ let projectDir = resolve(join(process.cwd(), project));
     process.exit(1);
   })
   .finally(() => closeAll());
-
-function packagesToProjects(packages: Package[]): [URL, URL][] {
-  let projects: [URL, URL][] = [];
-  for (let pkg of packages) {
-    if (pkg.dependencies.length > 0) {
-      projects = [...projects, ...packagesToProjects(pkg.dependencies)];
-    } else {
-      projects.push([new URL("src/", pkg.url), pkg.url]);
-    }
-  }
-
-  return projects;
-}

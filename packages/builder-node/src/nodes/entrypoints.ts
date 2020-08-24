@@ -41,7 +41,7 @@ export class EntrypointsNode implements BuilderNode {
       entrypoints: new ConstantNode(entrypoints),
       entrypointsExist: new AllNode(
         entrypoints.map(
-          (e) => new FileExistsNode(new URL(e, `${this.pkgURL}src/`))
+          (e) => new FileExistsNode(new URL(e, `${this.pkgURL}es/`))
         )
       ),
     };
@@ -80,7 +80,7 @@ export class EntrypointsNode implements BuilderNode {
     return {
       node: new WriteFileNode(
         new ConstantNode(JSON.stringify(entrypointsJSON, null, 2)),
-        new URL("entrypoints.json", `${this.pkgURL}src/`)
+        new URL("entrypoints.json", this.pkgURL)
       ),
     };
   }

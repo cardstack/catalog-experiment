@@ -363,7 +363,14 @@ class ModuleRewriter {
       this.editor.replace(importDesc.specifierRegion, bundleSpecifier);
     }
 
-    this.editor.removeImportsAndExports(assignedDefaultName);
+    // a reexport of a default export from teh entrypoint results in a binding
+    // that we have not encountered from teh consuming side, so providing an
+    // available default name to use in that scenario (as well as
+    // assignedDefaultName which will give us a nice name based on how the
+    // consumer named the default export).
+    this.editor.removeImportsAndExports(
+      assignedDefaultName ?? this.unusedNameLike("_default")
+    );
   }
 
   private maybeAssignImportName(
@@ -613,8 +620,15 @@ function assignedExports(assignments: BundleAssignment[], state: State) {
   let exports: Map<string, string> = new Map();
   for (let assignment of assignments) {
     for (let [original, exposed] of assignment.exposedNames) {
+      let { module } = assignment;
+      if (
+        typeof original === "string" &&
+        module.desc.exports.get(original)?.type === "reexport"
+      ) {
+        ({ name: original, module } = resolveReexport(original, module));
+      }
       let insideName = state.assignedImportedNames
-        .get(assignment.module.url.href)
+        .get(module.url.href)
         ?.get(original);
 
       // this is to address the situation where you have a module whose default

@@ -7,6 +7,7 @@ import { FileSystem } from "../../builder-worker/src/filesystem";
 import { closeAll } from "../src/node-filesystem-driver";
 import merge from "lodash/merge";
 import { Package } from "../src/nodes/package";
+import { Resolver } from "../../builder-worker/src/resolver";
 
 const { test, module } = QUnit;
 
@@ -16,8 +17,10 @@ module("Install from npm", function () {
     let fs: FileSystem;
     let packages: Package[];
 
-    hooks.beforeEach(async function () {
+    hooks.before(async function () {
       project = new Project("test-lib");
+      fs = new FileSystem();
+      let resolver = new Resolver(fs);
       let a = project.addDependency("a", "1.2.3");
       a.pkg = {
         name: "a",
@@ -56,12 +59,12 @@ module("Install from npm", function () {
       };
       d2.files["index.js"] = "console.log('d')";
       project.writeSync();
-      fs = new FileSystem();
       let workingDir = join(project.root, "working");
       let builderRoot = new NpmImportPackagesNode(
         ["a", "c"],
         join(project.root, "test-lib"),
-        workingDir
+        workingDir,
+        resolver
       );
       let builder = new Builder(fs, [builderRoot]);
       packages = (await builder.build())[0];
@@ -76,7 +79,7 @@ module("Install from npm", function () {
       let [pkgA, pkgC] = packages;
       let aEntrypoints = JSON.parse(
         await (
-          await fs.openFile(new URL("src/entrypoints.json", pkgA.url))
+          await fs.openFile(new URL("entrypoints.json", pkgA.url))
         ).readText()
       );
       assert.deepEqual(aEntrypoints.js, ["./index.js"]);
@@ -88,7 +91,7 @@ module("Install from npm", function () {
       let [pkgB1] = pkgA.dependencies;
       let b1Entrypoints = JSON.parse(
         await (
-          await fs.openFile(new URL("src/entrypoints.json", pkgB1.url))
+          await fs.openFile(new URL("entrypoints.json", pkgB1.url))
         ).readText()
       );
       assert.deepEqual(b1Entrypoints.js, ["./b.js"]);
@@ -99,7 +102,7 @@ module("Install from npm", function () {
 
       let cEntrypoints = JSON.parse(
         await (
-          await fs.openFile(new URL("src/entrypoints.json", pkgC.url))
+          await fs.openFile(new URL("entrypoints.json", pkgC.url))
         ).readText()
       );
       assert.deepEqual(cEntrypoints.js, ["./index.js"]);
@@ -111,7 +114,7 @@ module("Install from npm", function () {
       let [pkgB2] = pkgC.dependencies;
       let b2Entrypoints = JSON.parse(
         await (
-          await fs.openFile(new URL("src/entrypoints.json", pkgB2.url))
+          await fs.openFile(new URL("entrypoints.json", pkgB2.url))
         ).readText()
       );
       assert.deepEqual(b2Entrypoints.js, ["./index.js"]);
@@ -124,12 +127,12 @@ module("Install from npm", function () {
       let [pkgD2] = pkgB2.dependencies;
       let d1Entrypoints = JSON.parse(
         await (
-          await fs.openFile(new URL("src/entrypoints.json", pkgD1.url))
+          await fs.openFile(new URL("entrypoints.json", pkgD1.url))
         ).readText()
       );
       let d2Entrypoints = JSON.parse(
         await (
-          await fs.openFile(new URL("src/entrypoints.json", pkgD2.url))
+          await fs.openFile(new URL("entrypoints.json", pkgD2.url))
         ).readText()
       );
       assert.deepEqual(d1Entrypoints, d2Entrypoints);
@@ -210,7 +213,7 @@ module("Install from npm", function () {
 
       let lock = JSON.parse(
         await (
-          await fs.openFile(new URL("src/catalogjs.lock", pkgA.url))
+          await fs.openFile(new URL("catalogjs.lock", pkgA.url))
         ).readText()
       );
       assert.deepEqual(lock, {
@@ -220,7 +223,7 @@ module("Install from npm", function () {
 
       lock = JSON.parse(
         await (
-          await fs.openFile(new URL("src/catalogjs.lock", pkgB1.url))
+          await fs.openFile(new URL("catalogjs.lock", pkgB1.url))
         ).readText()
       );
       assert.deepEqual(lock, {
@@ -230,7 +233,7 @@ module("Install from npm", function () {
 
       lock = JSON.parse(
         await (
-          await fs.openFile(new URL("src/catalogjs.lock", pkgC.url))
+          await fs.openFile(new URL("catalogjs.lock", pkgC.url))
         ).readText()
       );
       assert.deepEqual(lock, {
@@ -240,7 +243,7 @@ module("Install from npm", function () {
 
       lock = JSON.parse(
         await (
-          await fs.openFile(new URL("src/catalogjs.lock", pkgB2.url))
+          await fs.openFile(new URL("catalogjs.lock", pkgB2.url))
         ).readText()
       );
       assert.deepEqual(lock, {
@@ -250,7 +253,7 @@ module("Install from npm", function () {
 
       lock = JSON.parse(
         await (
-          await fs.openFile(new URL("src/catalogjs.lock", pkgD.url))
+          await fs.openFile(new URL("catalogjs.lock", pkgD.url))
         ).readText()
       );
       assert.deepEqual(lock, {
@@ -263,9 +266,10 @@ module("Install from npm", function () {
     let project: Project;
     let fs: FileSystem;
     let packages: Package[];
-    hooks.beforeEach(async function () {
+    hooks.before(async function () {
       project = new Project("test-lib");
       fs = new FileSystem();
+      let resolver = new Resolver(fs);
       let pkg = project.addDependency("test-pkg", "1.2.3");
       pkg.pkg = {
         name: "test-pkg",
@@ -316,7 +320,8 @@ module("Install from npm", function () {
       let builderRoot = new NpmImportPackagesNode(
         ["test-pkg"],
         join(project.root, "test-lib"),
-        workingDir
+        workingDir,
+        resolver
       );
       let builder = new Builder(fs, [builderRoot]);
       packages = (await builder.build())[0];

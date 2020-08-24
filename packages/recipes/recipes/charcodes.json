@@ -1,0 +1,12 @@
+{
+  "$schema": "../recipe-schema.json",
+  "recipes": [
+    {
+      "semverRange": "*",
+      "srcIgnoreGlob": "{node_modules,test,lib}/**",
+      "entrypoints": [
+        "./src/index.js"
+      ]
+    }
+  ]
+}

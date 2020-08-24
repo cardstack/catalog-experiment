@@ -34,7 +34,7 @@ export class SrcTransformNode implements BuilderNode {
   }): Promise<NodeOutput<void[]>> {
     let urls = listingEntries
       .filter(
-        (entry) => entry.stat.type === "file" && entry.url.href.match(/\.js$/)
+        (entry) => entry.stat.type === "file" && entry.url.href.endsWith(".js")
       )
       .map((entry) => entry.url);
     return {
