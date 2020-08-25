@@ -384,6 +384,58 @@ QUnit.module("module builder", function (origHooks) {
         );
     });
 
+    test("bundle exports the entrypoint's default export", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import implementation from "./puppies.js";
+          export default implementation();
+        `,
+        "puppies.js": `
+          export default function() { return () => console.log("this is a puppy implementation"); }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").doesNotMatch(/import/);
+      await assert
+        .file("output/index.js")
+        .matches(
+          /const implementation = function\(\) { return \(\) => console.log\("this is a puppy implementation"\); }/
+        );
+      await assert
+        .file("output/index.js")
+        .matches(/export default implementation\(\);/);
+      await assert.file("output/index.js").doesNotMatch(/export { *};/);
+    });
+
+    test("bundle exports the entrypoint's default export and named exports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import implementation from "./puppies.js";
+          export default implementation();
+          export const a = "a";
+        `,
+        "puppies.js": `
+          export default function() { return () => console.log("this is a puppy implementation"); }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").doesNotMatch(/import/);
+      await assert
+        .file("output/index.js")
+        .matches(
+          /const implementation = function\(\) { return \(\) => console.log\("this is a puppy implementation"\); }/
+        );
+      await assert.file("output/index.js").matches(/const a = "a"/);
+      await assert.file("output/index.js").matches(/export { a };/);
+      await assert
+        .file("output/index.js")
+        .matches(/export default implementation\(\);/);
+    });
+
     test("bundle exports derive from entrypoint default reexports", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["index.js"] }`,
@@ -403,6 +455,27 @@ QUnit.module("module builder", function (origHooks) {
       await assert
         .file("output/index.js")
         .matches(/export { getPuppies as default };/);
+    });
+
+    test("bundle exports a reassigned reexported default export of the entrypoint", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          export { default as puppies } from "./puppies.js";
+        `,
+        "puppies.js": `
+          export default function getPuppies() { return ["Van Gogh", "Mango"]; }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").doesNotMatch(/import/);
+      await assert
+        .file("output/index.js")
+        .matches(/function getPuppies\(\) { return \["Van Gogh", "Mango"\]; }/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { getPuppies as puppies };/);
     });
 
     test("adds serialized analysis to bundle", async function (assert) {
@@ -530,7 +603,7 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file("output/driver.js").doesNotMatch(/getRats/);
     });
 
-    test("declared entrypoints.json dependency can trigger build of bundle for dependency", async function (assert) {
+    test("import of bundle from included project in build can trigger build of bundle for dependency", async function (assert) {
       const namesOutputURL = url("output/names");
       const petsOutputURL = url("output/pets");
 
@@ -545,10 +618,7 @@ QUnit.module("module builder", function (origHooks) {
 
         // pets bundle
         "pets/entrypoints.json": `{
-          "js": ["./index.js"],
-          "dependencies": {
-            "names": "${namesOutputURL.href}"
-          }
+          "js": ["./index.js"]
         }`,
         "pets/index.js": `
           import { puppies } from "./puppies.js";
@@ -562,13 +632,9 @@ QUnit.module("module builder", function (origHooks) {
           export const puppies = [cutie1, cutie2];
          `,
 
-        // TODO remove dependencies from the tests in entrypoint.json
         // driver bundle
         "driver/entrypoints.json": `{
-          "js": ["./index.js"],
-          "dependencies": {
-            "test-lib": "${petsOutputURL.href}"
-          }
+          "js": ["./index.js"]
         }`,
         "driver/index.js": `
           import { getPuppies } from "${petsOutputURL.href}/index.js";

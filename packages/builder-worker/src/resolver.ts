@@ -29,9 +29,14 @@ export class Resolver {
 
   async resolve(specifier: string, source: URL): Promise<URL> {
     if (specifier.startsWith("http://")) {
-      throw new Error(
-        `package specifier URL does not use SSL and is susceptible to man-in-the-middle-attacks: ${specifier} in module ${source}`
-      );
+      let url = new URL(specifier);
+      if (url.hostname === "localhost") {
+        return url;
+      } else {
+        throw new Error(
+          `package specifier URL does not use SSL and is susceptible to man-in-the-middle-attacks: ${specifier} in module ${source}`
+        );
+      }
     }
 
     if (specifier.startsWith("https://")) {

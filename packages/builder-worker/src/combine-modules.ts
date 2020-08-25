@@ -86,11 +86,14 @@ export function combineModules(
   // directly consume each other's renamed bindings. Here we re-add exports for
   // the things that are specifically configured to be exposed outside the
   // bundle.
-  if (exports.size > 0) {
+  let nonDefaultExports = [...exports].filter(
+    ([, insideName]) => insideName !== "default"
+  );
+  if (nonDefaultExports.length > 0) {
     let exportDeclaration: string[] = [];
     exportDeclaration.push("export {");
     exportDeclaration.push(
-      [...exports]
+      nonDefaultExports
         .map(([outsideName, insideName]) =>
           outsideName === insideName
             ? outsideName
@@ -363,8 +366,8 @@ class ModuleRewriter {
       this.editor.replace(importDesc.specifierRegion, bundleSpecifier);
     }
 
-    // a reexport of a default export from teh entrypoint results in a binding
-    // that we have not encountered from teh consuming side, so providing an
+    // a reexport of a default export from the entrypoint results in a binding
+    // that we have not encountered from the consuming side, so providing an
     // available default name to use in that scenario (as well as
     // assignedDefaultName which will give us a nice name based on how the
     // consumer named the default export).
@@ -631,11 +634,8 @@ function assignedExports(assignments: BundleAssignment[], state: State) {
         .get(module.url.href)
         ?.get(original);
 
-      // this is to address the situation where you have a module whose default
-      // export is consumed dynamically. This situation is pretty hands-off
-      // since dynamic imports are not statically analyzable.
       if (!insideName && exposed === "default") {
-        continue;
+        insideName = "default";
       } else if (!insideName) {
         throw new Error(`bug: no internal mapping for '${exposed}'`);
       }

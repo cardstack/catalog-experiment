@@ -161,6 +161,7 @@ export class Assigner {
           bundleURL: entrypoint.url,
           module,
           exposedNames: new Map(),
+          isPublicAPI: true,
         },
         enclosingBundles: new Set([entrypoint.url.href]),
       };
@@ -202,7 +203,7 @@ export class Assigner {
             bundleURL,
             module,
             exposedNames: new Map(),
-            wrapsCJS: false,
+            isPublicAPI: consumer.internalAssignment.assignment.isPublicAPI,
           },
           enclosingBundles: consumer.internalAssignment.enclosingBundles,
         };
@@ -243,6 +244,7 @@ export class Assigner {
         bundleURL,
         module,
         exposedNames: new Map(),
+        isPublicAPI: false,
       },
       enclosingBundles,
     };
@@ -332,6 +334,11 @@ export interface BundleAssignment {
   // from name-as-originally exported to name-as-exposed-in-this-bundle, if any.
   // Not every export from every module will be publicly exposed by a bundle.
   exposedNames: Map<string | NamespaceMarker, string>;
+
+  // this is set to "true" when the assignment for this bundle is rooted at a js
+  // entrypoint module (as opposed to a bundle created because of a dynamic
+  // import)
+  isPublicAPI: boolean;
 }
 
 function ensureExposed(
