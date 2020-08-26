@@ -573,9 +573,14 @@ function setBindingDependencies(
         continue;
       }
       if (desc.type === "import" && typeof desc.name === "string") {
+        let depModule = currentModule.resolvedImports[desc.importIndex];
+        let { name: remoteName, module: remoteModule } = resolveReexport(
+          desc.name,
+          depModule
+        );
         depName = state.assignedImportedNames
-          .get(currentModule.resolvedImports[desc.importIndex].url.href)!
-          .get(desc.name)!;
+          .get(remoteModule.url.href)!
+          .get(remoteName)!;
       } else {
         depName = state.assignedLocalNames
           .get(currentModule.url.href)!
@@ -695,8 +700,8 @@ function resolveReexport(
   if (isNamespaceMarker(name)) {
     return { name, module };
   }
-  let remoteDesc = module.desc.exports.get(name)!;
-  if (remoteDesc.type === "reexport") {
+  let remoteDesc = module.desc.exports.get(name);
+  if (remoteDesc?.type === "reexport") {
     return resolveReexport(
       remoteDesc.name,
       module.resolvedImports[remoteDesc.importIndex]
