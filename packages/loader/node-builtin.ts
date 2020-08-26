@@ -1,3 +1,3 @@
-export function requireNodeBuiltIn(_module: string) {
+export function requireNodeBuiltin(_module: string) {
   throw new Error("unimplemented");
 }
