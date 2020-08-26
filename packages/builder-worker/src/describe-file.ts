@@ -17,6 +17,9 @@ import {
   isVariableDeclarator,
   isIdentifier,
   isStringLiteral,
+  isMemberExpression,
+  isObjectExpression,
+  isObjectProperty,
   isLVal,
 } from "@babel/types";
 import { assertNever } from "@catalogjs/shared/util";
@@ -59,6 +62,10 @@ export interface ModuleDescription extends Description {
 export interface CJSDescription extends Description {
   requires: RequireDescription[];
   names: Map<string, LocalNameDescription | RequiredNameDescription>;
+  // when the module includes: Object.defineProperty(exports, "__esModule", {
+  // value: true }) we'll keep track of all the named exports so that we can
+  // have a higher fidelity ES shim for this module
+  esTranspiledExports: string[] | undefined;
 }
 
 export interface RequireDescription {
@@ -158,6 +165,8 @@ export function describeFile(
   let builder: RegionBuilder;
   let desc: ModuleDescription & CJSDescription;
   let consumedByModule: Set<string> = new Set();
+  let cjsExportNames: string[] = [];
+  let isTranspiledFromES = false;
   let currentModuleScopedDeclaration:
     | {
         path: DuckPath;
@@ -330,6 +339,7 @@ export function describeFile(
           exportRegions: [],
           names: new Map(),
           regions: builder.regions,
+          esTranspiledExports: undefined,
         };
       },
       exit() {
@@ -391,17 +401,32 @@ export function describeFile(
         }
       }
     },
+    MemberExpression(path) {
+      // discover all the named exports from ES transpiled code
+      let { node } = path;
+      if (
+        isIdentifier(node.object) &&
+        node.object.name === "exports" &&
+        isIdentifier(node.property) &&
+        !path.scope.getBinding("exports")
+      ) {
+        cjsExportNames.push(node.property.name);
+      }
+    },
     CallExpression(path) {
       let callee = path.get("callee");
+      let calleeNode = callee.node;
+      let argumentsPaths = path.get("arguments");
+      let argumentsNodes = argumentsPaths.map((a) => a.node);
       if (
-        isIdentifier(callee.node) &&
-        callee.node.name === "require" &&
+        isIdentifier(calleeNode) &&
+        calleeNode.name === "require" &&
         !path.scope.getBinding("require")
       ) {
-        let [specifierPath] = path.get("arguments");
+        let [specifierNode] = argumentsNodes;
         let specifier: string | undefined;
-        if (isStringLiteral(specifierPath.node)) {
-          specifier = specifierPath.node.value;
+        if (isStringLiteral(specifierNode)) {
+          specifier = specifierNode.value;
         } else {
           warn(
             `encountered a require() whose specifier is not a string literal${
@@ -412,9 +437,27 @@ export function describeFile(
         desc.requires.push({
           specifier,
           requireRegion: builder.createCodeRegion(path as NodePath),
-          specifierRegion: builder.createCodeRegion(specifierPath as NodePath),
+          specifierRegion: builder.createCodeRegion(
+            argumentsPaths[0] as NodePath
+          ),
           definitelyRuns: path.scope.block.type === "Program",
         });
+      } else {
+        // looking for: Object.defineProperty(exports, "__esModule", { value: true });
+        isTranspiledFromES =
+          isMemberExpression(calleeNode) &&
+          isIdentifier(calleeNode.object) &&
+          calleeNode.object.name === "Object" &&
+          calleeNode.property.name === "defineProperty" &&
+          argumentsNodes.length === 3 &&
+          isIdentifier(argumentsNodes[0]) &&
+          argumentsNodes[0].name === "exports" &&
+          isStringLiteral(argumentsNodes[1]) &&
+          argumentsNodes[1].value === "__esModule" &&
+          isObjectExpression(argumentsNodes[2]) &&
+          isObjectProperty(argumentsNodes[2].properties[0]) &&
+          isIdentifier(argumentsNodes[2].properties[0].key) &&
+          argumentsNodes[2].properties[0].key.name === "value"; // this seems close enough....
       }
     },
     ImportDeclaration(path) {
@@ -643,7 +686,8 @@ export function describeFile(
   let { names, regions } = desc!;
   if (!isES6Module) {
     let { requires } = desc!;
-    return { names, regions, requires };
+    let esTranspiledExports = isTranspiledFromES ? cjsExportNames : undefined;
+    return { names, regions, requires, esTranspiledExports };
   } else {
     let { imports, exports, exportRegions } = desc!;
     return { names, regions, imports, exports, exportRegions };

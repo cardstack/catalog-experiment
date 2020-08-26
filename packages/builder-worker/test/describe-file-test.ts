@@ -114,6 +114,29 @@ QUnit.module("describe-file", function (hooks) {
     }
   });
 
+  test("includes named exports for CJS that was transpiled from ES", function (assert) {
+    let { desc } = describeCJSFile(`
+    Object.defineProperty(exports, "__esModule", {
+      value: true
+    });
+    exports.default = function() {
+      console.log("I'm the default export");
+    }
+    exports.foo = function() {
+      console.log("I'm the foo export");
+    }
+    `);
+    assert.deepEqual(desc.esTranspiledExports, ["default", "foo"]);
+
+    ({ desc } = describeCJSFile(`
+    module.exports.foo = function doThings() {
+      const foo = require('./bar');
+      foo();
+    }
+    `));
+    assert.deepEqual(desc.esTranspiledExports, undefined);
+  });
+
   skip("CJS require() name description can refer to required binding when there is straightforward declaration", function (assert) {
     let { desc } = describeCJSFile(`
     const bleep = require('./bloop');

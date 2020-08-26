@@ -129,7 +129,7 @@ class ESInteropNode implements BuilderNode {
     return {
       node: new AllNode([
         new RewriteCJSNode(this.outputURL, this.desc, src),
-        new ESModuleShimNode(this.outputURL),
+        new ESModuleShimNode(this.outputURL, this.desc),
       ]),
     };
   }
@@ -203,6 +203,7 @@ function implementation() {
       "exports",
       "${depBindingName}",
       \`${remapRequires(this.src, this.desc, depBindingName)
+        .replace(/\\/g, "\\\\")
         .replace(/`/g, "\\`")
         .replace(/\$/g, "\\$")}\`
     )(module, module.exports, [${deps.join(", ")}]);
@@ -221,7 +222,7 @@ export default implementation;`;
 
 class ESModuleShimNode implements BuilderNode {
   cacheKey: string;
-  constructor(private outputURL: URL) {
+  constructor(private outputURL: URL, private desc: CJSDescription) {
     this.cacheKey = `es-shim:${outputURL.href}`;
   }
 
@@ -229,8 +230,27 @@ class ESModuleShimNode implements BuilderNode {
 
   async run(): Promise<NodeOutput<void>> {
     let basename = this.outputURL.pathname.split("/").pop();
-    let src = `import implementation from "./${basename}$cjs$";
+    let src: string;
+    if (Array.isArray(this.desc.esTranspiledExports)) {
+      let exports: string[] = [];
+      let nonDefaultExports = this.desc.esTranspiledExports.filter(
+        (e) => e !== "default"
+      );
+      if (nonDefaultExports.length > 0) {
+        exports.push(
+          `const { ${nonDefaultExports.join(", ")} } = implementation();`
+        );
+        exports.push(`export { ${nonDefaultExports.join(", ")} };`);
+      }
+      if (this.desc.esTranspiledExports.includes("default")) {
+        exports.push(`export default implementation().default;`);
+      }
+      src = `import implementation from "./${basename}$cjs$";
+${exports.join("\n")}`;
+    } else {
+      src = `import implementation from "./${basename}$cjs$";
 export default implementation();`;
+    }
     return {
       node: new WriteFileNode(new ConstantNode(src), this.outputURL),
     };
