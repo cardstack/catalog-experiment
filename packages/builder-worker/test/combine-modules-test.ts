@@ -62,7 +62,6 @@ async function makeBundleAssignments(
       module: string;
       assignedToBundle: string;
       nameMapping: { [orig: string]: string };
-      isPublicAPI: boolean;
     }[];
   }
 ): Promise<BundleAssignment[]> {
@@ -121,7 +120,6 @@ async function makeBundleAssignments(
         bundleURL: url(assignment.assignedToBundle),
         module: await makeModuleResolutions(fs, fileURL),
         exposedNames: new Map(Object.entries(assignment.nameMapping)),
-        isPublicAPI: assignment.isPublicAPI,
       };
       let index = assignments.findIndex(
         (a) => a.module.url.href === fileURL.href
@@ -1050,7 +1048,6 @@ QUnit.module("combine modules", function (origHooks) {
           nameMapping: {
             a: "lib_a",
           },
-          isPublicAPI: true,
         },
       ],
     });
@@ -1083,7 +1080,6 @@ QUnit.module("combine modules", function (origHooks) {
           module: "a.js",
           assignedToBundle: "dist/2.js",
           nameMapping: {},
-          isPublicAPI: true,
         },
       ],
     });
@@ -1121,7 +1117,6 @@ QUnit.module("combine modules", function (origHooks) {
           module: "a.js",
           assignedToBundle: "dist/2.js",
           nameMapping: { a: "a" },
-          isPublicAPI: true,
         },
       ],
     });
@@ -1160,7 +1155,6 @@ QUnit.module("combine modules", function (origHooks) {
           module: "a.js",
           assignedToBundle: "dist/2.js",
           nameMapping: { a: "a" },
-          isPublicAPI: true,
         },
       ],
     });
@@ -1361,7 +1355,6 @@ QUnit.module("combine modules", function (origHooks) {
           nameMapping: {
             a: "lib_a",
           },
-          isPublicAPI: true,
         },
       ],
     });
@@ -1624,7 +1617,6 @@ QUnit.module("combine modules", function (origHooks) {
           importAssignments: importAssignmentsA,
         }),
         exposedNames: new Map(),
-        isPublicAPI: true,
       },
       {
         bundleURL: combinedBundleURL,
@@ -1632,7 +1624,6 @@ QUnit.module("combine modules", function (origHooks) {
           importAssignments: importAssignmentsB,
         }),
         exposedNames: new Map(),
-        isPublicAPI: true,
       },
     ];
     let combined = combineModules(combinedBundleURL, combinedAssignments);
