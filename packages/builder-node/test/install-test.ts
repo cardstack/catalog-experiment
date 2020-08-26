@@ -6,7 +6,7 @@ import { Builder } from "../../builder-worker/src/builder";
 import { FileSystem } from "../../builder-worker/src/filesystem";
 import { closeAll } from "../src/node-filesystem-driver";
 import merge from "lodash/merge";
-import { Package } from "../src/nodes/package";
+import { Package, buildSrcDir } from "../src/nodes/package";
 import { Resolver } from "../../builder-worker/src/resolver";
 
 const { test, module } = QUnit;
@@ -219,6 +219,8 @@ module("Install from npm", function () {
       assert.deepEqual(lock, {
         a: `https://catalogjs.com/pkgs/npm/a/1.2.3/${pkgA.hash}/`,
         b: `https://catalogjs.com/pkgs/npm/b/4.5.6/${pkgB1.hash}/`,
+        "@catalogjs/loader":
+          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/",
       });
 
       lock = JSON.parse(
@@ -229,6 +231,8 @@ module("Install from npm", function () {
       assert.deepEqual(lock, {
         b: `https://catalogjs.com/pkgs/npm/b/4.5.6/${pkgB1.hash}/`,
         d: `https://catalogjs.com/pkgs/npm/d/10.11.12/${pkgD.hash}/`,
+        "@catalogjs/loader":
+          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/",
       });
 
       lock = JSON.parse(
@@ -239,6 +243,8 @@ module("Install from npm", function () {
       assert.deepEqual(lock, {
         c: `https://catalogjs.com/pkgs/npm/c/1.2.3/${pkgC.hash}/`,
         b: `https://catalogjs.com/pkgs/npm/b/7.8.9/${pkgB2.hash}/`,
+        "@catalogjs/loader":
+          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/",
       });
 
       lock = JSON.parse(
@@ -249,6 +255,8 @@ module("Install from npm", function () {
       assert.deepEqual(lock, {
         b: `https://catalogjs.com/pkgs/npm/b/7.8.9/${pkgB2.hash}/`,
         d: `https://catalogjs.com/pkgs/npm/d/10.11.12/${pkgD.hash}/`,
+        "@catalogjs/loader":
+          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/",
       });
 
       lock = JSON.parse(
@@ -258,6 +266,8 @@ module("Install from npm", function () {
       );
       assert.deepEqual(lock, {
         d: `https://catalogjs.com/pkgs/npm/d/10.11.12/${pkgD.hash}/`,
+        "@catalogjs/loader":
+          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/",
       });
     });
   });
@@ -279,9 +289,8 @@ module("Install from npm", function () {
         "index.js": `
           const { a } = require('./a');
           const { dep } = require('test-pkg-dep');
-          const { b } = require('test-pkg-dep/b');
           function doSomething() {
-            console.log(\`\${a}\${b}\${dep}\`);
+            console.log(\`\${a}\${dep}\`);
           }
           module.exports = { doSomething };`,
         "a.js": `module.exports.a = 'a';`,
@@ -318,7 +327,6 @@ module("Install from npm", function () {
           module.exports.dep = 'dep';
           module.exports.dep2 = 'dep2';
         `,
-        "b.js": `module.exports.b = 'b';`,
       });
       project.writeSync();
       let workingDir = join(project.root, "working");
@@ -341,7 +349,7 @@ module("Install from npm", function () {
       let [testPkg] = packages;
 
       let src = await (
-        await fs.openFile(new URL("build-src/index.cjs.js", testPkg.url))
+        await fs.openFile(new URL(`${buildSrcDir}index.cjs.js`, testPkg.url))
       ).readText();
       assert.codeEqual(
         src,
@@ -349,7 +357,6 @@ module("Install from npm", function () {
         `
         import aFactory from "./a$cjs$";
         import test_pkg_depFactory from "test-pkg-dep$cjs$";
-        import test_pkg_dep_bFactory from "test-pkg-dep/b$cjs$";
         let module;
         function implementation() {
           if (!module) {
@@ -366,18 +373,14 @@ const {
   dep
 } = dependencies[1]();
 
-const {
-  b
-} = dependencies[2]();
-
 function doSomething() {
-  console.log(\\\`\\\${a}\\\${b}\\\${dep}\\\`);
+  console.log(\\\`\\\${a}\\\${dep}\\\`);
 }
 
 module.exports = {
   doSomething
 };\`
-            )(module, module.exports, [aFactory, test_pkg_depFactory, test_pkg_dep_bFactory]);
+            )(module, module.exports, [aFactory, test_pkg_depFactory]);
           }
           return module.exports;
         }
@@ -385,7 +388,7 @@ module.exports = {
       );
 
       src = await (
-        await fs.openFile(new URL("build-src/a.cjs.js", testPkg.url))
+        await fs.openFile(new URL(`${buildSrcDir}a.cjs.js`, testPkg.url))
       ).readText();
       assert.codeEqual(
         src,
@@ -410,7 +413,7 @@ module.exports = {
     test("it generates ES module shim for CJS files", async function (assert) {
       let [testPkg] = packages;
       let src = await (
-        await fs.openFile(new URL("build-src/index.js", testPkg.url))
+        await fs.openFile(new URL(`${buildSrcDir}index.js`, testPkg.url))
       ).readText();
       assert.codeEqual(
         src,
@@ -420,7 +423,7 @@ module.exports = {
         `
       );
       src = await (
-        await fs.openFile(new URL("build-src/a.js", testPkg.url))
+        await fs.openFile(new URL(`${buildSrcDir}a.js`, testPkg.url))
       ).readText();
       assert.codeEqual(
         src,
@@ -435,7 +438,7 @@ module.exports = {
       let [testPkg] = packages;
 
       let src = await (
-        await fs.openFile(new URL("build-src/b.cjs.js", testPkg.url))
+        await fs.openFile(new URL(`${buildSrcDir}b.cjs.js`, testPkg.url))
       ).readText();
       assert.codeEqual(
         src,
@@ -476,7 +479,7 @@ module.exports = {
     test("it can wrap CJS that has module scoped binding named 'dependencies' (collision)", async function (assert) {
       let [testPkg] = packages;
       let src = await (
-        await fs.openFile(new URL("build-src/c.cjs.js", testPkg.url))
+        await fs.openFile(new URL(`${buildSrcDir}c.cjs.js`, testPkg.url))
       ).readText();
       assert.codeEqual(
         src,
@@ -507,7 +510,7 @@ module.exports.default = dependencies;\`
     test("it includes a runtime 'error' loader for require() with non-string literal specifier", async function (assert) {
       let [testPkg] = packages;
       let src = await (
-        await fs.openFile(new URL("build-src/d.cjs.js", testPkg.url))
+        await fs.openFile(new URL(`${buildSrcDir}d.cjs.js`, testPkg.url))
       ).readText();
       assert.codeEqual(
         src,
@@ -524,7 +527,7 @@ module.exports.default = dependencies;\`
               \`module.exports.boom = function (file) {
   dependencies[0]();
 };\`,
-            )(module, module.exports, [requireHasNonStringLiteralSpecifier("https://catalogjs.com/pkgs/npm/test-pkg/1.2.3/FIuxK7Xk60rE9Nd6D9-8snnkWSU=/src/d.js")]);
+            )(module, module.exports, [requireHasNonStringLiteralSpecifier("https://catalogjs.com/pkgs/npm/test-pkg/1.2.3/FIuxK7Xk60rE9Nd6D9-8snnkWSU=/build_src/d.js")]);
           }
           return module.exports;
         }
@@ -535,12 +538,12 @@ module.exports.default = dependencies;\`
     test("it includes a special runtime loader for require() of node builtin module", async function (assert) {
       let [testPkg] = packages;
       let src = await (
-        await fs.openFile(new URL("build-src/e.cjs.js", testPkg.url))
+        await fs.openFile(new URL(`${buildSrcDir}e.cjs.js`, testPkg.url))
       ).readText();
       assert.codeEqual(
         src,
         `
-        import { requireHasNonStringLiteralSpecifier } from "@catalogjs/loader";
+        import { requireNodeBuiltin } from "@catalogjs/loader";
         let module;
         function implementation() {
           if (!module) {
@@ -550,10 +553,11 @@ module.exports.default = dependencies;\`
               "exports",
               "dependencies",
               \`const fs = dependencies[0]();
-module.exports.nope = function(filename) {
+
+module.exports.nope = function (filename) {
   return fs.readFileSync(filename);
-}\`,
-            )(module, module.exports, [requireNodeBuiltIn("fs")]);
+};\`
+            )(module, module.exports, [requireNodeBuiltin("fs")]);
           }
           return module.exports;
         }
