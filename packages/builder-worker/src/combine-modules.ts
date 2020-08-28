@@ -63,7 +63,8 @@ export function combineModules(
             retainedBinding,
             bindingName,
             state.bindingDependsOn,
-            consumptionCache
+            consumptionCache,
+            bundle
           )
       )
     ) {
@@ -501,7 +502,12 @@ function setBindingDependencies(
   for (let [originalName, desc] of module.desc.names) {
     let currentModule = module;
     let name: string | undefined;
-    let { dependsOn: originalDependsOn } = desc;
+    // dependsOn includes *all* bindings, including those below module scope. We
+    // really only care about the consumption of the module scoped bindings, so
+    // we're ignoring bindings that we don't have descriptions for.
+    let originalDependsOn = [...desc.dependsOn].filter(
+      (d) => module.desc.names.has(d) && d !== originalName
+    );
 
     if (desc.type === "local" && !desc.original) {
       name = state.assignedLocalNames
@@ -545,7 +551,9 @@ function setBindingDependencies(
         name = state.assignedLocalNames
           .get(currentModule.url.href)
           ?.get(localName);
-        originalDependsOn = currentModule.desc.names.get(localName)!.dependsOn;
+        originalDependsOn = [
+          ...currentModule.desc.names.get(localName)!.dependsOn,
+        ].filter((d) => currentModule.desc.names.has(d) && d !== localName);
       } else {
         // the binding we are dealing with originates from another bundle.
         // terminate the search for this binding in the currentModule and use
@@ -610,7 +618,9 @@ function isConsumedBy(
   consumingBinding: string,
   consumedBinding: string,
   bindingDependencies: State["bindingDependsOn"],
-  cache: Map<string, Map<string, boolean>>
+  cache: Map<string, Map<string, boolean>>,
+  bundle: URL,
+  visitedConsumers: string[] = []
 ): boolean {
   if (!cache.has(consumingBinding)) {
     cache.set(consumingBinding, new Map());
@@ -620,6 +630,14 @@ function isConsumedBy(
     return consumesCache.get(consumingBinding)!;
   }
 
+  if (visitedConsumers.includes(consumingBinding)) {
+    throw new Error(
+      `detected cycle in binding dependency graph when building bundle ${
+        bundle.href
+      }: ${visitedConsumers.join(" -> ")} -> ${consumingBinding}`
+    );
+  }
+  visitedConsumers = [...visitedConsumers, consumingBinding];
   let deps = bindingDependencies.get(consumingBinding);
   if (!deps) {
     return false;
@@ -629,7 +647,14 @@ function isConsumedBy(
   }
 
   let result = [...deps].some((dep) =>
-    isConsumedBy(dep, consumedBinding, bindingDependencies, cache)
+    isConsumedBy(
+      dep,
+      consumedBinding,
+      bindingDependencies,
+      cache,
+      bundle,
+      visitedConsumers
+    )
   );
   consumesCache?.set(consumedBinding, result);
   return result;
