@@ -62,6 +62,7 @@ const nameDescLegend = [
   "importIndex", // number
   "requireIndex", // number
   "name", // string | { n: true }
+  "bindingsConsumedByDeclarationSideEffects", // string[]
 ];
 
 interface Pojo {
@@ -185,7 +186,10 @@ export function decodeModuleDescription(encoded: string): ModuleDescription {
               {
                 type: { local: "l", import: "i" },
               },
-              { dependsOn: "Set" },
+              {
+                dependsOn: "Set",
+                bindingsConsumedByDeclarationSideEffects: "Set",
+              },
               {
                 original: {
                   legend: ["moduleHref", "exportedName"],

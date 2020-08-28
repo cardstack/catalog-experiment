@@ -25,6 +25,7 @@ export function combineModules(
     consumedBundles: new Set(),
     bindingDependsOn: new Map(),
     bundleDependsOn: new Set(),
+    sideEffectsDependOn: new Set(),
     seenModules: new Set(),
   };
   let ownAssignments = assignments.filter(
@@ -42,26 +43,24 @@ export function combineModules(
   //     dependency graph
   //   - binding is not consumed directly by the bundle's own module scope or
   //     part of a consumed binding's dependency graph
+  //   - binding is not consumed directly by a side-effectful declaration or
+  //     part of a consumed side effectful binding dependency graph
   let exports = assignedExports(ownAssignments, state);
   let removedBindings = new Set<string>();
   let consumptionCache = new Map<string, Map<string, boolean>>();
   for (let bindingName of state.usedNames.keys()) {
     if (
-      [...exports.values()].some(
-        (exportedBinding) =>
-          exportedBinding === bindingName ||
+      [
+        ...new Set([
+          ...exports.values(),
+          ...state.bundleDependsOn,
+          ...state.sideEffectsDependOn,
+        ]),
+      ].some(
+        (retainedBinding) =>
+          retainedBinding === bindingName ||
           isConsumedBy(
-            exportedBinding,
-            bindingName,
-            state.bindingDependsOn,
-            consumptionCache
-          )
-      ) ||
-      [...state.bundleDependsOn].some(
-        (usedByBundleBinding) =>
-          usedByBundleBinding === bindingName ||
-          isConsumedBy(
-            usedByBundleBinding,
+            retainedBinding,
             bindingName,
             state.bindingDependsOn,
             consumptionCache
@@ -237,6 +236,10 @@ interface State {
   // similar to bindingDependsOn, these are bindings that are needed by the
   // bundle's top-level module scope itself.
   bundleDependsOn: Set<string>;
+
+  // similar to bindingDependsOn, these are bindings that are needed by the side
+  // effectful declarations that are unable to be removed.
+  sideEffectsDependOn: Set<string>;
 
   seenModules: Set<string>;
 }
@@ -557,6 +560,14 @@ function setBindingDependencies(
       throw new Error(
         `bug: can't find name assignment for the binding '${originalName}' in module: ${module.url.href}`
       );
+    }
+
+    if (
+      [...module.desc.names].find(([, d]) =>
+        [...d.bindingsConsumedByDeclarationSideEffects].includes(originalName)
+      )
+    ) {
+      state.sideEffectsDependOn.add(name);
     }
 
     if (desc.usedByModule) {

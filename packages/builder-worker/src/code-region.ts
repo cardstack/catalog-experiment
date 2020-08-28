@@ -510,20 +510,23 @@ export class RegionEditor {
               1 ===
               childDispositions.length
           ) {
-            // All the children have been removed, and there is only a single side effect.
-            // In this situation there should have been 6 items emitted to the
-            // output for the VariableDeclaration specifically:
+            // All the children have been removed, and there is only a single
+            // side effect. In this situation there should have been 6 notable
+            // items emitted to the output for the VariableDeclaration
+            // specifically:
             // 1. our beginning
             // 2. the gap before the retained child
             // 3. the renamed left-side of the declaration
-            // 4. the gap between the reference name and the side effect ("=" sign)
-            // 5. the side effectful right-side of the declaration
-            // 6. the gap after the retained child
-            // We want to keep only #5 and remove all the rest.
+            // 4. the gap between the reference name and the side effect ("="
+            //    sign)
+            // 5. the side effectful right-side of the declaration and output
+            //    emitted by any of the child's own childrens' regions
+            // 6. the gap after the retained child We want to keep only #5 and
+            //    remove all the rest.
             this.output.pop();
-            let sideEffect = this.output.pop()!;
-            this.output = this.output.slice(0, -4);
-            this.output.push(sideEffect);
+            let sideEffect = this.output.slice(ourStartOutputIndex + 4);
+            this.output = this.output.slice(0, ourStartOutputIndex);
+            this.output.push(...sideEffect);
           } else if (disposition.state === "replaced start") {
             this.output[ourStartOutputIndex] = disposition.replacement;
           }

@@ -27,6 +27,7 @@ import traverse, { NodePath, Scope } from "@babel/traverse";
 import { CodeRegion, RegionPointer, RegionBuilder } from "./code-region";
 import { ImportAssignments } from "./combine-modules";
 import { warn } from "./logger";
+import intersection from "lodash/intersection";
 
 export const NamespaceMarker = { isNamespace: true };
 export type NamespaceMarker = typeof NamespaceMarker;
@@ -99,6 +100,7 @@ export interface NameDescription {
 
   declaration: RegionPointer;
   declarationSideEffects: RegionPointer | undefined;
+  bindingsConsumedByDeclarationSideEffects: Set<string>;
   references: RegionPointer[];
 }
 
@@ -253,6 +255,7 @@ export function describeFile(
         declaration: builder.createCodeRegion(declaration),
         references,
         declarationSideEffects,
+        bindingsConsumedByDeclarationSideEffects: new Set(),
       } as LocalNameDescription;
       if (importAssignments && importAssignments.has(name)) {
         let { moduleHref, name: exportedName } = importAssignments.get(name)!;
@@ -683,6 +686,8 @@ export function describeFile(
     },
   });
 
+  discoverReferencesConsumedBySideEffects(desc!);
+
   let { names, regions } = desc!;
   if (!isES6Module) {
     let { requires } = desc!;
@@ -692,6 +697,45 @@ export function describeFile(
     let { imports, exports, exportRegions } = desc!;
     return { names, regions, imports, exports, exportRegions };
   }
+}
+
+function discoverReferencesConsumedBySideEffects(fileDesc: FileDescription) {
+  let { names, regions } = fileDesc;
+  let descriptionsWithRegionsInSideEffects = [
+    ...fileDesc.names.values(),
+  ].filter(
+    (name) =>
+      name.declarationSideEffects &&
+      regions[name.declarationSideEffects].firstChild != null
+  );
+  for (let desc of descriptionsWithRegionsInSideEffects) {
+    let sideEffectRegions = [
+      ...regionSet(desc.declarationSideEffects!, regions),
+    ];
+    for (let [name, { references }] of names.entries()) {
+      if (intersection(sideEffectRegions, references).length > 0) {
+        desc.bindingsConsumedByDeclarationSideEffects.add(name);
+      }
+    }
+  }
+}
+
+function regionSet(
+  pointer: RegionPointer,
+  regions: CodeRegion[]
+): Set<RegionPointer> {
+  let results: RegionPointer[] = [];
+  let region = regions[pointer];
+  let { firstChild, nextSibling } = region;
+  if (firstChild !== undefined) {
+    results.push(firstChild);
+    results.push(...regionSet(firstChild, regions));
+  }
+  if (nextSibling !== undefined) {
+    results.push(nextSibling);
+    results.push(...regionSet(nextSibling, regions));
+  }
+  return new Set(results);
 }
 
 function setLValExportDesc(
@@ -783,6 +827,7 @@ function addImportedName(
         .referencePaths.map((i) => builder.createCodeRegion(i)),
     ],
     declarationSideEffects: undefined,
+    bindingsConsumedByDeclarationSideEffects: new Set(),
   });
 }
 

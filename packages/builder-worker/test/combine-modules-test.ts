@@ -1463,7 +1463,7 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
-  test("preserves side-effectful right-hand side", async function (assert) {
+  test("preserves side-effectful right-hand side when tree shaking unconsumed bindings", async function (assert) {
     await assert.setupFiles({
       "index.js": `
         import { i } from './lib.js';
@@ -1487,6 +1487,48 @@ QUnit.module("combine modules", function (origHooks) {
       `
       function i() { return 1; }
       initCache();
+      console.log(i());
+      export {};
+      `
+    );
+  });
+
+  test("Preserves bindings that are consumed by a preserved side effect that would otherwise be pruned", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { i } from './lib.js';
+        console.log(i());
+      `,
+      "lib.js": `
+        export function i() { return 1; }
+        class Cache {
+          constructor(opts) {
+            window.__cache = { bar: opts};
+          }
+        }
+        let b = 'foo';
+        let a = new Cache(b);
+        function getCache() {
+          return a;
+        }
+        export function j(options) { return getCache(); }
+        `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+      function i() { return 1; }
+      class Cache {
+        constructor(opts) {
+          window.__cache = { bar: opts};
+        }
+      }
+      let b = 'foo';
+      new Cache(b);
       console.log(i());
       export {};
       `
