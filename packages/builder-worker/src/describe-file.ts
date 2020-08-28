@@ -448,19 +448,20 @@ export function describeFile(
       } else {
         // looking for: Object.defineProperty(exports, "__esModule", { value: true });
         isTranspiledFromES =
-          isMemberExpression(calleeNode) &&
-          isIdentifier(calleeNode.object) &&
-          calleeNode.object.name === "Object" &&
-          calleeNode.property.name === "defineProperty" &&
-          argumentsNodes.length === 3 &&
-          isIdentifier(argumentsNodes[0]) &&
-          argumentsNodes[0].name === "exports" &&
-          isStringLiteral(argumentsNodes[1]) &&
-          argumentsNodes[1].value === "__esModule" &&
-          isObjectExpression(argumentsNodes[2]) &&
-          isObjectProperty(argumentsNodes[2].properties[0]) &&
-          isIdentifier(argumentsNodes[2].properties[0].key) &&
-          argumentsNodes[2].properties[0].key.name === "value"; // this seems close enough....
+          isTranspiledFromES ||
+          (isMemberExpression(calleeNode) &&
+            isIdentifier(calleeNode.object) &&
+            calleeNode.object.name === "Object" &&
+            calleeNode.property.name === "defineProperty" &&
+            argumentsNodes.length === 3 &&
+            isIdentifier(argumentsNodes[0]) &&
+            argumentsNodes[0].name === "exports" &&
+            isStringLiteral(argumentsNodes[1]) &&
+            argumentsNodes[1].value === "__esModule" &&
+            isObjectExpression(argumentsNodes[2]) &&
+            isObjectProperty(argumentsNodes[2].properties[0]) &&
+            isIdentifier(argumentsNodes[2].properties[0].key) &&
+            argumentsNodes[2].properties[0].key.name === "value"); // this seems close enough....
       }
     },
     ImportDeclaration(path) {
