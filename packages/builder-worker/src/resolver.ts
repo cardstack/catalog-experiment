@@ -25,6 +25,10 @@ function resolveFileExtension(url: URL, useCJSInterop: boolean): URL {
 }
 
 export class Resolver {
+  private lockFileCache: Map<
+    string,
+    { lockfile: LockFile; url: URL }
+  > = new Map();
   constructor(private fs: FileSystem) {}
 
   async resolve(specifier: string, source: URL): Promise<URL> {
@@ -67,18 +71,32 @@ export class Resolver {
     return resolveFileExtension(url, useCJSInterop);
   }
 
-  private async findLockfile(url: URL): Promise<FileDescriptor> {
+  private async findLockfile(
+    url: URL
+  ): Promise<{ lockfile: LockFile; url: URL }> {
     let lastCandidate: URL | undefined;
+    if (this.lockFileCache.has(url.href)) {
+      return this.lockFileCache.get(url.href)!;
+    }
     let candidateURL = new URL("./catalogjs.lock", url);
     while (lastCandidate?.href !== candidateURL.href) {
       lastCandidate = candidateURL;
+      let fd: FileDescriptor | undefined;
       try {
-        return await this.fs.openFile(candidateURL); // responsibility of caller to close this descriptor
+        fd = await this.fs.openFile(candidateURL);
+        let lockfile = JSON.parse(await fd.readText());
+        let result = { lockfile, url: fd.url };
+        this.lockFileCache.set(url.href, result);
+        return result;
       } catch (err) {
         if (err.code !== "NOT_FOUND") {
           throw err;
         }
         candidateURL = new URL("../catalogjs.lock", candidateURL);
+      } finally {
+        if (fd) {
+          await fd.close();
+        }
       }
     }
     throw new Error(`Could not find 'catalogjs.lock' when resolving ${url}`);
@@ -88,18 +106,11 @@ export class Resolver {
     { pkgName, modulePath }: PkgInfo,
     source: URL
   ): Promise<URL> {
-    let lockFileDescriptor: FileDescriptor;
-    let lockfile: LockFile;
-    try {
-      lockFileDescriptor = await this.findLockfile(source);
-      lockfile = JSON.parse(await lockFileDescriptor.readText());
-    } finally {
-      await lockFileDescriptor!.close();
-    }
+    let { lockfile, url: lockfileURL } = await this.findLockfile(source);
     let pkgHref = lockfile[pkgName];
     if (!pkgHref) {
       throw new Error(
-        `Could not find package name '${pkgName}' in lockfile ${lockFileDescriptor.url} when resolving ${source}`
+        `Could not find package name '${pkgName}' in lockfile ${lockfileURL.href} when resolving ${source}`
       );
     }
     if (modulePath != null) {
@@ -110,7 +121,7 @@ export class Resolver {
     let entrypointsJSON: EntrypointsJSON;
     try {
       entrypointsDescriptor = await this.fs.openFile(
-        new URL("./entrypoints.json", lockFileDescriptor.url)
+        new URL("./entrypoints.json", lockfileURL)
       );
       entrypointsJSON = JSON.parse(await entrypointsDescriptor.readText());
     } finally {
