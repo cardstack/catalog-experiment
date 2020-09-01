@@ -204,12 +204,6 @@ export class FileSystem {
     url: URL,
     create?: Options["create"]
   ): Promise<FileDescriptor> {
-    if (url.href.slice(-1) === "/") {
-      throw new FileSystemError(
-        "IS_NOT_A_FILE",
-        `'${url.href}' is a directory and we were expecting a file`
-      );
-    }
     return (await this.open(url, create)) as FileDescriptor;
   }
 
@@ -222,12 +216,6 @@ export class FileSystem {
     url: URL,
     create?: Options["create"]
   ): Promise<DirectoryDescriptor> {
-    if (url.href.slice(-1) !== "/") {
-      throw new FileSystemError(
-        "IS_NOT_A_DIRECTORY",
-        `'${url.href}' is a file and we were expecting a directory`
-      );
-    }
     return (await this.open(url, create)) as DirectoryDescriptor;
   }
 
