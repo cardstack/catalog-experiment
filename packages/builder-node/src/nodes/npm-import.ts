@@ -252,6 +252,7 @@ class PreparePackageNode implements BuilderNode {
       this.workingDir,
       "cdn",
       this.pkgJSON.name,
+      this.pkgJSON.version,
       hash
     ); // this is just temp until we don't need to debug any longer..
     ensureDirSync(underlyingPkgPath);
