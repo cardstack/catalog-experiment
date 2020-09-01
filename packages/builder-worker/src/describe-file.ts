@@ -54,6 +54,7 @@ export interface ModuleDescription extends Description {
   exportRegions: {
     region: RegionPointer;
     declaration: RegionPointer | undefined;
+    isDefaultExport: boolean;
   }[];
 
   // all the names in module scope
@@ -518,6 +519,7 @@ export function describeFile(
         let exportRegion = builder.createCodeRegion(path as NodePath);
         desc.exportRegions.push({
           region: exportRegion,
+          isDefaultExport: true,
           declaration: builder.createCodeRegion(
             path.get("declaration") as NodePath
           ),
@@ -571,6 +573,7 @@ export function describeFile(
       }
       desc.exportRegions.push({
         region: exportRegion,
+        isDefaultExport: false,
         declaration,
       });
 

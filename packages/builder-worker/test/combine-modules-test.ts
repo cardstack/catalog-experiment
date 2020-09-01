@@ -934,7 +934,7 @@ QUnit.module("combine modules", function (origHooks) {
     assert.codeEqual(
       combined.code,
       `
-      function a() {
+      const a = function a() {
         console.log('a');
       }
       const b = function () {
@@ -975,7 +975,7 @@ QUnit.module("combine modules", function (origHooks) {
     assert.codeEqual(
       combined.code,
       `
-      class A {
+      const A = class A {
         display() { console.log('a'); }
       }
       const B = class {
@@ -1016,7 +1016,7 @@ QUnit.module("combine modules", function (origHooks) {
       combined.code,
       `
       const b0 = 'b';
-      class A {
+      const A = class A {
         display() { console.log(b0); }
       }
       const b = 'a';

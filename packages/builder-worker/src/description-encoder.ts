@@ -18,7 +18,7 @@ import {
 } from "./describe-file";
 import isEqual from "lodash/isEqual";
 import invert from "lodash/invert";
-import { RegionPointer, CodeRegion } from "./code-region";
+import { CodeRegion } from "./code-region";
 import { assertNever } from "@catalogjs/shared/util";
 
 const moduleDescLegend = [
@@ -42,6 +42,12 @@ const importDescLegend = [
   "isDynamic", // boolean
   "specifier", // string
   "region", // number | null
+];
+
+const exportRegionDescLegend = [
+  "region", // number
+  "declaration", // number
+  "isDefaultExport", // boolean
 ];
 
 const exportDescLegend = [
@@ -90,7 +96,7 @@ export function encodeModuleDescription(desc: ModuleDescription): string {
         break;
       case "exportRegions":
         encoded.push(
-          desc.exportRegions.map((r) => encodeObj(r, ["region", "declaration"]))
+          desc.exportRegions.map((r) => encodeObj(r, exportRegionDescLegend))
         );
         break;
       case "names":
@@ -163,12 +169,8 @@ export function decodeModuleDescription(encoded: string): ModuleDescription {
         }
         break;
       case "exportRegions":
-        exportRegions = value.map(
-          (v: any[]) =>
-            decodeArray(v, ["region", "declaration"]) as {
-              region: RegionPointer;
-              declaration: RegionPointer | undefined;
-            }
+        exportRegions = value.map((v: any[]) =>
+          decodeArray(v, exportRegionDescLegend)
         );
         break;
       case "names":

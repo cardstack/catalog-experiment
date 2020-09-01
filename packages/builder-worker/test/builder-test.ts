@@ -405,8 +405,10 @@ QUnit.module("module builder", function (origHooks) {
         );
       await assert
         .file("output/index.js")
-        .matches(/export default implementation\(\);/);
-      await assert.file("output/index.js").doesNotMatch(/export { *};/);
+        .matches(/const _default = implementation\(\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/export \{ _default as default \};/);
     });
 
     test("bundle exports the entrypoint's default export and named exports", async function (assert) {
@@ -430,10 +432,12 @@ QUnit.module("module builder", function (origHooks) {
           /const implementation = function\(\) { return \(\) => console.log\("this is a puppy implementation"\); }/
         );
       await assert.file("output/index.js").matches(/const a = "a"/);
-      await assert.file("output/index.js").matches(/export { a };/);
       await assert
         .file("output/index.js")
-        .matches(/export default implementation\(\);/);
+        .matches(/const _default = implementation\(\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default, a };/);
     });
 
     test("bundle exports derive from entrypoint default reexports", async function (assert) {
@@ -464,6 +468,55 @@ QUnit.module("module builder", function (origHooks) {
           export { default as puppies } from "./puppies.js";
         `,
         "puppies.js": `
+          function getPuppies() { return ["Van Gogh", "Mango"]; }
+          export default getPuppies;
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").doesNotMatch(/import/);
+      await assert
+        .file("output/index.js")
+        .matches(/function getPuppies\(\) { return \["Van Gogh", "Mango"\]; }/);
+      await assert
+        .file("output/index.js")
+        .matches(/const _default = getPuppies;/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as puppies };/);
+      await assert.file("output/index.js").doesNotMatch(/export default/);
+    });
+
+    test("entrypoint module imports a reassigned default export", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          export { default as puppies } from "./puppies.js";
+        `,
+        "puppies.js": `
+          function getPuppies() { return ["Van Gogh", "Mango"]; }
+          export { getPuppies as default };
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").doesNotMatch(/import/);
+      await assert
+        .file("output/index.js")
+        .matches(/function getPuppies\(\) { return \["Van Gogh", "Mango"\]; }/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { getPuppies as puppies };/);
+      await assert.file("output/index.js").doesNotMatch(/export default/);
+    });
+
+    test("bundle exports a reassigned reexported inline default export of the entrypoint", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          export { default as puppies } from "./puppies.js";
+        `,
+        "puppies.js": `
           export default function getPuppies() { return ["Van Gogh", "Mango"]; }
         `,
       });
@@ -476,6 +529,7 @@ QUnit.module("module builder", function (origHooks) {
       await assert
         .file("output/index.js")
         .matches(/export { getPuppies as puppies };/);
+      await assert.file("output/index.js").doesNotMatch(/export default/);
     });
 
     test("adds serialized analysis to bundle", async function (assert) {
@@ -498,10 +552,6 @@ QUnit.module("module builder", function (origHooks) {
       let match = annotationRegex.exec(bundleSrc);
       let annotation = Array.isArray(match) ? match[1] : undefined;
       assert.ok(annotation, "bundle annotation exists");
-    });
-
-    skip("TODO: adds serialized CJS analysis to bundle", async function (_assert) {
-      // TODO
     });
 
     test("performs parse if annotation does not exist in bundle", async function (assert) {
@@ -723,7 +773,10 @@ QUnit.module("module builder", function (origHooks) {
         );
       await assert
         .file("output/dist/0.js")
-        .matches(/export default \["mango", "van gogh"\];/);
+        .matches(/const _default = \["mango", "van gogh"\];/);
+      await assert
+        .file("output/dist/0.js")
+        .matches(/export { _default as default };/);
     });
 
     test("dynamically imported module's unshared static imports are assigned to same bundle", async function (assert) {
@@ -882,11 +935,11 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file("output/dist/1.js").matches(/export { b };/);
     });
 
-    test("can resolve local modules that don't have a file extension", async function (assert) {});
-    test("can resolve entrypoint module from pkg in declared dependency", async function (assert) {});
-    test("can resolve default export from entrypoint module from pkg in declared dependency", async function (assert) {});
-    test("can resolve non-entrypoint module from pkg in declared dependency", async function (assert) {});
-    test("can resolve CJS wrapped module", async function (assert) {});
+    skip("TODO: can resolve local modules that don't have a file extension", async function (assert) {});
+    skip("TODO: can resolve entrypoint module from pkg in declared dependency", async function (assert) {});
+    skip("TODO: can resolve default export from entrypoint module from pkg in declared dependency", async function (assert) {});
+    skip("TODO: can resolve non-entrypoint module from pkg in declared dependency", async function (assert) {});
+    skip("TODO: can resolve CJS wrapped module", async function (assert) {});
   });
 
   QUnit.module("rebuild", function () {

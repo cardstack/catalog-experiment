@@ -71,10 +71,8 @@ export function combineModules(
       continue;
     }
 
-    if (bindingName !== "default") {
-      removedBindings.add(bindingName);
-      removeBinding(bindingName, rewriters, bundle, state, assignments);
-    }
+    removedBindings.add(bindingName);
+    removeBinding(bindingName, rewriters, bundle, state, assignments);
   }
 
   let output = [];
@@ -86,14 +84,11 @@ export function combineModules(
   // directly consume each other's renamed bindings. Here we re-add exports for
   // the things that are specifically configured to be exposed outside the
   // bundle.
-  let nonDefaultExports = [...exports].filter(
-    ([, insideName]) => insideName !== "default"
-  );
-  if (nonDefaultExports.length > 0) {
+  if (exports.size > 0) {
     let exportDeclaration: string[] = [];
     exportDeclaration.push("export {");
     exportDeclaration.push(
-      nonDefaultExports
+      [...exports]
         .map(([outsideName, insideName]) =>
           outsideName === insideName
             ? outsideName
@@ -267,6 +262,7 @@ class ModuleRewriter {
   rewriteScope(): void {
     let assignedDefaultName: string | undefined;
     for (let [name, nameDesc] of this.module.desc.names) {
+      let isDefaultExport = false;
       let assignedName: string;
 
       // figure out which names in module scope are imports vs things that
@@ -297,25 +293,27 @@ class ModuleRewriter {
         let entry = [...this.module.desc.exports].find(
           ([_, desc]) => desc.type === "local" && desc.name === name
         );
-        if (entry?.[0] === "default" && entry?.[1].name === "default") {
-          // we have already assigned this an actual name when we processed it's
-          // consumer (and we wouldn't be here if we haven't already processed
-          // this export's consumer)
+        isDefaultExport = entry?.[0] === "default";
+        if (isDefaultExport) {
+          // check to see if we have already assigned this binding as a result
+          // of processing it's consumer
           assignedDefaultName = this.sharedState.assignedImportedNames
             .get(this.module.url.href)
             ?.get("default");
-
-          // for dynamic imports, there is a manufactured "default" property
-          // that is added to the POJO returned by the import() expression for
-          // default exports. presumably you could never combine a module that
-          // is consumed dynamically with another module that is consumed
-          // dynamically--so there should be no possibility of a default export
-          // collision. modules that are consumed statically have default
-          // exports that are analyzable and renamed.
-          if (!assignedDefaultName) {
-            assignedDefaultName = "default";
+          if (assignedDefaultName) {
+            // the consumer of this module has already assigned this name
+            assignedName = assignedDefaultName;
+          } else {
+            if (!assignedDefaultName && name !== "default") {
+              // the export is a named default export.
+              assignedDefaultName = this.unusedNameLike(name);
+            } else if (!assignedDefaultName) {
+              // the export is an unnamed default export.
+              assignedDefaultName = this.unusedNameLike("_default");
+            }
+            assignedName = assignedDefaultName;
           }
-          assignedName = assignedDefaultName;
+          this.assignLocalName("default", assignedName);
         } else if (entry?.[0]) {
           assignedName = this.maybeAssignImportName(
             this.module.url.href,
@@ -326,17 +324,7 @@ class ModuleRewriter {
           assignedName = this.unusedNameLike(name);
         }
 
-        let nameAssignments = this.sharedState.assignedLocalNames.get(
-          this.module.url.href
-        );
-        if (!nameAssignments) {
-          nameAssignments = new Map<string, string>();
-          this.sharedState.assignedLocalNames.set(
-            this.module.url.href,
-            nameAssignments
-          );
-        }
-        nameAssignments.set(name, assignedName);
+        this.assignLocalName(name, assignedName);
       }
       this.claimAndRename(this.module.url.href, name, assignedName);
     }
@@ -378,6 +366,20 @@ class ModuleRewriter {
     this.editor.removeImportsAndExports(
       assignedDefaultName ?? this.unusedNameLike("_default")
     );
+  }
+
+  private assignLocalName(name: string, assignedName: string) {
+    let nameAssignments = this.sharedState.assignedLocalNames.get(
+      this.module.url.href
+    );
+    if (!nameAssignments) {
+      nameAssignments = new Map<string, string>();
+      this.sharedState.assignedLocalNames.set(
+        this.module.url.href,
+        nameAssignments
+      );
+    }
+    nameAssignments.set(name, assignedName);
   }
 
   private maybeAssignImportName(
@@ -671,13 +673,14 @@ function assignedExports(assignments: BundleAssignment[], state: State) {
       ) {
         ({ name: original, module } = resolveReexport(original, module));
       }
-      let insideName = state.assignedImportedNames
+      let insideName = (original === "default"
+        ? state.assignedLocalNames // the default export for this module's local assignment is found in local name assignment
+        : state.assignedImportedNames
+      )
         .get(module.url.href)
         ?.get(original);
 
-      if (!insideName && exposed === "default") {
-        insideName = "default";
-      } else if (!insideName) {
+      if (!insideName) {
         throw new Error(`bug: no internal mapping for '${exposed}'`);
       }
       exports.set(exposed, insideName);

@@ -382,27 +382,9 @@ export class RegionEditor {
     }
     let exportRegions = [...this.desc.exportRegions];
     let defaultExport = this.desc.exports.get("default");
-    if (
-      defaultExport?.name === "default" &&
-      defaultNameSuggestion === "default"
-    ) {
-      // this is the scenario where we are dealing with a module that is
-      // consumed dynamically. As such, we need to preserve its default export,
-      // since it will become an export of the overall bundle that encloses the
-      // module. (statically consumed default exports though are removed, and
-      // their consumers' bindings are reassigned). So we skip over the export.
-      exportRegions = exportRegions.filter(
-        ({ region }) => region !== defaultExport?.exportRegion
-      );
-    }
-    for (let { region, declaration } of exportRegions) {
-      let defaultExport = this.desc.exports.get("default");
 
-      if (
-        defaultExport &&
-        defaultExport.name === "default" &&
-        defaultExport.exportRegion === region
-      ) {
+    for (let { region, declaration, isDefaultExport } of exportRegions) {
+      if (defaultExport?.exportRegion === region && isDefaultExport) {
         // the region we are considering is actually an unnamed default, so we
         // assign it
         if (!defaultNameSuggestion) {
