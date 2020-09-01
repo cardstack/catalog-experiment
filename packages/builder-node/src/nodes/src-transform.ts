@@ -59,13 +59,14 @@ class BabelTransformNode implements BuilderNode {
 
   async run({ src }: { src: string }): Promise<NodeOutput<void>> {
     let output = transform(src, {
+      // TODO move this list into recipes
       plugins: [
         // TODO add typescript stripping
         "@babel/plugin-transform-flow-strip-types",
         ["@babel/plugin-proposal-decorators", { legacy: true }],
         ["@babel/plugin-proposal-class-properties", { loose: true }],
         "@babel/plugin-proposal-nullish-coalescing-operator",
-        "@babel/plugin-proposal-optional-chaining",
+        "@babel/plugin-proposal-optional-chaining", // for these items that are almost part of the spec, let's move this into our parse config that we use in describe-files
         "@babel/plugin-proposal-numeric-separator",
         ["@babel/plugin-proposal-pipeline-operator", { proposal: "minimal" }],
         "@babel/plugin-proposal-logical-assignment-operators",
