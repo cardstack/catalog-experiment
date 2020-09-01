@@ -9,10 +9,9 @@
       ],
       "hoistSrc": "src/",
       "srcIgnoreGlob": "{node_modules,test,scripts}/**",
-      "installDevDependencies": true,
-      "skipDependencies": [
-        "unicode-13.0.0"
-      ]
+      "additionalDependencies": {
+        "charcodes": "^0.2.0"
+      }
     }
   ]
 }

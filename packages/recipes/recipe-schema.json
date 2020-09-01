@@ -30,8 +30,8 @@
         "srcIgnoreGlob": {
           "type": "string"
         },
-        "installDevDependencies": {
-          "type": "boolean"
+        "additionalDependencies": {
+          "$ref": "#/definitions/additionalDependencies"
         },
         "skipDependencies": {
           "$ref": "#/definitions/skipDependencies"
@@ -71,6 +71,13 @@
         "type": "string"
       },
       "additionalItems": false
+    },
+    "additionalDependencies": {
+      "type": "object",
+      "minItems": 1,
+      "additionalProperties": {
+        "type": "string"
+      }
     },
     "skipDependencies": {
       "type": "array",

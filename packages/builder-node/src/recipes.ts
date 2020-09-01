@@ -65,15 +65,19 @@ export interface Recipe {
   srcIgnoreGlob?: string;
 
   // By default only the package.json's "dependencies" will be installed when
-  // processing a package. In order to also install the "devDependencies" set
-  // the "installDevDependencies" property to true.
-  installDevDependencies?: true;
+  // processing a package. You may also specify additional dependencies, or
+  // override the package.json dependencies with the "additionalDependencies"
+  // property. This is helpful when the package author is relying on shadowed
+  // dependencies that are not explicitly specified, or you want to force a
+  // dependency to use a different version.
+  additionalDependencies?: {
+    [depName: string]: string;
+  };
 
   // In the scenario where a package has defined a dependency that it doesn't
   // actually consume, it can be skipped by including it in the
   // "skipDependencies" list. By default all the package.json "dependencies"
-  // will be processed (as well as "devDependencies" if that has been enabled
-  // for this package).
+  // will be processed.
   skipDependencies?: string[];
 }
 

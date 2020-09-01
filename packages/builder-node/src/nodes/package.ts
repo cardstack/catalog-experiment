@@ -31,7 +31,6 @@ export interface Package {
   url: URL;
   hash: string;
   dependencies: Package[];
-  devDependencies: Package[];
 }
 
 export interface PackageJSON {
@@ -68,9 +67,6 @@ export class CreateLockFileNode implements BuilderNode {
     for (let dep of this.pkg.dependencies) {
       lockfile[dep.packageJSON.name] = dep.url.href;
     }
-    for (let dep of this.pkg.devDependencies) {
-      lockfile[dep.packageJSON.name] = dep.url.href;
-    }
     return {
       node: new AllNode([
         new WriteFileNode(
@@ -95,17 +91,10 @@ export class PackageHashNode implements BuilderNode {
   deps() {}
 
   async run(): Promise<NextNode<string>> {
-    let {
-      name,
-      version,
-      dependencies = {},
-      devDependencies = {},
-    } = this.pkgJSON;
-    let { installDevDependencies, skipDependencies } =
+    let { name, version, dependencies = {} } = this.pkgJSON;
+    let { additionalDependencies = {}, skipDependencies } =
       getRecipe(name, version) ?? {};
-    let allDependencies = installDevDependencies
-      ? { ...dependencies, ...devDependencies }
-      : dependencies;
+    let allDependencies = { ...dependencies, ...additionalDependencies };
     if (Array.isArray(skipDependencies)) {
       for (let skip of skipDependencies) {
         delete allDependencies[skip];

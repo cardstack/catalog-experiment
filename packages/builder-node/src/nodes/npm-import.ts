@@ -30,7 +30,6 @@ import { log } from "../../../builder-worker/src/logger";
 import { MakeProjectNode } from "../../../builder-worker/src/nodes/project";
 import { Resolver } from "../../../builder-worker/src/resolver";
 import { getRecipe } from "../recipes";
-import partition from "lodash/partition";
 
 export class NpmImportPackagesNode implements BuilderNode {
   // TODO the cache key for this should probably be some kind of lock file hash.
@@ -105,17 +104,12 @@ class NpmImportPackageNode implements BuilderNode {
   }: {
     package: Omit<Package, "dependencies" | "devDependencies">;
   }): Promise<NextNode<Package>> {
-    let {
-      name: pkgName,
-      version,
-      dependencies = {},
-      devDependencies = {},
-    } = this.pkgJSON;
-    let { installDevDependencies, skipDependencies } =
+    let { name: pkgName, version, dependencies = {} } = this.pkgJSON;
+    let { additionalDependencies = {}, skipDependencies } =
       getRecipe(pkgName, version) ?? {};
     let allDependencies = {
       ...dependencies,
-      ...(installDevDependencies ? devDependencies : {}),
+      ...additionalDependencies,
     };
     if (Array.isArray(skipDependencies)) {
       for (let skip of skipDependencies) {
@@ -303,11 +297,7 @@ class FinishNpmImportPackageNode implements BuilderNode {
     return this.dependencies;
   }
   async run(deps: { [index: number]: Package }): Promise<NextNode<Package>> {
-    let allDeps = this.dependencies.map((_, index) => deps[index]);
-    let [dependencies, devDependencies] = partition(
-      allDeps,
-      (dep) => this.pkgJSON.dependencies?.[dep.packageJSON.name]
-    );
+    let dependencies = this.dependencies.map((_, index) => deps[index]);
     return {
       node: new CoreBuildNode(
         {
@@ -315,7 +305,6 @@ class FinishNpmImportPackageNode implements BuilderNode {
           url: this.pkgURL,
           hash: this.pkgHash,
           dependencies,
-          devDependencies,
         },
         this.resolver
       ),
