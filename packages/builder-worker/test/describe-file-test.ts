@@ -284,6 +284,29 @@ QUnit.module("describe-file", function (hooks) {
     assert.equal(exportDesc.name, "a", "we can see that b comes from a");
   });
 
+  test("non-module scope bindings are not captured in module description", function (assert) {
+    let { desc } = describeESModule(`
+      function arrayMap(array, iteratee) {
+        var index = -1,
+            length = array == null ? 0 : array.length,
+            result = Array(length);
+        while (++index < length) {
+          result[index] = iteratee(array[index], index, array);
+        }
+        return result;
+      }
+      export default arrayMap;
+    `);
+    assert.ok(
+      desc.names.has("arrayMap"),
+      "module scoped binding in module description"
+    );
+    assert.notOk(
+      desc.names.has("array"),
+      "non-module scoped binding is not in module description"
+    );
+  });
+
   test("default export function", function (assert) {
     let { desc } = describeESModule(`
     export default function x() {}
@@ -486,7 +509,7 @@ QUnit.module("describe-file", function (hooks) {
   test("function default arguments consume other bindings", function (assert) {
     let { desc } = describeESModule(`
       let a = 1;
-      function x(a=a) {}
+      function x(y=a) {}
       export {};
     `);
     let out = desc.names.get("x");

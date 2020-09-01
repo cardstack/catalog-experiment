@@ -397,7 +397,12 @@ export function describeFile(
           });
         }
       }
-      if (path.isReferencedIdentifier()) {
+      if (
+        path.isReferencedIdentifier() &&
+        (path.scope.path.node.type === "Program" ||
+          path.scope.getBinding(path.node.name)?.scope.path.node.type ===
+            "Program")
+      ) {
         if (currentModuleScopedDeclaration) {
           currentModuleScopedDeclaration.consumes.add(path.node.name);
         } else if (path.parent.type !== "ExportSpecifier") {

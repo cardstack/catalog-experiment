@@ -504,11 +504,10 @@ function setBindingDependencies(
   for (let [originalName, desc] of module.desc.names) {
     let currentModule = module;
     let name: string | undefined;
-    // dependsOn includes *all* bindings, including those below module scope. We
-    // really only care about the consumption of the module scoped bindings, so
-    // we're ignoring bindings that we don't have descriptions for.
+    // ignore circular dependencies (which is the result of recursion) so we
+    // don't end up with cycles in our graph
     let originalDependsOn = [...desc.dependsOn].filter(
-      (d) => module.desc.names.has(d) && d !== originalName
+      (d) => d !== originalName
     );
 
     if (desc.type === "local" && !desc.original) {
@@ -555,7 +554,7 @@ function setBindingDependencies(
           ?.get(localName);
         originalDependsOn = [
           ...currentModule.desc.names.get(localName)!.dependsOn,
-        ].filter((d) => currentModule.desc.names.has(d) && d !== localName);
+        ].filter((d) => d !== localName);
       } else {
         // the binding we are dealing with originates from another bundle.
         // terminate the search for this binding in the currentModule and use
