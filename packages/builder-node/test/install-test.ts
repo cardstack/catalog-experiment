@@ -217,7 +217,6 @@ module("Install from npm", function () {
         ).readText()
       );
       assert.deepEqual(lock, {
-        a: `https://catalogjs.com/pkgs/npm/a/1.2.3/${pkgA.hash}/`,
         b: `https://catalogjs.com/pkgs/npm/b/4.5.6/${pkgB1.hash}/`,
         "@catalogjs/loader":
           "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/",
@@ -229,7 +228,6 @@ module("Install from npm", function () {
         ).readText()
       );
       assert.deepEqual(lock, {
-        b: `https://catalogjs.com/pkgs/npm/b/4.5.6/${pkgB1.hash}/`,
         d: `https://catalogjs.com/pkgs/npm/d/10.11.12/${pkgD.hash}/`,
         "@catalogjs/loader":
           "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/",
@@ -241,7 +239,6 @@ module("Install from npm", function () {
         ).readText()
       );
       assert.deepEqual(lock, {
-        c: `https://catalogjs.com/pkgs/npm/c/1.2.3/${pkgC.hash}/`,
         b: `https://catalogjs.com/pkgs/npm/b/7.8.9/${pkgB2.hash}/`,
         "@catalogjs/loader":
           "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/",
@@ -253,7 +250,6 @@ module("Install from npm", function () {
         ).readText()
       );
       assert.deepEqual(lock, {
-        b: `https://catalogjs.com/pkgs/npm/b/7.8.9/${pkgB2.hash}/`,
         d: `https://catalogjs.com/pkgs/npm/d/10.11.12/${pkgD.hash}/`,
         "@catalogjs/loader":
           "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/",
@@ -265,7 +261,6 @@ module("Install from npm", function () {
         ).readText()
       );
       assert.deepEqual(lock, {
-        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/${pkgD.hash}/`,
         "@catalogjs/loader":
           "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/",
       });

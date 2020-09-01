@@ -61,7 +61,6 @@ export class CreateLockFileNode implements BuilderNode {
 
   async run(): Promise<NodeOutput<void[]>> {
     let lockfile: LockFile = {
-      [this.pkg.packageJSON.name]: this.pkg.url.href,
       // All node builds automatically get this as a dependency
       "@catalogjs/loader":
         "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/",
