@@ -935,7 +935,8 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file("output/dist/1.js").matches(/export { b };/);
     });
 
-    skip("TODO: can resolve local modules that don't have a file extension", async function (assert) {});
+    skip("TODO: can resolve local modules that don't have a file extension to a similarly named js file", async function (assert) {});
+    skip("TODO: can resolve local modules that don't have a file extension to a similarly named directory with an index.js", async function (assert) {});
     skip("TODO: can resolve entrypoint module from pkg in declared dependency", async function (assert) {});
     skip("TODO: can resolve default export from entrypoint module from pkg in declared dependency", async function (assert) {});
     skip("TODO: can resolve non-entrypoint module from pkg in declared dependency", async function (assert) {});

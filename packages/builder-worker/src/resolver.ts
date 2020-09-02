@@ -1,6 +1,7 @@
 import { FileSystem } from "./filesystem";
 import { FileDescriptor } from "./filesystem-drivers/filesystem-driver";
 import { EntrypointsJSON } from "./nodes/entrypoint";
+import { makeURLEndInDir } from "./path";
 
 // TODO move this to a better place
 export interface LockFile {
@@ -12,10 +13,15 @@ interface PkgInfo {
   modulePath: string | undefined;
 }
 
-function resolveFileExtension(url: URL, useCJSInterop: boolean): URL {
+function hasExtension(url: URL): boolean {
   let { href } = url;
   let basename = href.split("/").pop()!;
-  if (!basename.includes(".")) {
+  return basename.includes(".");
+}
+
+function resolveFileExtension(url: URL, useCJSInterop: boolean): URL {
+  let { href } = url;
+  if (!hasExtension(url)) {
     href = `${href}.js`; // TODO what about .ts?
   }
   if (useCJSInterop) {
@@ -68,7 +74,32 @@ export class Resolver {
       url = new URL("index.js", url);
     }
 
-    return resolveFileExtension(url, useCJSInterop);
+    if (!hasExtension(url)) {
+      let candidateURL = new URL("index.js", makeURLEndInDir(url));
+      if (await this.fileExists(candidateURL)) {
+        url = candidateURL;
+      }
+    }
+
+    url = resolveFileExtension(url, useCJSInterop);
+    return url;
+  }
+
+  private async fileExists(url: URL): Promise<boolean> {
+    let fd: FileDescriptor | undefined;
+    try {
+      fd = await this.fs.openFile(url);
+      return true;
+    } catch (err) {
+      if (err.code !== "NOT_FOUND") {
+        throw err;
+      }
+      return false;
+    } finally {
+      if (fd) {
+        await fd.close();
+      }
+    }
   }
 
   private async findLockfile(
