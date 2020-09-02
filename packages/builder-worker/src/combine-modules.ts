@@ -45,7 +45,12 @@ export function combineModules(
   //     part of a consumed binding's dependency graph
   //   - binding is not consumed directly by a side-effectful declaration or
   //     part of a consumed side effectful binding dependency graph
-  let exports = assignedExports(ownAssignments, state);
+  let { exports, reexports } = assignedExports(
+    bundle,
+    ownAssignments,
+    assignments,
+    state
+  );
   let removedBindings = new Set<string>();
   let consumptionCache = new Map<string, Map<string, boolean>>();
   for (let bindingName of state.usedNames.keys()) {
@@ -100,6 +105,41 @@ export function combineModules(
     output.push(exportDeclaration.join(" "));
   }
 
+  // Add reexports of other bundles
+  if (reexports.size > 0) {
+    // cleanup the side effect only imports by removing reexported bundle URL's
+    state.sideEffectOnlyImports = new Set(
+      [...state.sideEffectOnlyImports].filter(
+        (href) => ![...reexports.keys()].includes(href)
+      )
+    );
+
+    let reexportDeclarations: string[] = [];
+    for (let bundleHref of reexports.keys()) {
+      let mapping = reexports.get(bundleHref);
+      if (!mapping) {
+        continue;
+      }
+      let reexportDeclaration: string[] = [];
+      reexportDeclaration.push("export {");
+      reexportDeclaration.push(
+        [...mapping]
+          .map(([exposedName, importedName]) =>
+            exposedName === importedName
+              ? exposedName
+              : `${importedName} as ${exposedName}`
+          )
+          .join(", ")
+      );
+      reexportDeclaration.push("} from");
+      reexportDeclaration.push(
+        `"${maybeRelativeURL(new URL(bundleHref), bundle)}";`
+      );
+      reexportDeclarations.push(reexportDeclaration.join(" "));
+    }
+    output.unshift(reexportDeclarations.join("\n"));
+  }
+
   // Add imports for this bundle in dep-first order
   let importDeclarations: string[] = [];
   let assignedImportsMap = assignedImports(assignments, state, removedBindings);
@@ -132,7 +172,11 @@ export function combineModules(
 
   // if there are no imports nor exports written to the bundle, then write
   // "export {};" to signal that this is an ES6 module.
-  if (importDeclarations.length === 0 && exports.size === 0) {
+  if (
+    importDeclarations.length === 0 &&
+    exports.size === 0 &&
+    reexports.size === 0
+  ) {
     output.push(`export {};`);
   }
 
@@ -329,18 +373,18 @@ class ModuleRewriter {
       this.claimAndRename(this.module.url.href, name, assignedName);
     }
 
+    let myAssignment = this.assignments.find(
+      (a) => a.module.url.href === this.module.url.href
+    );
+    if (!myAssignment) {
+      throw new Error(
+        `bug: could not module assignment ${this.module.url.href}`
+      );
+    }
     // rewrite dynamic imports to use bundle specifiers
     for (let [index, importDesc] of this.module.desc.imports.entries()) {
       if (!importDesc.isDynamic) {
         continue;
-      }
-      let myAssignment = this.assignments.find(
-        (a) => a.module.url.href === this.module.url.href
-      );
-      if (!myAssignment) {
-        throw new Error(
-          `bug: could not module assignment ${this.module.url.href}`
-        );
       }
       let dep = this.module.resolvedImports[index];
       let depAssignment = this.assignments.find(
@@ -661,9 +705,18 @@ function isConsumedBy(
   return result;
 }
 
-function assignedExports(assignments: BundleAssignment[], state: State) {
+function assignedExports(
+  bundleURL: URL,
+  ownAssignments: BundleAssignment[],
+  assignments: BundleAssignment[],
+  state: State
+): {
+  exports: Map<string, string>; // outside name -> inside name
+  reexports: Map<string, Map<string, string>>; // bundle href -> [outside name => inside name]
+} {
   let exports: Map<string, string> = new Map();
-  for (let assignment of assignments) {
+  let reexports: Map<string, Map<string, string>> = new Map();
+  for (let assignment of ownAssignments) {
     for (let [original, exposed] of assignment.exposedNames) {
       let { module } = assignment;
       if (
@@ -671,13 +724,37 @@ function assignedExports(assignments: BundleAssignment[], state: State) {
         module.desc.exports.get(original)?.type === "reexport"
       ) {
         ({ name: original, module } = resolveReexport(original, module));
+        let reexportAssignment = assignments.find(
+          (a) => a.module.url.href === module.url.href
+        );
+        if (
+          reexportAssignment?.bundleURL.href !== bundleURL.href &&
+          typeof original === "string"
+        ) {
+          let bundleReexports = reexports.get(
+            reexportAssignment!.bundleURL.href
+          );
+          if (!bundleReexports) {
+            bundleReexports = new Map();
+            reexports.set(reexportAssignment!.bundleURL.href, bundleReexports);
+          }
+          bundleReexports.set(exposed, original);
+          continue;
+        }
       }
-      let insideName = (original === "default"
-        ? state.assignedLocalNames // the default export for this module's local assignment is found in local name assignment
-        : state.assignedImportedNames
-      )
-        .get(module.url.href)
-        ?.get(original);
+      let insideName: string | undefined;
+      if (original === "default") {
+        // we first check for bindings local to the module in question, and then
+        // we'll expand our search to bindings that have been reexported from
+        // the binding in question
+        insideName =
+          state.assignedLocalNames.get(module.url.href)?.get(original) ??
+          state.assignedImportedNames.get(module.url.href)?.get(original);
+      } else {
+        insideName = state.assignedImportedNames
+          .get(module.url.href)
+          ?.get(original);
+      }
 
       if (!insideName) {
         throw new Error(`bug: no internal mapping for '${exposed}'`);
@@ -685,7 +762,7 @@ function assignedExports(assignments: BundleAssignment[], state: State) {
       exports.set(exposed, insideName);
     }
   }
-  return exports;
+  return { exports, reexports };
 }
 
 function assignedImports(

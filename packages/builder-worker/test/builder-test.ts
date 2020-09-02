@@ -487,6 +487,45 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file("output/index.js").doesNotMatch(/export default/);
     });
 
+    test("bundle reexports another bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["./entries.js", "./toPairs.js"] }`,
+        "entries.js": `
+          export { default } from './toPairs.js';
+          export const foo = "my own export";
+        `,
+        "toPairs.js": `
+          export default function() { console.log("toPairs"); }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/entries.js")
+        .matches(/export \{ default \} from "\.\/toPairs.js"/);
+      await assert
+        .file("output/entries.js")
+        .matches(/const foo = "my own export";/);
+      await assert.file("output/entries.js").matches(/export { foo };/);
+    });
+
+    test("bundle reexports reassigned bindings from another bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["./entries.js", "./toPairs.js"] }`,
+        "entries.js": `
+          export { default as foo } from './toPairs.js';
+        `,
+        "toPairs.js": `
+          export default function() { console.log("toPairs"); }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/entries.js")
+        .matches(/export \{ default as foo \} from "\.\/toPairs.js"/);
+    });
+
     test("entrypoint module imports a reassigned default export", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["index.js"] }`,
