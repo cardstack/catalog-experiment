@@ -3,7 +3,9 @@
   "recipes": [
     {
       "semverRange": "*",
-      "srcRepo": true,
+      "srcRepo": {
+        "version": "v$major$.$minor$.$patch$"
+      },
       "entrypoints": [
         "./index.js"
       ],

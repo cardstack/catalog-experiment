@@ -19,6 +19,7 @@ import _glob from "glob";
 import { WriteFileNode } from "../../../builder-worker/src/nodes/file";
 import { SrcTransformNode } from "./src-transform";
 import { LockFile } from "../../../builder-worker/src/resolver";
+import { coerce } from "semver";
 
 export const buildSrcDir = `build_src/`;
 const glob = promisify(_glob);
@@ -260,13 +261,17 @@ async function clonePkg(
   }
 
   let version: string | undefined;
+  let semver = coerce(pkgJSON.version);
   if (recipeRepo?.version) {
     version = recipeRepo.version;
+    if (semver) {
+      version = version
+        .replace(/\$major\$/g, String(semver.major))
+        .replace(/\$minor\$/g, String(semver.minor))
+        .replace(/\$patch\$/g, String(semver.patch));
+    }
   } else {
     ({ version } = pkgJSON);
-    if (!recipeRepo?.bareVersion) {
-      version = `v${version}`;
-    }
   }
   if (!version) {
     throw new Error(`Cannot determine version for ${pkgJSON.name}`);

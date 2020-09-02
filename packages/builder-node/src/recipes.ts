@@ -17,13 +17,17 @@ export interface Recipe {
         // By default we'll use the package.json "repository" property for the pkg
         // source. Otherwise it can be specified here.
         repoHref?: string;
-        // By default we'll prefix versions of the pkg with 'v' when checking
-        // out the tagged release, e.g. "v7.9.0". If this is set to true, we
-        // won't prefix the version of the pkg with 'v', e.g. "7.9.0".
-        bareVersion?: true;
         // By default we'll use the package.json "version" property to checkout
         // the package source from git. This can be overridden with a specific
-        // branch/tag/SHA by setting the version property.
+        // branch/tag/SHA by setting the version property. The version string
+        // supports semver replacement tags, "$major$", "$minor$", and
+        // "$patch$". So if you want to checkout a tag that that simply has a
+        // prefix or suffix added to the version, you can use replacements tags.
+        // For instance if the current version of the package is "3.12.4", and
+        // you want to check out tag "3.12.4_es", you can specify:
+        //   $major$.$minor$.$patch$_es
+        // or to prefix a "v" in front of the version (which is a common practice):
+        //   v$major$.$minor$.$patch$
         version?: string;
         // When the repo is actually a mono repo, the package is located in a
         // subdirectory of the repository. By default this will attempted to be
