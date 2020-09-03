@@ -487,7 +487,7 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file("output/index.js").doesNotMatch(/export default/);
     });
 
-    test("bundle reexports another bundle", async function (assert) {
+    test("bundle reexports another bundle's exports", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["./entries.js", "./toPairs.js"] }`,
         "entries.js": `
@@ -507,6 +507,37 @@ QUnit.module("module builder", function (origHooks) {
         .file("output/entries.js")
         .matches(/const foo = "my own export";/);
       await assert.file("output/entries.js").matches(/export { foo };/);
+    });
+
+    test("circular imports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["./index.js"] }`,
+        "index.js": `
+          import { a } from "./a.js";
+          export default function() { a(); }
+          export function consumedByB() { console.log('b'); }
+        `,
+        "a.js": `
+          import { b } from "./b.js";
+          export function a() { b(); }
+        `,
+        "b.js": `
+        import { consumedByB }  from "./index.js";
+        export function b() { consumedByB(); }`,
+      });
+
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(/function b\(\) { console\.log\('b'\); }/);
+      await assert.file("output/index.js").matches(/function a\(\) { b\(\); }/);
+      await assert
+        .file("output/index.js")
+        .matches(/const _default = function\(\) { a\(\); }/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default }/);
     });
 
     test("bundle reexports reassigned bindings from another bundle", async function (assert) {
