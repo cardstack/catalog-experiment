@@ -1,6 +1,10 @@
 import { BundleAssignment } from "./nodes/bundle";
 import { ModuleResolution, CyclicModuleResolution } from "./nodes/resolution";
-import { NamespaceMarker, isNamespaceMarker } from "./describe-file";
+import {
+  NamespaceMarker,
+  isNamespaceMarker,
+  ImportedNameDescription,
+} from "./describe-file";
 import { maybeRelativeURL } from "./path";
 import { RegionEditor } from "./code-region";
 
@@ -600,9 +604,15 @@ function setBindingDependencies(
       )!.bundleURL;
       // determine if the binding we are looking for is in our bundle or another bundle
       if (ourBundleURL === bindingsBundleURL) {
-        name = state.assignedLocalNames
-          .get(currentModule.url.href)
-          ?.get(localName);
+        name =
+          state.assignedLocalNames
+            .get(currentModule.url.href)
+            ?.get(localName) ??
+          // also need to check assigned imported names as our binding might be
+          // explicitly imported and then explicitly exported
+          state.assignedImportedNames
+            .get(currentModule.url.href)
+            ?.get(localName);
         originalDependsOn = [
           ...currentModule.desc.names.get(localName)!.dependsOn,
         ].filter((d) => d !== localName);
@@ -833,11 +843,25 @@ function resolveReexport(
     return { name, module };
   }
   let remoteDesc = module.desc.exports.get(name);
-  if (remoteDesc?.type === "reexport" && module.type === "standard") {
-    return resolveReexport(
-      remoteDesc.name,
-      module.resolvedImports[remoteDesc.importIndex]
-    );
+  if (
+    (remoteDesc?.type === "reexport" ||
+      (remoteDesc?.type == "local" &&
+        module.desc.names.get(name)?.type === "import")) &&
+    module.type === "standard"
+  ) {
+    if (remoteDesc.type === "reexport") {
+      return resolveReexport(
+        remoteDesc.name,
+        module.resolvedImports[remoteDesc.importIndex]
+      );
+    } else {
+      return resolveReexport(
+        remoteDesc.name,
+        module.resolvedImports[
+          (module.desc.names.get(name)! as ImportedNameDescription).importIndex
+        ]
+      );
+    }
   } else if (remoteDesc?.type === "reexport" && module.type === "cyclic") {
     // unsure how to resolve a export through a cyclic resolution--we'll need
     // some other way to get a handle on the module resolution on the other side

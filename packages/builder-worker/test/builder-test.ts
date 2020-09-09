@@ -522,9 +522,9 @@ QUnit.module("module builder", function (origHooks) {
           export function a() { console.log(aHelper + bHelper()); }
         `,
         "b.js": `
-        import { aHelper }  from "./a.js";
-        export const bHelper = 'b';
-        export function b() { console.log(bHelper + aHelper()); }`,
+          import { aHelper }  from "./a.js";
+          export const bHelper = 'b';
+          export function b() { console.log(bHelper + aHelper()); }`,
       });
 
       builder = makeBuilder(assert.fs);
@@ -557,9 +557,9 @@ QUnit.module("module builder", function (origHooks) {
           export function a() { console.log(aHelper + bHelper()); }
         `,
         "b.js": `
-        import { aHelper }  from "./a.js";
-        export const bHelper = 'b';
-        export function b() { console.log(bHelper + aHelper()); }`,
+          import { aHelper }  from "./a.js";
+          export const bHelper = 'b';
+          export function b() { console.log(bHelper + aHelper()); }`,
       });
 
       builder = makeBuilder(assert.fs);
@@ -577,6 +577,31 @@ QUnit.module("module builder", function (origHooks) {
       await assert
         .file("output/index.js")
         .matches(/export { _default as default }/);
+    });
+
+    test("imported binding is explicitly exported", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["./index.js"] }`,
+        "index.js": `
+          import { foo } from "./a.js";
+          export function doSomething() { console.log(foo); }
+        `,
+        "a.js": `
+          import { foo } from "./b.js";
+          foo.bar = 'blah';
+          export { foo };
+        `,
+        "b.js": `export const foo = {};`,
+      });
+
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").matches(/const foo = {};/);
+      await assert.file("output/index.js").matches(/foo\.bar = 'blah';/);
+      await assert
+        .file("output/index.js")
+        .matches(/function doSomething\(\) { console\.log\(foo\); }/);
+      await assert.file("output/index.js").matches(/export { doSomething }/);
     });
 
     test("bundle reexports reassigned bindings from another bundle", async function (assert) {
