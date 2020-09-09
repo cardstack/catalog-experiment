@@ -697,12 +697,10 @@ function isConsumedBy(
     return consumesCache.get(consumingBinding)!;
   }
 
+  // Collapse cycles in binding consumption which are likely the result of recursion
   if (visitedConsumers.includes(consumingBinding)) {
-    throw new Error(
-      `detected cycle in binding dependency graph when building bundle ${
-        bundle.href
-      }: ${visitedConsumers.join(" -> ")} -> ${consumingBinding}`
-    );
+    consumesCache?.set(consumedBinding, true);
+    return true;
   }
   visitedConsumers = [...visitedConsumers, consumingBinding];
   let deps = bindingDependencies.get(consumingBinding);
