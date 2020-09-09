@@ -207,14 +207,14 @@ export class ModuleResolutionNode implements BuilderNode {
 }
 
 class FinishResolutionNode implements BuilderNode {
-  cacheKey: string;
+  cacheKey: FinishResolutionNode;
   constructor(
     private url: URL,
     private imports: (ModuleResolutionNode | CyclicModuleResolutionNode)[],
     private desc: ModuleDescription,
     private source: string
   ) {
-    this.cacheKey = `finish-resolution:${url.href}`;
+    this.cacheKey = this;
   }
   deps() {
     return this.imports;
