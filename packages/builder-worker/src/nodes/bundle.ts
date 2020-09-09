@@ -112,7 +112,7 @@ export class Assigner {
     // don't have a handle on the resolution objects at the time we discover
     // that we need to set the consumersOf
     for (let [consumerHref, consumed] of patchedConsumers.create) {
-      let resolution = findResolution(consumerHref, consumersOf);
+      let resolution = findResolution(consumerHref, resolutions);
       for (let consumedHref of consumed) {
         // unsure about the isDynamic=false here...
         setConsumersOf(new URL(consumedHref), resolution, false, consumersOf);
@@ -135,7 +135,7 @@ export class Assigner {
 
     this.consumersOf = consumersOf;
     for (let leafHref of leaves) {
-      this.assignModule(findResolution(leafHref, consumersOf, removedModules));
+      this.assignModule(findResolution(leafHref, resolutions));
     }
   }
 
@@ -492,23 +492,34 @@ function setConsumersOf(
 
 function findResolution(
   moduleHref: string,
-  consumersOf: Consumers,
-  removedModules: ModuleResolution[] = []
+  resolutions: (ModuleResolution | CyclicModuleResolution)[]
 ): ModuleResolution {
-  let module = removedModules.find((m) => m.url.href === moduleHref);
-  if (module) {
+  let resolution = _findResolution(moduleHref, resolutions);
+  if (!resolution) {
+    throw new Error(
+      `bug: could not find resolution ${moduleHref} in module resolution graph`
+    );
+  }
+  return resolution;
+}
+
+function _findResolution(
+  moduleHref: string,
+  resolutions: (ModuleResolution | CyclicModuleResolution)[]
+): ModuleResolution | undefined {
+  let module = resolutions.find((m) => m.url.href === moduleHref);
+  if (module && !isCyclicModuleResolution(module)) {
     return module;
   }
-  for (let [, consumers] of consumersOf) {
-    let { module } =
-      [...consumers].find((r) => r.module.url.href === moduleHref) ?? {};
-    if (module) {
-      return module;
+  for (let resolution of resolutions.filter(
+    (r) => !isCyclicModuleResolution(r)
+  ) as ModuleResolution[]) {
+    let result = _findResolution(moduleHref, resolution.resolvedImports);
+    if (result) {
+      return result;
     }
   }
-  throw new Error(
-    `bug: expected to find resolution ${moduleHref} as a consumer consumption graph, but could not`
-  );
+  return;
 }
 
 function intersection<T>(sets: Set<T>[]): Set<T> {
