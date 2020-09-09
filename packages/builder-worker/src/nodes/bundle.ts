@@ -6,7 +6,12 @@ import {
   annotationEnd,
   annotationStart,
 } from "./common";
-import { ModuleResolutionsNode, ModuleResolution } from "./resolution";
+import {
+  ModuleResolutionsNode,
+  ModuleResolution,
+  CyclicModuleResolution,
+  isCyclicModuleResolution,
+} from "./resolution";
 import { combineModules } from "../combine-modules";
 import { File } from "@babel/types";
 import {
@@ -20,6 +25,7 @@ import { JSParseNode } from "./js";
 import { encodeModuleDescription } from "../description-encoder";
 import { makeURLEndInDir } from "../path";
 import { Resolver } from "../resolver";
+import partition from "lodash/partition";
 
 export class BundleAssignmentsNode implements BuilderNode {
   cacheKey: string;
@@ -88,10 +94,48 @@ export class Assigner {
       this.requestedEntrypointURLs = [...htmlJSEntrypointURLs];
     }
     this.entrypoints = this.mapEntrypoints(entrypoints);
-    let { consumersOf, leaves } = invertDependencies(resolutions);
+    let { consumersOf, leaves, patchedConsumers } = invertDependencies(
+      resolutions
+    );
+    // We accept that whoever first encounters a cyclic edge in our module
+    // resolution determines the order that modules evaluate in. This means that
+    // javascript that uses cyclic imports and is relying on a particular order
+    // of evaluation based on a particular entrypoint may be evaluated in a
+    // different order. However, reliance on order of evaluation with cyclic
+    // imports is probably in poor form, as the order of evaluation can change
+    // depending on the entrypoint used. To accommodate a single order of
+    // evaluation for cyclic modules we sever cyclic edges and refashion a
+    // new edge from the consumer of a cycle to the consumed dependencies of the
+    // cyclic edge in the logic that follows.
+
+    // we patch the consumers outside of the invert dependencies because we
+    // don't have a handle on the resolution objects at the time we discover
+    // that we need to set the consumersOf
+    for (let [consumerHref, consumed] of patchedConsumers.create) {
+      let resolution = findResolution(consumerHref, consumersOf);
+      for (let consumedHref of consumed) {
+        // unsure about the isDynamic=false here...
+        setConsumersOf(new URL(consumedHref), resolution, false, consumersOf);
+      }
+    }
+    let removedModules: ModuleResolution[] = [];
+    for (let [consumerHref, consumed] of patchedConsumers.remove) {
+      for (let consumedHref of consumed) {
+        let [updatedConsumers, removedConsumers] = partition(
+          [...consumersOf.get(consumedHref)!],
+          (r) => r.module.url.href !== consumerHref
+        );
+        consumersOf.set(consumedHref, new Set(updatedConsumers));
+        removedModules = [
+          ...removedModules,
+          ...removedConsumers.map((c) => c.module),
+        ];
+      }
+    }
+
     this.consumersOf = consumersOf;
-    for (let leaf of leaves) {
-      this.assignModule(leaf);
+    for (let leafHref of leaves) {
+      this.assignModule(findResolution(leafHref, consumersOf, removedModules));
     }
   }
 
@@ -145,7 +189,7 @@ export class Assigner {
 
     // entrypoints can be consumed by other entrypoints, so it's important that
     // we assign consumers first, even if we are an entrypoint.
-    let consumers = [...this.consumersOf.get(module.url.href)!].map(
+    let consumers = [...(this.consumersOf.get(module.url.href) ?? [])].map(
       (consumer) => ({
         module: consumer.module,
         isDynamic: consumer.isDynamic,
@@ -361,34 +405,110 @@ function defaultName(
 
 type Consumers = Map<
   string,
-  Set<{ isDynamic: boolean; module: ModuleResolution }>
+  Set<{ isDynamic: boolean; module: ModuleResolution }> // note that a CyclicModuleResolution cannot be a consumer--its always a leaf node
 >;
 
 function invertDependencies(
-  resolutions: ModuleResolution[],
+  resolutions: (ModuleResolution | CyclicModuleResolution)[],
   consumersOf: Consumers = new Map(),
-  leaves: Set<ModuleResolution> = new Set()
+  leaves: Set<string> = new Set(), // module hrefs
+  patchedConsumers: {
+    create: Map<string, Set<string>>;
+    remove: Map<string, Set<string>>;
+  } = { create: new Map(), remove: new Map() } // consumer href => Set of consumed hrefs
 ): {
   consumersOf: Consumers;
-  leaves: Set<ModuleResolution>;
+  leaves: Set<string>;
+  patchedConsumers: {
+    create: Map<string, Set<string>>;
+    remove: Map<string, Set<string>>;
+  };
 } {
   for (let resolution of resolutions) {
-    if (!consumersOf.has(resolution.url.href)) {
-      consumersOf.set(resolution.url.href, new Set());
-    }
-    if (resolution.resolvedImports.length > 0) {
-      invertDependencies(resolution.resolvedImports, consumersOf, leaves);
-      // since we are handling this on the exit of the recursion, all your deps
-      // will have entries in the identity map
-      for (let [index, dep] of resolution.resolvedImports.entries()) {
-        let isDynamic = resolution.desc.imports[index].isDynamic;
-        consumersOf.get(dep.url.href)!.add({ isDynamic, module: resolution });
+    if (isCyclicModuleResolution(resolution)) {
+      // In the cyclic module resolution situation we are going to break the
+      // cyclic edge, and refashion a new edge between the module that is
+      // consuming the cycle and this module's dependencies
+      let myConsumerHref =
+        resolution.hrefStack[resolution.hrefStack.length - 1];
+
+      let removeConsumers = patchedConsumers.remove.get(myConsumerHref);
+      if (!removeConsumers) {
+        removeConsumers = new Set();
+        patchedConsumers.remove.set(myConsumerHref, removeConsumers);
       }
+      removeConsumers.add(resolution.url.href);
+
+      // this is the consumer of the entire cycle
+      let consumerHref =
+        resolution.hrefStack[
+          resolution.hrefStack.findIndex(
+            (href) => href === resolution.url.href
+          ) - 1
+        ];
+
+      let createConsumers = patchedConsumers.create.get(consumerHref);
+      if (!createConsumers) {
+        createConsumers = new Set();
+        patchedConsumers.create.set(consumerHref, createConsumers);
+      }
+      for (let consumedURL of resolution.imports) {
+        createConsumers.add(consumedURL.href);
+      }
+      leaves.add(myConsumerHref);
     } else {
-      leaves.add(resolution);
+      if (resolution.resolvedImports.length > 0) {
+        invertDependencies(
+          resolution.resolvedImports,
+          consumersOf,
+          leaves,
+          patchedConsumers
+        );
+        // since we are handling this on the exit of the recursion, all your deps
+        // will have entries in the identity map
+        for (let [index, dep] of resolution.resolvedImports.entries()) {
+          let isDynamic = resolution.desc.imports[index].isDynamic;
+          setConsumersOf(dep.url, resolution, isDynamic, consumersOf);
+        }
+      } else {
+        leaves.add(resolution.url.href);
+      }
     }
   }
-  return { consumersOf, leaves };
+  return { consumersOf, leaves, patchedConsumers };
+}
+
+function setConsumersOf(
+  consumed: URL,
+  consumer: ModuleResolution,
+  isDynamic: boolean,
+  consumersOf: Consumers
+) {
+  if (!consumersOf.has(consumed.href)) {
+    consumersOf.set(consumed.href, new Set());
+  }
+  consumersOf.get(consumed.href)!.add({ isDynamic, module: consumer });
+}
+
+function findResolution(
+  moduleHref: string,
+  consumersOf: Consumers,
+  removedModules: ModuleResolution[] = []
+): ModuleResolution {
+  let module = removedModules.find((m) => m.url.href === moduleHref);
+  if (module) {
+    return module;
+  }
+  for (let [, consumers] of consumersOf) {
+    let { module } =
+      [...consumers].find((r) => r.module.url.href === moduleHref) ?? {};
+    if (module) {
+      return module;
+    }
+  }
+  throw new Error(
+    `bug: expected to find resolution ${moduleHref} as a consumer consumption graph, but could not`
+  );
 }
 
 function intersection<T>(sets: Set<T>[]): Set<T> {

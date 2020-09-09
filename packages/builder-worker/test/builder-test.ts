@@ -515,26 +515,65 @@ QUnit.module("module builder", function (origHooks) {
         "index.js": `
           import { a } from "./a.js";
           export default function() { a(); }
-          export function consumedByB() { console.log('b'); }
         `,
         "a.js": `
-          import { b } from "./b.js";
-          export function a() { b(); }
+          import { bHelper } from "./b.js";
+          export const aHelper = 'a';
+          export function a() { console.log(aHelper + bHelper()); }
         `,
         "b.js": `
-        import { consumedByB }  from "./index.js";
-        export function b() { consumedByB(); }`,
+        import { aHelper }  from "./a.js";
+        export const bHelper = 'b';
+        export function b() { console.log(bHelper + aHelper()); }`,
       });
 
       builder = makeBuilder(assert.fs);
       await builder.build();
       await assert
         .file("output/index.js")
-        .matches(/function b\(\) { console\.log\('b'\); }/);
-      await assert.file("output/index.js").matches(/function a\(\) { b\(\); }/);
+        .matches(/const bHelper = 'b';[ \n]+const aHelper = 'a';/);
+      await assert
+        .file("output/index.js")
+        .matches(/function a\(\) { console.log\(aHelper \+ bHelper\(\)\); }/);
+      await assert.file("output/index.js").doesNotMatch(/function b\(\)/);
       await assert
         .file("output/index.js")
         .matches(/const _default = function\(\) { a\(\); }/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default }/);
+    });
+
+    test("circular imports with different cyclic entry", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["./index.js"] }`,
+        "index.js": `
+          import { b } from "./b.js";
+          export default function() { b(); }
+        `,
+        "a.js": `
+          import { bHelper } from "./b.js";
+          export const aHelper = 'a';
+          export function a() { console.log(aHelper + bHelper()); }
+        `,
+        "b.js": `
+        import { aHelper }  from "./a.js";
+        export const bHelper = 'b';
+        export function b() { console.log(bHelper + aHelper()); }`,
+      });
+
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(/const aHelper = 'a';[ \n]+const bHelper = 'b';/);
+      await assert
+        .file("output/index.js")
+        .matches(/function b\(\) { console.log\(bHelper \+ aHelper\(\)\); }/);
+      await assert.file("output/index.js").doesNotMatch(/function a\(\)/);
+      await assert
+        .file("output/index.js")
+        .matches(/const _default = function\(\) { b\(\); }/);
       await assert
         .file("output/index.js")
         .matches(/export { _default as default }/);

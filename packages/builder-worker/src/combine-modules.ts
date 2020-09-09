@@ -1,5 +1,5 @@
 import { BundleAssignment } from "./nodes/bundle";
-import { ModuleResolution } from "./nodes/resolution";
+import { ModuleResolution, CyclicModuleResolution } from "./nodes/resolution";
 import { NamespaceMarker, isNamespaceMarker } from "./describe-file";
 import { maybeRelativeURL } from "./path";
 import { RegionEditor } from "./code-region";
@@ -107,7 +107,7 @@ export function combineModules(
 
   // Add reexports of other bundles
   if (reexports.size > 0) {
-    // cleanup the side effect only imports by removing reexported bundle URL's
+    // cleanup the side effect only imports by removing reexported bundle URLs
     state.sideEffectOnlyImports = new Set(
       [...state.sideEffectOnlyImports].filter(
         (href) => ![...reexports.keys()].includes(href)
@@ -321,7 +321,7 @@ class ModuleRewriter {
           remoteName = nameDesc.original.exportedName;
           remoteModuleHref = nameDesc.original.moduleHref;
         } else if (nameDesc.type === "import") {
-          let remoteModule: ModuleResolution;
+          let remoteModule: ModuleResolution | CyclicModuleResolution;
           ({ name: remoteName, module: remoteModule } = resolveReexport(
             nameDesc.name,
             this.module.resolvedImports[nameDesc.importIndex]
@@ -501,6 +501,9 @@ function gatherModuleRewriters(
   let rewriter = new ModuleRewriter(module, state, assignments);
 
   for (let resolution of module.resolvedImports) {
+    if (resolution.type === "cyclic") {
+      continue;
+    }
     let assignment = assignments.find(
       (a) => a.module.url.href === resolution.url.href
     );
@@ -546,7 +549,7 @@ function setBindingDependencies(
   assignments: BundleAssignment[]
 ) {
   for (let [originalName, desc] of module.desc.names) {
-    let currentModule = module;
+    let currentModule: ModuleResolution | CyclicModuleResolution = module;
     let name: string | undefined;
     // ignore circular dependencies (which is the result of recursion) so we
     // don't end up with cycles in our graph
@@ -568,7 +571,11 @@ function setBindingDependencies(
       // binding is declared locally
       let outsideName: string | NamespaceMarker | undefined;
       if (typeof desc.name === "string") {
-        currentModule = module.resolvedImports[desc.importIndex];
+        let importedModule = module.resolvedImports[desc.importIndex];
+        if (importedModule.type === "cyclic") {
+          continue;
+        }
+        currentModule = importedModule;
         ({ module: currentModule, name: outsideName } = resolveReexport(
           desc.name,
           currentModule
@@ -637,6 +644,11 @@ function setBindingDependencies(
         continue;
       }
       if (desc.type === "import" && typeof desc.name === "string") {
+        if (currentModule.type === "cyclic") {
+          throw new Error(
+            `bug: don't know how to deal with a cyclic edge when resolving binding dependencies for '${originalName}' in module ${currentModule.url.href}`
+          );
+        }
         let depModule = currentModule.resolvedImports[desc.importIndex];
         let { name: remoteName, module: remoteModule } = resolveReexport(
           desc.name,
@@ -718,7 +730,9 @@ function assignedExports(
   let reexports: Map<string, Map<string, string>> = new Map();
   for (let assignment of ownAssignments) {
     for (let [original, exposed] of assignment.exposedNames) {
-      let { module } = assignment;
+      let {
+        module,
+      }: { module: ModuleResolution | CyclicModuleResolution } = assignment;
       if (
         typeof original === "string" &&
         module.desc.exports.get(original)?.type === "reexport"
@@ -810,16 +824,26 @@ function assignedImports(
 
 function resolveReexport(
   name: string | NamespaceMarker,
-  module: ModuleResolution
-): { name: string | NamespaceMarker; module: ModuleResolution } {
+  module: ModuleResolution | CyclicModuleResolution
+): {
+  name: string | NamespaceMarker;
+  module: ModuleResolution | CyclicModuleResolution;
+} {
   if (isNamespaceMarker(name)) {
     return { name, module };
   }
   let remoteDesc = module.desc.exports.get(name);
-  if (remoteDesc?.type === "reexport") {
+  if (remoteDesc?.type === "reexport" && module.type === "standard") {
     return resolveReexport(
       remoteDesc.name,
       module.resolvedImports[remoteDesc.importIndex]
+    );
+  } else if (remoteDesc?.type === "reexport" && module.type === "cyclic") {
+    // unsure how to resolve a export through a cyclic resolution--we'll need
+    // some other way to get a handle on the module resolution on the other side
+    // of our cyclic edge
+    throw new Error(
+      `bug: unsure how to resolve a reexport through a cyclic resolution for '${name}' in ${module.url.href}`
     );
   }
   return { name, module };

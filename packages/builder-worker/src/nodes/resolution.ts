@@ -42,7 +42,7 @@ export class ModuleResolutionsNode implements BuilderNode {
     entrypoints,
   }: {
     entrypoints: Entrypoint[];
-  }): Promise<NextNode<ModuleResolution[]>> {
+  }): Promise<NextNode<(ModuleResolution | CyclicModuleResolution)[]>> {
     let jsEntrypoints: Set<string> = new Set();
     for (let entrypoint of entrypoints) {
       if (entrypoint instanceof HTMLEntrypoint) {
@@ -62,10 +62,25 @@ export class ModuleResolutionsNode implements BuilderNode {
 }
 
 export interface ModuleResolution {
+  type: "standard";
   url: URL;
   source: string;
   desc: ModuleDescription;
-  resolvedImports: ModuleResolution[];
+  resolvedImports: (ModuleResolution | CyclicModuleResolution)[];
+}
+
+export interface CyclicModuleResolution {
+  type: "cyclic";
+  url: URL;
+  desc: ModuleDescription;
+  imports: URL[];
+  hrefStack: string[];
+}
+
+export function isCyclicModuleResolution(
+  resolution: ModuleResolution | CyclicModuleResolution
+): resolution is CyclicModuleResolution {
+  return resolution.type === "cyclic";
 }
 
 export class ModuleAnnotationNode implements BuilderNode {
@@ -109,9 +124,50 @@ export class ModuleDescriptionNode implements BuilderNode {
   }
 }
 
+export class CyclicModuleResolutionNode implements BuilderNode {
+  cacheKey: string;
+  constructor(
+    private url: URL,
+    private resolver: Resolver,
+    private stack: string[]
+  ) {
+    this.cacheKey = `cyclic-module-resolution:${url.href},stack:${stack.join(
+      ","
+    )}`;
+  }
+
+  deps() {
+    let fileNode = new FileNode(this.url);
+    return { desc: new ModuleAnnotationNode(fileNode) };
+  }
+  async run({
+    desc,
+  }: {
+    desc: ModuleDescription;
+  }): Promise<Value<CyclicModuleResolution>> {
+    return {
+      value: {
+        type: "cyclic",
+        url: this.url,
+        desc,
+        hrefStack: this.stack,
+        imports: await Promise.all(
+          desc.imports.map((imp) =>
+            this.resolver.resolve(imp.specifier, this.url)
+          )
+        ),
+      },
+    };
+  }
+}
+
 export class ModuleResolutionNode implements BuilderNode {
   cacheKey: string;
-  constructor(private url: URL, private resolver: Resolver) {
+  constructor(
+    private url: URL,
+    private resolver: Resolver,
+    private stack: string[] = []
+  ) {
     this.cacheKey = `module-resolution:${url.href}`;
   }
   deps() {
@@ -124,12 +180,22 @@ export class ModuleResolutionNode implements BuilderNode {
   }: {
     desc: ModuleDescription;
     source: string;
-  }): Promise<NextNode<ModuleResolution>> {
-    let imports: ModuleResolutionNode[];
+  }): Promise<NextNode<ModuleResolution | CyclicModuleResolution>> {
+    let imports: (ModuleResolutionNode | CyclicModuleResolutionNode)[];
     imports = await Promise.all(
       desc.imports.map(async (imp) => {
         let depURL = await this.resolver.resolve(imp.specifier, this.url);
-        return new ModuleResolutionNode(depURL, this.resolver);
+        if (this.stack.includes(depURL.href)) {
+          return new CyclicModuleResolutionNode(depURL, this.resolver, [
+            ...this.stack,
+            this.url.href,
+          ]);
+        } else {
+          return new ModuleResolutionNode(depURL, this.resolver, [
+            ...this.stack,
+            this.url.href,
+          ]);
+        }
       })
     );
     source = source.replace(annotationRegex, "");
@@ -144,7 +210,7 @@ class FinishResolutionNode implements BuilderNode {
   cacheKey: string;
   constructor(
     private url: URL,
-    private imports: ModuleResolutionNode[],
+    private imports: (ModuleResolutionNode | CyclicModuleResolutionNode)[],
     private desc: ModuleDescription,
     private source: string
   ) {
@@ -154,10 +220,11 @@ class FinishResolutionNode implements BuilderNode {
     return this.imports;
   }
   async run(resolutions: {
-    [importIndex: number]: ModuleResolution;
+    [importIndex: number]: ModuleResolution | CyclicModuleResolution;
   }): Promise<Value<ModuleResolution>> {
     return {
       value: {
+        type: "standard",
         url: this.url,
         source: this.source,
         desc: this.desc,

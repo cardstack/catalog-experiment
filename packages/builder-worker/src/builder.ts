@@ -157,8 +157,7 @@ class BuildRunner<Input> {
   }
 
   private async evalNodes<LocalInput>(
-    nodes: LocalInput,
-    stack: BuilderNode[] = []
+    nodes: LocalInput
   ): Promise<{
     values: OutputTypes<LocalInput>;
     changes: BoolForEach<LocalInput>;
@@ -166,7 +165,7 @@ class BuildRunner<Input> {
     let values = {} as OutputTypes<LocalInput>;
     let changes = {} as BoolForEach<LocalInput>;
     for (let [name, node] of Object.entries(nodes)) {
-      let { value, changed } = await this.evalNode(node, stack);
+      let { value, changed } = await this.evalNode(node);
       (values as any)[name] = value;
       (changes as any)[name] = changed;
     }
@@ -197,8 +196,7 @@ class BuildRunner<Input> {
   }
 
   private async evalNode(
-    node: BuilderNode,
-    stack: BuilderNode[]
+    node: BuilderNode
   ): Promise<{ value: unknown; changed: boolean }> {
     let state = this.getNodeState(node);
 
@@ -206,17 +204,13 @@ class BuildRunner<Input> {
       case "initial":
         let realNode = this.internalize(state.node);
         return this.handleNextNode(
-          await this.evaluate(realNode, realNode.deps(), stack),
-          stack
+          await this.evaluate(realNode, realNode.deps())
         );
       case "reused":
-        return this.handleNextNode(
-          await this.evaluate(state.node, state.deps, stack),
-          stack
-        );
+        return this.handleNextNode(await this.evaluate(state.node, state.deps));
       case "evaluating":
       case "complete":
-        return this.handleNextNode(await state.output, stack);
+        return this.handleNextNode(await state.output);
       default:
         throw assertNever(state);
     }
@@ -252,12 +246,8 @@ class BuildRunner<Input> {
     return node;
   }
 
-  private async evaluate(
-    node: BuilderNode,
-    maybeDeps: unknown,
-    stack: BuilderNode[]
-  ) {
-    let state = this.startEvaluating(node, maybeDeps, stack);
+  private async evaluate(node: BuilderNode, maybeDeps: unknown) {
+    let state = this.startEvaluating(node, maybeDeps);
     let result = await state.output;
     this.getCurrentContext().nodeStates.set(node.cacheKey, {
       name: "complete",
@@ -271,8 +261,7 @@ class BuildRunner<Input> {
 
   private startEvaluating(
     node: BuilderNode,
-    maybeDeps: unknown,
-    stack: BuilderNode[]
+    maybeDeps: unknown
   ): EvaluatingState {
     let deps: EvaluatingState["deps"];
 
@@ -295,7 +284,7 @@ class BuildRunner<Input> {
       deps = null;
     }
 
-    let output = this.runNode(node, deps, stack);
+    let output = this.runNode(node, deps);
     let state: EvaluatingState = {
       name: "evaluating",
       node,
@@ -307,24 +296,15 @@ class BuildRunner<Input> {
   }
 
   private async handleNextNode(
-    result: InternalResult,
-    stack: BuilderNode[]
+    result: InternalResult
   ): Promise<{ value: unknown; changed: boolean }> {
     if ("node" in result) {
-      if (stack.map((n) => n.cacheKey).includes(result.node.cacheKey)) {
+      if (this.getNodeState(result.node).name === "evaluating") {
         throw new Error(
-          `cycle in builder: ${stack
-            .map((n) =>
-              typeof n.cacheKey === "string" ? n.cacheKey : n.constructor.name
-            )
-            .join(" => ")} => ${
-            typeof result.node.cacheKey === "string"
-              ? result.node.cacheKey
-              : result.node.constructor.name
-          }`
+          `Cycle detected in builder: ${result.node.cacheKey} is still in an evaluating state when we tried to emit it again`
         );
       }
-      return this.evalNode(result.node, stack);
+      return this.evalNode(result.node);
     } else {
       return result;
     }
@@ -332,10 +312,9 @@ class BuildRunner<Input> {
 
   private async runNode(
     node: BuilderNode,
-    deps: EvaluatingState["deps"],
-    stack: BuilderNode[]
+    deps: EvaluatingState["deps"]
   ): Promise<InternalResult> {
-    let inputs = deps ? await this.evalNodes(deps, [...stack, node]) : null;
+    let inputs = deps ? await this.evalNodes(deps) : null;
     let previous = this.nodeStates.get(node.cacheKey);
     if (previous && !node.volatile) {
       let stableInputs: boolean;

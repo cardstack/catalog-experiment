@@ -47,7 +47,7 @@ async function makeModuleResolutions(
       })
     );
   }
-  return { url: moduleURL, source, resolvedImports, desc };
+  return { type: "standard", url: moduleURL, source, resolvedImports, desc };
 }
 
 async function makeBundleAssignments(
