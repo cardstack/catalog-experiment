@@ -1,0 +1,6 @@
+{
+  "$schema": "../builder-worker/entrypoints-schema.json",
+  "js": [
+    "./index.js"
+  ]
+}

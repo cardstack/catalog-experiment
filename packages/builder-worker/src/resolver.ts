@@ -148,15 +148,17 @@ export class Resolver {
       return new URL(modulePath, pkgHref);
     }
 
-    let entrypointsDescriptor: FileDescriptor;
+    let entrypointsDescriptor: FileDescriptor | undefined;
     let entrypointsJSON: EntrypointsJSON;
     try {
       entrypointsDescriptor = await this.fs.openFile(
-        new URL("./entrypoints.json", lockfileURL)
+        new URL("./entrypoints.json", pkgHref)
       );
       entrypointsJSON = JSON.parse(await entrypointsDescriptor.readText());
     } finally {
-      await entrypointsDescriptor!.close();
+      if (entrypointsDescriptor) {
+        await entrypointsDescriptor.close();
+      }
     }
 
     // For now the standard is that we assume the first entry in entrypoints
