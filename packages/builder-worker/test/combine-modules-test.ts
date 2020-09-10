@@ -1493,6 +1493,47 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
+  test("Preserves a side effect in an expression context when the callee is a function expression", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { i } from './lib.js';
+        console.log(i());
+      `,
+      "lib.js": `
+        export function i() { return 1; }
+        function getNative(a, b) { return a[b]; }
+        var defineProperty = function () {
+          try {
+            var func = getNative(Object, 'defineProperty');
+            func({}, '', {});
+            return func;
+          } catch (e) {}
+        }();
+        export { defineProperty };
+        `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+      function i() { return 1; }
+      function getNative(a, b) { return a[b]; }
+      (function () {
+        try {
+          var func = getNative(Object, 'defineProperty');
+          func({}, '', {});
+          return func;
+        } catch (e) {}
+      }());
+      console.log(i());
+      export {};
+      `
+    );
+  });
+
   test("Preserves bindings that are consumed by a preserved side effect that would otherwise be pruned", async function (assert) {
     await assert.setupFiles({
       "index.js": `

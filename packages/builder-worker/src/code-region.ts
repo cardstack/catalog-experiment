@@ -327,7 +327,7 @@ type Disposition =
       state: "replaced start";
       replacement: string;
     }
-  | { state: "unwrap" };
+  | { state: "unwrap"; beginning: string; end: string };
 
 export class RegionEditor {
   private dispositions: Disposition[];
@@ -353,6 +353,8 @@ export class RegionEditor {
     if (nameDesc.declarationSideEffects != null) {
       this.dispositions[nameDesc.declaration] = {
         state: "unwrap",
+        beginning: "(",
+        end: ")",
       };
       this.rename(name, this.unusedNameLike(name));
     } else {
@@ -502,13 +504,20 @@ export class RegionEditor {
             // 4. the gap between the reference name and the side effect ("="
             //    sign)
             // 5. the side effectful right-side of the declaration and output
-            //    emitted by any of the child's own childrens' regions
+            //    emitted by any of the child's own children's regions
             // 6. the gap after the retained child We want to keep only #5 and
             //    remove all the rest.
+            let unwrap = childDispositions.find((d) => d.state === "unwrap")!;
+            let beginning: string, end: string;
+            if (unwrap.state === "unwrap") {
+              ({ beginning, end } = unwrap);
+            } else {
+              throw new Error(`bug: should never be here`);
+            }
             this.output.pop();
             let sideEffect = this.output.slice(ourStartOutputIndex + 4);
             this.output = this.output.slice(0, ourStartOutputIndex);
-            this.output.push(...sideEffect);
+            this.output.push(beginning, ...sideEffect, end);
           } else if (disposition.state === "replaced start") {
             this.output[ourStartOutputIndex] = disposition.replacement;
           }
