@@ -6,7 +6,12 @@ import {
   annotationEnd,
   annotationStart,
 } from "./common";
-import { ModuleResolutionsNode, ModuleResolution } from "./resolution";
+import {
+  ModuleResolutionsNode,
+  ModuleResolution,
+  CyclicModuleResolution,
+  isCyclicModuleResolution,
+} from "./resolution";
 import { combineModules } from "../combine-modules";
 import { File } from "@babel/types";
 import {
@@ -365,7 +370,7 @@ type Consumers = Map<
 >;
 
 function invertDependencies(
-  resolutions: (ModuleResolution | ModuleResolution[])[],
+  resolutions: (ModuleResolution | CyclicModuleResolution)[],
   consumersOf: Consumers = new Map(),
   leaves: Set<ModuleResolution> = new Set()
 ): {
@@ -373,13 +378,9 @@ function invertDependencies(
   leaves: Set<ModuleResolution>;
 } {
   for (let resolution of resolutions) {
-    if (!Array.isArray(resolution)) {
+    if (!isCyclicModuleResolution(resolution)) {
       if (resolution.resolvedImportsWithCyclicGroups.length > 0) {
-        invertDependencies(
-          resolution.resolvedImportsWithCyclicGroups,
-          consumersOf,
-          leaves
-        );
+        invertDependencies(resolution.resolvedImports, consumersOf, leaves);
         // since we are handling this on the exit of the recursion, all your deps
         // will have entries in the identity map
         for (let [
