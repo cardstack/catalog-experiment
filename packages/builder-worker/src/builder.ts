@@ -300,8 +300,12 @@ class BuildRunner<Input> {
   ): Promise<{ value: unknown; changed: boolean }> {
     if ("node" in result) {
       if (this.getNodeState(result.node).name === "evaluating") {
+        let name =
+          typeof result.node.cacheKey === "string"
+            ? result.node.cacheKey
+            : `a ${result.node.constructor.name} instance`;
         throw new Error(
-          `Cycle detected in builder: ${result.node.cacheKey} is still in an evaluating state when we tried to emit it again`
+          `Cycle detected in builder: ${name} is still in an evaluating state when we tried to emit it again`
         );
       }
       return this.evalNode(result.node);
