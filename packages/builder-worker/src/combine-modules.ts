@@ -861,11 +861,8 @@ function resolveReexport(
       );
     }
   } else if (remoteDesc?.type === "reexport" && module.type === "cyclic") {
-    // unsure how to resolve a export through a cyclic resolution--we'll need
-    // some other way to get a handle on the module resolution on the other side
-    // of our cyclic edge
     throw new Error(
-      `bug: unsure how to resolve a reexport through a cyclic resolution for '${name}' in ${module.url.href}`
+      `Bindings can cannot form a cycle. Encountered a cyclic resolution for '${name}' in ${module.url.href}`
     );
   }
   return { name, module };
