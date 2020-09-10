@@ -47,7 +47,14 @@ async function makeModuleResolutions(
       })
     );
   }
-  return { type: "standard", url: moduleURL, source, resolvedImports, desc };
+  return {
+    type: "standard",
+    url: moduleURL,
+    source,
+    resolvedImports,
+    resolvedImportsWithCyclicGroups: resolvedImports,
+    desc,
+  };
 }
 
 async function makeBundleAssignments(

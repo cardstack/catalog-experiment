@@ -67,6 +67,7 @@ export interface ModuleResolution {
   source: string;
   desc: ModuleDescription;
   resolvedImports: (ModuleResolution | CyclicModuleResolution)[];
+  resolvedImportsWithCyclicGroups: (ModuleResolution | ModuleResolution[])[];
 }
 
 export interface CyclicModuleResolution {
@@ -131,9 +132,7 @@ export class CyclicModuleResolutionNode implements BuilderNode {
     private resolver: Resolver,
     private stack: string[]
   ) {
-    this.cacheKey = `cyclic-module-resolution:${url.href},stack:${stack.join(
-      ","
-    )}`;
+    this.cacheKey = `cyclic-module-resolution:${url.href}`;
   }
 
   deps() {
@@ -222,14 +221,64 @@ class FinishResolutionNode implements BuilderNode {
   async run(resolutions: {
     [importIndex: number]: ModuleResolution | CyclicModuleResolution;
   }): Promise<Value<ModuleResolution>> {
+    let module: ModuleResolution = {
+      type: "standard",
+      url: this.url,
+      source: this.source,
+      desc: this.desc,
+      resolvedImports: this.imports.map((_, index) => resolutions[index]),
+      resolvedImportsWithCyclicGroups: [],
+    };
+
+    // We accept that whoever first encounters a cyclic edge in our module
+    // resolution determines the order that modules evaluate in. This means that
+    // javascript that uses cyclic imports and is relying on a particular order
+    // of evaluation based on a particular entrypoint may be evaluated in a
+    // different order. However, reliance on order of evaluation with cyclic
+    // imports is probably in poor form, as the order of evaluation can change
+    // depending on the entrypoint used.
+
+    // we are not interested in cycles this module is within nor cycles consumed
+    // by this module's dependencies, rather we are only interested in cycles this
+    // module directly consumes
+    let cycles = gatherCyclicDependencies(module).filter(
+      (cycle) =>
+        !cycle.find((m) => m.url.href === this.url.href) &&
+        module.resolvedImports
+          .map((i) => i.url.href)
+          .includes(cycle[0].url.href)
+    );
+    module.resolvedImportsWithCyclicGroups = module.resolvedImports
+      .filter((m) => !isCyclicModuleResolution(m))
+      .map(
+        (m) => cycles.find((cycle) => cycle[0].url.href === m.url.href) ?? m
+      ) as (ModuleResolution | ModuleResolution[])[];
     return {
-      value: {
-        type: "standard",
-        url: this.url,
-        source: this.source,
-        desc: this.desc,
-        resolvedImports: this.imports.map((_, index) => resolutions[index]),
-      },
+      value: module,
     };
   }
+}
+
+function gatherCyclicDependencies(
+  module: ModuleResolution,
+  stack: ModuleResolution[] = []
+): ModuleResolution[][] {
+  let cycles: ModuleResolution[][] = [];
+  for (let dep of module.resolvedImports) {
+    if (isCyclicModuleResolution(dep)) {
+      cycles = [
+        ...cycles,
+        [
+          ...stack.slice(stack.findIndex((m) => m.url.href === dep.url.href)),
+          module,
+        ],
+      ];
+    } else {
+      cycles = [
+        ...cycles,
+        ...gatherCyclicDependencies(dep, [...stack, module]),
+      ];
+    }
+  }
+  return cycles;
 }
