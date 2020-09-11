@@ -11,10 +11,12 @@ import {
 } from "../../../builder-worker/src/nodes/file";
 import { transform } from "@babel/core";
 import { ListingEntry } from "../../../builder-worker/src/filesystem";
+import { PackageJSON } from "./package";
+import { getRecipe } from "../recipes";
 
 export class SrcTransformNode implements BuilderNode {
   cacheKey: string;
-  constructor(private pkgURL: URL) {
+  constructor(private pkgURL: URL, private pkgJSON: PackageJSON) {
     this.cacheKey = `src-transform:${pkgURL.href}`;
   }
 
@@ -39,7 +41,9 @@ export class SrcTransformNode implements BuilderNode {
       .map((entry) => entry.url);
     return {
       node: new AllNode(
-        urls.map((url) => new BabelTransformNode(url, this.pkgURL))
+        urls.map(
+          (url) => new BabelTransformNode(url, this.pkgURL, this.pkgJSON)
+        )
       ),
     };
   }
@@ -47,7 +51,11 @@ export class SrcTransformNode implements BuilderNode {
 
 class BabelTransformNode implements BuilderNode {
   cacheKey: string;
-  constructor(private url: URL, private pkgURL: URL) {
+  constructor(
+    private url: URL,
+    private pkgURL: URL,
+    private pkgJSON: PackageJSON
+  ) {
     this.cacheKey = `babel-transform:${url.href}`;
   }
 
@@ -58,20 +66,9 @@ class BabelTransformNode implements BuilderNode {
   }
 
   async run({ src }: { src: string }): Promise<NodeOutput<void>> {
-    let output = transform(src, {
-      // TODO move this list into recipes
-      plugins: [
-        // TODO add typescript stripping
-        "@babel/plugin-transform-flow-strip-types",
-        ["@babel/plugin-proposal-decorators", { legacy: true }],
-        ["@babel/plugin-proposal-class-properties", { loose: true }],
-        "@babel/plugin-proposal-nullish-coalescing-operator",
-        "@babel/plugin-proposal-optional-chaining", // for these items that are almost part of the spec, let's move this into our parse config that we use in describe-files
-        "@babel/plugin-proposal-numeric-separator",
-        ["@babel/plugin-proposal-pipeline-operator", { proposal: "minimal" }],
-        "@babel/plugin-proposal-logical-assignment-operators",
-      ],
-    });
+    let { name, version } = this.pkgJSON;
+    let { babelPlugins: plugins = [] } = getRecipe(name, version) ?? {};
+    let output = transform(src, { plugins });
     if (!output || output.code == null) {
       throw new Error(
         `Empty babel result after babel transform of ${this.url.href}`

@@ -160,7 +160,7 @@ export class PackageSrcNode implements BuilderNode {
 
   async run(): Promise<NodeOutput<void>> {
     return {
-      node: new PackageSrcFinishNode(this.pkgURL),
+      node: new PackageSrcFinishNode(this.pkgURL, this.pkgJSON),
     };
   }
 }
@@ -188,8 +188,7 @@ export class PackageSrcPrepareNode implements BuilderNode {
       srcPath = this.pkgPath;
     }
     let { srcIncludeGlob, srcIgnoreGlob, hoistSrc } = recipe ?? {};
-    // TODO need to include .ts too...
-    srcIncludeGlob = srcIncludeGlob ?? "**/*.{js,json}";
+    srcIncludeGlob = srcIncludeGlob ?? "**/*.{ts,js,json}";
     srcIgnoreGlob = srcIgnoreGlob ?? "{node_modules,test}/**";
 
     let files = await glob(srcIncludeGlob, {
@@ -227,13 +226,13 @@ export class PackageSrcPrepareNode implements BuilderNode {
 
 class PackageSrcFinishNode implements BuilderNode {
   cacheKey: string;
-  constructor(private pkgURL: URL) {
+  constructor(private pkgURL: URL, private pkgJSON: PackageJSON) {
     this.cacheKey = `pkg-source-finish:${pkgURL.href}`;
   }
 
   deps() {
     return {
-      transform: new SrcTransformNode(this.pkgURL),
+      transform: new SrcTransformNode(this.pkgURL, this.pkgJSON),
     };
   }
 

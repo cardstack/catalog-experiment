@@ -742,8 +742,11 @@ function assignedExports(
         module,
       }: { module: ModuleResolution | CyclicModuleResolution } = assignment;
       if (
-        typeof original === "string" &&
-        module.desc.exports.get(original)?.type === "reexport"
+        (typeof original === "string" &&
+          module.desc.exports.get(original)?.type === "reexport") ||
+        (typeof original === "string" &&
+          module.desc.names.get(original)?.type === "import" &&
+          [...module.desc.exports.values()].find((e) => e.name === original))
       ) {
         ({ name: original, module } = resolveReexport(original, module));
         let reexportAssignment = assignments.find(
@@ -773,9 +776,13 @@ function assignedExports(
           state.assignedLocalNames.get(module.url.href)?.get(original) ??
           state.assignedImportedNames.get(module.url.href)?.get(original);
       } else {
-        insideName = state.assignedImportedNames
-          .get(module.url.href)
-          ?.get(original);
+        insideName =
+          typeof original === "string"
+            ? state.assignedLocalNames.get(module.url.href)?.get(original)
+            : undefined;
+        insideName =
+          insideName ??
+          state.assignedImportedNames.get(module.url.href)?.get(original);
       }
 
       if (!insideName) {
@@ -820,9 +827,31 @@ function assignedImports(
     for (let [exportedName, localName] of mappings) {
       let exposedName = assignment.exposedNames.get(exportedName);
       if (!exposedName) {
-        throw new Error(
-          `bug: tried to import ${exportedName} from ${moduleHref} from another bundle, but it's not exposed`
+        // check to see if this is actually a reexport that is being projected
+        // to the bundle's entrypoint
+        let entrypointAssignment = assignments.find(
+          (a) => a.module.url.href === assignment.entrypointModuleURL.href
         );
+        if (entrypointAssignment) {
+          let { name, module } = resolveReexport(
+            localName,
+            entrypointAssignment.module
+          );
+          let reexportedName = state.assignedImportedNames
+            .get(module.url.href)
+            ?.get(name);
+          if (
+            module.url.href === assignment.module.url.href &&
+            reexportedName
+          ) {
+            exposedName = entrypointAssignment.exposedNames.get(reexportedName);
+          }
+        }
+        if (!exposedName) {
+          throw new Error(
+            `bug: tried to import ${exportedName} from ${moduleHref} from another bundle, but it's not exposed`
+          );
+        }
       }
       importsFromBundle.set(exposedName, localName);
     }
@@ -853,11 +882,10 @@ function resolveReexport(
         module.resolvedImports[remoteDesc.importIndex]
       );
     } else {
+      let localDesc = module.desc.names.get(name)! as ImportedNameDescription;
       return resolveReexport(
-        remoteDesc.name,
-        module.resolvedImports[
-          (module.desc.names.get(name)! as ImportedNameDescription).importIndex
-        ]
+        localDesc.name,
+        module.resolvedImports[localDesc.importIndex]
       );
     }
   } else if (remoteDesc?.type === "reexport" && module.type === "cyclic") {

@@ -509,6 +509,63 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file("output/entries.js").matches(/export { foo };/);
     });
 
+    test("bundle consumes an reexport projected from another bundle's exports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["./entries.js", "./toPairs.js"] }`,
+        "entries.js": `
+          import { toPairs } from "./toPairs.js";
+          toPairs();
+          export const foo = "my own export";
+        `,
+        "toPairs.js": `
+          export { default as toPairs } from "./internal.js";
+        `,
+        "internal.js": `
+          export default function() { console.log("toPairs"); }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/toPairs.js")
+        .matches(
+          /const _default = function\(\) { console\.log\("toPairs"\); }/
+        );
+      await assert
+        .file("output/toPairs.js")
+        .matches(/export { _default as toPairs };/);
+      await assert
+        .file("output/entries.js")
+        .matches(/import { toPairs } from "\.\/toPairs\.js";/);
+    });
+
+    test("bundle consumes an explicit import/export projected from another bundle's exports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["./entries.js", "./toPairs.js"] }`,
+        "entries.js": `
+          import { toPairs } from "./toPairs.js";
+          toPairs();
+          export const foo = "my own export";
+        `,
+        "toPairs.js": `
+          import toPairs from "./internal.js";
+          export { toPairs };
+        `,
+        "internal.js": `
+          export default function() { console.log("toPairs"); }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/toPairs.js")
+        .matches(/const toPairs = function\(\) { console\.log\("toPairs"\); }/);
+      await assert.file("output/toPairs.js").matches(/export { toPairs };/);
+      await assert
+        .file("output/entries.js")
+        .matches(/import { toPairs } from "\.\/toPairs\.js";/);
+    });
+
     test("circular imports", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["./index.js"] }`,

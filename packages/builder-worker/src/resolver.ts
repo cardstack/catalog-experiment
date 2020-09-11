@@ -2,6 +2,7 @@ import { FileSystem } from "./filesystem";
 import { FileDescriptor } from "./filesystem-drivers/filesystem-driver";
 import { EntrypointsJSON } from "./nodes/entrypoint";
 import { makeURLEndInDir } from "./path";
+import { getRecipe } from "./recipes";
 
 // TODO move this to a better place
 export interface LockFile {
@@ -10,6 +11,7 @@ export interface LockFile {
 
 interface PkgInfo {
   pkgName: string;
+  version: string | undefined;
   modulePath: string | undefined;
 }
 
@@ -46,6 +48,17 @@ export class Resolver {
         throw new Error(
           `package specifier URL does not use SSL and is susceptible to man-in-the-middle-attacks: ${specifier} in module ${source}`
         );
+      }
+    }
+
+    let { pkgName: sourcePkgName, version: sourcePkgVersion } =
+      pkgInfoFromURL(source) ?? {};
+    if (sourcePkgName && sourcePkgVersion) {
+      let { resolutions } =
+        (await getRecipe(sourcePkgName, sourcePkgVersion, this.fs)) ?? {};
+      let href = resolutions?.[specifier];
+      if (href) {
+        return new URL(href);
       }
     }
 
@@ -188,5 +201,37 @@ export function pkgInfoFromSpecifier(specifier: string): PkgInfo | undefined {
   }
   let modulePath =
     specifierParts.length > 0 ? specifierParts.join("/") : undefined;
-  return { pkgName, modulePath };
+  return { pkgName, modulePath, version: undefined };
+}
+
+function pkgInfoFromURL(url: URL): PkgInfo | undefined {
+  let catalogjsHref = "https://catalogjs.com/pkgs/";
+  if (!url.href.startsWith(catalogjsHref)) {
+    return;
+  }
+
+  let pkgName: string;
+  let version: string;
+  let modulePath: string | undefined;
+  if (url.href.startsWith(`${catalogjsHref}@catalogjs/`)) {
+    let parts = url.href.slice(catalogjsHref.length).split("/");
+    pkgName = `${parts.shift()}/${parts.shift()}`;
+    version = parts.shift()!;
+    modulePath = parts.length > 0 ? parts.join("/") : undefined;
+  } else if (url.href.startsWith(`${catalogjsHref}npm/`)) {
+    let parts = url.href.slice(`${catalogjsHref}npm/`.length).split("/");
+    let scopedName = parts.shift()!;
+    pkgName = scopedName.startsWith("@")
+      ? `${scopedName}/${parts.shift()}`
+      : scopedName;
+    version = parts.shift()!;
+    modulePath = parts.length > 0 ? parts.join("/") : undefined;
+  } else {
+    return;
+  }
+  return {
+    pkgName,
+    version,
+    modulePath,
+  };
 }

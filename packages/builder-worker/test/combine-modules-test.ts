@@ -127,6 +127,7 @@ async function makeBundleAssignments(
         bundleURL: url(assignment.assignedToBundle),
         module: await makeModuleResolutions(fs, fileURL),
         exposedNames: new Map(Object.entries(assignment.nameMapping)),
+        entrypointModuleURL: url(optsWithDefaults.containsEntrypoint),
       };
       let index = assignments.findIndex(
         (a) => a.module.url.href === fileURL.href
@@ -816,6 +817,34 @@ QUnit.module("combine modules", function (origHooks) {
       console.log(b0);
       const hello = 'hi';
       console.log(hello + b);
+      export {};
+      `
+    );
+  });
+
+  test("can collapse a reexport that projects a default export to a named export", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { hello } from './b.js';
+        const hi = 'hi';
+        console.log(hi + hello());
+      `,
+      "b.js": `
+        import hello from './lib.js';
+        export { hello };
+      `,
+      "lib.js": `export default function() { return 'hello'; }`,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+      const hello = function() { return 'hello'; }
+      const hi = 'hi';
+      console.log(hi + hello());
       export {};
       `
     );
@@ -1707,6 +1736,7 @@ QUnit.module("combine modules", function (origHooks) {
           importAssignments: importAssignmentsA,
         }),
         exposedNames: new Map(),
+        entrypointModuleURL: url("entrypointA.js"),
       },
       {
         bundleURL: combinedBundleURL,
@@ -1714,6 +1744,7 @@ QUnit.module("combine modules", function (origHooks) {
           importAssignments: importAssignmentsB,
         }),
         exposedNames: new Map(),
+        entrypointModuleURL: url("entrypointB.js"),
       },
     ];
     let combined = combineModules(combinedBundleURL, combinedAssignments);

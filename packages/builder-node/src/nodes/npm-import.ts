@@ -30,6 +30,7 @@ import { log } from "../../../builder-worker/src/logger";
 import { MakeProjectNode } from "../../../builder-worker/src/nodes/project";
 import { Resolver } from "../../../builder-worker/src/resolver";
 import { getRecipe } from "../recipes";
+import { recipesURL } from "../../../builder-worker/src/recipes";
 
 export class NpmImportPackagesNode implements BuilderNode {
   // TODO the cache key for this should probably be some kind of lock file hash.
@@ -52,6 +53,8 @@ export class NpmImportPackagesNode implements BuilderNode {
   deps() {
     return {
       mountLoader: new MountLoaderNode(),
+      mountRecipes: new MountRecipesNode(),
+      mountPolyfills: new MountPolyfillsNode(),
     };
   }
 
@@ -278,6 +281,35 @@ class MountLoaderNode implements BuilderNode {
         new URL(`https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/`),
         new NodeFileSystemDriver(underlyingPkgPath)
       ),
+    };
+  }
+}
+
+class MountPolyfillsNode implements BuilderNode {
+  cacheKey = `mount-polyfills`;
+
+  deps() {}
+
+  async run(): Promise<NodeOutput<URL>> {
+    let underlyingPkgPath = resolveNodePkg("@catalogjs/polyfills");
+    return {
+      node: new MountNode(
+        new URL(`https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/`),
+        new NodeFileSystemDriver(underlyingPkgPath)
+      ),
+    };
+  }
+}
+
+class MountRecipesNode implements BuilderNode {
+  cacheKey = `mount-recipes`;
+
+  deps() {}
+
+  async run(): Promise<NodeOutput<URL>> {
+    let underlyingPath = join(resolveNodePkg("@catalogjs/recipes"), "recipes");
+    return {
+      node: new MountNode(recipesURL, new NodeFileSystemDriver(underlyingPath)),
     };
   }
 }

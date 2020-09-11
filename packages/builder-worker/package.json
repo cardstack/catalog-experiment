@@ -3,14 +3,6 @@
   "version": "0.0.1",
   "license": "MIT",
   "devDependencies": {
-    "@babel/core": "^7.9.0",
-    "@babel/plugin-proposal-class-properties": "^7.8.3",
-    "@babel/plugin-proposal-decorators": "^7.8.3",
-    "@babel/plugin-proposal-nullish-coalescing-operator": "^7.8.3",
-    "@babel/plugin-proposal-optional-chaining": "^7.9.0",
-    "@babel/plugin-transform-typescript": "^7.9.4",
-    "@babel/preset-env": "^7.9.0",
-    "@types/babel__core": "^7.1.7",
     "@types/columnify": "^1.5.0",
     "@types/qunit": "^2.9.1",
     "@types/sinon": "^9.0.1",
@@ -34,21 +26,28 @@
     "test:headless": "yarn node-qunit-puppeteer http://localhost:8080"
   },
   "dependencies": {
-    "@babel/plugin-proposal-logical-assignment-operators": "^7.11.0",
-    "@babel/plugin-proposal-numeric-separator": "^7.10.4",
-    "@babel/plugin-proposal-pipeline-operator": "^7.10.5",
+    "@babel/core": "^7.9.0",
+    "@babel/plugin-proposal-class-properties": "^7.8.3",
+    "@babel/plugin-proposal-decorators": "^7.8.3",
+    "@babel/plugin-proposal-nullish-coalescing-operator": "^7.8.3",
+    "@babel/plugin-proposal-optional-chaining": "^7.9.0",
+    "@babel/plugin-transform-typescript": "^7.9.4",
+    "@babel/preset-env": "^7.9.0",
+    "@types/babel__core": "^7.1.7",
     "@babel/traverse": "^7.9.5",
     "@catalogjs/loader": "0.0.1",
     "@catalogjs/shared": "0.0.1",
     "@msgpack/msgpack": "^1.12.2",
     "@types/babel__traverse": "^7.0.10",
     "@types/lodash": "^4.14.150",
+    "@types/semver": "^7.3.1",
     "base64-arraybuffer": "^0.2.0",
     "bind-decorator": "^1.0.11",
     "columnify": "^1.5.4",
     "dom-serializer": "^0.2.2",
     "htmlparser2": "^4.1.0",
     "lodash": "^4.17.19",
-    "moment": "^2.25.3"
+    "moment": "^2.25.3",
+    "semver": "^7.3.2"
   }
 }

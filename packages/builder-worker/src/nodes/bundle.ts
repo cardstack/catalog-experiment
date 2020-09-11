@@ -166,6 +166,7 @@ export class Assigner {
           bundleURL: entrypoint.url,
           module,
           exposedNames: new Map(),
+          entrypointModuleURL: module.url,
         },
         enclosingBundles: new Set([entrypoint.url.href]),
       };
@@ -201,12 +202,16 @@ export class Assigner {
         )
       ) {
         // we can merge with this consumer
-        let bundleURL = consumer.internalAssignment.assignment.bundleURL;
+        let {
+          bundleURL,
+          entrypointModuleURL,
+        } = consumer.internalAssignment.assignment;
         let internalAssignment = {
           assignment: {
             bundleURL,
             module,
             exposedNames: new Map(),
+            entrypointModuleURL,
           },
           enclosingBundles: consumer.internalAssignment.enclosingBundles,
         };
@@ -247,6 +252,7 @@ export class Assigner {
         bundleURL,
         module,
         exposedNames: new Map(),
+        entrypointModuleURL: module.url,
       },
       enclosingBundles,
     };
@@ -329,6 +335,9 @@ export class BundleSerializerNode implements BuilderNode {
 export interface BundleAssignment {
   // which bundle are we in
   bundleURL: URL;
+
+  // the bundle's entrypoint module
+  entrypointModuleURL: URL;
 
   // which module are we talking about
   module: ModuleResolution;
