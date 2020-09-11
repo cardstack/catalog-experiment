@@ -29,7 +29,7 @@ export class MakeProjectNode implements BuilderNode {
     this.cacheKey = `project:input=${inputRoot.href},output=${projectOutputRoot.href}`;
   }
 
-  deps() {
+  async deps() {
     let entrypoints = new EntrypointsJSONNode(
       this.inputRoot,
       this.projectOutputRoot

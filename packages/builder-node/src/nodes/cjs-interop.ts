@@ -32,7 +32,7 @@ export class MakePkgESCompliantNode implements BuilderNode {
     this.cacheKey = `make-pkg-es-compliant:${pkgURL.href}`;
   }
 
-  deps() {
+  async deps() {
     return {
       listing: new PreparePkgForEsCompliance(this.pkgURL, this.pkgSrcNode),
     };
@@ -67,7 +67,7 @@ class PreparePkgForEsCompliance implements BuilderNode {
     this.cacheKey = `prepare-pkg-es-compliance:${pkgURL.href}`;
   }
 
-  deps() {
+  async deps() {
     return {
       src: this.pkgSrcNode,
     };
@@ -86,7 +86,7 @@ class IntrospectSrcNode implements BuilderNode {
     this.cacheKey = `introspect-src:${url.href}`;
   }
 
-  deps() {
+  async deps() {
     return {
       desc: new AnalyzeFileNode(this.url),
     };
@@ -119,7 +119,7 @@ class ESInteropNode implements BuilderNode {
     this.cacheKey = `es-interop:${outputURL.href}`;
   }
 
-  deps() {
+  async deps() {
     return {
       src: new FileNode(this.inputURL),
     };
@@ -163,7 +163,7 @@ class RewriteCJSNode implements BuilderNode {
     this.cacheKey = `rewrite-cjs:${outputURL.href}`;
   }
 
-  deps() {}
+  async deps() {}
 
   async run(): Promise<NodeOutput<void>> {
     let imports = new Set<string>(
@@ -226,7 +226,7 @@ class ESModuleShimNode implements BuilderNode {
     this.cacheKey = `es-shim:${outputURL.href}`;
   }
 
-  deps() {}
+  async deps() {}
 
   async run(): Promise<NodeOutput<void>> {
     let basename = this.outputURL.pathname.split("/").pop();
@@ -263,7 +263,7 @@ class AnalyzeFileNode implements BuilderNode {
     this.cacheKey = `analyze-file:${url.href}`;
   }
 
-  deps() {
+  async deps() {
     return {
       parsed: new JSParseNode(new FileNode(this.url)),
     };

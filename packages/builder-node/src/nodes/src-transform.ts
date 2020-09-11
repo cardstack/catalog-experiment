@@ -3,6 +3,7 @@ import {
   AllNode,
   NodeOutput,
   ConstantNode,
+  RecipeGetter,
 } from "../../../builder-worker/src/nodes/common";
 import {
   FileListingNode,
@@ -12,7 +13,6 @@ import {
 import { transform } from "@babel/core";
 import { ListingEntry } from "../../../builder-worker/src/filesystem";
 import { PackageJSON } from "./package";
-import { getRecipe } from "../recipes";
 
 export class SrcTransformNode implements BuilderNode {
   cacheKey: string;
@@ -20,7 +20,7 @@ export class SrcTransformNode implements BuilderNode {
     this.cacheKey = `src-transform:${pkgURL.href}`;
   }
 
-  deps() {
+  async deps() {
     return {
       listingEntries: new FileListingNode(
         new URL("__stage1/", this.pkgURL),
@@ -59,15 +59,18 @@ class BabelTransformNode implements BuilderNode {
     this.cacheKey = `babel-transform:${url.href}`;
   }
 
-  deps() {
+  async deps() {
     return {
       src: new FileNode(this.url),
     };
   }
 
-  async run({ src }: { src: string }): Promise<NodeOutput<void>> {
+  async run(
+    { src }: { src: string },
+    getRecipe: RecipeGetter
+  ): Promise<NodeOutput<void>> {
     let { name, version } = this.pkgJSON;
-    let { babelPlugins: plugins = [] } = getRecipe(name, version) ?? {};
+    let { babelPlugins: plugins = [] } = (await getRecipe(name, version)) ?? {};
     let output = transform(src, { plugins });
     if (!output || output.code == null) {
       throw new Error(

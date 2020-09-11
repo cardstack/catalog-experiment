@@ -29,7 +29,7 @@ export class ModuleResolutionsNode implements BuilderNode {
     this.cacheKey = `module-resolutions:input=${projectInput.href},output=${projectOutput.href}`;
   }
 
-  deps() {
+  async deps() {
     return {
       entrypoints: new EntrypointsJSONNode(
         this.projectInput,
@@ -89,7 +89,7 @@ export class ModuleAnnotationNode implements BuilderNode {
   constructor(private fileNode: FileNode) {
     this.cacheKey = `module-annotation:${fileNode.url.href}`;
   }
-  deps() {
+  async deps() {
     return { source: this.fileNode };
   }
   async run({
@@ -111,7 +111,7 @@ export class ModuleDescriptionNode implements BuilderNode {
   constructor(private fileNode: FileNode) {
     this.cacheKey = `module-description:${fileNode.url.href}`;
   }
-  deps() {
+  async deps() {
     return { parsed: new JSParseNode(this.fileNode) };
   }
   async run({ parsed }: { parsed: File }): Promise<Value<ModuleDescription>> {
@@ -135,7 +135,7 @@ export class CyclicModuleResolutionNode implements BuilderNode {
     this.cacheKey = `cyclic-module-resolution:${url.href}`;
   }
 
-  deps() {
+  async deps() {
     let fileNode = new FileNode(this.url);
     return { desc: new ModuleAnnotationNode(fileNode) };
   }
@@ -169,7 +169,7 @@ export class ModuleResolutionNode implements BuilderNode {
   ) {
     this.cacheKey = `module-resolution:${url.href}`;
   }
-  deps() {
+  async deps() {
     let fileNode = new FileNode(this.url);
     return { desc: new ModuleAnnotationNode(fileNode), source: fileNode };
   }
@@ -215,7 +215,7 @@ class FinishResolutionNode implements BuilderNode {
   ) {
     this.cacheKey = this;
   }
-  deps() {
+  async deps() {
     return this.imports;
   }
   async run(resolutions: {

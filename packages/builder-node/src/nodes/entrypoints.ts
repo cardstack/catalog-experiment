@@ -3,10 +3,10 @@ import {
   ConstantNode,
   AllNode,
   NextNode,
+  RecipeGetter,
 } from "../../../builder-worker/src/nodes/common";
 import { PackageJSON, buildSrcDir } from "./package";
 import { MakePkgESCompliantNode } from "./cjs-interop";
-import { getRecipe } from "../recipes";
 import {
   FileExistsNode,
   WriteFileNode,
@@ -26,9 +26,9 @@ export class EntrypointsNode implements BuilderNode {
     this.cacheKey = `pkg-entrypoints:${pkgURL.href}`;
   }
 
-  deps() {
+  async deps(getRecipe: RecipeGetter) {
     let { name, version, main } = this.pkgJSON;
-    let recipe = getRecipe(name, version);
+    let recipe = await getRecipe(name, version);
     let entrypoints = recipe?.entrypoints ?? (main ? [main!] : ["./index.js"]);
     if (entrypoints.length === 0) {
       throw new Error(

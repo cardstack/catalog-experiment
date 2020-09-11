@@ -4,6 +4,7 @@ import {
   AllNode,
   Value,
   NodeOutput,
+  RecipeGetter,
 } from "../../../builder-worker/src/nodes/common";
 import {
   MountNode,
@@ -29,7 +30,6 @@ import { EntrypointsNode } from "./entrypoints";
 import { log } from "../../../builder-worker/src/logger";
 import { MakeProjectNode } from "../../../builder-worker/src/nodes/project";
 import { Resolver } from "../../../builder-worker/src/resolver";
-import { getRecipe } from "../recipes";
 import { recipesURL } from "../../../builder-worker/src/recipes";
 
 export class NpmImportPackagesNode implements BuilderNode {
@@ -50,7 +50,7 @@ export class NpmImportPackagesNode implements BuilderNode {
     }
   }
 
-  deps() {
+  async deps() {
     return {
       mountLoader: new MountLoaderNode(),
       mountRecipes: new MountRecipesNode(),
@@ -96,20 +96,23 @@ class NpmImportPackageNode implements BuilderNode {
     this.cacheKey = `npm-import-pkg:${pkgPath}`;
   }
 
-  deps() {
+  async deps() {
     return {
       package: new MakePackageNode(this.pkgPath, this.pkgJSON, this.workingDir),
     };
   }
 
-  async run({
-    package: { url, hash },
-  }: {
-    package: Omit<Package, "dependencies" | "devDependencies">;
-  }): Promise<NextNode<Package>> {
+  async run(
+    {
+      package: { url, hash },
+    }: {
+      package: Omit<Package, "dependencies" | "devDependencies">;
+    },
+    getRecipe: RecipeGetter
+  ): Promise<NextNode<Package>> {
     let { name: pkgName, version, dependencies = {} } = this.pkgJSON;
     let { additionalDependencies = {}, skipDependencies } =
-      getRecipe(pkgName, version) ?? {};
+      (await getRecipe(pkgName, version)) ?? {};
     let allDependencies = {
       ...dependencies,
       ...additionalDependencies,
@@ -150,7 +153,7 @@ class MakePackageNode implements BuilderNode {
     this.cacheKey = `make-pkg:${pkgPath}`;
   }
 
-  deps() {
+  async deps() {
     return {
       pkgURL: new PreparePackageNode(
         this.pkgPath,
@@ -192,7 +195,7 @@ class FinishPackageNode implements BuilderNode {
     this.cacheKey = `finish-pkg:${pkgPath}`;
   }
 
-  deps() {
+  async deps() {
     let esCompliantNode = new MakePkgESCompliantNode(
       this.pkgURL,
       new PackageSrcNode(
@@ -235,7 +238,7 @@ class PreparePackageNode implements BuilderNode {
     this.cacheKey = `prepare-pkg:${pkgPath}`;
   }
 
-  deps() {
+  async deps() {
     return {
       hash: new PackageHashNode(this.pkgPath, this.pkgJSON),
     };
@@ -272,7 +275,7 @@ class PreparePackageNode implements BuilderNode {
 class MountLoaderNode implements BuilderNode {
   cacheKey = `mount-loader`;
 
-  deps() {}
+  async deps() {}
 
   async run(): Promise<NodeOutput<URL>> {
     let underlyingPkgPath = resolveNodePkg("@catalogjs/loader");
@@ -288,7 +291,7 @@ class MountLoaderNode implements BuilderNode {
 class MountPolyfillsNode implements BuilderNode {
   cacheKey = `mount-polyfills`;
 
-  deps() {}
+  async deps() {}
 
   async run(): Promise<NodeOutput<URL>> {
     let underlyingPkgPath = resolveNodePkg("@catalogjs/polyfills");
@@ -304,7 +307,7 @@ class MountPolyfillsNode implements BuilderNode {
 class MountRecipesNode implements BuilderNode {
   cacheKey = `mount-recipes`;
 
-  deps() {}
+  async deps() {}
 
   async run(): Promise<NodeOutput<URL>> {
     let underlyingPath = join(resolveNodePkg("@catalogjs/recipes"), "recipes");
@@ -325,7 +328,7 @@ class FinishNpmImportPackageNode implements BuilderNode {
   ) {
     this.cacheKey = this;
   }
-  deps() {
+  async deps() {
     return this.dependencies;
   }
   async run(deps: { [index: number]: Package }): Promise<NextNode<Package>> {
@@ -350,7 +353,7 @@ class CoreBuildNode implements BuilderNode {
     this.cacheKey = `core-build:${pkg.url.href}`;
   }
 
-  deps() {
+  async deps() {
     return {
       lock: new CreateLockFileNode(this.pkg),
       entrypoints: new WriteFileNode(
@@ -373,7 +376,7 @@ class FinishCoreBuildNode implements BuilderNode {
     this.cacheKey = `finish-core-build:${pkg.url.href}`;
   }
 
-  deps() {
+  async deps() {
     return {
       build: new MakeProjectNode(
         new URL(buildSrcDir, this.pkg.url),

@@ -24,6 +24,7 @@ import { assertNever } from "@catalogjs/shared/util";
 import { error } from "./logger";
 import sortBy from "lodash/sortBy";
 import { Resolver } from "./resolver";
+import { getRecipe, Recipe } from "./recipes";
 
 type BoolForEach<T> = {
   [P in keyof T]: boolean;
@@ -204,7 +205,7 @@ class BuildRunner<Input> {
       case "initial":
         let realNode = this.internalize(state.node);
         return this.handleNextNode(
-          await this.evaluate(realNode, realNode.deps())
+          await this.evaluate(realNode, await realNode.deps(this.getRecipe))
         );
       case "reused":
         return this.handleNextNode(await this.evaluate(state.node, state.deps));
@@ -335,13 +336,27 @@ class BuildRunner<Input> {
     }
 
     if (inputs) {
-      return this.handleUnchanged(node, await node.run(inputs.values));
+      return this.handleUnchanged(
+        node,
+        await node.run(inputs.values, this.getRecipe)
+      );
     } else {
       return this.handleUnchanged(
         node,
-        await (node as BuilderNode<unknown, void>).run()
+        await (node as BuilderNode<unknown, void>).run(
+          undefined,
+          this.getRecipe
+        )
       );
     }
+  }
+
+  @bind
+  private async getRecipe(
+    pkgName: string,
+    version: string
+  ): Promise<Recipe | undefined> {
+    return await getRecipe(pkgName, version, this.fs);
   }
 
   @bind
@@ -637,7 +652,7 @@ class InternalFileNode<Input> implements BuilderNode<string> {
     this.cacheKey = `file:${this.url.href}`;
   }
 
-  deps() {
+  async deps() {
     // TODO a more rigorous way to do this is to match the entrypoints.json file directly
     let matchingRoots = (Object.values(this.roots) as BuilderNode[]).filter(
       (rootNode) =>
@@ -690,16 +705,15 @@ class InternalFileNode<Input> implements BuilderNode<string> {
 }
 
 class InternalWriteFileNode implements BuilderNode<void> {
-  private source: BuilderNode<string>;
   private url: URL;
   cacheKey: string;
-  constructor(writeFileNode: WriteFileNode, private fs: FileSystem) {
-    this.source = writeFileNode.deps().source;
+  constructor(private writeFileNode: WriteFileNode, private fs: FileSystem) {
     this.url = writeFileNode.url;
     this.cacheKey = `write-file:${this.url.href}`;
   }
-  deps() {
-    return { source: this.source };
+  async deps() {
+    let source = (await this.writeFileNode.deps()).source;
+    return { source };
   }
   async run({ source }: { source: string }): Promise<NodeOutput<void>> {
     let fd = await this.fs.openFile(this.url, true);
@@ -723,7 +737,7 @@ class InternalMountNode implements BuilderNode<URL> {
     this.cacheKey = `mount:${this.mountURL.href}`;
   }
 
-  deps() {}
+  async deps() {}
 
   async run(): Promise<NodeOutput<URL>> {
     await this.fs.mount(this.mountURL, this.driver);
@@ -739,7 +753,7 @@ class InternalFileExistsNode implements BuilderNode<boolean> {
     this.cacheKey = `file-exists:${this.url.href}`;
   }
 
-  deps() {}
+  async deps() {}
 
   async run(): Promise<NodeOutput<boolean>> {
     try {
@@ -764,7 +778,7 @@ class InternalFileListingNode implements BuilderNode<ListingEntry[]> {
     this.cacheKey = `file-listing:${this.url.href}`;
   }
 
-  deps() {}
+  async deps() {}
 
   async run(): Promise<NodeOutput<ListingEntry[]>> {
     return { value: await this.fs.list(this.url, this.recurse) };

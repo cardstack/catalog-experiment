@@ -34,7 +34,7 @@ export class EntrypointsJSONNode implements BuilderNode {
     this.cacheKey = `entrypoints-json:${this.input.href}:${this.output.href}`;
   }
 
-  deps() {
+  async deps() {
     return {
       json: new JSONParseNode(
         new FileNode(new URL("entrypoints.json", this.input))
@@ -61,7 +61,7 @@ export class EntrypointNode implements BuilderNode {
     this.cacheKey = `entrypoint:${this.src.href}:${this.dest.href}`;
   }
 
-  deps() {
+  async deps() {
     let extension = this.src.href.split(".").pop();
     if (extension === "html") {
       return {
@@ -106,7 +106,7 @@ export class HTMLParseNode implements BuilderNode {
     this.cacheKey = this;
   }
 
-  deps() {
+  async deps() {
     return { source: this.source };
   }
 

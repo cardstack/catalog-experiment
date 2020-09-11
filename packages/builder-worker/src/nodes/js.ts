@@ -7,7 +7,7 @@ export class JSParseNode implements BuilderNode {
 
   constructor(private source: BuilderNode<string>) {}
 
-  deps() {
+  async deps() {
     return { source: this.source };
   }
 

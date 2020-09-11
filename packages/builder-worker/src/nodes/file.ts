@@ -14,7 +14,7 @@ export class FileNode implements BuilderNode {
     this.cacheKey = `file:${this.url.href}`;
   }
 
-  deps() {}
+  async deps() {}
 
   async run(): Promise<Value<string>> {
     throw new Error(`bug: this isn't supposed to actually run`);
@@ -33,7 +33,7 @@ export class MountNode implements BuilderNode {
     this.cacheKey = `mount:${this.mountURL.href}`;
   }
 
-  deps() {}
+  async deps() {}
 
   async run(): Promise<Value<URL>> {
     throw new Error(`bug: this isn't supposed to actually run`);
@@ -52,7 +52,7 @@ export class FileListingNode implements BuilderNode {
     this.cacheKey = `file-listing:${this.url.href}`;
   }
 
-  deps() {}
+  async deps() {}
 
   async run(): Promise<Value<ListingEntry[]>> {
     throw new Error(`bug: this isn't supposed to actually run`);
@@ -71,7 +71,7 @@ export class FileExistsNode implements BuilderNode {
     this.cacheKey = `file-exists:${this.url.href}`;
   }
 
-  deps() {}
+  async deps() {}
 
   async run(): Promise<Value<boolean>> {
     throw new Error(`bug: this isn't supposed to actually run`);
@@ -90,7 +90,7 @@ export class WriteFileNode implements BuilderNode<void> {
     this.cacheKey = `write-file:${this.url.href}`;
   }
 
-  deps() {
+  async deps() {
     return { source: this.source };
   }
 

@@ -37,7 +37,7 @@ export class BundleAssignmentsNode implements BuilderNode {
     this.cacheKey = `bundle-assignments:input=${projectInput.href},output=${projectOutput.href}`;
   }
 
-  deps() {
+  async deps() {
     return {
       entrypoints: new EntrypointsJSONNode(
         this.projectInput,
@@ -283,7 +283,7 @@ export class BundleNode implements BuilderNode {
     this.cacheKey = `bundle-node:url=${this.bundle.href},inputRoot=${this.inputRoot.href},outputRoot=${this.outputRoot.href}`;
   }
 
-  deps() {
+  async deps() {
     return {
       bundleAssignments: new BundleAssignmentsNode(
         this.inputRoot,
@@ -311,7 +311,7 @@ export class BundleSerializerNode implements BuilderNode {
 
   constructor(private unannotatedSrc: string) {}
 
-  deps() {
+  async deps() {
     return {
       parsed: new JSParseNode(new ConstantNode(this.unannotatedSrc)),
     };

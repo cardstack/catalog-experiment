@@ -5,6 +5,7 @@ import {
   AllNode,
   ConstantNode,
   NodeOutput,
+  RecipeGetter,
 } from "../../../builder-worker/src/nodes/common";
 import { log, debug } from "../../../builder-worker/src/logger";
 import childProcess from "child_process";
@@ -12,13 +13,13 @@ import { promisify } from "util";
 import { ensureDirSync, existsSync, readJSONSync } from "fs-extra";
 import fs from "fs";
 import { join } from "path";
-import { getRecipe, Recipe } from "../recipes";
 import { resolveNodePkg } from "../resolve";
 import { createHash } from "crypto";
 import _glob from "glob";
 import { WriteFileNode } from "../../../builder-worker/src/nodes/file";
 import { SrcTransformNode } from "./src-transform";
 import { LockFile } from "../../../builder-worker/src/resolver";
+import { Recipe } from "../../../builder-worker/src/recipes";
 import { coerce } from "semver";
 
 export const buildSrcDir = `build_src/`;
@@ -57,7 +58,7 @@ export class CreateLockFileNode implements BuilderNode {
     this.cacheKey = `create-pkg-lock-file:${pkg.url.href}`;
   }
 
-  deps() {}
+  async deps() {}
 
   async run(): Promise<NodeOutput<void[]>> {
     let lockfile: LockFile = {
@@ -89,12 +90,12 @@ export class PackageHashNode implements BuilderNode {
     this.cacheKey = `package-identifier:${pkgPath}`;
   }
 
-  deps() {}
+  async deps() {}
 
-  async run(): Promise<NextNode<string>> {
+  async run(_: never, getRecipe: RecipeGetter): Promise<NextNode<string>> {
     let { name, version, dependencies = {} } = this.pkgJSON;
     let { additionalDependencies = {}, skipDependencies } =
-      getRecipe(name, version) ?? {};
+      (await getRecipe(name, version)) ?? {};
     let allDependencies = { ...dependencies, ...additionalDependencies };
     if (Array.isArray(skipDependencies)) {
       for (let skip of skipDependencies) {
@@ -120,7 +121,7 @@ class FinishPackageHashNode implements BuilderNode {
     this.cacheKey = this;
   }
 
-  deps() {
+  async deps() {
     return this.dependencies;
   }
 
@@ -147,7 +148,7 @@ export class PackageSrcNode implements BuilderNode {
     this.cacheKey = `pkg-source:${pkgPath}`;
   }
 
-  deps() {
+  async deps() {
     return {
       prepare: new PackageSrcPrepareNode(
         this.pkgJSON,
@@ -176,11 +177,11 @@ export class PackageSrcPrepareNode implements BuilderNode {
     this.cacheKey = `pkg-source-prepare:${pkgPath}`;
   }
 
-  deps() {}
+  async deps() {}
 
-  async run(): Promise<NextNode<void[]>> {
+  async run(_: never, getRecipe: RecipeGetter): Promise<NextNode<void[]>> {
     let { name, version } = this.pkgJSON;
-    let recipe = getRecipe(name, version);
+    let recipe = await getRecipe(name, version);
     let srcPath: string;
     if (recipe?.srcRepo) {
       srcPath = await clonePkg(this.pkgJSON, this.workingDir, recipe);
@@ -230,7 +231,7 @@ class PackageSrcFinishNode implements BuilderNode {
     this.cacheKey = `pkg-source-finish:${pkgURL.href}`;
   }
 
-  deps() {
+  async deps() {
     return {
       transform: new SrcTransformNode(this.pkgURL, this.pkgJSON),
     };
