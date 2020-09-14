@@ -10,6 +10,10 @@
         "./index.js"
       ],
       "hoistSrc": "src/",
+      "additionalDependencies": {
+        "@babel/helper-validator-identifier": "^7.9.0",
+        "charcodes": "^0.2.0"
+      },
       "babelPlugins": [
         "@babel/plugin-transform-flow-strip-types",
         [

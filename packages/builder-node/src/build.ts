@@ -1,7 +1,7 @@
 import yargs from "yargs";
 import { Logger, log, error } from "../../builder-worker/src/logger";
 import { resolve, join } from "path";
-import { NodeFileSystemDriver } from "./node-filesystem-driver";
+import { NodeFileSystemDriver, closeAll } from "./node-filesystem-driver";
 import { FileSystem } from "../../builder-worker/src/filesystem";
 import { Builder } from "../../builder-worker/src/builder";
 import { ensureDirSync, removeSync } from "fs-extra";
@@ -54,10 +54,14 @@ let fs = new FileSystem();
   await build();
   log(`build complete: ${outputDir}`);
   process.exit(0);
-})().catch((err) => {
-  error(`Unhandled error while building`, err);
-  process.exit(1);
-});
+})()
+  .catch((err) => {
+    error(`Unhandled error while building`, err);
+    process.exit(1);
+  })
+  .finally(() => {
+    closeAll();
+  });
 
 async function prepare() {
   let count = 0;

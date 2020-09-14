@@ -77,16 +77,13 @@ class BabelTransformNode implements BuilderNode {
         `Empty babel result after babel transform of ${this.url.href}`
       );
     }
-    if (output.code === "") {
-      return { value: undefined };
-    }
-
+    let code = output.code || "export {};";
     let url = new URL(
       this.url.href.slice(`${this.pkgURL.href}__stage1/`.length),
       `${this.pkgURL}__stage2/`
     );
     return {
-      node: new WriteFileNode(new ConstantNode(output.code), url),
+      node: new WriteFileNode(new ConstantNode(code), url),
     };
   }
 }

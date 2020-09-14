@@ -18,6 +18,7 @@ import { MakeProjectNode } from "./nodes/project";
 import {
   FileDescriptor,
   FileSystemDriver,
+  DirectoryDescriptor,
 } from "./filesystem-drivers/filesystem-driver";
 import { Deferred } from "./deferred";
 import { assertNever } from "@catalogjs/shared/util";
@@ -756,14 +757,19 @@ class InternalFileExistsNode implements BuilderNode<boolean> {
   async deps() {}
 
   async run(): Promise<NodeOutput<boolean>> {
+    let d: DirectoryDescriptor | FileDescriptor | undefined;
     try {
-      await (await this.fs.open(this.url)).close();
+      d = await this.fs.open(this.url);
       return { value: true };
     } catch (e) {
       if (e.code === "NOT_FOUND") {
         return { value: false };
       }
       throw e;
+    } finally {
+      if (d) {
+        await d.close();
+      }
     }
   }
 }
