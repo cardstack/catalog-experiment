@@ -983,6 +983,30 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
+  test("can handle default export in an expression context", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import foo from './a.js';
+        foo('bar');
+      `,
+      "a.js": `
+        export default (function a(blah) { console.log(blah); });
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+        const foo = (function a(blah) { console.log(blah); });
+        foo('bar');
+        export {};
+      `
+    );
+  });
+
   test("can handle default exported class", async function (assert) {
     await assert.setupFiles({
       "index.js": `

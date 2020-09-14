@@ -324,8 +324,9 @@ type Disposition =
   | { state: "removed" }
   | { state: "replaced"; replacement: string }
   | {
-      state: "replaced start";
-      replacement: string;
+      state: "replace-edges";
+      beginningReplacement: string;
+      endReplacement: string;
     }
   | { state: "unwrap"; beginning: string; end: string };
 
@@ -395,13 +396,15 @@ export class RegionEditor {
           );
         }
         this.dispositions[region] = {
-          state: "replaced start",
-          replacement: `const ${defaultNameSuggestion} = `,
+          state: "replace-edges",
+          beginningReplacement: `const ${defaultNameSuggestion} = (`,
+          endReplacement: ");",
         };
       } else if (declaration != null) {
         this.dispositions[region] = {
-          state: "replaced start",
-          replacement: "",
+          state: "replace-edges",
+          beginningReplacement: "",
+          endReplacement: "",
         };
       } else {
         this.dispositions[region] = { state: "removed" };
@@ -441,7 +444,7 @@ export class RegionEditor {
         this.skip(regionPointer);
         return disposition;
       case "unwrap":
-      case "replaced start":
+      case "replace-edges":
       case "unchanged":
         if (region.firstChild != null) {
           let childDispositions: Disposition[] = [];
@@ -518,12 +521,18 @@ export class RegionEditor {
             let sideEffect = this.output.slice(ourStartOutputIndex + 4);
             this.output = this.output.slice(0, ourStartOutputIndex);
             this.output.push(beginning, ...sideEffect, end);
-          } else if (disposition.state === "replaced start") {
-            this.output[ourStartOutputIndex] = disposition.replacement;
+          } else if (disposition.state === "replace-edges") {
+            this.output[ourStartOutputIndex] = disposition.beginningReplacement;
           }
         }
         // emit the part of yourself that appears after the last child
-        this.output.push(this.src.slice(this.cursor, this.cursor + region.end));
+        if (disposition.state === "replace-edges") {
+          this.output.push(disposition.endReplacement);
+        } else {
+          this.output.push(
+            this.src.slice(this.cursor, this.cursor + region.end)
+          );
+        }
         this.cursor += region.end;
         return disposition;
       default:

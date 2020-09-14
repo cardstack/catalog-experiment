@@ -86,7 +86,8 @@ export function combineModules(
 
   let output = [];
   for (let rewriter of rewriters.values()) {
-    output.push(rewriter.serialize());
+    let code = rewriter.serialize();
+    output.push(code);
   }
 
   // at this point we removed all export statements because our modules can

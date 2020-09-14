@@ -401,11 +401,11 @@ QUnit.module("module builder", function (origHooks) {
       await assert
         .file("output/index.js")
         .matches(
-          /const implementation = function\(\) { return \(\) => console.log\("this is a puppy implementation"\); }/
+          /const implementation = \(function\(\) { return \(\) => console.log\("this is a puppy implementation"\); }\);/
         );
       await assert
         .file("output/index.js")
-        .matches(/const _default = implementation\(\);/);
+        .matches(/const _default = \(implementation\(\)\);/);
       await assert
         .file("output/index.js")
         .matches(/export \{ _default as default \};/);
@@ -429,12 +429,12 @@ QUnit.module("module builder", function (origHooks) {
       await assert
         .file("output/index.js")
         .matches(
-          /const implementation = function\(\) { return \(\) => console.log\("this is a puppy implementation"\); }/
+          /const implementation = \(function\(\) { return \(\) => console.log\("this is a puppy implementation"\); }\);/
         );
       await assert.file("output/index.js").matches(/const a = "a"/);
       await assert
         .file("output/index.js")
-        .matches(/const _default = implementation\(\);/);
+        .matches(/const _default = \(implementation\(\)\);/);
       await assert
         .file("output/index.js")
         .matches(/export { _default as default, a };/);
@@ -480,7 +480,7 @@ QUnit.module("module builder", function (origHooks) {
         .matches(/function getPuppies\(\) { return \["Van Gogh", "Mango"\]; }/);
       await assert
         .file("output/index.js")
-        .matches(/const _default = getPuppies;/);
+        .matches(/const _default = \(getPuppies\);/);
       await assert
         .file("output/index.js")
         .matches(/export { _default as puppies };/);
@@ -529,7 +529,7 @@ QUnit.module("module builder", function (origHooks) {
       await assert
         .file("output/toPairs.js")
         .matches(
-          /const _default = function\(\) { console\.log\("toPairs"\); }/
+          /const _default = \(function\(\) { console\.log\("toPairs"\); }\);/
         );
       await assert
         .file("output/toPairs.js")
@@ -559,7 +559,9 @@ QUnit.module("module builder", function (origHooks) {
       await builder.build();
       await assert
         .file("output/toPairs.js")
-        .matches(/const toPairs = function\(\) { console\.log\("toPairs"\); }/);
+        .matches(
+          /const toPairs = \(function\(\) { console\.log\("toPairs"\); }\);/
+        );
       await assert.file("output/toPairs.js").matches(/export { toPairs };/);
       await assert
         .file("output/entries.js")
@@ -595,7 +597,7 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file("output/index.js").doesNotMatch(/function b\(\)/);
       await assert
         .file("output/index.js")
-        .matches(/const _default = function\(\) { a\(\); }/);
+        .matches(/const _default = \(function\(\) { a\(\); }\);/);
       await assert
         .file("output/index.js")
         .matches(/export { _default as default }/);
@@ -630,7 +632,7 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file("output/index.js").doesNotMatch(/function a\(\)/);
       await assert
         .file("output/index.js")
-        .matches(/const _default = function\(\) { b\(\); }/);
+        .matches(/const _default = \(function\(\) { b\(\); }\);/);
       await assert
         .file("output/index.js")
         .matches(/export { _default as default }/);
@@ -964,7 +966,7 @@ QUnit.module("module builder", function (origHooks) {
         );
       await assert
         .file("output/dist/0.js")
-        .matches(/const _default = \["mango", "van gogh"\];/);
+        .matches(/const _default = \(\["mango", "van gogh"\]\);/);
       await assert
         .file("output/dist/0.js")
         .matches(/export { _default as default };/);
