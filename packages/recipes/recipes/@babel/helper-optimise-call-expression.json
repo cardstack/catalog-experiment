@@ -4,7 +4,9 @@
     {
       "semverRange": "*",
       "srcRepo": {
-        "version": "v$major$.$minor$.$patch$"
+        "repoHref": "https://github.com/babel/babel.git",
+        "version": "v$major$.$minor$.$patch$",
+        "subdir": "packages/babel-helper-optimise-call-expression/"
       },
       "entrypoints": [
         "./index.js"
