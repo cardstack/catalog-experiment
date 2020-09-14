@@ -1,0 +1,12 @@
+{
+  "$schema": "../recipe-schema.json",
+  "recipes": [
+    {
+      "semverRange": "*",
+      "hoistSrc": "src/",
+      "entrypoints": [
+        "./browser.js"
+      ]
+    }
+  ]
+}
