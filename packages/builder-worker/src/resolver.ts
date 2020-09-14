@@ -52,7 +52,7 @@ export class Resolver {
     }
 
     let { pkgName: sourcePkgName, version: sourcePkgVersion } =
-      pkgInfoFromURL(source) ?? {};
+      pkgInfoFromCatalogJsURL(source) ?? {};
     if (sourcePkgName && sourcePkgVersion) {
       let { resolutions } =
         (await getRecipe(sourcePkgName, sourcePkgVersion, this.fs)) ?? {};
@@ -204,7 +204,7 @@ export function pkgInfoFromSpecifier(specifier: string): PkgInfo | undefined {
   return { pkgName, modulePath, version: undefined };
 }
 
-function pkgInfoFromURL(url: URL): PkgInfo | undefined {
+function pkgInfoFromCatalogJsURL(url: URL): PkgInfo | undefined {
   let catalogjsHref = "https://catalogjs.com/pkgs/";
   if (!url.href.startsWith(catalogjsHref)) {
     return;
