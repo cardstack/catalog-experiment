@@ -20,6 +20,7 @@ import {
 } from "../../../builder-worker/src/describe-file";
 import { JSParseNode } from "../../../builder-worker/src/nodes/js";
 import { File } from "@babel/types";
+import upperFirst from "lodash/upperFirst";
 import { RegionEditor } from "../../../builder-worker/src/code-region";
 import { pkgInfoFromSpecifier } from "../../../builder-worker/src/resolver";
 import { PackageSrcNode, buildSrcDir } from "./package";
@@ -42,7 +43,7 @@ export class MakePkgESCompliantNode implements BuilderNode {
     listing,
   }: {
     listing: ListingEntry[];
-  }): Promise<NodeOutput<(void | void[])[]>> {
+  }): Promise<NodeOutput<(void | void[][])[]>> {
     // get all files (and optionally filter thru recipes config) trying to crawl
     // deps from the file description to find files to introspect, because we're
     // not ready to start resolving yet (and we don't want to be forced into
@@ -50,7 +51,9 @@ export class MakePkgESCompliantNode implements BuilderNode {
     let files = listing
       .filter(
         // TODO need to include .ts too...
-        (entry) => entry.stat.type === "file" && entry.url.href.endsWith(".js")
+        (entry) =>
+          entry.stat.type === "file" &&
+          (entry.url.href.endsWith(".js") || entry.url.href.endsWith(".json"))
       )
       .map((entry) => entry.url);
     return {
@@ -87,6 +90,9 @@ class IntrospectSrcNode implements BuilderNode {
   }
 
   async deps() {
+    if (this.url.href.endsWith(".json")) {
+      return {};
+    }
     return {
       desc: new AnalyzeFileNode(this.url),
     };
@@ -95,13 +101,13 @@ class IntrospectSrcNode implements BuilderNode {
   async run({
     desc,
   }: {
-    desc: FileDescription;
-  }): Promise<NodeOutput<void | void[]>> {
+    desc: FileDescription | undefined;
+  }): Promise<NodeOutput<void | void[][]>> {
     let url = new URL(
       this.url.href.slice(`${this.pkgURL.href}__stage2/`.length),
       `${this.pkgURL}${buildSrcDir}`
     );
-    if (isModuleDescription(desc)) {
+    if (!desc || isModuleDescription(desc)) {
       return { node: new WriteFileNode(new FileNode(this.url), url) };
     } else {
       return { node: new ESInteropNode(this.url, url, desc) };
@@ -125,10 +131,10 @@ class ESInteropNode implements BuilderNode {
     };
   }
 
-  async run({ src }: { src: string }): Promise<NodeOutput<void[]>> {
+  async run({ src }: { src: string }): Promise<NodeOutput<void[][]>> {
     return {
       node: new AllNode([
-        new RewriteCJSNode(this.outputURL, this.desc, src),
+        new RewriteCJSNode(this.inputURL, this.outputURL, this.desc, src),
         new ESModuleShimNode(this.outputURL, this.desc),
       ]),
     };
@@ -152,10 +158,29 @@ function remapRequires(
 function depFactoryName(specifier: string): string {
   return `${specifier.replace(/\W/g, "_")}Factory`.replace(/^_+/, "");
 }
+function depJSONName(specifier: string): string {
+  return `${specifier.replace(/\.json$/, "").replace(/\W/g, "_")}JSON`.replace(
+    /^_+/,
+    ""
+  );
+}
+
+function isLocalJSON(specifier: string): boolean {
+  if (!specifier.startsWith(".") && !specifier.startsWith("/")) {
+    return false;
+  }
+  let moduleBasename = specifier.split("/").pop()!;
+  return Boolean(
+    moduleBasename &&
+      moduleBasename.includes(".") &&
+      moduleBasename.split(".").pop() === "json"
+  );
+}
 
 class RewriteCJSNode implements BuilderNode {
   cacheKey: string;
   constructor(
+    private inputURL: URL,
     private outputURL: URL,
     private desc: CJSDescription,
     private src: string
@@ -165,7 +190,8 @@ class RewriteCJSNode implements BuilderNode {
 
   async deps() {}
 
-  async run(): Promise<NodeOutput<void>> {
+  async run(): Promise<NodeOutput<void[]>> {
+    let jsonSpecifiers = new Set<string>();
     let imports = new Set<string>(
       this.desc.requires.map(({ specifier }) => {
         if (specifier == null) {
@@ -174,6 +200,10 @@ class RewriteCJSNode implements BuilderNode {
         let pkgInfo = pkgInfoFromSpecifier(specifier);
         if (builtinModules.includes(pkgInfo?.pkgName)) {
           return `import { requireNodeBuiltin } from "@catalogjs/loader";`;
+        }
+        if (isLocalJSON(specifier)) {
+          jsonSpecifiers.add(specifier); // side-effecty, but we're right here anyways...
+          return `import ${depJSONName(specifier)} from "${specifier}.js";`;
         }
         return `import ${depFactoryName(specifier)} from "${specifier}$cjs$";`;
       })
@@ -185,6 +215,9 @@ class RewriteCJSNode implements BuilderNode {
       let pkgInfo = pkgInfoFromSpecifier(specifier);
       if (builtinModules.includes(pkgInfo?.pkgName)) {
         return `requireNodeBuiltin("${pkgInfo!.pkgName}")`;
+      }
+      if (isLocalJSON(specifier)) {
+        return `get${upperFirst(depJSONName(specifier))}`;
       }
       return depFactoryName(specifier);
     });
@@ -210,11 +243,56 @@ function implementation() {
   }
   return module.exports;
 }
+${[...jsonSpecifiers]
+  .map(
+    (specifier) =>
+      `function get${upperFirst(
+        depJSONName(specifier)
+      )}() { return ${depJSONName(specifier)}; }`
+  )
+  .join("\n")}
+
 export default implementation;`;
-    return {
-      node: new WriteFileNode(
+    let nodes: BuilderNode<void>[] = [];
+    nodes.push(
+      new WriteFileNode(
         new ConstantNode(newSrc),
         new URL(this.outputURL.href.replace(/\.js$/, ".cjs.js"))
+      )
+    );
+    // note that we are only rewriting relatively referenced JSON. We are not
+    // rewriting JSON in different packages (this might need to change...)
+    for (let specifier of jsonSpecifiers) {
+      nodes.push(
+        new JSONRewriterNode(
+          new URL(specifier, this.inputURL),
+          new URL(specifier, this.outputURL)
+        )
+      );
+    }
+    return {
+      node: new AllNode(nodes),
+    };
+  }
+}
+
+class JSONRewriterNode implements BuilderNode {
+  cacheKey: string;
+  constructor(private inputURL: URL, private outputURL: URL) {
+    this.cacheKey = `json-rewriter:${outputURL.href}`;
+  }
+
+  async deps() {
+    return {
+      json: new FileNode(this.inputURL),
+    };
+  }
+
+  async run({ json }: { json: string }): Promise<NodeOutput<void>> {
+    return {
+      node: new WriteFileNode(
+        new ConstantNode(`export default ${json};`),
+        new URL(`${this.outputURL.href}.js`)
       ),
     };
   }
@@ -228,7 +306,7 @@ class ESModuleShimNode implements BuilderNode {
 
   async deps() {}
 
-  async run(): Promise<NodeOutput<void>> {
+  async run(): Promise<NodeOutput<void[]>> {
     let basename = this.outputURL.pathname.split("/").pop();
     let src: string;
     if (Array.isArray(this.desc.esTranspiledExports)) {
@@ -252,7 +330,9 @@ ${exports.join("\n")}`;
 export default implementation();`;
     }
     return {
-      node: new WriteFileNode(new ConstantNode(src), this.outputURL),
+      node: new AllNode([
+        new WriteFileNode(new ConstantNode(src), this.outputURL),
+      ]),
     };
   }
 }

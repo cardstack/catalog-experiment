@@ -209,15 +209,10 @@ export class PackageSrcPrepareNode implements BuilderNode {
               srcPath
             );
           }
-          let url = file.endsWith(".json")
-            ? new URL(
-                file.slice(srcPath.length + 1),
-                `${this.pkgURL}${buildSrcDir}`
-              )
-            : new URL(
-                file.slice(srcPath.length + 1),
-                `${this.pkgURL}__stage1/`
-              );
+          let url = new URL(
+            file.slice(srcPath.length + 1),
+            `${this.pkgURL}__stage1/`
+          );
           return new WriteFileNode(new ConstantNode(contents[index]), url);
         })
       ),
