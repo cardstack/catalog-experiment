@@ -12,6 +12,12 @@
         "./index.js"
       ],
       "hoistSrc": "src/",
+      "additionalDependencies": {
+        "@catalogjs/polyfills": "*"
+      },
+      "resolutions": {
+        "path": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/path.js"
+      },
       "babelPlugins": [
         "@babel/plugin-transform-flow-strip-types",
         [

@@ -5,6 +5,7 @@
     "./assert.js",
     "./buffer.js",
     "./process.js",
-    "./util.js"
+    "./util.js",
+    "./path.js"
   ]
 }
