@@ -204,13 +204,13 @@ export class PackageSrcPrepareNode implements BuilderNode {
       node: new AllNode(
         files.map((file, index) => {
           if (hoistSrc) {
-            file = file.replace(
-              join(srcPath, hoistSrc.replace(/\/$/, "")),
-              srcPath
-            );
+            file = file.replace(join(srcPath, hoistSrc), srcPath);
+          }
+          if (!srcPath.endsWith("/")) {
+            srcPath = `${srcPath}/`;
           }
           let url = new URL(
-            file.slice(srcPath.length + 1),
+            file.slice(srcPath.length),
             `${this.pkgURL}__stage1/`
           );
           return new WriteFileNode(new ConstantNode(contents[index]), url);
