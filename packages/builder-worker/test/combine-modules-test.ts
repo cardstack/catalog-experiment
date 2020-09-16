@@ -880,7 +880,7 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
-  skip("can access namespace of module within bundle", async function (assert) {
+  test("can access namespace of module within bundle", async function (assert) {
     await assert.setupFiles({
       "index.js": `
         import * as lib from './lib.js';
@@ -902,6 +902,122 @@ QUnit.module("combine modules", function (origHooks) {
       const goodbye = 'goodbye';
       const lib = { hello, goodbye };
       console.log(lib.hello + lib.goodbye);
+      export {};
+      `
+    );
+  });
+
+  test("can access namespace of module with renamed exports within bundle", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import * as lib from './lib.js';
+        console.log(lib.konnichiwa + lib.sayonara);
+      `,
+      "lib.js": `
+        const hello = 'hello';
+        const goodbye = 'goodbye';
+        export { hello as konnichiwa, goodbye as sayonara };
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+      const hello = 'hello';
+      const goodbye = 'goodbye';
+      const lib = { konnichiwa: hello, sayonara: goodbye };
+      console.log(lib.konnichiwa + lib.sayonara);
+      export {};
+      `
+    );
+  });
+
+  test("can handle collisions with properties of namespaced imports within a bundle", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import * as lib from './lib.js';
+        const hello = 'hi';
+        console.log(lib.konnichiwa + lib.sayonara + hello);
+      `,
+      "lib.js": `
+        const hello = 'hello';
+        const goodbye = 'goodbye';
+        export { hello as konnichiwa, goodbye as sayonara };
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+      const hello0 = 'hello';
+      const goodbye = 'goodbye';
+      const lib = { konnichiwa: hello0, sayonara: goodbye };
+      const hello = 'hi';
+      console.log(lib.konnichiwa + lib.sayonara + hello);
+      export {};
+      `
+    );
+  });
+
+  test("can prune an unused namespace import within bundle", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import * as lib from './lib.js';
+        import { goodbye } from './lib.js';
+        console.log(goodbye);
+      `,
+      "lib.js": `
+        export const hello = 'hello';
+        export const goodbye = 'goodbye';
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+      const goodbye = 'goodbye';
+      console.log(goodbye);
+      export {};
+      `
+    );
+  });
+
+  test("reexport a namespace import within a bundle", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { greetings } from './a.js';
+        console.log(greetings.konnichiwa + greetings.sayonara);
+      `,
+      "a.js": `
+        import * as lib from './lib.js';
+        export { lib as greetings };
+      `,
+      "lib.js": `
+        const hello = 'hello';
+        const goodbye = 'goodbye';
+        export { hello as konnichiwa, goodbye as sayonara };
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+      const hello = 'hello';
+      const goodbye = 'goodbye';
+      const greetings = { konnichiwa: hello, sayonara: goodbye };
+      console.log(greetings.konnichiwa + greetings.sayonara);
       export {};
       `
     );

@@ -1,7 +1,6 @@
 import {
   Expression,
   File,
-  ImportDeclaration,
   ImportSpecifier,
   ImportDefaultSpecifier,
   ImportNamespaceSpecifier,
@@ -472,17 +471,16 @@ export function describeFile(
     },
     ImportDeclaration(path) {
       isES6Module = true;
-      let importDesc = desc.imports.find(
-        (i) => i.specifier === path.node.source.value
-      );
-      if (!importDesc) {
-        importDesc = {
-          specifier: path.node.source.value,
-          isDynamic: false,
-          region: builder.createCodeRegion(path as NodePath),
-        };
-        desc.imports.push(importDesc);
-      }
+      // Note that we are intentionally not trying to reuse an existing import
+      // description that imports from the same module. Different import
+      // descriptions can have different regions even if they refer to the same
+      // module.
+      let importDesc = {
+        specifier: path.node.source.value,
+        isDynamic: false,
+        region: builder.createCodeRegion(path as NodePath),
+      } as ImportDescription;
+      desc.imports.push(importDesc);
     },
     ImportSpecifier(path) {
       addImportedName(desc, path.node.imported.name, path, builder);
@@ -818,13 +816,10 @@ function addImportedName(
     | NodePath<ImportNamespaceSpecifier>,
   builder: RegionBuilder
 ) {
-  let dec = path.parent as ImportDeclaration;
   let identifierPath = path.get("local") as NodePath<Identifier>;
   desc.names.set(identifierPath.node.name, {
     type: "import",
-    importIndex: desc.imports.findIndex(
-      (i) => i.specifier === dec.source.value
-    ),
+    importIndex: desc.imports.length - 1, // it's always the last import description added to desc.imports because the the order in which babel traverses the module
     name: remoteName,
     dependsOn: new Set(),
     usedByModule: false,

@@ -725,6 +725,133 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file("output/index.js").doesNotMatch(/export default/);
     });
 
+    test("can namespace import a different bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js", "lib.js"] }`,
+        "index.js": `
+        import a from "./a.js";
+        import b from "./b.js";
+        export default function() { console.log(a() + b()); };
+      `,
+        "a.js": `
+        import { goodbye } from './lib.js';
+        import * as lib from './lib.js';
+        export default function() { return lib.hello + goodbye; }
+      `,
+        "b.js": `
+        import * as lib from './lib.js';
+        export default function() { return lib.goodbye; }
+      `,
+        "lib.js": `
+        export const hello = 'hello';
+        export const goodbye = 'goodbye';
+      `,
+      });
+
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/lib.js")
+        .matches(
+          /const hello = 'hello';[ \n]+const goodbye = 'goodbye';[ \n]+export { hello, goodbye };/
+        );
+      await assert
+        .file("output/index.js")
+        .matches(/import \* as lib from "\.\/lib\.js";/);
+      await assert.file("output/index.js").matches(/const { goodbye } = lib;/);
+      await assert
+        .file("output/index.js")
+        .matches(
+          /const a = \(function\(\) { return lib\.hello \+ goodbye; }\);/
+        );
+      await assert
+        .file("output/index.js")
+        .matches(/const b = \(function\(\) { return lib\.goodbye; }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(
+          /const _default = \(function\(\) { console.log\(a\(\) \+ b\(\)\); }\);/
+        );
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default }/);
+    });
+
+    test("can prune an unused namespace import of another bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js", "lib.js"] }`,
+        "index.js": `
+          import * as lib from './lib.js';
+          export default function() { console.log('hi'); };
+        `,
+        "lib.js": `
+          export const hello = 'hello';
+          export const goodbye = 'goodbye';
+        `,
+      });
+
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/lib.js")
+        .matches(
+          /const hello = 'hello';[ \n]+const goodbye = 'goodbye';[ \n]+export { hello, goodbye };/
+        );
+      await assert
+        .file("output/index.js")
+        .doesNotMatch(/import \* as lib from "\.\/lib\.js";/);
+      await assert.file("output/index.js").doesNotMatch(/hello/);
+      await assert.file("output/index.js").doesNotMatch(/goodbye/);
+      await assert
+        .file("output/index.js")
+        .matches(/const _default = \(function\(\) { console.log\('hi'\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default }/);
+    });
+
+    test("can handle collision with namespace import of another bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js", "lib.js"] }`,
+        "index.js": `
+        import a from "./a.js";
+        const lib = 'collision';
+        export default function() { console.log(a() + lib); };
+      `,
+        "a.js": `
+        import * as lib from './lib.js';
+        export default function() { return lib.hello; }
+      `,
+        "lib.js": `
+        export const hello = 'hello';
+        export const goodbye = 'goodbye';
+      `,
+      });
+
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/lib.js")
+        .matches(
+          /const hello = 'hello';[ \n]+const goodbye = 'goodbye';[ \n]+export { hello, goodbye };/
+        );
+      await assert
+        .file("output/index.js")
+        .matches(/import \* as lib0 from "\.\/lib\.js";/);
+      await assert
+        .file("output/index.js")
+        .matches(/const a = \(function\(\) { return lib0\.hello; }\);/);
+      await assert.file("output/index.js").matches(/const lib = 'collision';/);
+      await assert
+        .file("output/index.js")
+        .matches(
+          /const _default = \(function\(\) { console.log\(a\(\) \+ lib\); }\);/
+        );
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default }/);
+    });
+
     test("adds serialized analysis to bundle", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["index.js"] }`,
