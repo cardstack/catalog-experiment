@@ -85,14 +85,20 @@ export function combineModules(
   }
 
   let output = [];
+  let writtenNamespaces: string[] = [];
   for (let rewriter of rewriters.values()) {
     let namespaces = makeLocalNamespaces(
       rewriter.module,
       bundle,
       assignments,
       state
-    ).filter(({ bindingName }) => !removedBindings.has(bindingName));
+    ).filter(
+      ({ bindingName }) =>
+        !removedBindings.has(bindingName) &&
+        !writtenNamespaces.includes(bindingName)
+    );
     output.push(namespaces.map(({ code }) => code).join("\n"));
+    writtenNamespaces.push(...namespaces.map(({ bindingName }) => bindingName));
 
     let code = rewriter.serialize();
     output.push(code);

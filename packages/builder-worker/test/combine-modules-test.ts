@@ -991,6 +991,50 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
+  test("can handle dupe namespace imports within a bundle", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import a from "./a.js";
+        import b from "./b.js";
+        a();
+        b();
+      `,
+      "a.js": `
+        import * as lib from './lib.js';
+        export default function () {
+          console.log(lib.hello);
+        }
+      `,
+      "b.js": `
+        import * as lib from './lib.js';
+        export default function () {
+          console.log(lib.goodbye);
+        }
+      `,
+      "lib.js": `
+        export const hello = 'hello';
+        export const goodbye = 'goodbye';
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+      const hello = 'hello';
+      const goodbye = 'goodbye';
+      const lib = { hello, goodbye };
+      const a = (function() { console.log(lib.hello); });
+      const b = (function() { console.log(lib.goodbye); });
+      a();
+      b();
+      export {};
+      `
+    );
+  });
+
   test("reexport a namespace import within a bundle", async function (assert) {
     await assert.setupFiles({
       "index.js": `
