@@ -6,6 +6,10 @@
     "./buffer.js",
     "./process.js",
     "./util.js",
-    "./path.js"
+    "./path.js",
+    "./url.js",
+    "./querystring.js",
+    "./punycode.js",
+    "./fs-stub.js"
   ]
 }

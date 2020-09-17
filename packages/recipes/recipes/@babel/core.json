@@ -16,7 +16,9 @@
         "@catalogjs/polyfills": "*"
       },
       "resolutions": {
-        "path": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/path.js"
+        "path": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/path.js",
+        "url": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/url.js",
+        "fs": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/fs-stub.js"
       },
       "babelPlugins": [
         "@babel/plugin-transform-flow-strip-types",
