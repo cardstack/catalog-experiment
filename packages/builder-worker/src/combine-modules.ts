@@ -818,9 +818,9 @@ function assignedExports(
         module,
       }: { module: ModuleResolution | CyclicModuleResolution } = assignment;
       if (
-        (typeof original === "string" &&
+        (!isNamespaceMarker(original) &&
           module.desc.exports.get(original)?.type === "reexport") ||
-        (typeof original === "string" &&
+        (!isNamespaceMarker(original) &&
           module.desc.names.get(original)?.type === "import" &&
           [...module.desc.exports.values()].find((e) => e.name === original))
       ) {
@@ -830,7 +830,7 @@ function assignedExports(
         );
         if (
           reexportAssignment?.bundleURL.href !== bundleURL.href &&
-          typeof original === "string"
+          !isNamespaceMarker(original)
         ) {
           let bundleReexports = reexports.get(
             reexportAssignment!.bundleURL.href
@@ -844,17 +844,22 @@ function assignedExports(
         }
       }
       let insideName: string | undefined;
+      // In the scenarios below, we first check for bindings local to the module
+      // in question, and then we'll expand our search to bindings that have
+      // been reexported from the binding in question
       if (original === "default") {
-        // we first check for bindings local to the module in question, and then
-        // we'll expand our search to bindings that have been reexported from
-        // the binding in question
         insideName =
           state.assignedLocalNames.get(module.url.href)?.get(original) ??
           state.assignedImportedNames.get(module.url.href)?.get(original);
       } else {
+        let originalInternalName = !isNamespaceMarker(original)
+          ? (module.desc.exports.get(original)!.name as string)
+          : undefined;
         insideName =
-          typeof original === "string"
-            ? state.assignedLocalNames.get(module.url.href)?.get(original)
+          !isNamespaceMarker(original) && originalInternalName
+            ? state.assignedLocalNames
+                .get(module.url.href)
+                ?.get(originalInternalName)
             : undefined;
         insideName =
           insideName ??

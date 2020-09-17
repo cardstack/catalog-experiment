@@ -384,6 +384,33 @@ QUnit.module("module builder", function (origHooks) {
         );
     });
 
+    test("can export a named export multiple times with different names", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          export function stringify(obj) { return JSON.stringify(obj); }
+          export function parse(str) { return JSON.parse(str); }
+          export { stringify as encode, parse as decode };
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").doesNotMatch(/import/);
+      await assert
+        .file("output/index.js")
+        .matches(
+          /function stringify\(obj\) { return JSON\.stringify\(obj\); }/
+        );
+      await assert
+        .file("output/index.js")
+        .matches(/function parse\(str\) { return JSON\.parse\(str\); }/);
+      await assert
+        .file("output/index.js")
+        .matches(
+          /export { stringify, parse, stringify as encode, parse as decode }/
+        );
+    });
+
     test("bundle exports the entrypoint's default export", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["index.js"] }`,
