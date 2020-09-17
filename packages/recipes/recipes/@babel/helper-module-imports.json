@@ -9,9 +9,8 @@
         "subdir": "packages/babel-helper-module-imports/"
       },
       "entrypoints": [
-        "./index.js"
+        "./src/index.js"
       ],
-      "hoistSrc": "src/",
       "additionalDependencies": {
         "@catalogjs/polyfills": "*"
       },

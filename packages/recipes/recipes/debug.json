@@ -3,9 +3,8 @@
   "recipes": [
     {
       "semverRange": "*",
-      "hoistSrc": "src/",
       "entrypoints": [
-        "./browser.js"
+        "./src/browser.js"
       ]
     }
   ]

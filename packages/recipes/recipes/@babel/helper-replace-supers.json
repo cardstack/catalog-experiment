@@ -9,9 +9,8 @@
         "subdir": "packages/babel-helper-replace-supers/"
       },
       "entrypoints": [
-        "./index.js"
+        "./src/index.js"
       ],
-      "hoistSrc": "src/",
       "babelPlugins": [
         "@babel/plugin-transform-flow-strip-types",
         [

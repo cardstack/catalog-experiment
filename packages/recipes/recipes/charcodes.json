@@ -5,9 +5,8 @@
       "semverRange": "*",
       "srcIgnoreGlob": "{node_modules,test,lib}/**",
       "entrypoints": [
-        "./index.js"
+        "./src/index.js"
       ],
-      "hoistSrc": "src/",
       "babelPlugins": [
         "@babel/plugin-transform-flow-strip-types",
         "@babel/plugin-transform-typescript",

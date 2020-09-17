@@ -9,9 +9,8 @@
         "subdir": "packages/babel-helper-get-function-arity/"
       },
       "entrypoints": [
-        "./index.js"
+        "./src/index.js"
       ],
-      "hoistSrc": "src/",
       "babelPlugins": [
         "@babel/plugin-transform-flow-strip-types",
         [

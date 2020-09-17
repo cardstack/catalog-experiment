@@ -52,11 +52,6 @@
           "title": "Skip Dependencies",
           "description": "In the scenario where a package has defined a dependency that it doesn't actually consume, it can be skipped by including it in the \"skipDependencies\" list. By default all the package.json \"dependencies\" will be processed."
         },
-        "hoistSrc": {
-          "type": "string",
-          "title": "Hoist Source",
-          "description": "By default the resulting bundle that is created for the package will have the same relative folder path as the entrypoint js file. So if the entrypoint js files lives in \"<pkg root>/src/index.js\", the resulting bundle for the package will reside at <pkg URL>/src/index.js. The entrypoints for the package may be hoisted by specifying the folder to hoist the root using the \"hoistSrc\". Set the \"hoistSrc\" property to the folder that you wish to hoist to the root of the package. For instance, if the entrypoint file lives in <pkg root>/src/index.js, and you which to have bundles that are created that are placed as direct children of the pkg URL, then set the \"hoistSrc\" to \"src/\". Note that the entrypoints.json should point to the hoisted entrypoints file."
-        },
         "babelPlugins": {
           "$ref": "#/definitions/babelPlugins",
           "title": "Babel Plugins",

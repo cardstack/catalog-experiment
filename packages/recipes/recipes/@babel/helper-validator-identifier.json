@@ -9,9 +9,8 @@
         "subdir": "packages/babel-helper-validator-identifier/"
       },
       "entrypoints": [
-        "./index.js"
+        "./src/index.js"
       ],
-      "hoistSrc": "src/",
       "srcIgnoreGlob": "{node_modules,test,scripts}/**",
       "additionalDependencies": {
         "charcodes": "^0.2.0"

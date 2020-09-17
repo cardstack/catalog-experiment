@@ -188,7 +188,7 @@ export class PackageSrcPrepareNode implements BuilderNode {
     } else {
       srcPath = this.pkgPath;
     }
-    let { srcIncludeGlob, srcIgnoreGlob, hoistSrc } = recipe ?? {};
+    let { srcIncludeGlob, srcIgnoreGlob } = recipe ?? {};
     srcIncludeGlob = srcIncludeGlob ?? "**/*.{ts,js,json}";
     srcIgnoreGlob = srcIgnoreGlob ?? "{node_modules,test}/**";
 
@@ -203,9 +203,6 @@ export class PackageSrcPrepareNode implements BuilderNode {
     return {
       node: new AllNode(
         files.map((file, index) => {
-          if (hoistSrc) {
-            file = file.replace(join(srcPath, hoistSrc), srcPath);
-          }
           if (!srcPath.endsWith("/")) {
             srcPath = `${srcPath}/`;
           }
