@@ -76,6 +76,7 @@ export interface CyclicModuleResolution {
   desc: ModuleDescription;
   imports: URL[];
   hrefStack: string[];
+  cyclicGroup: Set<ModuleResolution>;
 }
 
 export function isCyclicModuleResolution(
@@ -150,6 +151,7 @@ export class CyclicModuleResolutionNode implements BuilderNode {
         url: this.url,
         desc,
         hrefStack: this.stack,
+        cyclicGroup: new Set(), // we patch this as we exit the recursion stack
         imports: await Promise.all(
           desc.imports.map((imp) =>
             this.resolver.resolve(imp.specifier, this.url)
@@ -238,10 +240,26 @@ class FinishResolutionNode implements BuilderNode {
     // imports is probably in poor form, as the order of evaluation can change
     // depending on the entrypoint used.
 
-    // we are not interested in cycles this module is within nor cycles consumed
-    // by this module's dependencies, rather we are only interested in cycles this
-    // module directly consumes
-    let cycles = gatherCyclicDependencies(module).filter(
+    let cycles = gatherCyclicDependencies(module);
+
+    // patch the CyclicResolution with the resolutions that are in their cycle
+    for (let cycle of cycles) {
+      let terminatingModule = cycle[cycle.length - 1];
+      for (let cyclicResolution of terminatingModule.resolvedImports.filter(
+        (i) => isCyclicModuleResolution(i)
+      ) as CyclicModuleResolution[]) {
+        cyclicResolution.cyclicGroup = new Set([
+          ...[...cyclicResolution.cyclicGroup],
+          ...cycle,
+        ]);
+      }
+    }
+
+    // for the module that is consuming the cycle: we are not interested in
+    // cycles this module is within nor cycles consumed by this module's
+    // dependencies, rather we are only interested in cycles this module
+    // directly consumes
+    let consumedCycles = cycles.filter(
       (cycle) =>
         !cycle.find((m) => m.url.href === this.url.href) &&
         module.resolvedImports
@@ -251,7 +269,8 @@ class FinishResolutionNode implements BuilderNode {
     module.resolvedImportsWithCyclicGroups = module.resolvedImports
       .filter((m) => !isCyclicModuleResolution(m))
       .map(
-        (m) => cycles.find((cycle) => cycle[0].url.href === m.url.href) ?? m
+        (m) =>
+          consumedCycles.find((cycle) => cycle[0].url.href === m.url.href) ?? m
       ) as (ModuleResolution | ModuleResolution[])[];
     return {
       value: module,

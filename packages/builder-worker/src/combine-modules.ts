@@ -930,8 +930,8 @@ function assignedImports(
   state: State,
   removedBindings: Set<string>
 ): {
-  namedImports: Map<string, Map<string, string>>; // bundleHref => <exposedName => localname>
-  namespaceImports: Map<string, string>; // bundleHref => localname
+  namedImports: Map<string, Map<string, string>>; // bundleHref => <exposedName => local name>
+  namespaceImports: Map<string, string>; // bundleHref => local name
 } {
   let namedImports: Map<string, Map<string, string>> = new Map();
   let namespaceImports: Map<string, string> = new Map();
@@ -1010,11 +1010,21 @@ function resolveReexport(
   }
   let remoteDesc = module.desc.exports.get(name);
   if (
-    (remoteDesc?.type === "reexport" ||
-      (remoteDesc?.type == "local" &&
-        module.desc.names.get(remoteDesc.name)?.type === "import")) &&
-    module.type === "standard"
+    remoteDesc?.type === "reexport" ||
+    (remoteDesc?.type == "local" &&
+      module.desc.names.get(remoteDesc.name)?.type === "import")
   ) {
+    if (module.type === "cyclic") {
+      let cyclicModule = [...module.cyclicGroup].find(
+        (m) => m.url.href === module.url.href
+      );
+      if (!cyclicModule) {
+        throw new Error(
+          `bug: can't find cyclic module ${module.url.href} in its cyclic group`
+        );
+      }
+      module = cyclicModule;
+    }
     if (remoteDesc.type === "reexport") {
       return resolveReexport(
         remoteDesc.name,
@@ -1029,10 +1039,6 @@ function resolveReexport(
         module.resolvedImports[localDesc.importIndex]
       );
     }
-  } else if (remoteDesc?.type === "reexport" && module.type === "cyclic") {
-    throw new Error(
-      `Bindings can cannot form a cycle. Encountered a cyclic resolution for '${name}' in ${module.url.href}`
-    );
   }
   return { name, module };
 }

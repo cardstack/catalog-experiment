@@ -665,6 +665,31 @@ QUnit.module("module builder", function (origHooks) {
         .matches(/export { _default as default }/);
     });
 
+    test("consuming a binding that is a tail off of a circular imports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["./index.js"] }`,
+        "index.js": `
+          export { foo } from "./tail.js";
+          export { a } from "./a.js";
+        `,
+        "tail.js": `
+          export const foo = 'bar';
+        `,
+        "a.js": `
+          import { foo }  from "./index.js";
+          export function a() { console.log('a' + foo); }`,
+      });
+
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").matches(/const foo = 'bar';/);
+      await assert
+        .file("output/index.js")
+        .matches(/function a\(\) { console.log\('a' \+ foo\); }/);
+      await assert.file("output/index.js").doesNotMatch(/function b\(\)/);
+      await assert.file("output/index.js").matches(/export { foo, a }/);
+    });
+
     test("imported binding is explicitly exported", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["./index.js"] }`,
