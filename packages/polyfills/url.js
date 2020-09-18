@@ -1,3 +1,8 @@
+function unimplemented() {
+  // https://github.com/ionic-team/rollup-plugin-node-polyfills/issues/12
+  throw new Error("unimplemented");
+}
+
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -27,12 +32,14 @@ export {
   urlResolve as resolve,
   urlResolveObject as resolveObject,
   urlFormat as format,
+  unimplemented as pathToFileURL,
 };
 export default {
   parse: urlParse,
   resolve: urlResolve,
   resolveObject: urlResolveObject,
   format: urlFormat,
+  pathToFileURL: unimplemented,
   Url: Url,
 };
 export function Url() {
