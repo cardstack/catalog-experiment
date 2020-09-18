@@ -69,6 +69,7 @@ interface CompleteState {
   deps: { [name: string]: BuilderNode } | null;
   output: InternalResult;
   didChange: boolean;
+  buildTime: number;
 }
 
 type Explanation = Map<
@@ -86,6 +87,10 @@ type Explanation = Map<
 
     // did this node change in the most recent build
     didChange: boolean;
+
+    // The amount of ms to build the node (which includes the time to build any
+    // dependent nodes)
+    buildTime: number;
   }
 >;
 
@@ -134,6 +139,7 @@ class BuildRunner<Input> {
         inputs,
         created,
         didChange: state.didChange,
+        buildTime: state.buildTime,
       });
     }
     return explanation;
@@ -249,6 +255,7 @@ class BuildRunner<Input> {
   }
 
   private async evaluate(node: BuilderNode, maybeDeps: unknown) {
+    let start = Date.now();
     let state = this.startEvaluating(node, maybeDeps);
     let result = await state.output;
     this.getCurrentContext().nodeStates.set(node.cacheKey, {
@@ -257,6 +264,7 @@ class BuildRunner<Input> {
       deps: state.deps,
       output: result,
       didChange: result.changed,
+      buildTime: Date.now() - start,
     });
     return result;
   }
