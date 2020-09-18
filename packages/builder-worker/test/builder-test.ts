@@ -16,7 +16,7 @@ Logger.echoInConsole(true);
 const outputOrigin = `http://output`;
 
 QUnit.module("module builder", function (origHooks) {
-  let { test, skip } = installFileAssertions(origHooks);
+  let { test } = installFileAssertions(origHooks);
   let builder: Builder<unknown> | undefined;
   let rebuilder: Rebuilder<unknown> | undefined;
 
@@ -1307,12 +1307,203 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file("output/dist/1.js").matches(/export { b };/);
     });
 
-    skip("TODO: can resolve local modules that don't have a file extension to a similarly named js file", async function (assert) {});
-    skip("TODO: can resolve local modules that don't have a file extension to a similarly named directory with an index.js", async function (assert) {});
-    skip("TODO: can resolve entrypoint module from pkg in declared dependency", async function (assert) {});
-    skip("TODO: can resolve default export from entrypoint module from pkg in declared dependency", async function (assert) {});
-    skip("TODO: can resolve non-entrypoint module from pkg in declared dependency", async function (assert) {});
-    skip("TODO: can resolve CJS wrapped module", async function (assert) {});
+    test("can resolve local modules that don't have a file extension to a similarly named js file", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import a from "./a";
+          export default function() { a(); }
+        `,
+        "a.js": `
+          export default function() { console.log('hi'); }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(/const a = \(function\(\) { console\.log\('hi'\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/const _default = \(function\(\) { a\(\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default };/);
+    });
+
+    test("can resolve local modules that don't have a file extension to a similarly named directory with an index.js", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import a from "./a";
+          export default function() { a(); }
+        `,
+        "a/index.js": `
+          export default function() { console.log('hi'); }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(/const a = \(function\(\) { console\.log\('hi'\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/const _default = \(function\(\) { a\(\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default };/);
+    });
+
+    test("can resolve entrypoint module from pkg in lock file", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "catalogjs.lock": `{ "a": "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/" }`,
+        "index.js": `
+          import a from "a";
+          export default function() { a(); }
+        `,
+        "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/entrypoints.json": `{"js": ["dist/a-es6.js"] }`,
+        "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/catalogjs.lock": `{ }`,
+        "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/dist/a-es6.js": `
+          export default function() { console.log('hi'); }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(/const a = \(function\(\) { console\.log\('hi'\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/const _default = \(function\(\) { a\(\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default };/);
+    });
+
+    test("can resolve entrypoint module from pkg with scoped name in lock file", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "catalogjs.lock": `{ "@mango/a": "https://catalogjs.com/pkgs/npm/@mango/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/" }`,
+        "index.js": `
+          import a from "@mango/a";
+          export default function() { a(); }
+        `,
+        "https://catalogjs.com/pkgs/npm/@mango/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/entrypoints.json": `{"js": ["dist/a-es6.js"] }`,
+        "https://catalogjs.com/pkgs/npm/@mango/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/catalogjs.lock": `{ }`,
+        "https://catalogjs.com/pkgs/npm/@mango/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/dist/a-es6.js": `
+          export default function() { console.log('hi'); }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(/const a = \(function\(\) { console\.log\('hi'\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/const _default = \(function\(\) { a\(\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default };/);
+    });
+
+    test("can resolve non-primary entrypoint module from pkg in lock file", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "catalogjs.lock": `{ "a": "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/" }`,
+        "index.js": `
+          import a from "a/b";
+          export default function() { a(); }
+        `,
+        "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/entrypoints.json": `{"js": ["./a.js", "./b.js"] }`,
+        "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/catalogjs.lock": `{ }`,
+        "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/a.js": `
+          export default function() { console.log('hi'); }
+        `,
+        "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/b.js": `
+          export default function() { console.log('bye'); }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(/const a = \(function\(\) { console\.log\('bye'\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/const _default = \(function\(\) { a\(\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default };/);
+    });
+
+    test("can resolve CJS wrapped module", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import a from "./a.js$cjs$";
+          export default function() { a(); }
+        `,
+        "a.cjs.js": `
+          let module;
+          function implementation() {
+            if (!module) {
+              module = { exports: {} };
+              Function(
+                "module",
+                "exports",
+                "dependencies",
+                \`console.log("hi");\`
+              )(module, module.exports, []);
+            }
+            return module.exports;
+          }
+          export default implementation;
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").matches(/console\.log\("hi"\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/const a = \(implementation\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/const _default = \(function\(\) { a\(\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default };/);
+    });
+
+    test("can resolve JSON file", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import a from "./a.json";
+          export default function() { return a.foo; }
+        `,
+        "a.json.js": `
+          const json = { "foo": "bar" };
+          const { foo } = json;
+          export default json;
+          export { foo };
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(/const json = { "foo": "bar" };/);
+      await assert.file("output/index.js").matches(/const a = \(json\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/const _default = \(function\(\) { return a\.foo; }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default };/);
+    });
   });
 
   QUnit.module("rebuild", function () {
