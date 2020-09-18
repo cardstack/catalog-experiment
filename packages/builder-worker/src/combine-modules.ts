@@ -646,7 +646,12 @@ function setBindingDependencies(
             .map((e) => e.name) as string[]), // the filter for type="local" strips out the namespace markers, but typescript can't see through this filter, hence the cast
         ];
       } else if (outsideName) {
-        let exportDesc = currentModule.desc.exports.get(outsideName)!;
+        let exportDesc = currentModule.desc.exports.get(outsideName);
+        if (!exportDesc) {
+          throw new Error(
+            `The module ${module.url.href} tried to import '${outsideName}' from ${currentModule.url.href}, but '${outsideName}' is not exported from this module.`
+          );
+        }
         if (exportDesc.type === "local") {
           localName = exportDesc.name;
         } else {
