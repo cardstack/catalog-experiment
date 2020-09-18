@@ -1210,6 +1210,33 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
+  test("can handle default exported object", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import obj from './a.js';
+        console.log(JSON.stringify(obj));
+      `,
+      "a.js": `const json = { foo: 'bar' };
+        const { foo } = json;
+        export default json;
+        export { foo };
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+      const json = { foo: 'bar' };
+      const obj = (json);
+      console.log(JSON.stringify(obj));
+      export {};
+      `
+    );
+  });
+
   test("can handle both default and named imports", async function (assert) {
     await assert.setupFiles({
       "index.js": `

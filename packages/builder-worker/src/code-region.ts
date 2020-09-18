@@ -4,7 +4,7 @@
 // removed.
 
 import { NodePath } from "@babel/traverse";
-import { Program } from "@babel/types";
+import { Program, isIdentifier } from "@babel/types";
 import { assertNever } from "@catalogjs/shared/util";
 import { FileDescription, isModuleDescription } from "./describe-file";
 
@@ -15,7 +15,10 @@ const lvalTypes = ["ObjectProperty", "ArrayPattern", "RestElement"];
 
 // the parts of a CodeRegion that we can determine independent of its location,
 // based only on its own NodePath.
-type PathFacts = Pick<CodeRegion, "shorthand" | "preserveGaps">;
+type PathFacts = Pick<
+  CodeRegion,
+  "shorthand" | "preserveGaps" | "removeWhenNoSiblings"
+>;
 
 interface NewRegion {
   absoluteStart: number;
@@ -49,6 +52,7 @@ export class RegionBuilder {
       nextSibling: undefined,
       shorthand: false,
       preserveGaps: true,
+      removeWhenNoSiblings: false,
     });
   }
 
@@ -61,6 +65,7 @@ export class RegionBuilder {
       pathFacts: {
         shorthand: shorthandMode(path),
         preserveGaps: path.type === "ArrayPattern",
+        removeWhenNoSiblings: dependsOnSiblingPresence(path),
       },
     };
     this.absoluteRanges.set(newRegion.index, {
@@ -315,20 +320,23 @@ export interface CodeRegion {
   //
   shorthand: "import" | "export" | "object" | false;
   preserveGaps: boolean;
+  removeWhenNoSiblings: boolean;
 }
 
 type Disposition =
   | {
       state: "unchanged";
+      region: RegionPointer;
     }
-  | { state: "removed" }
-  | { state: "replaced"; replacement: string }
+  | { state: "removed"; region: RegionPointer }
+  | { state: "replaced"; region: RegionPointer; replacement: string }
   | {
       state: "replace-edges";
+      region: RegionPointer;
       beginningReplacement: string;
       endReplacement: string;
     }
-  | { state: "unwrap"; beginning: string; end: string };
+  | { state: "unwrap"; region: RegionPointer; beginning: string; end: string };
 
 export class RegionEditor {
   private dispositions: Disposition[];
@@ -341,8 +349,9 @@ export class RegionEditor {
     private desc: FileDescription,
     private unusedNameLike: (name: string) => string
   ) {
-    this.dispositions = desc.regions.map(() => ({
+    this.dispositions = [...desc.regions.entries()].map(([index]) => ({
       state: "unchanged",
+      region: index,
     }));
   }
 
@@ -351,15 +360,17 @@ export class RegionEditor {
     if (!nameDesc) {
       throw new Error(`tried to remove unknown declaration ${name}`);
     }
+    let region = nameDesc.declaration;
     if (nameDesc.declarationSideEffects != null) {
-      this.dispositions[nameDesc.declaration] = {
+      this.dispositions[region] = {
         state: "unwrap",
         beginning: "(",
         end: ")",
+        region,
       };
       this.rename(name, this.unusedNameLike(name));
     } else {
-      this.dispositions[nameDesc.declaration] = { state: "removed" };
+      this.dispositions[region] = { state: "removed", region };
     }
   }
 
@@ -374,7 +385,7 @@ export class RegionEditor {
   }
 
   replace(region: RegionPointer, replacement: string): void {
-    this.dispositions[region] = { state: "replaced", replacement };
+    this.dispositions[region] = { state: "replaced", replacement, region };
   }
 
   removeImportsAndExports(defaultNameSuggestion: string | undefined) {
@@ -399,20 +410,25 @@ export class RegionEditor {
           state: "replace-edges",
           beginningReplacement: `const ${defaultNameSuggestion} = (`,
           endReplacement: ");",
+          region,
         };
       } else if (declaration != null) {
         this.dispositions[region] = {
           state: "replace-edges",
           beginningReplacement: "",
           endReplacement: "",
+          region,
         };
       } else {
-        this.dispositions[region] = { state: "removed" };
+        this.dispositions[region] = { state: "removed", region };
       }
     }
     for (let importDesc of this.desc.imports) {
       if (!importDesc.isDynamic) {
-        this.dispositions[importDesc.region] = { state: "removed" };
+        this.dispositions[importDesc.region] = {
+          state: "removed",
+          region: importDesc.region,
+        };
       }
     }
   }
@@ -482,13 +498,15 @@ export class RegionEditor {
           });
 
           if (
-            childDispositions.every((d) => d.state === "removed") &&
+            childDispositions
+              .filter((d) => !this.desc.regions[d.region].removeWhenNoSiblings)
+              .every((d) => d.state === "removed") &&
             regionPointer !== documentPointer
           ) {
             // if all our children were removed, then we need to be removed
-            this.output.pop();
+            this.output = this.output.slice(0, ourStartOutputIndex);
             this.cursor += region.end;
-            return { state: "removed" };
+            return { state: "removed", region: regionPointer };
           } else if (
             parent === documentPointer && // don't try to isolate side effects in LVals
             childDispositions.filter((d) => d.state === "unwrap").length ===
@@ -621,4 +639,20 @@ function shorthandMode(path: NodePath): PathFacts["shorthand"] {
   }
 
   return false;
+}
+
+// this is looking for regions that can only exist when their siblings exist.
+// specifically the right hand side of an LVal, like:
+//   let { bar } = foo;
+// in this case "{ bar }" the ObjectPattern and "foo" the Identifier are siblings
+// within the VariableDeclarator parent. The Identifier "foo" cannot exist
+// without the ObjectPatten "{ bar }", and if "{ bar }" is removed, then we
+// must remove "foo".
+function dependsOnSiblingPresence(path: NodePath) {
+  if (!isIdentifier(path.node)) {
+    return false;
+  }
+  return (
+    path.parent.type === "VariableDeclarator" && path.parent.init === path.node
+  );
 }
