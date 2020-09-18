@@ -316,9 +316,25 @@ class JSONRewriterNode implements BuilderNode {
   }
 
   async run({ json }: { json: string }): Promise<NodeOutput<void>> {
+    let obj = JSON.parse(json);
+    let varName = "json";
+    let counter = 0;
+    let safeKeys = Object.keys(obj).filter((key) => key.match(/^\w+$/));
+    while (safeKeys.includes(varName)) {
+      varName = `json${counter++}`;
+    }
+
+    let output: string[] = [`const ${varName} = ${json};`];
+    if (safeKeys.length) {
+      output.push(`const { ${safeKeys.join(", ")} } = ${varName};`);
+    }
+    output.push(`export default ${varName};`);
+    if (safeKeys.length) {
+      output.push(`export { ${safeKeys.join(", ")} };`);
+    }
     return {
       node: new WriteFileNode(
-        new ConstantNode(`export default ${json};`),
+        new ConstantNode(output.join("\n")),
         new URL(`${this.outputURL.href}.js`)
       ),
     };
