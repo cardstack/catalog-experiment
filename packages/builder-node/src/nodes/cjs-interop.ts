@@ -43,7 +43,7 @@ export class MakePkgESCompliantNode implements BuilderNode {
     listing,
   }: {
     listing: ListingEntry[];
-  }): Promise<NodeOutput<(void | void[][])[]>> {
+  }): Promise<NodeOutput<(void[] | void[][])[]>> {
     // get all files (and optionally filter thru recipes config) trying to crawl
     // deps from the file description to find files to introspect, because we're
     // not ready to start resolving yet (and we don't want to be forced into
@@ -102,13 +102,40 @@ class IntrospectSrcNode implements BuilderNode {
     desc,
   }: {
     desc: FileDescription | undefined;
-  }): Promise<NodeOutput<void | void[][]>> {
+  }): Promise<NodeOutput<void[] | void[][]>> {
     let url = new URL(
       this.url.href.slice(`${this.pkgURL.href}__stage2/`.length),
       `${this.pkgURL}${buildSrcDir}`
     );
     if (!desc || isModuleDescription(desc)) {
-      return { node: new WriteFileNode(new FileNode(this.url), url) };
+      let jsonDeps = new Set<string>();
+      for (let importDesc of desc?.names.values() || []) {
+        if (
+          importDesc.type === "import" &&
+          desc!.imports[importDesc.importIndex].specifier.endsWith(".json")
+        ) {
+          jsonDeps.add(desc!.imports[importDesc.importIndex].specifier);
+        }
+      }
+      for (let exportDesc of desc?.exports.values() || []) {
+        if (
+          exportDesc.type === "reexport" &&
+          desc!.imports[exportDesc.importIndex].specifier.endsWith(".json")
+        ) {
+          jsonDeps.add(desc!.imports[exportDesc.importIndex].specifier);
+        }
+      }
+      let nodes: BuilderNode<void>[] = [
+        new WriteFileNode(new FileNode(this.url), url),
+        ...[...jsonDeps].map(
+          (specifier) =>
+            new JSONRewriterNode(
+              new URL(specifier, this.url),
+              new URL(specifier, url)
+            )
+        ),
+      ];
+      return { node: new AllNode(nodes) };
     } else {
       return { node: new ESInteropNode(this.url, url, desc) };
     }

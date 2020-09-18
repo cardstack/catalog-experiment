@@ -15,15 +15,19 @@ interface PkgInfo {
   modulePath: string | undefined;
 }
 
-function hasExtension(url: URL): boolean {
+function getExtension(url: URL): string | undefined {
   let { href } = url;
   let basename = href.split("/").pop()!;
-  return basename.includes(".");
+  if (!basename.includes(".")) {
+    return;
+  }
+  return basename.split(".").pop()!;
 }
 
 function resolveFileExtension(url: URL, useCJSInterop: boolean): URL {
   let { href } = url;
-  if (!hasExtension(url)) {
+  let extension = getExtension(url);
+  if (!extension || extension === "json") {
     href = `${href}.js`; // TODO what about .ts?
   }
   if (useCJSInterop) {
@@ -87,7 +91,7 @@ export class Resolver {
       url = new URL("index.js", url);
     }
 
-    if (!hasExtension(url)) {
+    if (!getExtension(url)) {
       let candidateURL = new URL("index.js", makeURLEndInDir(url));
       if (await this.fileExists(candidateURL)) {
         url = candidateURL;
