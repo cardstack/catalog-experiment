@@ -1,11 +1,13 @@
 import yargs from "yargs";
 import { Logger, log, error } from "../../builder-worker/src/logger";
 import { resolve, join } from "path";
-import { NodeFileSystemDriver } from "./node-filesystem-driver";
+import { NodeFileSystemDriver, closeAll } from "./node-filesystem-driver";
 import { FileSystem } from "../../builder-worker/src/filesystem";
 import { Builder } from "../../builder-worker/src/builder";
+import { resolveNodePkg } from "./resolve";
 import { ensureDirSync, removeSync } from "fs-extra";
 import fetch from "node-fetch";
+import { recipesURL } from "../../builder-worker/src/recipes";
 
 if (!globalThis.fetch) {
   (globalThis.fetch as any) = fetch;
@@ -33,7 +35,7 @@ let { project: rawProjects, overlay } = yargs
       type: "boolean",
       default: false,
       description:
-        "a flag indicating if the unbuilt assets in the input URL should be included in the output URL. This is would include application assets like images. Otherwise the build output is purely aretifacts emitted from the build.",
+        "a flag indicating if the un-built assets in the input URL should be included in the output URL. This is would include application assets like images. Otherwise the build output is purely artifacts emitted from the build.",
     },
   })
   .boolean("overlay")
@@ -54,10 +56,14 @@ let fs = new FileSystem();
   await build();
   log(`build complete: ${outputDir}`);
   process.exit(0);
-})().catch((err) => {
-  error(`Unhandled error while building`, err);
-  process.exit(1);
-});
+})()
+  .catch((err) => {
+    error(`Unhandled error while building`, err);
+    process.exit(1);
+  })
+  .finally(() => {
+    closeAll();
+  });
 
 async function prepare() {
   let count = 0;
@@ -72,6 +78,8 @@ async function prepare() {
     let inputURL = new URL(`http://project-src${count++}`);
     let driver = new NodeFileSystemDriver(resolve(path));
     await fs.mount(inputURL, driver);
+    let recipesPath = join(resolveNodePkg("@catalogjs/recipes"), "recipes");
+    await fs.mount(recipesURL, new NodeFileSystemDriver(recipesPath));
     projectRoots.push([inputURL, new URL(outputHref)]);
   }
 }
@@ -96,6 +104,6 @@ async function build() {
     await doOverlay();
   }
 
-  let builder = Builder.forProjects(fs, projectRoots);
+  let builder = Builder.forProjects(fs, projectRoots, recipesURL);
   await builder.build();
 }

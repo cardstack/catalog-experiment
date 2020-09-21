@@ -15,11 +15,11 @@ import {
   ExportDescription,
   LocalNameDescription,
   ImportedNameDescription,
-} from "./describe-module";
+} from "./describe-file";
 import isEqual from "lodash/isEqual";
 import invert from "lodash/invert";
-import { RegionPointer, CodeRegion } from "./code-region";
-import { assertNever } from "shared/util";
+import { CodeRegion } from "./code-region";
+import { assertNever } from "@catalogjs/shared/util";
 
 const moduleDescLegend = [
   "imports", // array of import descriptions
@@ -44,6 +44,12 @@ const importDescLegend = [
   "region", // number | null
 ];
 
+const exportRegionDescLegend = [
+  "region", // number
+  "declaration", // number
+  "isDefaultExport", // boolean
+];
+
 const exportDescLegend = [
   "type", // "l" = "local" | "r" = "reexport"
   "name", // string | { n: true }
@@ -52,7 +58,7 @@ const exportDescLegend = [
 ];
 
 const nameDescLegend = [
-  "type", // "l" = local, "i" = import
+  "type", // "l" = local, "i" = import, "r" = require
   "dependsOn", // string[]
   "usedByModule", // boolean
   "declaration", // number
@@ -60,7 +66,9 @@ const nameDescLegend = [
   "references", // number[]
   "original", // [moduleHref: string, exportedName: string | { n:true} ]
   "importIndex", // number
+  "requireIndex", // number
   "name", // string | { n: true }
+  "bindingsConsumedByDeclarationSideEffects", // string[]
 ];
 
 interface Pojo {
@@ -88,7 +96,7 @@ export function encodeModuleDescription(desc: ModuleDescription): string {
         break;
       case "exportRegions":
         encoded.push(
-          desc.exportRegions.map((r) => encodeObj(r, ["region", "declaration"]))
+          desc.exportRegions.map((r) => encodeObj(r, exportRegionDescLegend))
         );
         break;
       case "names":
@@ -161,12 +169,8 @@ export function decodeModuleDescription(encoded: string): ModuleDescription {
         }
         break;
       case "exportRegions":
-        exportRegions = value.map(
-          (v: any[]) =>
-            decodeArray(v, ["region", "declaration"]) as {
-              region: RegionPointer;
-              declaration: RegionPointer | undefined;
-            }
+        exportRegions = value.map((v: any[]) =>
+          decodeArray(v, exportRegionDescLegend)
         );
         break;
       case "names":
@@ -184,7 +188,10 @@ export function decodeModuleDescription(encoded: string): ModuleDescription {
               {
                 type: { local: "l", import: "i" },
               },
-              { dependsOn: "Set" },
+              {
+                dependsOn: "Set",
+                bindingsConsumedByDeclarationSideEffects: "Set",
+              },
               {
                 original: {
                   legend: ["moduleHref", "exportedName"],

@@ -5,7 +5,7 @@ import { warn } from "./logger";
 export class BuildManager {
   private _rebuilder: Rebuilder<unknown> | undefined;
   private _projects: [URL, URL][] | undefined;
-  constructor(private fs: FileSystem) {}
+  constructor(private fs: FileSystem, private recipesURL: URL) {}
 
   projects() {
     return this._projects ? [...this._projects] : undefined;
@@ -13,7 +13,7 @@ export class BuildManager {
 
   setProjects(projects: [URL, URL][]) {
     this._projects = projects;
-    this._rebuilder = Rebuilder.forProjects(this.fs, projects);
+    this._rebuilder = Rebuilder.forProjects(this.fs, projects, this.recipesURL);
   }
 
   get rebuilder() {
@@ -34,7 +34,11 @@ export class BuildManager {
     warn("reloading builder");
     await this._rebuilder.shutdown();
 
-    this._rebuilder = Rebuilder.forProjects(this.fs, this._projects);
+    this._rebuilder = Rebuilder.forProjects(
+      this.fs,
+      this._projects,
+      this.recipesURL
+    );
     this._rebuilder.start();
   }
 }

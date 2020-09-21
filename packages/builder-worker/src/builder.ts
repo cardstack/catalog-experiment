@@ -1,4 +1,4 @@
-import { FileSystem, isFileEvent } from "./filesystem";
+import { FileSystem, isFileEvent, ListingEntry } from "./filesystem";
 import { addEventListener, Event, dispatchEvent } from "./event-bus";
 import bind from "bind-decorator";
 import {
@@ -7,13 +7,25 @@ import {
   NodeOutput,
   debugName,
 } from "./nodes/common";
-import { FileNode, WriteFileNode } from "./nodes/file";
+import {
+  FileNode,
+  WriteFileNode,
+  MountNode,
+  FileExistsNode,
+  FileListingNode,
+} from "./nodes/file";
 import { MakeProjectNode } from "./nodes/project";
-import { FileDescriptor } from "./filesystem-drivers/filesystem-driver";
+import {
+  FileDescriptor,
+  FileSystemDriver,
+  DirectoryDescriptor,
+} from "./filesystem-drivers/filesystem-driver";
 import { Deferred } from "./deferred";
-import { assertNever } from "shared/util";
+import { assertNever } from "@catalogjs/shared/util";
 import { error } from "./logger";
 import sortBy from "lodash/sortBy";
+import { Resolver } from "./resolver";
+import { getRecipe, Recipe } from "./recipes";
 
 type BoolForEach<T> = {
   [P in keyof T]: boolean;
@@ -57,6 +69,7 @@ interface CompleteState {
   deps: { [name: string]: BuilderNode } | null;
   output: InternalResult;
   didChange: boolean;
+  buildTime: number;
 }
 
 type Explanation = Map<
@@ -74,6 +87,10 @@ type Explanation = Map<
 
     // did this node change in the most recent build
     didChange: boolean;
+
+    // The amount of ms to build the node (which includes the time to build any
+    // dependent nodes)
+    buildTime: number;
   }
 >;
 
@@ -91,6 +108,7 @@ class BuildRunner<Input> {
   constructor(
     private fs: FileSystem,
     private roots: Input,
+    private recipesURL: URL,
     private inputDidChange?: () => void
   ) {}
 
@@ -122,6 +140,7 @@ class BuildRunner<Input> {
         inputs,
         created,
         didChange: state.didChange,
+        buildTime: state.buildTime,
       });
     }
     return explanation;
@@ -194,7 +213,7 @@ class BuildRunner<Input> {
       case "initial":
         let realNode = this.internalize(state.node);
         return this.handleNextNode(
-          await this.evaluate(realNode, realNode.deps())
+          await this.evaluate(realNode, await realNode.deps(this.getRecipe))
         );
       case "reused":
         return this.handleNextNode(await this.evaluate(state.node, state.deps));
@@ -221,10 +240,23 @@ class BuildRunner<Input> {
       return new InternalWriteFileNode(node, this.fs);
     }
 
+    if (MountNode.isMountNode(node)) {
+      return new InternalMountNode(node, this.fs);
+    }
+
+    if (FileExistsNode.isFileExistsNode(node)) {
+      return new InternalFileExistsNode(node, this.fs);
+    }
+
+    if (FileListingNode.isFileListingNode(node)) {
+      return new InternalFileListingNode(node, this.fs);
+    }
+
     return node;
   }
 
   private async evaluate(node: BuilderNode, maybeDeps: unknown) {
+    let start = Date.now();
     let state = this.startEvaluating(node, maybeDeps);
     let result = await state.output;
     this.getCurrentContext().nodeStates.set(node.cacheKey, {
@@ -233,6 +265,7 @@ class BuildRunner<Input> {
       deps: state.deps,
       output: result,
       didChange: result.changed,
+      buildTime: Date.now() - start,
     });
     return result;
   }
@@ -277,6 +310,15 @@ class BuildRunner<Input> {
     result: InternalResult
   ): Promise<{ value: unknown; changed: boolean }> {
     if ("node" in result) {
+      if (this.getNodeState(result.node).name === "evaluating") {
+        let name =
+          typeof result.node.cacheKey === "string"
+            ? result.node.cacheKey
+            : `a ${result.node.constructor.name} instance`;
+        throw new Error(
+          `Cycle detected in builder: ${name} is still in an evaluating state when we tried to emit it again`
+        );
+      }
       return this.evalNode(result.node);
     } else {
       return result;
@@ -304,13 +346,27 @@ class BuildRunner<Input> {
     }
 
     if (inputs) {
-      return this.handleUnchanged(node, await node.run(inputs.values));
+      return this.handleUnchanged(
+        node,
+        await node.run(inputs.values, this.getRecipe)
+      );
     } else {
       return this.handleUnchanged(
         node,
-        await (node as BuilderNode<unknown, void>).run()
+        await (node as BuilderNode<unknown, void>).run(
+          undefined,
+          this.getRecipe
+        )
       );
     }
+  }
+
+  @bind
+  private async getRecipe(
+    pkgName: string,
+    version: string
+  ): Promise<Recipe | undefined> {
+    return await getRecipe(pkgName, version, this.fs, this.recipesURL);
   }
 
   @bind
@@ -349,13 +405,13 @@ class BuildRunner<Input> {
 export class Builder<Input> {
   private runner: BuildRunner<Input>;
 
-  constructor(fs: FileSystem, roots: Input) {
-    this.runner = new BuildRunner(fs, roots);
+  constructor(fs: FileSystem, roots: Input, recipesURL: URL) {
+    this.runner = new BuildRunner(fs, roots, recipesURL);
   }
 
   // roots lists [inputRoot, outputRoot]
-  static forProjects(fs: FileSystem, roots: [URL, URL][]) {
-    return new this(fs, projectsToNodes(roots));
+  static forProjects(fs: FileSystem, roots: [URL, URL][], recipesURL: URL) {
+    return new this(fs, projectsToNodes(roots, fs, recipesURL), recipesURL);
   }
 
   async build(): ReturnType<BuildRunner<Input>["build"]> {
@@ -400,12 +456,12 @@ export class Rebuilder<Input> {
   };
   private nextState: Deferred<RebuilderState> = new Deferred();
 
-  constructor(fs: FileSystem, roots: Input) {
-    this.runner = new BuildRunner(fs, roots, this.inputDidChange);
+  constructor(fs: FileSystem, roots: Input, recipesURL: URL) {
+    this.runner = new BuildRunner(fs, roots, recipesURL, this.inputDidChange);
   }
 
   // roots lists [inputRoot, outputRoot]
-  static forProjects(fs: FileSystem, roots: [URL, URL][]) {
+  static forProjects(fs: FileSystem, roots: [URL, URL][], recipesURL: URL) {
     for (let [input, output] of roots) {
       if (input.origin === output.origin) {
         throw new Error(
@@ -413,7 +469,7 @@ export class Rebuilder<Input> {
         );
       }
     }
-    return new this(fs, projectsToNodes(roots));
+    return new this(fs, projectsToNodes(roots, fs, recipesURL), recipesURL);
   }
 
   get status():
@@ -584,8 +640,11 @@ export function explainAsDot(explanation: Explanation): string {
   return output.join("\n");
 }
 
-function projectsToNodes(roots: [URL, URL][]) {
-  return roots.map(([input, output]) => new MakeProjectNode(input, output));
+function projectsToNodes(roots: [URL, URL][], fs: FileSystem, recipesURL: URL) {
+  return roots.map(
+    ([input, output]) =>
+      new MakeProjectNode(input, output, new Resolver(fs, recipesURL))
+  );
 }
 
 class InternalFileNode<Input> implements BuilderNode<string> {
@@ -604,7 +663,7 @@ class InternalFileNode<Input> implements BuilderNode<string> {
     this.cacheKey = `file:${this.url.href}`;
   }
 
-  deps() {
+  async deps() {
     // TODO a more rigorous way to do this is to match the entrypoints.json file directly
     let matchingRoots = (Object.values(this.roots) as BuilderNode[]).filter(
       (rootNode) =>
@@ -640,7 +699,7 @@ class InternalFileNode<Input> implements BuilderNode<string> {
     }
     let fd: FileDescriptor | undefined;
     try {
-      fd = (await this.fs.open(this.url)) as FileDescriptor;
+      fd = await this.fs.openFile(this.url);
       if (fd.type === "file") {
         return { value: await fd.readText() };
       } else {
@@ -657,21 +716,87 @@ class InternalFileNode<Input> implements BuilderNode<string> {
 }
 
 class InternalWriteFileNode implements BuilderNode<void> {
-  private source: BuilderNode<string>;
   private url: URL;
   cacheKey: string;
-  constructor(writeFileNode: WriteFileNode, private fs: FileSystem) {
-    this.source = writeFileNode.deps().source;
+  constructor(private writeFileNode: WriteFileNode, private fs: FileSystem) {
     this.url = writeFileNode.url;
     this.cacheKey = `write-file:${this.url.href}`;
   }
-  deps() {
-    return { source: this.source };
+  async deps() {
+    let source = (await this.writeFileNode.deps()).source;
+    return { source };
   }
   async run({ source }: { source: string }): Promise<NodeOutput<void>> {
-    let fd = (await this.fs.open(this.url, true)) as FileDescriptor;
-    await fd.write(source);
-    await fd.close();
+    let fd = await this.fs.openFile(this.url, true);
+    try {
+      await fd.write(source);
+    } finally {
+      await fd.close();
+    }
     return { value: undefined };
+  }
+}
+
+class InternalMountNode implements BuilderNode<URL> {
+  private mountURL: URL;
+  private driver: FileSystemDriver;
+  cacheKey: string;
+
+  constructor(mountNode: MountNode, private fs: FileSystem) {
+    this.mountURL = mountNode.mountURL;
+    this.driver = mountNode.driver;
+    this.cacheKey = `mount:${this.mountURL.href}`;
+  }
+
+  async deps() {}
+
+  async run(): Promise<NodeOutput<URL>> {
+    await this.fs.mount(this.mountURL, this.driver);
+    return { value: this.mountURL };
+  }
+}
+
+class InternalFileExistsNode implements BuilderNode<boolean> {
+  private url: URL;
+  cacheKey: string;
+  constructor(fileExistsNode: FileExistsNode, private fs: FileSystem) {
+    this.url = fileExistsNode.url;
+    this.cacheKey = `file-exists:${this.url.href}`;
+  }
+
+  async deps() {}
+
+  async run(): Promise<NodeOutput<boolean>> {
+    let d: DirectoryDescriptor | FileDescriptor | undefined;
+    try {
+      d = await this.fs.open(this.url);
+      return { value: true };
+    } catch (e) {
+      if (e.code === "NOT_FOUND") {
+        return { value: false };
+      }
+      throw e;
+    } finally {
+      if (d) {
+        await d.close();
+      }
+    }
+  }
+}
+
+class InternalFileListingNode implements BuilderNode<ListingEntry[]> {
+  private url: URL;
+  private recurse: boolean;
+  cacheKey: string;
+  constructor(fileListingNode: FileListingNode, private fs: FileSystem) {
+    this.url = fileListingNode.url;
+    this.recurse = Boolean(fileListingNode.recurse);
+    this.cacheKey = `file-listing:${this.url.href}`;
+  }
+
+  async deps() {}
+
+  async run(): Promise<NodeOutput<ListingEntry[]>> {
+    return { value: await this.fs.list(this.url, this.recurse) };
   }
 }

@@ -1,4 +1,5 @@
 {
+  "$schema": "../builder-worker/entrypoints-schema.json",
   "name": "test-lib",
   "html": [
     "test/index.html"

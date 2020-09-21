@@ -113,6 +113,24 @@
     },
     {
       "type": "typescript",
+      "tsconfig": "packages/loader/tsconfig.json",
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "option": "watch",
+      "problemMatcher": {
+        "base": "$tsc-watch",
+        "applyTo": "allDocuments"
+      },
+      "group": "build",
+      "label": "tsc: watch - loader",
+      "isBackground": true,
+      "presentation": {
+        "panel": "new"
+      }
+    },
+    {
+      "type": "typescript",
       "tsconfig": "packages/tarstream/tsconfig.json",
       "runOptions": {
         "runOn": "folderOpen"

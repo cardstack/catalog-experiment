@@ -1,9 +1,9 @@
 {
-  "name": "builder-dom",
+  "name": "@catalogjs/builder-dom",
   "version": "0.0.1",
   "license": "MIT",
   "dependencies": {
-    "shared": "0.0.1"
+    "@catalogjs/shared": "0.0.1"
   },
   "devDependencies": {
     "typescript": "^3.9.3"

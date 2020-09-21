@@ -2,7 +2,7 @@
 // in one project. Most of this project is worker context, but this file is main
 // thread context.
 
-import { assertNever } from "shared/util";
+import { assertNever } from "@catalogjs/shared/util";
 import { isUIManagerEvent } from "../builder-worker/src/ui-manager";
 import { isReloadEvent } from "../builder-worker/src/client-reload";
 

@@ -33,6 +33,7 @@
     "build:builder-dom": "cd packages/builder-dom && tsc",
     "build:builder-node": "cd packages/builder-node && tsc",
     "build:shared": "cd packages/shared && tsc",
+    "build:loader": "cd packages/loader && tsc",
     "build:tarstream": "cd packages/tarstream && tsc",
     "build:ui": "cd packages/ui && tsc",
     "test": "npm-run-all test:*",
@@ -52,5 +53,8 @@
   },
   "resolutions": {
     "minimist": "^1.2.5"
+  },
+  "volta": {
+    "node": "14.5.0"
   }
 }

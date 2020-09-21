@@ -1,0 +1,15 @@
+{
+  "$schema": "../builder-worker/entrypoints-schema.json",
+  "js": [
+    "./index.js",
+    "./assert.js",
+    "./buffer.js",
+    "./process.js",
+    "./util.js",
+    "./path.js",
+    "./url.js",
+    "./querystring.js",
+    "./punycode.js",
+    "./fs-stub.js"
+  ]
+}

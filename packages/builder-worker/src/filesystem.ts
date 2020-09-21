@@ -34,10 +34,17 @@ export class FileSystem {
         `'${url}' is not a directory (it's a file and we were expecting it to be a directory)`
       );
     }
-    let dir = (await this.open(url, true)) as DirectoryDescriptor;
-    let volume = await driver.mountVolume(url);
-    this.volumes.set(this.volumeKey(dir), volume);
-    await dir.close();
+    let dir: DirectoryDescriptor | undefined;
+    let volume: Volume;
+    try {
+      dir = await this.openDirectory(url, true);
+      volume = await driver.mountVolume(url);
+      this.volumes.set(this.volumeKey(dir), volume);
+    } finally {
+      if (dir) {
+        await dir.close();
+      }
+    }
 
     return volume;
   }
@@ -60,15 +67,15 @@ export class FileSystem {
     let source = await this.open(sourceURL);
     let name = baseName(destURL);
     let destParentDirName = dirName(destURL);
-    let destParent = (destParentDirName
-      ? await this.open(new URL(destParentDirName), true)
-      : this.root) as DirectoryDescriptor;
+    let destParent = destParentDirName
+      ? await this.openDirectory(new URL(destParentDirName), true)
+      : this.root;
     if (source.type === "file") {
       let sourceName = baseName(sourceURL);
       let sourceParentDir = dirName(sourceURL);
-      let sourceParent = (await this.open(
+      let sourceParent = await this.openDirectory(
         sourceParentDir ? new URL(sourceParentDir) : ROOT
-      )) as DirectoryDescriptor;
+      );
       await destParent.add(name, source, sourceParent, sourceName);
       if (sourceParent.inode !== destParent.inode) {
         await sourceParent.close();
@@ -88,7 +95,7 @@ export class FileSystem {
     let source = await this.open(sourceURL);
 
     if (source.type === "file") {
-      let clone = (await this.open(destURL, true)) as FileDescriptor;
+      let clone = await this.openFile(destURL, true);
       await clone.write(await source.getReadbleStream());
       await clone.close();
     } else {
@@ -119,12 +126,12 @@ export class FileSystem {
     } else {
       let sourceDir: DirectoryDescriptor;
       try {
-        sourceDir = (await this.open(new URL(dir))) as DirectoryDescriptor;
+        sourceDir = await this.openDirectory(new URL(dir));
       } catch (err) {
         if (err.code !== "NOT_FOUND") {
           throw err;
         }
-        return; // just ignore files that dont exist
+        return; // just ignore files that don't exist
       }
       await sourceDir.remove(name);
       if (autoClose) {
@@ -153,9 +160,15 @@ export class FileSystem {
     if (!startingURL) {
       startingURL = url;
     }
-    let resource = await this.open(url);
+    let resource: DirectoryDescriptor | FileDescriptor | undefined;
+    try {
+      resource = await this.open(url);
+    } finally {
+      if (resource) {
+        await resource.close();
+      }
+    }
     if (resource.type === "file") {
-      await resource.close();
       return [{ url: resource.url, stat: await resource.stat() }];
     }
 
@@ -164,7 +177,6 @@ export class FileSystem {
       if (volumeRoot.type === "directory") {
         resource = volumeRoot;
       } else {
-        await resource.close();
         return [{ url: volumeRoot.url, stat: await volumeRoot.stat() }];
       }
     }
@@ -178,14 +190,34 @@ export class FileSystem {
     }
     for (let name of [...(await resource.children())].sort()) {
       if (await resource.hasFile(name)) {
+        let d: FileDescriptor | undefined;
+        let stat: Stat;
+        try {
+          d = await resource.getFile(name);
+          stat = await d!.stat();
+        } finally {
+          if (d) {
+            await d.close();
+          }
+        }
         results.push({
+          stat,
           url: new URL(name, url),
-          stat: await (await resource.getFile(name))!.stat(),
         });
       } else if (await resource.hasDirectory(name)) {
+        let d: DirectoryDescriptor | undefined;
+        let stat: Stat;
+        try {
+          d = await resource.getDirectory(name);
+          stat = await d!.stat();
+        } finally {
+          if (d) {
+            await d.close();
+          }
+        }
         results.push({
+          stat,
           url: new URL(name, url),
-          stat: await (await resource.getDirectory(name))!.stat(),
         });
         if (recurse) {
           results.push(
@@ -194,8 +226,28 @@ export class FileSystem {
         }
       }
     }
-    await resource.close();
     return results;
+  }
+
+  async openFile(url: URL): Promise<FileDescriptor>;
+  async openFile(url: URL, create: Options["create"]): Promise<FileDescriptor>;
+  async openFile(
+    url: URL,
+    create?: Options["create"]
+  ): Promise<FileDescriptor> {
+    return (await this.open(url, create)) as FileDescriptor;
+  }
+
+  async openDirectory(url: URL): Promise<DirectoryDescriptor>;
+  async openDirectory(
+    url: URL,
+    create: Options["create"]
+  ): Promise<DirectoryDescriptor>;
+  async openDirectory(
+    url: URL,
+    create?: Options["create"]
+  ): Promise<DirectoryDescriptor> {
+    return (await this.open(url, create)) as DirectoryDescriptor;
   }
 
   async open(
@@ -236,6 +288,7 @@ export class FileSystem {
       if (volume.root.type === "directory") {
         parent = volume.root;
       } else {
+        // TODO I think we need a finally to close this descriptor...
         parent = await volume.createDirectory(parent, "");
       }
     } else {
@@ -255,10 +308,12 @@ export class FileSystem {
         href: descriptor.url.href,
         type: "create",
       });
+      await descriptor.close(); // close this descriptor since we are just using it for traversal and not actually returning it
       return await this._open(pathSegments, opts, descriptor, initialHref);
     } else if (pathSegments.length > 0 && (await parent.hasDirectory(name))) {
       // descend into existing directory
       descriptor = (await parent.getDirectory(name))!;
+      await descriptor.close(); // close this descriptor since we are just using it for traversal and not actually returning it
       return await this._open(pathSegments, opts, descriptor, initialHref);
     } else if (
       pathSegments.length === 0 &&
@@ -342,7 +397,7 @@ export class FileSystemError extends Error {
   }
 }
 
-interface ListingEntry {
+export interface ListingEntry {
   url: URL;
   stat: Stat;
 }

@@ -17,7 +17,7 @@ export function handleListing(fs: FileSystem, buildManager: BuildManager) {
       let availableProjects = (
         await fs.list(new URL("https://local-disk/"), true)
       )
-        .filter((entry) => entry.url.href.match(/\/entrypoints.json$/))
+        .filter((entry) => entry.url.href.endsWith("entrypoints.json"))
         .map((entry) =>
           entry.url.href.slice(0, -1 * "entrypoints.json".length)
         );

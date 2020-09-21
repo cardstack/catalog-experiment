@@ -1,22 +1,52 @@
 {
-  "name": "builder-node",
+  "name": "@catalogjs/builder-node",
   "version": "0.0.1",
   "license": "MIT",
   "dependencies": {
+    "@babel/core": "^7.9.0",
+    "@babel/plugin-proposal-class-properties": "^7.10.4",
+    "@babel/plugin-proposal-decorators": "^7.10.5",
+    "@babel/plugin-proposal-logical-assignment-operators": "^7.11.0",
+    "@babel/plugin-proposal-nullish-coalescing-operator": "^7.10.4",
+    "@babel/plugin-proposal-numeric-separator": "^7.10.4",
+    "@babel/plugin-proposal-optional-chaining": "^7.11.0",
+    "@babel/plugin-proposal-pipeline-operator": "^7.10.5",
+    "@babel/plugin-transform-flow-strip-types": "^7.10.4",
+    "@babel/plugin-transform-typescript": "^7.11.0",
+    "@babel/types": "^7.9.0",
+    "@catalogjs/file-daemon": "0.0.1",
+    "@catalogjs/loader": "0.0.1",
+    "@catalogjs/polyfills": "0.0.1",
+    "@catalogjs/recipes": "0.0.1",
     "@types/fs-extra": "^8.1.0",
     "@types/node-fetch": "^2.5.7",
+    "@types/resolve": "^1.17.1",
+    "@types/semver": "^7.3.1",
+    "@types/tmp": "^0.2.0",
     "@types/yargs": "^15.0.4",
-    "file-daemon": "0.0.1",
     "fs-extra": "^9.0.0",
+    "glob": "^7.1.6",
     "node-fetch": "^2.6.0",
+    "resolve": "^1.17.0",
+    "semver": "^7.3.2",
+    "tmp": "^0.2.1",
     "yargs": "^15.3.1"
   },
   "devDependencies": {
+    "@babel/traverse": "^7.9.5",
+    "@types/babel__core": "^7.1.7",
+    "@types/babel__traverse": "^7.0.10",
+    "charcodes": "^0.2.0",
     "esm": "^3.2.25",
+    "fixturify-project": "^2.1.0",
     "qunit": "^2.9.3",
-    "typescript": "^3.9.3"
+    "typescript": "^3.9.3",
+    "unicode-13.0.0": "^0.8.0"
   },
   "volta": {
-    "node": "14.2.0"
+    "node": "14.5.0"
+  },
+  "engines": {
+    "node": ">=14.5.0"
   }
 }

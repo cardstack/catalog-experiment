@@ -4,6 +4,7 @@
 /packages/builder-worker/.file-daemon-key
 /packages/builder-worker/assets
 /packages/builder-node/test/testing
+/working
 
 /packages/*/node_modules
 /packages/*/dist
@@ -19,7 +20,9 @@
 /packages/file-daemon-client/**/*.d.ts
 /packages/file-daemon-client/**/*.js
 /packages/file-daemon-client/**/*.js.map
-
+/packages/loader/**/*.d.ts
+/packages/loader/**/*.js
+/packages/loader/**/*.js.map
 /packages/builder-dom/**/*.d.ts
 /packages/builder-dom/**/*.js
 /packages/builder-dom/**/*.js.map

@@ -6,10 +6,10 @@ import {
 } from "./helpers/file-assertions";
 import { Builder, Rebuilder, explainAsDot } from "../src/builder";
 import { FileSystem } from "../src/filesystem";
-import { FileDescriptor } from "../src/filesystem-drivers/filesystem-driver";
 import { flushEvents, removeAllEventListeners } from "../src/event-bus";
 import { annotationRegex } from "../src/nodes/common";
 import { Logger } from "../src/logger";
+import { recipesURL } from "../src/recipes";
 
 Logger.setLogLevel("debug");
 Logger.echoInConsole(true);
@@ -38,14 +38,18 @@ QUnit.module("module builder", function (origHooks) {
     fs: FileSystem,
     outputURL = new URL("/output/", origin)
   ) {
-    return Builder.forProjects(fs, [[new URL(origin), outputURL]]);
+    return Builder.forProjects(fs, [[new URL(origin), outputURL]], recipesURL);
   }
 
   function makeRebuilder(
     fs: FileSystem,
     outputURL = new URL("/output/", outputOrigin)
   ) {
-    return Rebuilder.forProjects(fs, [[new URL(origin), outputURL]]);
+    return Rebuilder.forProjects(
+      fs,
+      [[new URL(origin), outputURL]],
+      recipesURL
+    );
   }
 
   async function buildBundle(
@@ -56,9 +60,7 @@ QUnit.module("module builder", function (origHooks) {
     await assert.setupFiles(bundleFiles);
     builder = makeBuilder(assert.fs);
     await builder.build();
-    let bundleSrc = await ((await assert.fs.open(
-      bundleURL
-    )) as FileDescriptor).readText();
+    let bundleSrc = await (await assert.fs.openFile(bundleURL)).readText();
     await assert.fs.remove(url("/"));
     return bundleSrc;
   }
@@ -339,6 +341,574 @@ QUnit.module("module builder", function (origHooks) {
         .matches(/export { getPuppies, getCats, getRats };/);
     });
 
+    test("bundle exports derive from entrypoint reexports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          export { getPuppies, getCats, getRats } from "./puppies.js";
+        `,
+        "puppies.js": `
+          export function getPuppies() { return ["Van Gogh", "Mango"]; }
+          export function getCats() { return ["jojo"]; }
+          export function getRats() { return ["pizza rat"]; }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").doesNotMatch(/import/);
+      await assert
+        .file("output/index.js")
+        .matches(/function getRats\(\) { return \["pizza rat"\]; }/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { getPuppies, getCats, getRats };/);
+    });
+
+    test("bundle exports derive from entrypoint renamed reexports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          export { getPuppies as puppies, getCats as cats, getRats as rats } from "./puppies.js";
+        `,
+        "puppies.js": `
+          export function getPuppies() { return ["Van Gogh", "Mango"]; }
+          export function getCats() { return ["jojo"]; }
+          export function getRats() { return ["pizza rat"]; }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").doesNotMatch(/import/);
+      await assert
+        .file("output/index.js")
+        .matches(/function getRats\(\) { return \["pizza rat"\]; }/);
+      await assert
+        .file("output/index.js")
+        .matches(
+          /export { getPuppies as puppies, getCats as cats, getRats as rats };/
+        );
+    });
+
+    test("can export a named export multiple times with different names", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          export function stringify(obj) { return JSON.stringify(obj); }
+          export function parse(str) { return JSON.parse(str); }
+          export { stringify as encode, parse as decode };
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").doesNotMatch(/import/);
+      await assert
+        .file("output/index.js")
+        .matches(
+          /function stringify\(obj\) { return JSON\.stringify\(obj\); }/
+        );
+      await assert
+        .file("output/index.js")
+        .matches(/function parse\(str\) { return JSON\.parse\(str\); }/);
+      await assert
+        .file("output/index.js")
+        .matches(
+          /export { stringify, parse, stringify as encode, parse as decode }/
+        );
+    });
+
+    test("bundle exports the entrypoint's default export", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import implementation from "./puppies.js";
+          export default implementation();
+        `,
+        "puppies.js": `
+          export default function() { return () => console.log("this is a puppy implementation"); }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").doesNotMatch(/import/);
+      await assert
+        .file("output/index.js")
+        .matches(
+          /const implementation = \(function\(\) { return \(\) => console.log\("this is a puppy implementation"\); }\);/
+        );
+      await assert
+        .file("output/index.js")
+        .matches(/const _default = \(implementation\(\)\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/export \{ _default as default \};/);
+    });
+
+    test("bundle exports the entrypoint's default export and named exports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import implementation from "./puppies.js";
+          export default implementation();
+          export const a = "a";
+        `,
+        "puppies.js": `
+          export default function() { return () => console.log("this is a puppy implementation"); }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").doesNotMatch(/import/);
+      await assert
+        .file("output/index.js")
+        .matches(
+          /const implementation = \(function\(\) { return \(\) => console.log\("this is a puppy implementation"\); }\);/
+        );
+      await assert.file("output/index.js").matches(/const a = "a"/);
+      await assert
+        .file("output/index.js")
+        .matches(/const _default = \(implementation\(\)\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default, a };/);
+    });
+
+    test("bundle exports derive from entrypoint default reexports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          export { default } from "./puppies.js";
+        `,
+        "puppies.js": `
+          export default function getPuppies() { return ["Van Gogh", "Mango"]; }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").doesNotMatch(/import/);
+      await assert
+        .file("output/index.js")
+        .matches(/function getPuppies\(\) { return \["Van Gogh", "Mango"\]; }/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { getPuppies as default };/);
+    });
+
+    test("bundle exports a reassigned reexported default export of the entrypoint", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          export { default as puppies } from "./puppies.js";
+        `,
+        "puppies.js": `
+          function getPuppies() { return ["Van Gogh", "Mango"]; }
+          export default getPuppies;
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").doesNotMatch(/import/);
+      await assert
+        .file("output/index.js")
+        .matches(/function getPuppies\(\) { return \["Van Gogh", "Mango"\]; }/);
+      await assert
+        .file("output/index.js")
+        .matches(/const _default = \(getPuppies\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as puppies };/);
+      await assert.file("output/index.js").doesNotMatch(/export default/);
+    });
+
+    test("bundle reexports another bundle's exports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["./entries.js", "./toPairs.js"] }`,
+        "entries.js": `
+          export { default } from './toPairs.js';
+          export const foo = "my own export";
+        `,
+        "toPairs.js": `
+          export default function() { console.log("toPairs"); }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/entries.js")
+        .matches(/export \{ default \} from "\.\/toPairs.js"/);
+      await assert
+        .file("output/entries.js")
+        .matches(/const foo = "my own export";/);
+      await assert.file("output/entries.js").matches(/export { foo };/);
+    });
+
+    test("bundle consumes an reexport projected from another bundle's exports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["./entries.js", "./toPairs.js"] }`,
+        "entries.js": `
+          import { toPairs } from "./toPairs.js";
+          toPairs();
+          export const foo = "my own export";
+        `,
+        "toPairs.js": `
+          export { default as toPairs } from "./internal.js";
+        `,
+        "internal.js": `
+          export default function() { console.log("toPairs"); }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/toPairs.js")
+        .matches(
+          /const _default = \(function\(\) { console\.log\("toPairs"\); }\);/
+        );
+      await assert
+        .file("output/toPairs.js")
+        .matches(/export { _default as toPairs };/);
+      await assert
+        .file("output/entries.js")
+        .matches(/import { toPairs } from "\.\/toPairs\.js";/);
+    });
+
+    test("bundle consumes an explicit import/export projected from another bundle's exports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["./entries.js", "./toPairs.js"] }`,
+        "entries.js": `
+          import { toPairs } from "./toPairs.js";
+          toPairs();
+          export const foo = "my own export";
+        `,
+        "toPairs.js": `
+          import toPairs from "./internal.js";
+          export { toPairs };
+        `,
+        "internal.js": `
+          export default function() { console.log("toPairs"); }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/toPairs.js")
+        .matches(
+          /const toPairs = \(function\(\) { console\.log\("toPairs"\); }\);/
+        );
+      await assert.file("output/toPairs.js").matches(/export { toPairs };/);
+      await assert
+        .file("output/entries.js")
+        .matches(/import { toPairs } from "\.\/toPairs\.js";/);
+    });
+
+    test("circular imports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["./index.js"] }`,
+        "index.js": `
+          import { a } from "./a.js";
+          export default function() { a(); }
+        `,
+        "a.js": `
+          import { bHelper } from "./b.js";
+          export const aHelper = 'a';
+          export function a() { console.log(aHelper + bHelper()); }
+        `,
+        "b.js": `
+          import { aHelper }  from "./a.js";
+          export const bHelper = 'b';
+          export function b() { console.log(bHelper + aHelper()); }`,
+      });
+
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(/const bHelper = 'b';[ \n]+const aHelper = 'a';/);
+      await assert
+        .file("output/index.js")
+        .matches(/function a\(\) { console.log\(aHelper \+ bHelper\(\)\); }/);
+      await assert.file("output/index.js").doesNotMatch(/function b\(\)/);
+      await assert
+        .file("output/index.js")
+        .matches(/const _default = \(function\(\) { a\(\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default }/);
+    });
+
+    test("circular imports with different cyclic entry", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["./index.js"] }`,
+        "index.js": `
+          import { b } from "./b.js";
+          export default function() { b(); }
+        `,
+        "a.js": `
+          import { bHelper } from "./b.js";
+          export const aHelper = 'a';
+          export function a() { console.log(aHelper + bHelper()); }
+        `,
+        "b.js": `
+          import { aHelper }  from "./a.js";
+          export const bHelper = 'b';
+          export function b() { console.log(bHelper + aHelper()); }`,
+      });
+
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(/const aHelper = 'a';[ \n]+const bHelper = 'b';/);
+      await assert
+        .file("output/index.js")
+        .matches(/function b\(\) { console.log\(bHelper \+ aHelper\(\)\); }/);
+      await assert.file("output/index.js").doesNotMatch(/function a\(\)/);
+      await assert
+        .file("output/index.js")
+        .matches(/const _default = \(function\(\) { b\(\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default }/);
+    });
+
+    test("consuming a binding that is a tail off of a circular imports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["./index.js"] }`,
+        "index.js": `
+          export { foo } from "./tail.js";
+          export { a } from "./a.js";
+        `,
+        "tail.js": `
+          export const foo = 'bar';
+        `,
+        "a.js": `
+          import { foo }  from "./index.js";
+          export function a() { console.log('a' + foo); }`,
+      });
+
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").matches(/const foo = 'bar';/);
+      await assert
+        .file("output/index.js")
+        .matches(/function a\(\) { console.log\('a' \+ foo\); }/);
+      await assert.file("output/index.js").doesNotMatch(/function b\(\)/);
+      await assert.file("output/index.js").matches(/export { foo, a }/);
+    });
+
+    test("imported binding is explicitly exported", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["./index.js"] }`,
+        "index.js": `
+          import { foo } from "./a.js";
+          export function doSomething() { console.log(foo); }
+        `,
+        "a.js": `
+          import { foo } from "./b.js";
+          foo.bar = 'blah';
+          export { foo };
+        `,
+        "b.js": `export const foo = {};`,
+      });
+
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").matches(/const foo = {};/);
+      await assert.file("output/index.js").matches(/foo\.bar = 'blah';/);
+      await assert
+        .file("output/index.js")
+        .matches(/function doSomething\(\) { console\.log\(foo\); }/);
+      await assert.file("output/index.js").matches(/export { doSomething }/);
+    });
+
+    test("bundle reexports reassigned bindings from another bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["./entries.js", "./toPairs.js"] }`,
+        "entries.js": `
+          export { default as foo } from './toPairs.js';
+        `,
+        "toPairs.js": `
+          export default function() { console.log("toPairs"); }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/entries.js")
+        .matches(/export \{ default as foo \} from "\.\/toPairs.js"/);
+    });
+
+    test("entrypoint module imports a reassigned default export", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          export { default as puppies } from "./puppies.js";
+        `,
+        "puppies.js": `
+          function getPuppies() { return ["Van Gogh", "Mango"]; }
+          export { getPuppies as default };
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").doesNotMatch(/import/);
+      await assert
+        .file("output/index.js")
+        .matches(/function getPuppies\(\) { return \["Van Gogh", "Mango"\]; }/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { getPuppies as puppies };/);
+      await assert.file("output/index.js").doesNotMatch(/export default/);
+    });
+
+    test("bundle exports a reassigned reexported inline default export of the entrypoint", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          export { default as puppies } from "./puppies.js";
+        `,
+        "puppies.js": `
+          export default function getPuppies() { return ["Van Gogh", "Mango"]; }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").doesNotMatch(/import/);
+      await assert
+        .file("output/index.js")
+        .matches(/function getPuppies\(\) { return \["Van Gogh", "Mango"\]; }/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { getPuppies as puppies };/);
+      await assert.file("output/index.js").doesNotMatch(/export default/);
+    });
+
+    test("can namespace import a different bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js", "lib.js"] }`,
+        "index.js": `
+        import a from "./a.js";
+        import b from "./b.js";
+        export default function() { console.log(a() + b()); };
+      `,
+        "a.js": `
+        import { goodbye } from './lib.js';
+        import * as lib from './lib.js';
+        export default function() { return lib.hello + goodbye; }
+      `,
+        "b.js": `
+        import * as lib from './lib.js';
+        export default function() { return lib.goodbye; }
+      `,
+        "lib.js": `
+        export const hello = 'hello';
+        export const goodbye = 'goodbye';
+      `,
+      });
+
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/lib.js")
+        .matches(
+          /const hello = 'hello';[ \n]+const goodbye = 'goodbye';[ \n]+export { hello, goodbye };/
+        );
+      await assert
+        .file("output/index.js")
+        .matches(/import \* as lib from "\.\/lib\.js";/);
+      await assert.file("output/index.js").matches(/const { goodbye } = lib;/);
+      await assert
+        .file("output/index.js")
+        .matches(
+          /const a = \(function\(\) { return lib\.hello \+ goodbye; }\);/
+        );
+      await assert
+        .file("output/index.js")
+        .matches(/const b = \(function\(\) { return lib\.goodbye; }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(
+          /const _default = \(function\(\) { console.log\(a\(\) \+ b\(\)\); }\);/
+        );
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default }/);
+    });
+
+    test("can prune an unused namespace import of another bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js", "lib.js"] }`,
+        "index.js": `
+          import * as lib from './lib.js';
+          export default function() { console.log('hi'); };
+        `,
+        "lib.js": `
+          export const hello = 'hello';
+          export const goodbye = 'goodbye';
+        `,
+      });
+
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/lib.js")
+        .matches(
+          /const hello = 'hello';[ \n]+const goodbye = 'goodbye';[ \n]+export { hello, goodbye };/
+        );
+      await assert
+        .file("output/index.js")
+        .doesNotMatch(/import \* as lib from "\.\/lib\.js";/);
+      await assert.file("output/index.js").doesNotMatch(/hello/);
+      await assert.file("output/index.js").doesNotMatch(/goodbye/);
+      await assert
+        .file("output/index.js")
+        .matches(/const _default = \(function\(\) { console.log\('hi'\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default }/);
+    });
+
+    test("can handle collision with namespace import of another bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js", "lib.js"] }`,
+        "index.js": `
+        import a from "./a.js";
+        const lib = 'collision';
+        export default function() { console.log(a() + lib); };
+      `,
+        "a.js": `
+        import * as lib from './lib.js';
+        export default function() { return lib.hello; }
+      `,
+        "lib.js": `
+        export const hello = 'hello';
+        export const goodbye = 'goodbye';
+      `,
+      });
+
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/lib.js")
+        .matches(
+          /const hello = 'hello';[ \n]+const goodbye = 'goodbye';[ \n]+export { hello, goodbye };/
+        );
+      await assert
+        .file("output/index.js")
+        .matches(/import \* as lib0 from "\.\/lib\.js";/);
+      await assert
+        .file("output/index.js")
+        .matches(/const a = \(function\(\) { return lib0\.hello; }\);/);
+      await assert.file("output/index.js").matches(/const lib = 'collision';/);
+      await assert
+        .file("output/index.js")
+        .matches(
+          /const _default = \(function\(\) { console.log\(a\(\) \+ lib\); }\);/
+        );
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default }/);
+    });
+
     test("adds serialized analysis to bundle", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["index.js"] }`,
@@ -353,9 +923,9 @@ QUnit.module("module builder", function (origHooks) {
       });
       builder = makeBuilder(assert.fs);
       await builder.build();
-      let bundleSrc = await ((await assert.fs.open(
-        url("output/index.js")
-      )) as FileDescriptor).readText();
+      let bundleSrc = await (
+        await assert.fs.openFile(url("output/index.js"))
+      ).readText();
       let match = annotationRegex.exec(bundleSrc);
       let annotation = Array.isArray(match) ? match[1] : undefined;
       assert.ok(annotation, "bundle annotation exists");
@@ -460,7 +1030,7 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file("output/driver.js").doesNotMatch(/getRats/);
     });
 
-    test("declared entrypoints.json dependency can trigger build of bundle for dependency", async function (assert) {
+    test("import of bundle from included project in build can trigger build of bundle for dependency", async function (assert) {
       const namesOutputURL = url("output/names");
       const petsOutputURL = url("output/pets");
 
@@ -475,10 +1045,7 @@ QUnit.module("module builder", function (origHooks) {
 
         // pets bundle
         "pets/entrypoints.json": `{
-          "js": ["./index.js"],
-          "dependencies": {
-            "names": "${namesOutputURL.href}"
-          }
+          "js": ["./index.js"]
         }`,
         "pets/index.js": `
           import { puppies } from "./puppies.js";
@@ -492,13 +1059,9 @@ QUnit.module("module builder", function (origHooks) {
           export const puppies = [cutie1, cutie2];
          `,
 
-        // TODO remove dependencies from the tests in entrypoint.json
         // driver bundle
         "driver/entrypoints.json": `{
-          "js": ["./index.js"],
-          "dependencies": {
-            "test-lib": "${petsOutputURL.href}"
-          }
+          "js": ["./index.js"]
         }`,
         "driver/index.js": `
           import { getPuppies } from "${petsOutputURL.href}/index.js";
@@ -506,11 +1069,15 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
 
-      let builder = Builder.forProjects(assert.fs, [
-        [url("driver/"), url("/output/driver")],
-        [url("pets/"), petsOutputURL],
-        [url("names/"), namesOutputURL],
-      ]);
+      let builder = Builder.forProjects(
+        assert.fs,
+        [
+          [url("driver/"), url("/output/driver")],
+          [url("pets/"), petsOutputURL],
+          [url("names/"), namesOutputURL],
+        ],
+        recipesURL
+      );
 
       await builder.build();
 
@@ -587,7 +1154,10 @@ QUnit.module("module builder", function (origHooks) {
         );
       await assert
         .file("output/dist/0.js")
-        .matches(/export default \["mango", "van gogh"\];/);
+        .matches(/const _default = \(\["mango", "van gogh"\]\);/);
+      await assert
+        .file("output/dist/0.js")
+        .matches(/export { _default as default };/);
     });
 
     test("dynamically imported module's unshared static imports are assigned to same bundle", async function (assert) {
@@ -745,6 +1315,204 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file("output/dist/1.js").matches(/const b = 'b';/);
       await assert.file("output/dist/1.js").matches(/export { b };/);
     });
+
+    test("can resolve local modules that don't have a file extension to a similarly named js file", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import a from "./a";
+          export default function() { a(); }
+        `,
+        "a.js": `
+          export default function() { console.log('hi'); }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(/const a = \(function\(\) { console\.log\('hi'\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/const _default = \(function\(\) { a\(\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default };/);
+    });
+
+    test("can resolve local modules that don't have a file extension to a similarly named directory with an index.js", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import a from "./a";
+          export default function() { a(); }
+        `,
+        "a/index.js": `
+          export default function() { console.log('hi'); }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(/const a = \(function\(\) { console\.log\('hi'\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/const _default = \(function\(\) { a\(\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default };/);
+    });
+
+    test("can resolve entrypoint module from pkg in lock file", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "catalogjs.lock": `{ "a": "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/" }`,
+        "index.js": `
+          import a from "a";
+          export default function() { a(); }
+        `,
+        "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/entrypoints.json": `{"js": ["dist/a-es6.js"] }`,
+        "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/catalogjs.lock": `{ }`,
+        "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/dist/a-es6.js": `
+          export default function() { console.log('hi'); }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(/const a = \(function\(\) { console\.log\('hi'\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/const _default = \(function\(\) { a\(\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default };/);
+    });
+
+    test("can resolve entrypoint module from pkg with scoped name in lock file", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "catalogjs.lock": `{ "@mango/a": "https://catalogjs.com/pkgs/npm/@mango/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/" }`,
+        "index.js": `
+          import a from "@mango/a";
+          export default function() { a(); }
+        `,
+        "https://catalogjs.com/pkgs/npm/@mango/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/entrypoints.json": `{"js": ["dist/a-es6.js"] }`,
+        "https://catalogjs.com/pkgs/npm/@mango/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/catalogjs.lock": `{ }`,
+        "https://catalogjs.com/pkgs/npm/@mango/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/dist/a-es6.js": `
+          export default function() { console.log('hi'); }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(/const a = \(function\(\) { console\.log\('hi'\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/const _default = \(function\(\) { a\(\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default };/);
+    });
+
+    test("can resolve non-primary entrypoint module from pkg in lock file", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "catalogjs.lock": `{ "a": "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/" }`,
+        "index.js": `
+          import a from "a/b";
+          export default function() { a(); }
+        `,
+        "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/entrypoints.json": `{"js": ["./a.js", "./b.js"] }`,
+        "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/catalogjs.lock": `{ }`,
+        "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/a.js": `
+          export default function() { console.log('hi'); }
+        `,
+        "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/b.js": `
+          export default function() { console.log('bye'); }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(/const a = \(function\(\) { console\.log\('bye'\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/const _default = \(function\(\) { a\(\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default };/);
+    });
+
+    test("can resolve CJS wrapped module", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import a from "./a.js$cjs$";
+          export default function() { a(); }
+        `,
+        "a.cjs.js": `
+          let module;
+          function implementation() {
+            if (!module) {
+              module = { exports: {} };
+              Function(
+                "module",
+                "exports",
+                "dependencies",
+                \`console.log("hi");\`
+              )(module, module.exports, []);
+            }
+            return module.exports;
+          }
+          export default implementation;
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").matches(/console\.log\("hi"\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/const a = \(implementation\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/const _default = \(function\(\) { a\(\); }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default };/);
+    });
+
+    test("can resolve JSON file", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import a from "./a.json";
+          export default function() { return a.foo; }
+        `,
+        "a.json.js": `
+          const json = { "foo": "bar" };
+          const { foo } = json;
+          export default json;
+          export { foo };
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(/const json = { "foo": "bar" };/);
+      await assert.file("output/index.js").matches(/const a = \(json\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/const _default = \(function\(\) { return a\.foo; }\);/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { _default as default };/);
+    });
   });
 
   QUnit.module("rebuild", function () {
@@ -791,7 +1559,7 @@ QUnit.module("module builder", function (origHooks) {
       rebuilder.start();
       await buildDidFinish(rebuilder);
 
-      let file = (await assert.fs.open(url("ui.js"))) as FileDescriptor;
+      let file = await assert.fs.openFile(url("ui.js"));
       await file.write(`export const message = "Bye mars";`);
       await file.close();
       await buildDidFinish(rebuilder);
@@ -803,9 +1571,11 @@ QUnit.module("module builder", function (origHooks) {
     test("throws when the input origin is the same as the output origin", async function (assert) {
       await assert.setupFiles({});
       try {
-        rebuilder = Rebuilder.forProjects(assert.fs, [
-          [new URL(origin), new URL("/output/", origin)],
-        ]);
+        rebuilder = Rebuilder.forProjects(
+          assert.fs,
+          [[new URL(origin), new URL("/output/", origin)]],
+          recipesURL
+        );
         throw new Error("should not be able to create Rebuilder");
       } catch (e) {
         assert.ok(

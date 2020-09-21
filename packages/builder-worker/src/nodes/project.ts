@@ -4,6 +4,7 @@ import { WriteFileNode } from "./file";
 import uniqBy from "lodash/uniqBy";
 import flatten from "lodash/flatten";
 import { BundleAssignmentsNode, BundleNode, BundleAssignment } from "./bundle";
+import { Resolver } from "../resolver";
 
 // This can leverage global bundle assignments (that spans all projects), or it
 // can derive bundle assignments for just its own project. The latter is
@@ -20,11 +21,15 @@ import { BundleAssignmentsNode, BundleNode, BundleAssignment } from "./bundle";
 export class MakeProjectNode implements BuilderNode {
   cacheKey: string;
 
-  constructor(private inputRoot: URL, readonly projectOutputRoot: URL) {
+  constructor(
+    private inputRoot: URL,
+    readonly projectOutputRoot: URL,
+    private resolver: Resolver
+  ) {
     this.cacheKey = `project:input=${inputRoot.href},output=${projectOutputRoot.href}`;
   }
 
-  deps() {
+  async deps() {
     let entrypoints = new EntrypointsJSONNode(
       this.inputRoot,
       this.projectOutputRoot
@@ -33,7 +38,8 @@ export class MakeProjectNode implements BuilderNode {
       entrypoints,
       bundleAssignments: new BundleAssignmentsNode(
         this.inputRoot,
-        this.projectOutputRoot
+        this.projectOutputRoot,
+        this.resolver
       ),
     };
   }
@@ -62,7 +68,12 @@ export class MakeProjectNode implements BuilderNode {
     ).map(
       (bundleURL) =>
         new WriteFileNode(
-          new BundleNode(bundleURL, this.inputRoot, this.projectOutputRoot),
+          new BundleNode(
+            bundleURL,
+            this.inputRoot,
+            this.projectOutputRoot,
+            this.resolver
+          ),
           bundleURL
         )
     );

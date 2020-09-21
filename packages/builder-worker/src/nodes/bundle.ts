@@ -6,27 +6,38 @@ import {
   annotationEnd,
   annotationStart,
 } from "./common";
-import { ModuleResolutionsNode, ModuleResolution } from "./resolution";
+import {
+  ModuleResolutionsNode,
+  ModuleResolution,
+  CyclicModuleResolution,
+  isCyclicModuleResolution,
+} from "./resolution";
 import { combineModules } from "../combine-modules";
 import { File } from "@babel/types";
 import {
   NamespaceMarker,
-  describeModule,
+  describeFile,
   ImportedNameDescription,
-} from "../describe-module";
+  isModuleDescription,
+} from "../describe-file";
 import { EntrypointsJSONNode, Entrypoint, HTMLEntrypoint } from "./entrypoint";
 import { JSParseNode } from "./js";
 import { encodeModuleDescription } from "../description-encoder";
 import { makeURLEndInDir } from "../path";
+import { Resolver } from "../resolver";
 
 export class BundleAssignmentsNode implements BuilderNode {
   cacheKey: string;
 
-  constructor(private projectInput: URL, private projectOutput: URL) {
+  constructor(
+    private projectInput: URL,
+    private projectOutput: URL,
+    private resolver: Resolver
+  ) {
     this.cacheKey = `bundle-assignments:input=${projectInput.href},output=${projectOutput.href}`;
   }
 
-  deps() {
+  async deps() {
     return {
       entrypoints: new EntrypointsJSONNode(
         this.projectInput,
@@ -34,7 +45,8 @@ export class BundleAssignmentsNode implements BuilderNode {
       ),
       resolutions: new ModuleResolutionsNode(
         this.projectInput,
-        this.projectOutput
+        this.projectOutput,
+        this.resolver
       ),
     };
   }
@@ -138,7 +150,7 @@ export class Assigner {
 
     // entrypoints can be consumed by other entrypoints, so it's important that
     // we assign consumers first, even if we are an entrypoint.
-    let consumers = [...this.consumersOf.get(module.url.href)!].map(
+    let consumers = [...(this.consumersOf.get(module.url.href) ?? [])].map(
       (consumer) => ({
         module: consumer.module,
         isDynamic: consumer.isDynamic,
@@ -154,6 +166,7 @@ export class Assigner {
           bundleURL: entrypoint.url,
           module,
           exposedNames: new Map(),
+          entrypointModuleURL: module.url,
         },
         enclosingBundles: new Set([entrypoint.url.href]),
       };
@@ -189,12 +202,16 @@ export class Assigner {
         )
       ) {
         // we can merge with this consumer
-        let bundleURL = consumer.internalAssignment.assignment.bundleURL;
+        let {
+          bundleURL,
+          entrypointModuleURL,
+        } = consumer.internalAssignment.assignment;
         let internalAssignment = {
           assignment: {
             bundleURL,
             module,
             exposedNames: new Map(),
+            entrypointModuleURL,
           },
           enclosingBundles: consumer.internalAssignment.enclosingBundles,
         };
@@ -235,6 +252,7 @@ export class Assigner {
         bundleURL,
         module,
         exposedNames: new Map(),
+        entrypointModuleURL: module.url,
       },
       enclosingBundles,
     };
@@ -259,16 +277,18 @@ export class BundleNode implements BuilderNode {
   constructor(
     private bundle: URL,
     private inputRoot: URL,
-    private outputRoot: URL
+    private outputRoot: URL,
+    private resolver: Resolver
   ) {
     this.cacheKey = `bundle-node:url=${this.bundle.href},inputRoot=${this.inputRoot.href},outputRoot=${this.outputRoot.href}`;
   }
 
-  deps() {
+  async deps() {
     return {
       bundleAssignments: new BundleAssignmentsNode(
         this.inputRoot,
-        this.outputRoot
+        this.outputRoot,
+        this.resolver
       ),
     };
   }
@@ -291,14 +311,17 @@ export class BundleSerializerNode implements BuilderNode {
 
   constructor(private unannotatedSrc: string) {}
 
-  deps() {
+  async deps() {
     return {
       parsed: new JSParseNode(new ConstantNode(this.unannotatedSrc)),
     };
   }
 
   async run({ parsed }: { parsed: File }): Promise<Value<string>> {
-    let desc = describeModule(parsed);
+    let desc = describeFile(parsed);
+    if (!isModuleDescription(desc)) {
+      throw new Error(`Cannot encode description for CJS file`);
+    }
     let value = [
       this.unannotatedSrc,
       annotationStart,
@@ -312,6 +335,9 @@ export class BundleSerializerNode implements BuilderNode {
 export interface BundleAssignment {
   // which bundle are we in
   bundleURL: URL;
+
+  // the bundle's entrypoint module
+  entrypointModuleURL: URL;
 
   // which module are we talking about
   module: ModuleResolution;
@@ -353,7 +379,7 @@ type Consumers = Map<
 >;
 
 function invertDependencies(
-  resolutions: ModuleResolution[],
+  resolutions: (ModuleResolution | CyclicModuleResolution)[],
   consumersOf: Consumers = new Map(),
   leaves: Set<ModuleResolution> = new Set()
 ): {
@@ -361,22 +387,53 @@ function invertDependencies(
   leaves: Set<ModuleResolution>;
 } {
   for (let resolution of resolutions) {
-    if (!consumersOf.has(resolution.url.href)) {
-      consumersOf.set(resolution.url.href, new Set());
-    }
-    if (resolution.resolvedImports.length > 0) {
-      invertDependencies(resolution.resolvedImports, consumersOf, leaves);
-      // since we are handling this on the exit of the recursion, all your deps
-      // will have entries in the identiy map
-      for (let [index, dep] of resolution.resolvedImports.entries()) {
-        let isDynamic = resolution.desc.imports[index].isDynamic;
-        consumersOf.get(dep.url.href)!.add({ isDynamic, module: resolution });
+    if (!isCyclicModuleResolution(resolution)) {
+      if (resolution.resolvedImportsWithCyclicGroups.length > 0) {
+        invertDependencies(resolution.resolvedImports, consumersOf, leaves);
+        // since we are handling this on the exit of the recursion, all your deps
+        // will have entries in the identity map
+        for (let [
+          index,
+          dep,
+        ] of resolution.resolvedImportsWithCyclicGroups.entries()) {
+          if (Array.isArray(dep)) {
+            let cycle = [...dep];
+            let consumer = resolution;
+            while (cycle.length > 0) {
+              let consumed = cycle.shift()!;
+              let consumedIndex = consumer.resolvedImports.findIndex(
+                (m) => m.url.href === consumed.url.href
+              );
+              let isDynamic = consumer.desc.imports[consumedIndex].isDynamic;
+              setConsumersOf(consumed.url, consumer, isDynamic, consumersOf);
+              if (cycle.length === 0) {
+                leaves.add(consumed);
+              }
+              consumer = consumed;
+            }
+          } else {
+            let isDynamic = resolution.desc.imports[index].isDynamic;
+            setConsumersOf(dep.url, resolution, isDynamic, consumersOf);
+          }
+        }
+      } else {
+        leaves.add(resolution);
       }
-    } else {
-      leaves.add(resolution);
     }
   }
   return { consumersOf, leaves };
+}
+
+function setConsumersOf(
+  consumed: URL,
+  consumer: ModuleResolution,
+  isDynamic: boolean,
+  consumersOf: Consumers
+) {
+  if (!consumersOf.has(consumed.href)) {
+    consumersOf.set(consumed.href, new Set());
+  }
+  consumersOf.get(consumed.href)!.add({ isDynamic, module: consumer });
 }
 
 function intersection<T>(sets: Set<T>[]): Set<T> {

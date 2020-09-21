@@ -1,4 +1,4 @@
-import { assertNever } from "shared/util";
+import { assertNever } from "@catalogjs/shared/util";
 import { dispatchEvent, Event } from "./event-bus";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
@@ -113,7 +113,7 @@ export class Logger {
             break;
           case "error":
             if (error !== undefined) {
-              console.error(message, error);
+              console.error(message, error, error.stack);
             } else {
               console.error(message);
             }

@@ -9,18 +9,27 @@ import {
 import { EntrypointsJSONNode, HTMLEntrypoint, Entrypoint } from "./entrypoint";
 import { FileNode } from "./file";
 import { JSParseNode } from "./js";
-import { describeModule, ModuleDescription } from "../describe-module";
+import {
+  describeFile,
+  ModuleDescription,
+  isModuleDescription,
+} from "../describe-file";
 import { File } from "@babel/types";
 import { decodeModuleDescription } from "../description-encoder";
+import { Resolver } from "../resolver";
 
 export class ModuleResolutionsNode implements BuilderNode {
   cacheKey: string;
 
-  constructor(private projectInput: URL, private projectOutput: URL) {
+  constructor(
+    private projectInput: URL,
+    private projectOutput: URL,
+    private resolver: Resolver
+  ) {
     this.cacheKey = `module-resolutions:input=${projectInput.href},output=${projectOutput.href}`;
   }
 
-  deps() {
+  async deps() {
     return {
       entrypoints: new EntrypointsJSONNode(
         this.projectInput,
@@ -33,7 +42,7 @@ export class ModuleResolutionsNode implements BuilderNode {
     entrypoints,
   }: {
     entrypoints: Entrypoint[];
-  }): Promise<NextNode<ModuleResolution[]>> {
+  }): Promise<NextNode<(ModuleResolution | CyclicModuleResolution)[]>> {
     let jsEntrypoints: Set<string> = new Set();
     for (let entrypoint of entrypoints) {
       if (entrypoint instanceof HTMLEntrypoint) {
@@ -46,23 +55,34 @@ export class ModuleResolutionsNode implements BuilderNode {
     }
     let resolutions = [...jsEntrypoints].map(
       (jsEntrypoint) =>
-        new ModuleResolutionNode(new URL(jsEntrypoint), new Resolver())
+        new ModuleResolutionNode(new URL(jsEntrypoint), this.resolver)
     );
     return { node: new AllNode(resolutions) };
   }
 }
 
 export interface ModuleResolution {
+  type: "standard";
   url: URL;
   source: string;
   desc: ModuleDescription;
-  resolvedImports: ModuleResolution[];
+  resolvedImports: (ModuleResolution | CyclicModuleResolution)[];
+  resolvedImportsWithCyclicGroups: (ModuleResolution | ModuleResolution[])[];
 }
 
-export class Resolver {
-  async resolve(specifier: string, source: URL): Promise<URL> {
-    return new URL(specifier, source);
-  }
+export interface CyclicModuleResolution {
+  type: "cyclic";
+  url: URL;
+  desc: ModuleDescription;
+  imports: URL[];
+  hrefStack: string[];
+  cyclicGroup: Set<ModuleResolution>;
+}
+
+export function isCyclicModuleResolution(
+  resolution: ModuleResolution | CyclicModuleResolution
+): resolution is CyclicModuleResolution {
+  return resolution.type === "cyclic";
 }
 
 export class ModuleAnnotationNode implements BuilderNode {
@@ -70,7 +90,7 @@ export class ModuleAnnotationNode implements BuilderNode {
   constructor(private fileNode: FileNode) {
     this.cacheKey = `module-annotation:${fileNode.url.href}`;
   }
-  deps() {
+  async deps() {
     return { source: this.fileNode };
   }
   async run({
@@ -80,8 +100,8 @@ export class ModuleAnnotationNode implements BuilderNode {
   }): Promise<NodeOutput<ModuleDescription>> {
     let match = annotationRegex.exec(source);
     if (match) {
-      let desc = decodeModuleDescription(match[1]);
-      return { value: desc };
+      let value = decodeModuleDescription(match[1]);
+      return { value };
     }
     return { node: new ModuleDescriptionNode(this.fileNode) };
   }
@@ -92,20 +112,66 @@ export class ModuleDescriptionNode implements BuilderNode {
   constructor(private fileNode: FileNode) {
     this.cacheKey = `module-description:${fileNode.url.href}`;
   }
-  deps() {
+  async deps() {
     return { parsed: new JSParseNode(this.fileNode) };
   }
   async run({ parsed }: { parsed: File }): Promise<Value<ModuleDescription>> {
-    return { value: describeModule(parsed) };
+    let desc = describeFile(parsed);
+    if (!isModuleDescription(desc)) {
+      throw Error(
+        `cannot build module description for CJS file ${this.fileNode.url.href}`
+      );
+    }
+    return { value: desc };
+  }
+}
+
+export class CyclicModuleResolutionNode implements BuilderNode {
+  cacheKey: string;
+  constructor(
+    private url: URL,
+    private resolver: Resolver,
+    private stack: string[]
+  ) {
+    this.cacheKey = `cyclic-module-resolution:${url.href}`;
+  }
+
+  async deps() {
+    let fileNode = new FileNode(this.url);
+    return { desc: new ModuleAnnotationNode(fileNode) };
+  }
+  async run({
+    desc,
+  }: {
+    desc: ModuleDescription;
+  }): Promise<Value<CyclicModuleResolution>> {
+    return {
+      value: {
+        type: "cyclic",
+        url: this.url,
+        desc,
+        hrefStack: this.stack,
+        cyclicGroup: new Set(), // we patch this as we exit the recursion stack
+        imports: await Promise.all(
+          desc.imports.map((imp) =>
+            this.resolver.resolve(imp.specifier, this.url)
+          )
+        ),
+      },
+    };
   }
 }
 
 export class ModuleResolutionNode implements BuilderNode {
   cacheKey: string;
-  constructor(private url: URL, private resolver: Resolver) {
+  constructor(
+    private url: URL,
+    private resolver: Resolver,
+    private stack: string[] = []
+  ) {
     this.cacheKey = `module-resolution:${url.href}`;
   }
-  deps() {
+  async deps() {
     let fileNode = new FileNode(this.url);
     return { desc: new ModuleAnnotationNode(fileNode), source: fileNode };
   }
@@ -115,12 +181,22 @@ export class ModuleResolutionNode implements BuilderNode {
   }: {
     desc: ModuleDescription;
     source: string;
-  }): Promise<NextNode<ModuleResolution>> {
-    let imports = await Promise.all(
+  }): Promise<NextNode<ModuleResolution | CyclicModuleResolution>> {
+    let imports: (ModuleResolutionNode | CyclicModuleResolutionNode)[];
+    imports = await Promise.all(
       desc.imports.map(async (imp) => {
         let depURL = await this.resolver.resolve(imp.specifier, this.url);
-        // how do we know the dependencies for this new node are actually not from another project?
-        return new ModuleResolutionNode(depURL, this.resolver);
+        if (this.stack.includes(depURL.href)) {
+          return new CyclicModuleResolutionNode(depURL, this.resolver, [
+            ...this.stack,
+            this.url.href,
+          ]);
+        } else {
+          return new ModuleResolutionNode(depURL, this.resolver, [
+            ...this.stack,
+            this.url.href,
+          ]);
+        }
       })
     );
     source = source.replace(annotationRegex, "");
@@ -135,25 +211,93 @@ class FinishResolutionNode implements BuilderNode {
   cacheKey: FinishResolutionNode;
   constructor(
     private url: URL,
-    private imports: ModuleResolutionNode[],
+    private imports: (ModuleResolutionNode | CyclicModuleResolutionNode)[],
     private desc: ModuleDescription,
     private source: string
   ) {
     this.cacheKey = this;
   }
-  deps() {
+  async deps() {
     return this.imports;
   }
   async run(resolutions: {
-    [importIndex: number]: ModuleResolution;
+    [importIndex: number]: ModuleResolution | CyclicModuleResolution;
   }): Promise<Value<ModuleResolution>> {
+    let module: ModuleResolution = {
+      type: "standard",
+      url: this.url,
+      source: this.source,
+      desc: this.desc,
+      resolvedImports: this.imports.map((_, index) => resolutions[index]),
+      resolvedImportsWithCyclicGroups: [],
+    };
+
+    // We accept that whoever first encounters a cyclic edge in our module
+    // resolution determines the order that modules evaluate in. This means that
+    // javascript that uses cyclic imports and is relying on a particular order
+    // of evaluation based on a particular entrypoint may be evaluated in a
+    // different order. However, reliance on order of evaluation with cyclic
+    // imports is probably in poor form, as the order of evaluation can change
+    // depending on the entrypoint used.
+
+    let cycles = gatherCyclicDependencies(module);
+
+    // patch the CyclicResolution with the resolutions that are in their cycle
+    for (let cycle of cycles) {
+      let terminatingModule = cycle[cycle.length - 1];
+      for (let cyclicResolution of terminatingModule.resolvedImports.filter(
+        (i) => isCyclicModuleResolution(i)
+      ) as CyclicModuleResolution[]) {
+        cyclicResolution.cyclicGroup = new Set([
+          ...[...cyclicResolution.cyclicGroup],
+          ...cycle,
+        ]);
+      }
+    }
+
+    // for the module that is consuming the cycle: we are not interested in
+    // cycles this module is within nor cycles consumed by this module's
+    // dependencies, rather we are only interested in cycles this module
+    // directly consumes
+    let consumedCycles = cycles.filter(
+      (cycle) =>
+        !cycle.find((m) => m.url.href === this.url.href) &&
+        module.resolvedImports
+          .map((i) => i.url.href)
+          .includes(cycle[0].url.href)
+    );
+    module.resolvedImportsWithCyclicGroups = module.resolvedImports
+      .filter((m) => !isCyclicModuleResolution(m))
+      .map(
+        (m) =>
+          consumedCycles.find((cycle) => cycle[0].url.href === m.url.href) ?? m
+      ) as (ModuleResolution | ModuleResolution[])[];
     return {
-      value: {
-        url: this.url,
-        source: this.source,
-        desc: this.desc,
-        resolvedImports: this.imports.map((_, index) => resolutions[index]),
-      },
+      value: module,
     };
   }
+}
+
+function gatherCyclicDependencies(
+  module: ModuleResolution,
+  stack: ModuleResolution[] = []
+): ModuleResolution[][] {
+  let cycles: ModuleResolution[][] = [];
+  for (let dep of module.resolvedImports) {
+    if (isCyclicModuleResolution(dep)) {
+      cycles = [
+        ...cycles,
+        [
+          ...stack.slice(stack.findIndex((m) => m.url.href === dep.url.href)),
+          module,
+        ],
+      ];
+    } else {
+      cycles = [
+        ...cycles,
+        ...gatherCyclicDependencies(dep, [...stack, module]),
+      ];
+    }
+  }
+  return cycles;
 }

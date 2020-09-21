@@ -15,13 +15,16 @@ import { maybeURL, maybeRelativeURL } from "../path";
 import { BundleAssignment } from "./bundle";
 
 export interface Dependencies {
-  [name: string]: string;
+  [name: string]: {
+    url: string;
+    range: string; // TODO make this optional, as the URL might be a commit SHA
+  };
 }
 
-interface EntrypointsJSON {
+export interface EntrypointsJSON {
   html?: string[];
   js?: string[];
-  dependencies?: Dependencies;
+  dependencies: Dependencies;
 }
 
 export class EntrypointsJSONNode implements BuilderNode {
@@ -31,7 +34,7 @@ export class EntrypointsJSONNode implements BuilderNode {
     this.cacheKey = `entrypoints-json:${this.input.href}:${this.output.href}`;
   }
 
-  deps() {
+  async deps() {
     return {
       json: new JSONParseNode(
         new FileNode(new URL("entrypoints.json", this.input))
@@ -39,47 +42,8 @@ export class EntrypointsJSONNode implements BuilderNode {
     };
   }
 
-  private assertValid(json: any): asserts json is EntrypointsJSON {
-    if (
-      !json ||
-      typeof json !== "object" ||
-      (!("html" in json) && !("js" in json))
-    ) {
-      throw new Error(`invalid entrypoints.json in ${this.input.href}`);
-    }
-    if (
-      "html" in json &&
-      (!Array.isArray(json.html) ||
-        !json.html.every((k: any) => typeof k === "string"))
-    ) {
-      throw new Error(
-        `invalid entrypoints.json in ${this.input.href}, 'html' must only contain strings`
-      );
-    }
-    if (
-      "js" in json &&
-      (!Array.isArray(json.js) ||
-        !json.js.every((k: any) => typeof k === "string"))
-    ) {
-      throw new Error(
-        `invalid entrypoints.json in ${this.input.href}, 'js' must only contain strings`
-      );
-    }
-    if (
-      "dependencies" in json &&
-      (typeof json.dependencies !== "object" ||
-        !Object.values(json.dependencies).every(
-          (v: any) => typeof v === "string"
-        ))
-    ) {
-      throw new Error(
-        `invalid entrypoints.json in ${this.input.href}, the values of 'dependencies' must only contain strings`
-      );
-    }
-  }
-
   async run({ json }: { json: any }): Promise<NextNode<Entrypoint[]>> {
-    this.assertValid(json);
+    assertEntrypointsJSON(json, this.input.href);
     let entrypoints = [];
     for (let src of [...(json.html || []), ...(json.js || [])]) {
       entrypoints.push(
@@ -97,7 +61,7 @@ export class EntrypointNode implements BuilderNode {
     this.cacheKey = `entrypoint:${this.src.href}:${this.dest.href}`;
   }
 
-  deps() {
+  async deps() {
     let extension = this.src.href.split(".").pop();
     if (extension === "html") {
       return {
@@ -142,7 +106,7 @@ export class HTMLParseNode implements BuilderNode {
     this.cacheKey = this;
   }
 
-  deps() {
+  async deps() {
     return { source: this.source };
   }
 
@@ -215,5 +179,87 @@ export class HTMLEntrypoint {
       this.replace(element, new dom.Element("script", scriptAttrs));
     }
     return render(this.parsedHTML);
+  }
+}
+
+function assertEntrypointsJSON(
+  json: any,
+  srcFile: string
+): asserts json is EntrypointsJSON {
+  if (
+    !json ||
+    typeof json !== "object" ||
+    (!("html" in json) && !("js" in json))
+  ) {
+    throw new Error(`invalid entrypoints.json in ${srcFile}`);
+  }
+  if (
+    "html" in json &&
+    (!Array.isArray(json.html) ||
+      !json.html.every((k: any) => typeof k === "string"))
+  ) {
+    throw new Error(
+      `invalid entrypoints.json in ${srcFile}, 'html' must only contain strings`
+    );
+  }
+  if (
+    "js" in json &&
+    (!Array.isArray(json.js) ||
+      !json.js.every((k: any) => typeof k === "string"))
+  ) {
+    throw new Error(
+      `invalid entrypoints.json in ${srcFile}, 'js' must only contain strings`
+    );
+  }
+  if ("dependencies" in json) {
+    assertDependencies(json.dependencies, srcFile);
+  }
+}
+
+function assertDependencies(
+  dep: any,
+  srcFile: string
+): asserts dep is Dependencies {
+  if (typeof dep !== "object") {
+    throw new Error(
+      `invalid entrypoints.json in ${srcFile}, 'dependencies' must be an object`
+    );
+  }
+
+  for (let [name, val] of Object.entries(dep)) {
+    assertDepEntry(val, name, srcFile);
+  }
+}
+
+function assertDepEntry(
+  entry: any,
+  dep: string,
+  srcFile: string
+): asserts entry is { url: string; range: string } {
+  if (typeof entry !== "object") {
+    throw new Error(
+      `invalid entrypoints.json in ${srcFile}, the dependency '${dep}' must be an object`
+    );
+  }
+
+  if (!("url" in entry)) {
+    throw new Error(
+      `invalid entrypoints.json in ${srcFile}, the dependency '${dep}' must have a 'url' property`
+    );
+  }
+  if (typeof entry.url !== "string") {
+    throw new Error(
+      `invalid entrypoints.json in ${srcFile}, the 'url' property in  dependency '${dep}' must have a string`
+    );
+  }
+  if (!("range" in entry)) {
+    throw new Error(
+      `invalid entrypoints.json in ${srcFile}, the dependency '${dep}' must have a 'range' property`
+    );
+  }
+  if (typeof entry.range !== "string") {
+    throw new Error(
+      `invalid entrypoints.json in ${srcFile}, the 'range' property in  dependency '${dep}' must have a string`
+    );
   }
 }

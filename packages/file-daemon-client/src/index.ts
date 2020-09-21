@@ -9,8 +9,8 @@ import {
   Stat,
 } from "../../builder-worker/src/filesystem-drivers/filesystem-driver";
 import { log, error } from "../../builder-worker/src/logger";
-import { REGTYPE } from "tarstream/constants";
-import { UnTar } from "tarstream";
+import { REGTYPE } from "@catalogjs/tarstream/constants";
+import { UnTar } from "@catalogjs/tarstream";
 import { FileInfo } from "../../file-daemon/interfaces";
 import { makeURLEndInDir } from "../../builder-worker/src/path";
 import { FSEvent } from "../../builder-worker/src/filesystem";

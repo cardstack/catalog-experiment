@@ -1,3 +1,5 @@
+import { Recipe } from "../recipes";
+
 export const annotationStart = `\n/*====catalogjs annotation start====\n`;
 export const annotationEnd = `\n====catalogjs annotation end====*/`;
 export const annotationRegex = /\/\*====catalogjs annotation start====\n(.+)\n====catalogjs annotation end====\*\/\s*$/;
@@ -15,10 +17,18 @@ export type NextNode<T> = { node: BuilderNode<T> };
 export type Unchanged = { unchanged: true };
 export type NodeOutput<T> = Value<T> | NextNode<T> | Unchanged;
 
+export type RecipeGetter = (
+  pkgName: string,
+  version: string
+) => Promise<Recipe | undefined>;
+
 export interface BuilderNode<Output = unknown, Input = unknown> {
   readonly cacheKey: any;
-  deps(): Input;
-  run(input: OutputTypes<Input>): Promise<NodeOutput<Output>>;
+  deps(getRecipe: RecipeGetter): Promise<Input>;
+  run(
+    input: OutputTypes<Input>,
+    getRecipe: RecipeGetter
+  ): Promise<NodeOutput<Output>>;
 
   // if true, your `run` will always be called even when your inputs are all
   // unchanged
@@ -62,7 +72,7 @@ export class ConstantNode<T> implements BuilderNode<T, void> {
       typeof this.value === "string" ? this.value : JSON.stringify(this.value)
     }`;
   }
-  deps() {}
+  async deps() {}
   async run(): Promise<NodeOutput<T>> {
     if (this.firstRun) {
       this.firstRun = false;
@@ -81,7 +91,7 @@ export class JSONParseNode
 
   cacheKey: JSONParseNode;
 
-  deps() {
+  async deps() {
     return { input: this.input };
   }
 
@@ -96,7 +106,7 @@ export class AllNode<T> implements BuilderNode {
   constructor(private nodes: BuilderNode<T>[]) {
     this.cacheKey = this;
   }
-  deps() {
+  async deps() {
     return this.nodes;
   }
   async run(results: { [key: string]: T }): Promise<Value<T[]>> {

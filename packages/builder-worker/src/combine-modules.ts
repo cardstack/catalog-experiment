@@ -1,6 +1,10 @@
 import { BundleAssignment } from "./nodes/bundle";
-import { ModuleResolution } from "./nodes/resolution";
-import { NamespaceMarker, isNamespaceMarker } from "./describe-module";
+import { ModuleResolution, CyclicModuleResolution } from "./nodes/resolution";
+import {
+  NamespaceMarker,
+  isNamespaceMarker,
+  ImportedNameDescription,
+} from "./describe-file";
 import { maybeRelativeURL } from "./path";
 import { RegionEditor } from "./code-region";
 
@@ -25,6 +29,7 @@ export function combineModules(
     consumedBundles: new Set(),
     bindingDependsOn: new Map(),
     bundleDependsOn: new Set(),
+    sideEffectsDependOn: new Set(),
     seenModules: new Set(),
   };
   let ownAssignments = assignments.filter(
@@ -42,44 +47,61 @@ export function combineModules(
   //     dependency graph
   //   - binding is not consumed directly by the bundle's own module scope or
   //     part of a consumed binding's dependency graph
-  let exports = assignedExports(ownAssignments, state);
+  //   - binding is not consumed directly by a side-effectful declaration or
+  //     part of a consumed side effectful binding dependency graph
+  let { exports, reexports } = assignedExports(
+    bundle,
+    ownAssignments,
+    assignments,
+    state
+  );
   let removedBindings = new Set<string>();
   let consumptionCache = new Map<string, Map<string, boolean>>();
   for (let bindingName of state.usedNames.keys()) {
     if (
-      [...exports.values()].some(
-        (exportedBinding) =>
-          exportedBinding === bindingName ||
+      [
+        ...new Set([
+          ...exports.values(),
+          ...state.bundleDependsOn,
+          ...state.sideEffectsDependOn,
+        ]),
+      ].some(
+        (retainedBinding) =>
+          retainedBinding === bindingName ||
           isConsumedBy(
-            exportedBinding,
+            retainedBinding,
             bindingName,
             state.bindingDependsOn,
-            consumptionCache
-          )
-      ) ||
-      [...state.bundleDependsOn].some(
-        (usedByBundleBinding) =>
-          usedByBundleBinding === bindingName ||
-          isConsumedBy(
-            usedByBundleBinding,
-            bindingName,
-            state.bindingDependsOn,
-            consumptionCache
+            consumptionCache,
+            bundle
           )
       )
     ) {
       continue;
     }
 
-    if (bindingName !== "default") {
-      removedBindings.add(bindingName);
-      removeBinding(bindingName, rewriters, bundle, state, assignments);
-    }
+    removedBindings.add(bindingName);
+    removeBinding(bindingName, rewriters, bundle, state, assignments);
   }
 
   let output = [];
+  let writtenNamespaces: string[] = [];
   for (let rewriter of rewriters.values()) {
-    output.push(rewriter.serialize());
+    let namespaces = makeLocalNamespaces(
+      rewriter.module,
+      bundle,
+      assignments,
+      state
+    ).filter(
+      ({ bindingName }) =>
+        !removedBindings.has(bindingName) &&
+        !writtenNamespaces.includes(bindingName)
+    );
+    output.push(namespaces.map(({ code }) => code).join("\n"));
+    writtenNamespaces.push(...namespaces.map(({ bindingName }) => bindingName));
+
+    let code = rewriter.serialize();
+    output.push(code);
   }
 
   // at this point we removed all export statements because our modules can
@@ -102,16 +124,64 @@ export function combineModules(
     output.push(exportDeclaration.join(" "));
   }
 
+  // Add reexports of other bundles
+  if (reexports.size > 0) {
+    // cleanup the side effect only imports by removing reexported bundle URLs
+    state.sideEffectOnlyImports = new Set(
+      [...state.sideEffectOnlyImports].filter(
+        (href) => ![...reexports.keys()].includes(href)
+      )
+    );
+
+    let reexportDeclarations: string[] = [];
+    for (let bundleHref of reexports.keys()) {
+      let mapping = reexports.get(bundleHref);
+      if (!mapping) {
+        continue;
+      }
+      let reexportDeclaration: string[] = [];
+      reexportDeclaration.push("export {");
+      reexportDeclaration.push(
+        [...mapping]
+          .map(([exposedName, importedName]) =>
+            exposedName === importedName
+              ? exposedName
+              : `${importedName} as ${exposedName}`
+          )
+          .join(", ")
+      );
+      reexportDeclaration.push("} from");
+      reexportDeclaration.push(
+        `"${maybeRelativeURL(new URL(bundleHref), bundle)}";`
+      );
+      reexportDeclarations.push(reexportDeclaration.join(" "));
+    }
+    output.unshift(reexportDeclarations.join("\n"));
+  }
+
   // Add imports for this bundle in dep-first order
   let importDeclarations: string[] = [];
-  let assignedImportsMap = assignedImports(assignments, state, removedBindings);
+  let { namedImports, namespaceImports } = assignedImports(
+    assignments,
+    state,
+    removedBindings
+  );
   for (let bundleHref of state.consumedBundles) {
-    let mapping = assignedImportsMap.get(bundleHref);
-    if (mapping) {
+    let namedMapping = namedImports.get(bundleHref);
+    let localNamespaceImport = namespaceImports.get(bundleHref);
+    if (localNamespaceImport) {
+      importDeclarations.push(
+        `import * as ${localNamespaceImport} from "${maybeRelativeURL(
+          new URL(bundleHref),
+          bundle
+        )}";`
+      );
+    }
+    if (namedMapping && !localNamespaceImport) {
       let importDeclaration: string[] = [];
       importDeclaration.push("import {");
       importDeclaration.push(
-        [...mapping]
+        [...namedMapping]
           .map(([exportedName, localName]) =>
             exportedName === localName
               ? exportedName
@@ -124,7 +194,30 @@ export function combineModules(
         `"${maybeRelativeURL(new URL(bundleHref), bundle)}";`
       );
       importDeclarations.push(importDeclaration.join(" "));
-    } else if (state.sideEffectOnlyImports.has(bundleHref)) {
+    }
+    // this is an optimization such that if there is a namespace mapping and a
+    // named mapping from the same module, we can collapse the named mapping and
+    // pluck the named mapping out of the namespace import's local binding
+    if (namedMapping && localNamespaceImport) {
+      let variableDeclaration: string[] = [];
+      variableDeclaration.push("const {");
+      variableDeclaration.push(
+        [...namedMapping]
+          .map(([exportedName, localName]) =>
+            exportedName === localName
+              ? exportedName
+              : `${exportedName}: ${localName}`
+          )
+          .join(", ")
+      );
+      variableDeclaration.push(`} = ${localNamespaceImport};`);
+      importDeclarations.push(variableDeclaration.join(" "));
+    }
+    if (
+      !namedMapping &&
+      !localNamespaceImport &&
+      state.sideEffectOnlyImports.has(bundleHref)
+    ) {
       importDeclarations.push(
         `import "${maybeRelativeURL(new URL(bundleHref), bundle)}";`
       );
@@ -134,7 +227,11 @@ export function combineModules(
 
   // if there are no imports nor exports written to the bundle, then write
   // "export {};" to signal that this is an ES6 module.
-  if (importDeclarations.length === 0 && exports.size === 0) {
+  if (
+    importDeclarations.length === 0 &&
+    exports.size === 0 &&
+    reexports.size === 0
+  ) {
     output.push(`export {};`);
   }
 
@@ -207,7 +304,7 @@ interface State {
 
   usedNames: Map<string, { moduleHref: string; name: string }>;
 
-  // this is a set of bundle href's that are imported for side effects only
+  // this is a set of bundle hrefs that are imported for side effects only
   sideEffectOnlyImports: Set<string>;
 
   // this is a set of bundles that are consumed by this bundle in dep-first
@@ -220,7 +317,7 @@ interface State {
   // inner map is undefined, then this is a side effect-only import.
   assignedImportedNames: Map<string, Map<string | NamespaceMarker, string>>;
 
-  // This is synonymous with assignedImportedNames, but it's used speicifically
+  // This is synonymous with assignedImportedNames, but it's used specifically
   // to help us lookup local name assignments. outer map is the href of the
   // module. the inner map's key is the original name of the binding in the
   // module, and the value is it's assigned name in the resulting bundle.
@@ -234,6 +331,10 @@ interface State {
   // similar to bindingDependsOn, these are bindings that are needed by the
   // bundle's top-level module scope itself.
   bundleDependsOn: Set<string>;
+
+  // similar to bindingDependsOn, these are bindings that are needed by the side
+  // effectful declarations that are unable to be removed.
+  sideEffectsDependOn: Set<string>;
 
   seenModules: Set<string>;
 }
@@ -260,6 +361,7 @@ class ModuleRewriter {
   rewriteScope(): void {
     let assignedDefaultName: string | undefined;
     for (let [name, nameDesc] of this.module.desc.names) {
+      let isDefaultExport = false;
       let assignedName: string;
 
       // figure out which names in module scope are imports vs things that
@@ -274,7 +376,7 @@ class ModuleRewriter {
           remoteName = nameDesc.original.exportedName;
           remoteModuleHref = nameDesc.original.moduleHref;
         } else if (nameDesc.type === "import") {
-          let remoteModule: ModuleResolution;
+          let remoteModule: ModuleResolution | CyclicModuleResolution;
           ({ name: remoteName, module: remoteModule } = resolveReexport(
             nameDesc.name,
             this.module.resolvedImports[nameDesc.importIndex]
@@ -290,25 +392,27 @@ class ModuleRewriter {
         let entry = [...this.module.desc.exports].find(
           ([_, desc]) => desc.type === "local" && desc.name === name
         );
-        if (entry?.[0] === "default" && entry?.[1].name === "default") {
-          // we have already assigned this an actual name when we processed it's
-          // consumer (and we wouldn't be here if we haven't already processed
-          // this export's consumer)
+        isDefaultExport = entry?.[0] === "default";
+        if (isDefaultExport) {
+          // check to see if we have already assigned this binding as a result
+          // of processing it's consumer
           assignedDefaultName = this.sharedState.assignedImportedNames
             .get(this.module.url.href)
             ?.get("default");
-
-          // for dynamic imports, there is a manufactured "default" property
-          // that is added to the POJO returned by the import() expression for
-          // default exports. presumably you could never combine a module that
-          // is consumed dynamically with another module that is consumed
-          // dynamically--so there should be no possibilioty of a default export
-          // collision. modules that are consumed statically have default
-          // exports that are analyzable and renamed.
-          if (!assignedDefaultName) {
-            assignedDefaultName = "default";
+          if (assignedDefaultName) {
+            // the consumer of this module has already assigned this name
+            assignedName = assignedDefaultName;
+          } else {
+            if (!assignedDefaultName && name !== "default") {
+              // the export is a named default export.
+              assignedDefaultName = this.unusedNameLike(name);
+            } else if (!assignedDefaultName) {
+              // the export is an unnamed default export.
+              assignedDefaultName = this.unusedNameLike("_default");
+            }
+            assignedName = assignedDefaultName;
           }
-          assignedName = assignedDefaultName;
+          this.assignLocalName("default", assignedName);
         } else if (entry?.[0]) {
           assignedName = this.maybeAssignImportName(
             this.module.url.href,
@@ -319,33 +423,23 @@ class ModuleRewriter {
           assignedName = this.unusedNameLike(name);
         }
 
-        let nameAssignments = this.sharedState.assignedLocalNames.get(
-          this.module.url.href
-        );
-        if (!nameAssignments) {
-          nameAssignments = new Map<string, string>();
-          this.sharedState.assignedLocalNames.set(
-            this.module.url.href,
-            nameAssignments
-          );
-        }
-        nameAssignments.set(name, assignedName);
+        this.assignLocalName(name, assignedName);
       }
       this.claimAndRename(this.module.url.href, name, assignedName);
     }
 
+    let myAssignment = this.assignments.find(
+      (a) => a.module.url.href === this.module.url.href
+    );
+    if (!myAssignment) {
+      throw new Error(
+        `bug: could not module assignment ${this.module.url.href}`
+      );
+    }
     // rewrite dynamic imports to use bundle specifiers
     for (let [index, importDesc] of this.module.desc.imports.entries()) {
       if (!importDesc.isDynamic) {
         continue;
-      }
-      let myAssignment = this.assignments.find(
-        (a) => a.module.url.href === this.module.url.href
-      );
-      if (!myAssignment) {
-        throw new Error(
-          `bug: could not module assignment ${this.module.url.href}`
-        );
       }
       let dep = this.module.resolvedImports[index];
       let depAssignment = this.assignments.find(
@@ -363,7 +457,28 @@ class ModuleRewriter {
       this.editor.replace(importDesc.specifierRegion, bundleSpecifier);
     }
 
-    this.editor.removeImportsAndExports(assignedDefaultName);
+    // a reexport of a default export from the entrypoint results in a binding
+    // that we have not encountered from the consuming side, so providing an
+    // available default name to use in that scenario (as well as
+    // assignedDefaultName which will give us a nice name based on how the
+    // consumer named the default export).
+    this.editor.removeImportsAndExports(
+      assignedDefaultName ?? this.unusedNameLike("_default")
+    );
+  }
+
+  private assignLocalName(name: string, assignedName: string) {
+    let nameAssignments = this.sharedState.assignedLocalNames.get(
+      this.module.url.href
+    );
+    if (!nameAssignments) {
+      nameAssignments = new Map<string, string>();
+      this.sharedState.assignedLocalNames.set(
+        this.module.url.href,
+        nameAssignments
+      );
+    }
+    nameAssignments.set(name, assignedName);
   }
 
   private maybeAssignImportName(
@@ -437,10 +552,13 @@ function gatherModuleRewriters(
   // we intentionally want to perform the module rewriting when we enter the
   // recursive function so that module bindings that are closest to the bundle
   // entrypoint have their names retained so that collisions are more likely the
-  // farther away from the modul entrypoint that you go.
+  // farther away from the module entrypoint that you go.
   let rewriter = new ModuleRewriter(module, state, assignments);
 
   for (let resolution of module.resolvedImports) {
+    if (resolution.type === "cyclic") {
+      continue;
+    }
     let assignment = assignments.find(
       (a) => a.module.url.href === resolution.url.href
     );
@@ -486,9 +604,13 @@ function setBindingDependencies(
   assignments: BundleAssignment[]
 ) {
   for (let [originalName, desc] of module.desc.names) {
-    let currentModule = module;
+    let currentModule: ModuleResolution | CyclicModuleResolution = module;
     let name: string | undefined;
-    let { dependsOn: originalDependsOn } = desc;
+    // ignore circular dependencies (which is the result of recursion) so we
+    // don't end up with cycles in our graph
+    let originalDependsOn = [...desc.dependsOn].filter(
+      (d) => d !== originalName
+    );
 
     if (desc.type === "local" && !desc.original) {
       name = state.assignedLocalNames
@@ -503,21 +625,44 @@ function setBindingDependencies(
       // different module. follow the export to get to the module where the
       // binding is declared locally
       let outsideName: string | NamespaceMarker | undefined;
-      if (typeof desc.name === "string") {
-        currentModule = module.resolvedImports[desc.importIndex];
-        ({ module: currentModule, name: outsideName } = resolveReexport(
-          desc.name,
-          currentModule
-        ));
+      let importedModule = module.resolvedImports[desc.importIndex];
+      if (importedModule.type === "cyclic") {
+        continue;
       }
-      if (typeof outsideName !== "string" || typeof desc.name !== "string") {
-        continue; // namespaces don't have dependencies, just skip over it
+      currentModule = importedModule;
+      ({ module: currentModule, name: outsideName } = resolveReexport(
+        desc.name,
+        currentModule
+      ));
+      let localName: string | undefined;
+      if (outsideName && isNamespaceMarker(outsideName)) {
+        localName = state.assignedImportedNames
+          .get(currentModule.url.href)
+          ?.get(outsideName)!;
+        originalDependsOn = [
+          ...originalDependsOn,
+          ...([...currentModule.desc.exports.values()]
+            .filter((e) => e.type === "local")
+            .map((e) => e.name) as string[]), // the filter for type="local" strips out the namespace markers, but typescript can't see through this filter, hence the cast
+        ];
+      } else if (outsideName) {
+        let exportDesc = currentModule.desc.exports.get(outsideName);
+        if (!exportDesc) {
+          throw new Error(
+            `The module ${module.url.href} tried to import '${outsideName}' from ${currentModule.url.href}, but '${outsideName}' is not exported from this module.`
+          );
+        }
+        if (exportDesc.type === "local") {
+          localName = exportDesc.name;
+        } else {
+          throw new Error(
+            `bug: unexpected reexport encountered in export description for binding '${outsideName}' of module ${currentModule.url.href}`
+          );
+        }
       }
-      let exportDesc = currentModule.desc.exports.get(outsideName)!;
-      let localName = exportDesc.name;
-      if (typeof localName !== "string") {
+      if (!localName) {
         throw new Error(
-          `bug: the local name for the exported name '${outsideName}' in module ${currentModule.url.href} can't be a namespace marker--we skipped over that condition`
+          `bug: could not determine the local name for the binding in ${module.url.href} that was imported as '${outsideName}' from ${currentModule.url.href}`
         );
       }
 
@@ -527,19 +672,35 @@ function setBindingDependencies(
       let bindingsBundleURL = assignments.find(
         ({ module: m }) => m.url.href === currentModule.url.href
       )!.bundleURL;
-      // determine if the beining we are looking for is in our bundle or another bundle
+      // determine if the binding we are looking for is in our bundle or another bundle
       if (ourBundleURL === bindingsBundleURL) {
-        name = state.assignedLocalNames
-          .get(currentModule.url.href)
-          ?.get(localName);
-        originalDependsOn = currentModule.desc.names.get(localName)!.dependsOn;
+        if (isNamespaceMarker(outsideName)) {
+          name = state.assignedImportedNames
+            .get(currentModule.url.href)
+            ?.get(NamespaceMarker);
+        } else {
+          name =
+            state.assignedLocalNames
+              .get(currentModule.url.href)
+              ?.get(localName) ??
+            // also need to check assigned imported names as our binding might be
+            // explicitly imported and then explicitly exported
+            state.assignedImportedNames
+              .get(currentModule.url.href)
+              ?.get(localName);
+          originalDependsOn = [
+            ...currentModule.desc.names.get(localName)!.dependsOn,
+          ].filter((d) => d !== localName);
+        }
       } else {
         // the binding we are dealing with originates from another bundle.
         // terminate the search for this binding in the currentModule and use
         // the assigned import name for the localName we have at hand.
         name = state.assignedImportedNames
           .get(currentModule.url.href)
-          ?.get(localName);
+          ?.get(isNamespaceMarker(outsideName) ? NamespaceMarker : localName);
+        // we don't want to track the consumption of bindings in a different bundle
+        originalDependsOn = [];
       }
     }
 
@@ -549,11 +710,24 @@ function setBindingDependencies(
       );
     }
 
+    if (
+      [...module.desc.names].find(([, d]) =>
+        [...d.bindingsConsumedByDeclarationSideEffects].includes(originalName)
+      )
+    ) {
+      state.sideEffectsDependOn.add(name);
+    }
+
     if (desc.usedByModule) {
       state.bundleDependsOn.add(name);
     }
 
-    let dependsOn = new Set<string>();
+    let dependsOn = state.bindingDependsOn.get(name);
+    if (!dependsOn) {
+      dependsOn = new Set<string>();
+      state.bindingDependsOn.set(name, dependsOn);
+    }
+
     for (let originalDepName of originalDependsOn) {
       let depName: string;
       let desc = currentModule.desc.names.get(originalDepName);
@@ -562,10 +736,20 @@ function setBindingDependencies(
         dependsOn.add(originalDepName);
         continue;
       }
-      if (desc.type === "import" && typeof desc.name === "string") {
+      if (desc.type === "import") {
+        if (currentModule.type === "cyclic") {
+          throw new Error(
+            `bug: don't know how to deal with a cyclic edge when resolving binding dependencies for '${originalName}' in module ${currentModule.url.href}`
+          );
+        }
+        let depModule = currentModule.resolvedImports[desc.importIndex];
+        let { name: remoteName, module: remoteModule } = resolveReexport(
+          desc.name,
+          depModule
+        );
         depName = state.assignedImportedNames
-          .get(currentModule.resolvedImports[desc.importIndex].url.href)!
-          .get(desc.name)!;
+          .get(remoteModule.url.href)!
+          .get(remoteName)!;
       } else {
         depName = state.assignedLocalNames
           .get(currentModule.url.href)!
@@ -575,8 +759,6 @@ function setBindingDependencies(
         dependsOn.add(depName);
       }
     }
-
-    state.bindingDependsOn.set(name, dependsOn);
   }
 }
 
@@ -584,7 +766,9 @@ function isConsumedBy(
   consumingBinding: string,
   consumedBinding: string,
   bindingDependencies: State["bindingDependsOn"],
-  cache: Map<string, Map<string, boolean>>
+  cache: Map<string, Map<string, boolean>>,
+  bundle: URL,
+  visitedConsumers: string[] = []
 ): boolean {
   if (!cache.has(consumingBinding)) {
     cache.set(consumingBinding, new Map());
@@ -594,6 +778,12 @@ function isConsumedBy(
     return consumesCache.get(consumingBinding)!;
   }
 
+  // Collapse cycles in binding consumption which are likely the result of recursion
+  if (visitedConsumers.includes(consumingBinding)) {
+    consumesCache?.set(consumedBinding, true);
+    return true;
+  }
+  visitedConsumers = [...visitedConsumers, consumingBinding];
   let deps = bindingDependencies.get(consumingBinding);
   if (!deps) {
     return false;
@@ -603,40 +793,153 @@ function isConsumedBy(
   }
 
   let result = [...deps].some((dep) =>
-    isConsumedBy(dep, consumedBinding, bindingDependencies, cache)
+    isConsumedBy(
+      dep,
+      consumedBinding,
+      bindingDependencies,
+      cache,
+      bundle,
+      visitedConsumers
+    )
   );
   consumesCache?.set(consumedBinding, result);
   return result;
 }
 
-function assignedExports(assignments: BundleAssignment[], state: State) {
+function assignedExports(
+  bundleURL: URL,
+  ownAssignments: BundleAssignment[],
+  assignments: BundleAssignment[],
+  state: State
+): {
+  exports: Map<string, string>; // outside name -> inside name
+  reexports: Map<string, Map<string, string>>; // bundle href -> [outside name => inside name]
+} {
   let exports: Map<string, string> = new Map();
-  for (let assignment of assignments) {
+  let reexports: Map<string, Map<string, string>> = new Map();
+  for (let assignment of ownAssignments) {
     for (let [original, exposed] of assignment.exposedNames) {
-      let insideName = state.assignedImportedNames
-        .get(assignment.module.url.href)
-        ?.get(original);
+      let {
+        module,
+      }: { module: ModuleResolution | CyclicModuleResolution } = assignment;
+      if (
+        (!isNamespaceMarker(original) &&
+          module.desc.exports.get(original)?.type === "reexport") ||
+        (!isNamespaceMarker(original) &&
+          module.desc.names.get(original)?.type === "import" &&
+          [...module.desc.exports.values()].find((e) => e.name === original))
+      ) {
+        ({ name: original, module } = resolveReexport(original, module));
+        let reexportAssignment = assignments.find(
+          (a) => a.module.url.href === module.url.href
+        );
+        if (
+          reexportAssignment?.bundleURL.href !== bundleURL.href &&
+          !isNamespaceMarker(original)
+        ) {
+          let bundleReexports = reexports.get(
+            reexportAssignment!.bundleURL.href
+          );
+          if (!bundleReexports) {
+            bundleReexports = new Map();
+            reexports.set(reexportAssignment!.bundleURL.href, bundleReexports);
+          }
+          bundleReexports.set(exposed, original);
+          continue;
+        }
+      }
+      let insideName: string | undefined;
+      // In the scenarios below, we first check for bindings local to the module
+      // in question, and then we'll expand our search to bindings that have
+      // been reexported from the binding in question
+      if (original === "default") {
+        insideName =
+          state.assignedLocalNames.get(module.url.href)?.get(original) ??
+          state.assignedImportedNames.get(module.url.href)?.get(original);
+      } else {
+        let originalInternalName = !isNamespaceMarker(original)
+          ? (module.desc.exports.get(original)!.name as string)
+          : undefined;
+        insideName =
+          !isNamespaceMarker(original) && originalInternalName
+            ? state.assignedLocalNames
+                .get(module.url.href)
+                ?.get(originalInternalName)
+            : undefined;
+        insideName =
+          insideName ??
+          state.assignedImportedNames.get(module.url.href)?.get(original);
+      }
 
-      // this is to address the situtation where you have a module whose default
-      // export is consumed dynamically. This situation is pretty hands-off
-      // since dynamic imports are not statically analyzable.
-      if (!insideName && exposed === "default") {
-        continue;
-      } else if (!insideName) {
+      if (!insideName) {
         throw new Error(`bug: no internal mapping for '${exposed}'`);
       }
       exports.set(exposed, insideName);
     }
   }
-  return exports;
+  return { exports, reexports };
+}
+
+function makeLocalNamespaces(
+  module: ModuleResolution,
+  bundleURL: URL,
+  assignments: BundleAssignment[],
+  state: State
+): { code: string; bindingName: string }[] {
+  let results: { code: string; bindingName: string }[] = [];
+  for (let desc of module.desc.names.values()) {
+    if (desc.type !== "import" || !isNamespaceMarker(desc.name)) {
+      continue;
+    }
+    let { module: importedModule } = resolveReexport(
+      desc.name,
+      module.resolvedImports[desc.importIndex]
+    );
+    let assignment = assignments.find(
+      (a) => a.module.url.href === importedModule.url.href
+    );
+    if (assignment?.bundleURL.href !== bundleURL.href) {
+      continue;
+    }
+
+    let namespaceDeclaration: string[] = [];
+    let nameMappings = state.assignedImportedNames.get(
+      importedModule.url.href
+    )!;
+    let bindingName = nameMappings.get(NamespaceMarker)!;
+    namespaceDeclaration.push(`const ${bindingName} = {`);
+    let declarators: string[] = [];
+    for (let [
+      exportedName,
+      exportDesc,
+    ] of importedModule.desc.exports.entries()) {
+      if (exportDesc.type !== "local") {
+        continue;
+      }
+      let assignedName = nameMappings.get(exportedName)!;
+      if (exportedName === assignedName) {
+        declarators.push(exportedName);
+      } else {
+        declarators.push(`${exportedName}: ${assignedName}`);
+      }
+    }
+    namespaceDeclaration.push(declarators.join(", "));
+    namespaceDeclaration.push(`};`);
+    results.push({ code: namespaceDeclaration.join(" "), bindingName });
+  }
+  return results;
 }
 
 function assignedImports(
   assignments: BundleAssignment[],
   state: State,
   removedBindings: Set<string>
-): Map<string, Map<string, string>> {
-  let imports: ReturnType<typeof assignedImports> = new Map();
+): {
+  namedImports: Map<string, Map<string, string>>; // bundleHref => <exposedName => local name>
+  namespaceImports: Map<string, string>; // bundleHref => local name
+} {
+  let namedImports: Map<string, Map<string, string>> = new Map();
+  let namespaceImports: Map<string, string> = new Map();
   for (let [moduleHref, mappings] of state.assignedImportedNames) {
     let assignment = assignments.find((a) => a.module.url.href === moduleHref)!;
     if (!assignment) {
@@ -656,37 +959,91 @@ function assignedImports(
       continue; // skip over this import--it's actually unconsumed
     }
 
-    let importsFromBundle = imports.get(assignment.bundleURL.href);
+    let importsFromBundle = namedImports.get(assignment.bundleURL.href);
     if (!importsFromBundle) {
       importsFromBundle = new Map();
-      imports.set(assignment.bundleURL.href, importsFromBundle);
+      namedImports.set(assignment.bundleURL.href, importsFromBundle);
     }
     for (let [exportedName, localName] of mappings) {
+      if (isNamespaceMarker(exportedName)) {
+        namespaceImports.set(assignment.bundleURL.href, localName);
+        continue;
+      }
       let exposedName = assignment.exposedNames.get(exportedName);
       if (!exposedName) {
-        throw new Error(
-          `bug: tried to import ${exportedName} from ${moduleHref} from another bundle, but it's not exposed`
+        // check to see if this is actually a reexport that is being projected
+        // to the bundle's entrypoint
+        let entrypointAssignment = assignments.find(
+          (a) => a.module.url.href === assignment.entrypointModuleURL.href
         );
+        if (entrypointAssignment) {
+          let { name, module } = resolveReexport(
+            localName,
+            entrypointAssignment.module
+          );
+          let reexportedName = state.assignedImportedNames
+            .get(module.url.href)
+            ?.get(name);
+          if (
+            module.url.href === assignment.module.url.href &&
+            reexportedName
+          ) {
+            exposedName = entrypointAssignment.exposedNames.get(reexportedName);
+          }
+        }
+        if (!exposedName) {
+          throw new Error(
+            `bug: tried to import ${exportedName} from ${moduleHref} from another bundle, but it's not exposed`
+          );
+        }
       }
       importsFromBundle.set(exposedName, localName);
     }
   }
-  return imports;
+  return { namedImports, namespaceImports };
 }
 
 function resolveReexport(
   name: string | NamespaceMarker,
-  module: ModuleResolution
-): { name: string | NamespaceMarker; module: ModuleResolution } {
+  module: ModuleResolution | CyclicModuleResolution
+): {
+  name: string | NamespaceMarker;
+  module: ModuleResolution | CyclicModuleResolution;
+} {
   if (isNamespaceMarker(name)) {
     return { name, module };
   }
-  let remoteDesc = module.desc.exports.get(name)!;
-  if (remoteDesc.type === "reexport") {
-    return resolveReexport(
-      remoteDesc.name,
-      module.resolvedImports[remoteDesc.importIndex]
-    );
+  let remoteDesc = module.desc.exports.get(name);
+  if (
+    remoteDesc?.type === "reexport" ||
+    (remoteDesc?.type == "local" &&
+      module.desc.names.get(remoteDesc.name)?.type === "import")
+  ) {
+    if (module.type === "cyclic") {
+      let cyclicModule = [...module.cyclicGroup].find(
+        (m) => m.url.href === module.url.href
+      );
+      if (!cyclicModule) {
+        throw new Error(
+          `bug: can't find cyclic module ${module.url.href} in its cyclic group`
+        );
+      }
+      module = cyclicModule;
+    }
+    if (remoteDesc.type === "reexport") {
+      return resolveReexport(
+        remoteDesc.name,
+        module.resolvedImports[remoteDesc.importIndex]
+      );
+    } else {
+      let localDesc = module.desc.names.get(
+        remoteDesc.name
+      )! as ImportedNameDescription;
+      return resolveReexport(
+        localDesc.name,
+        module.resolvedImports[localDesc.importIndex]
+      );
+    }
   }
   return { name, module };
 }

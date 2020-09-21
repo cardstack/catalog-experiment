@@ -1,4 +1,6 @@
 import { BuilderNode, Value } from "./common";
+import { FileSystemDriver } from "../filesystem-drivers/filesystem-driver";
+import { ListingEntry } from "../filesystem";
 
 export class FileNode implements BuilderNode {
   isFileNode = true;
@@ -12,9 +14,66 @@ export class FileNode implements BuilderNode {
     this.cacheKey = `file:${this.url.href}`;
   }
 
-  deps() {}
+  async deps() {}
 
   async run(): Promise<Value<string>> {
+    throw new Error(`bug: this isn't supposed to actually run`);
+  }
+}
+
+export class MountNode implements BuilderNode {
+  isMountNode = true;
+  cacheKey: string;
+
+  static isMountNode(node: BuilderNode): node is MountNode {
+    return "isMountNode" in node;
+  }
+
+  constructor(public mountURL: URL, public driver: FileSystemDriver) {
+    this.cacheKey = `mount:${this.mountURL.href}`;
+  }
+
+  async deps() {}
+
+  async run(): Promise<Value<URL>> {
+    throw new Error(`bug: this isn't supposed to actually run`);
+  }
+}
+
+export class FileListingNode implements BuilderNode {
+  isFileListingNode = true;
+  cacheKey: string;
+
+  static isFileListingNode(node: BuilderNode): node is FileListingNode {
+    return "isFileListingNode" in node;
+  }
+
+  constructor(public url: URL, public recurse?: true) {
+    this.cacheKey = `file-listing:${this.url.href}`;
+  }
+
+  async deps() {}
+
+  async run(): Promise<Value<ListingEntry[]>> {
+    throw new Error(`bug: this isn't supposed to actually run`);
+  }
+}
+
+export class FileExistsNode implements BuilderNode {
+  isFileExistsNode = true;
+  cacheKey: string;
+
+  static isFileExistsNode(node: BuilderNode): node is FileExistsNode {
+    return "isFileExistsNode" in node;
+  }
+
+  constructor(public url: URL) {
+    this.cacheKey = `file-exists:${this.url.href}`;
+  }
+
+  async deps() {}
+
+  async run(): Promise<Value<boolean>> {
     throw new Error(`bug: this isn't supposed to actually run`);
   }
 }
@@ -31,7 +90,7 @@ export class WriteFileNode implements BuilderNode<void> {
     this.cacheKey = `write-file:${this.url.href}`;
   }
 
-  deps() {
+  async deps() {
     return { source: this.source };
   }
 

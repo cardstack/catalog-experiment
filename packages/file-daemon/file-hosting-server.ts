@@ -6,10 +6,10 @@ import {
   removeSync,
 } from "fs-extra";
 import { Readable } from "stream";
-import { Tar } from "tarstream";
-import { DIRTYPE, REGTYPE } from "tarstream/constants";
+import { Tar } from "@catalogjs/tarstream";
+import { DIRTYPE, REGTYPE } from "@catalogjs/tarstream/constants";
 import { NodeReadableToDOM, DOMToNodeReadable } from "./stream-shims";
-import { DirectoryEntry } from "tarstream/types";
+import { DirectoryEntry } from "@catalogjs/tarstream/types";
 import { unixTime } from "./utils";
 import { join, resolve, dirname } from "path";
 import * as webStreams from "web-streams-polyfill/ponyfill/es2018";

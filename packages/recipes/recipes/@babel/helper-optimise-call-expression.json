@@ -1,0 +1,39 @@
+{
+  "$schema": "../../recipe-schema.json",
+  "recipes": [
+    {
+      "semverRange": "*",
+      "srcRepo": {
+        "repoHref": "https://github.com/babel/babel.git",
+        "version": "v$major$.$minor$.$patch$",
+        "subdir": "packages/babel-helper-optimise-call-expression/"
+      },
+      "entrypoints": [
+        "./src/index.js"
+      ],
+      "babelPlugins": [
+        "@babel/plugin-transform-flow-strip-types",
+        [
+          "@babel/plugin-proposal-decorators",
+          {
+            "legacy": true
+          }
+        ],
+        [
+          "@babel/plugin-proposal-class-properties",
+          {
+            "loose": true
+          }
+        ],
+        "@babel/plugin-proposal-numeric-separator",
+        [
+          "@babel/plugin-proposal-pipeline-operator",
+          {
+            "proposal": "minimal"
+          }
+        ],
+        "@babel/plugin-proposal-logical-assignment-operators"
+      ]
+    }
+  ]
+}

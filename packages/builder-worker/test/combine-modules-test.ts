@@ -2,39 +2,60 @@ import { parseDOM } from "htmlparser2";
 import { installFileAssertions } from "./helpers/file-assertions";
 import "./helpers/code-equality-assertions";
 import { combineModules, ImportAssignments } from "../src/combine-modules";
-import { Resolver, ModuleResolution } from "../src/nodes/resolution";
+import { ModuleResolution } from "../src/nodes/resolution";
+import { Resolver } from "../src/resolver";
 import { HTMLEntrypoint } from "../src/nodes/entrypoint";
 import { BundleAssignment, Assigner } from "../src/nodes/bundle";
 import {
-  describeModule,
+  describeFile,
   NamespaceMarker,
   LocalNameDescription,
-} from "../src/describe-module";
+  isModuleDescription,
+} from "../src/describe-file";
 import { url } from "./helpers/file-assertions";
 import { FileSystem } from "../src/filesystem";
-import { FileDescriptor } from "../src/filesystem-drivers/filesystem-driver";
 import { parse } from "@babel/core";
-
-let resolver = new Resolver(); // TODO need to resolve modules without '.js' extension
+import { recipesURL } from "../src/recipes";
 
 async function makeModuleResolutions(
   fs: FileSystem,
   moduleURL: URL,
-  importAssignments?: ImportAssignments
+  {
+    importAssignments,
+  }: {
+    importAssignments?: ImportAssignments;
+  } = {}
 ): Promise<ModuleResolution> {
-  let source = await ((await fs.open(moduleURL)) as FileDescriptor).readText();
+  let resolver = new Resolver(fs, recipesURL);
+  let source = await (await fs.openFile(moduleURL)).readText();
   let parsed = parse(source);
   if (parsed?.type !== "File") {
     throw new Error(`parsed js for ${moduleURL.href} is not a babel File type`);
   }
-  let desc = describeModule(parsed, importAssignments);
-  let resolvedImports = await Promise.all(
-    desc.imports.map(async (imp) => {
-      let depURL = await resolver.resolve(imp.specifier, moduleURL);
-      return makeModuleResolutions(fs, depURL, importAssignments);
-    })
-  );
-  return { url: moduleURL, source, resolvedImports, desc };
+  let desc = describeFile(parsed, { importAssignments });
+  let resolvedImports: ModuleResolution[];
+  if (!isModuleDescription(desc)) {
+    throw new Error(
+      `Cannot perform module resolution on CJS file ${moduleURL.href}`
+    );
+  } else {
+    resolvedImports = await Promise.all(
+      desc.imports.map(async (imp) => {
+        let depURL = await resolver.resolve(imp.specifier, moduleURL);
+        return makeModuleResolutions(fs, depURL, {
+          importAssignments,
+        });
+      })
+    );
+  }
+  return {
+    type: "standard",
+    url: moduleURL,
+    source,
+    resolvedImports,
+    resolvedImportsWithCyclicGroups: resolvedImports,
+    desc,
+  };
 }
 
 async function makeBundleAssignments(
@@ -107,6 +128,7 @@ async function makeBundleAssignments(
         bundleURL: url(assignment.assignedToBundle),
         module: await makeModuleResolutions(fs, fileURL),
         exposedNames: new Map(Object.entries(assignment.nameMapping)),
+        entrypointModuleURL: url(optsWithDefaults.containsEntrypoint),
       };
       let index = assignments.findIndex(
         (a) => a.module.url.href === fileURL.href
@@ -801,6 +823,34 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
+  test("can collapse a reexport that projects a default export to a named export", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { hello } from './b.js';
+        const hi = 'hi';
+        console.log(hi + hello());
+      `,
+      "b.js": `
+        import hello from './lib.js';
+        export { hello };
+      `,
+      "lib.js": `export default function() { return 'hello'; }`,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+      const hello = function() { return 'hello'; }
+      const hi = 'hi';
+      console.log(hi + hello());
+      export {};
+      `
+    );
+  });
+
   test("distinguishes exported names from module-scoped names", async function (assert) {
     await assert.setupFiles({
       "index.js": `
@@ -831,7 +881,7 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
-  skip("can access namespace of module within bundle", async function (assert) {
+  test("can access namespace of module within bundle", async function (assert) {
     await assert.setupFiles({
       "index.js": `
         import * as lib from './lib.js';
@@ -853,6 +903,166 @@ QUnit.module("combine modules", function (origHooks) {
       const goodbye = 'goodbye';
       const lib = { hello, goodbye };
       console.log(lib.hello + lib.goodbye);
+      export {};
+      `
+    );
+  });
+
+  test("can access namespace of module with renamed exports within bundle", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import * as lib from './lib.js';
+        console.log(lib.konnichiwa + lib.sayonara);
+      `,
+      "lib.js": `
+        const hello = 'hello';
+        const goodbye = 'goodbye';
+        export { hello as konnichiwa, goodbye as sayonara };
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+      const hello = 'hello';
+      const goodbye = 'goodbye';
+      const lib = { konnichiwa: hello, sayonara: goodbye };
+      console.log(lib.konnichiwa + lib.sayonara);
+      export {};
+      `
+    );
+  });
+
+  test("can handle collisions with properties of namespaced imports within a bundle", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import * as lib from './lib.js';
+        const hello = 'hi';
+        console.log(lib.konnichiwa + lib.sayonara + hello);
+      `,
+      "lib.js": `
+        const hello = 'hello';
+        const goodbye = 'goodbye';
+        export { hello as konnichiwa, goodbye as sayonara };
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+      const hello0 = 'hello';
+      const goodbye = 'goodbye';
+      const lib = { konnichiwa: hello0, sayonara: goodbye };
+      const hello = 'hi';
+      console.log(lib.konnichiwa + lib.sayonara + hello);
+      export {};
+      `
+    );
+  });
+
+  test("can prune an unused namespace import within bundle", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import * as lib from './lib.js';
+        import { goodbye } from './lib.js';
+        console.log(goodbye);
+      `,
+      "lib.js": `
+        export const hello = 'hello';
+        export const goodbye = 'goodbye';
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+      const goodbye = 'goodbye';
+      console.log(goodbye);
+      export {};
+      `
+    );
+  });
+
+  test("can handle dupe namespace imports within a bundle", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import a from "./a.js";
+        import b from "./b.js";
+        a();
+        b();
+      `,
+      "a.js": `
+        import * as lib from './lib.js';
+        export default function () {
+          console.log(lib.hello);
+        }
+      `,
+      "b.js": `
+        import * as lib from './lib.js';
+        export default function () {
+          console.log(lib.goodbye);
+        }
+      `,
+      "lib.js": `
+        export const hello = 'hello';
+        export const goodbye = 'goodbye';
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+      const hello = 'hello';
+      const goodbye = 'goodbye';
+      const lib = { hello, goodbye };
+      const a = (function() { console.log(lib.hello); });
+      const b = (function() { console.log(lib.goodbye); });
+      a();
+      b();
+      export {};
+      `
+    );
+  });
+
+  test("reexport a namespace import within a bundle", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { greetings } from './a.js';
+        console.log(greetings.konnichiwa + greetings.sayonara);
+      `,
+      "a.js": `
+        import * as lib from './lib.js';
+        export { lib as greetings };
+      `,
+      "lib.js": `
+        const hello = 'hello';
+        const goodbye = 'goodbye';
+        export { hello as konnichiwa, goodbye as sayonara };
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+      const hello = 'hello';
+      const goodbye = 'goodbye';
+      const greetings = { konnichiwa: hello, sayonara: goodbye };
+      console.log(greetings.konnichiwa + greetings.sayonara);
       export {};
       `
     );
@@ -921,7 +1131,7 @@ QUnit.module("combine modules", function (origHooks) {
     assert.codeEqual(
       combined.code,
       `
-      function a() {
+      const a = function a() {
         console.log('a');
       }
       const b = function () {
@@ -930,6 +1140,30 @@ QUnit.module("combine modules", function (origHooks) {
       a();
       b();
       export {};
+      `
+    );
+  });
+
+  test("can handle default export in an expression context", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import foo from './a.js';
+        foo('bar');
+      `,
+      "a.js": `
+        export default (function a(blah) { console.log(blah); });
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+        const foo = (function a(blah) { console.log(blah); });
+        foo('bar');
+        export {};
       `
     );
   });
@@ -962,7 +1196,7 @@ QUnit.module("combine modules", function (origHooks) {
     assert.codeEqual(
       combined.code,
       `
-      class A {
+      const A = class A {
         display() { console.log('a'); }
       }
       const B = class {
@@ -972,6 +1206,33 @@ QUnit.module("combine modules", function (origHooks) {
       let b = new B();
       a.display();
       b.display();
+      export {};
+      `
+    );
+  });
+
+  test("can handle default exported object", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import obj from './a.js';
+        console.log(JSON.stringify(obj));
+      `,
+      "a.js": `const json = { foo: 'bar' };
+        const { foo } = json;
+        export default json;
+        export { foo };
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+      const json = { foo: 'bar' };
+      const obj = (json);
+      console.log(JSON.stringify(obj));
       export {};
       `
     );
@@ -1003,7 +1264,7 @@ QUnit.module("combine modules", function (origHooks) {
       combined.code,
       `
       const b0 = 'b';
-      class A {
+      const A = class A {
         display() { console.log(b0); }
       }
       const b = 'a';
@@ -1450,7 +1711,7 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
-  test("preserves side-effectful right-hand side", async function (assert) {
+  test("preserves side-effectful right-hand side when tree shaking unconsumed bindings", async function (assert) {
     await assert.setupFiles({
       "index.js": `
         import { i } from './lib.js';
@@ -1474,6 +1735,89 @@ QUnit.module("combine modules", function (origHooks) {
       `
       function i() { return 1; }
       initCache();
+      console.log(i());
+      export {};
+      `
+    );
+  });
+
+  test("Preserves a side effect in an expression context when the callee is a function expression", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { i } from './lib.js';
+        console.log(i());
+      `,
+      "lib.js": `
+        export function i() { return 1; }
+        function getNative(a, b) { return a[b]; }
+        var defineProperty = function () {
+          try {
+            var func = getNative(Object, 'defineProperty');
+            func({}, '', {});
+            return func;
+          } catch (e) {}
+        }();
+        export { defineProperty };
+        `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+      function i() { return 1; }
+      function getNative(a, b) { return a[b]; }
+      (function () {
+        try {
+          var func = getNative(Object, 'defineProperty');
+          func({}, '', {});
+          return func;
+        } catch (e) {}
+      }());
+      console.log(i());
+      export {};
+      `
+    );
+  });
+
+  test("Preserves bindings that are consumed by a preserved side effect that would otherwise be pruned", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import { i } from './lib.js';
+        console.log(i());
+      `,
+      "lib.js": `
+        export function i() { return 1; }
+        class Cache {
+          constructor(opts) {
+            window.__cache = { bar: opts};
+          }
+        }
+        let b = 'foo';
+        let a = new Cache(b);
+        function getCache() {
+          return a;
+        }
+        export function j(options) { return getCache(); }
+        `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+      function i() { return 1; }
+      class Cache {
+        constructor(opts) {
+          window.__cache = { bar: opts};
+        }
+      }
+      let b = 'foo';
+      new Cache(b);
       console.log(i());
       export {};
       `
@@ -1527,7 +1871,7 @@ QUnit.module("combine modules", function (origHooks) {
     if (parsed?.type !== "File") {
       throw new Error(`unexpected babel output`);
     }
-    let bundleDescription = describeModule(parsed, importAssignments);
+    let bundleDescription = describeFile(parsed, { importAssignments });
     let nameDesc = bundleDescription.names.get("bar0") as LocalNameDescription;
     assert.deepEqual(nameDesc.original, {
       moduleHref: url("lib.js").href,
@@ -1576,7 +1920,7 @@ QUnit.module("combine modules", function (origHooks) {
       bundleAURL,
       assignmentsA
     );
-    let bundleA = (await assert.fs.open(bundleAURL, true)) as FileDescriptor;
+    let bundleA = await assert.fs.openFile(bundleAURL, true);
     await bundleA.write(codeA);
     await bundleA.close();
 
@@ -1590,7 +1934,7 @@ QUnit.module("combine modules", function (origHooks) {
       bundleBURL,
       assignmentsB
     );
-    let bundleB = (await assert.fs.open(bundleBURL, true)) as FileDescriptor;
+    let bundleB = await assert.fs.openFile(bundleBURL, true);
     await bundleB.write(codeB);
     await bundleB.close();
 
@@ -1600,21 +1944,19 @@ QUnit.module("combine modules", function (origHooks) {
     let combinedAssignments: BundleAssignment[] = [
       {
         bundleURL: combinedBundleURL,
-        module: await makeModuleResolutions(
-          assert.fs,
-          bundleAURL,
-          importAssignmentsA
-        ),
+        module: await makeModuleResolutions(assert.fs, bundleAURL, {
+          importAssignments: importAssignmentsA,
+        }),
         exposedNames: new Map(),
+        entrypointModuleURL: url("entrypointA.js"),
       },
       {
         bundleURL: combinedBundleURL,
-        module: await makeModuleResolutions(
-          assert.fs,
-          bundleBURL,
-          importAssignmentsB
-        ),
+        module: await makeModuleResolutions(assert.fs, bundleBURL, {
+          importAssignments: importAssignmentsB,
+        }),
         exposedNames: new Map(),
+        entrypointModuleURL: url("entrypointB.js"),
       },
     ];
     let combined = combineModules(combinedBundleURL, combinedAssignments);

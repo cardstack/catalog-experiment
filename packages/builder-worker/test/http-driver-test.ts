@@ -16,7 +16,6 @@ import {
 import { FileSystem } from "../src/filesystem";
 import { flushEvents, removeAllEventListeners, Event } from "../src/event-bus";
 import moment from "moment";
-import { FileDescriptor } from "../src/filesystem-drivers/filesystem-driver";
 import isEqual from "lodash/isEqual";
 
 const utf8 = new TextDecoder("utf8");
@@ -368,9 +367,7 @@ QUnit.module("filesystem - http driver", function (origHooks) {
       });
 
       test("can read the web server root as a file", async function (assert) {
-        let file = (await await assert.fs.open(
-          new URL(origin)
-        )) as FileDescriptor;
+        let file = await await assert.fs.openFile(new URL(origin));
         assert.equal(
           await file.readText(),
           "foo",
@@ -603,7 +600,7 @@ QUnit.module("filesystem - http driver", function (origHooks) {
 
     test("triggers a 'write' event when a file is written to", async function (assert) {
       assert.expect(2);
-      let file = (await assert.fs.open(url("foo/bar"), true)) as FileDescriptor;
+      let file = await assert.fs.openFile(url("foo/bar"), true);
       let listener = (e: Event) => {
         if ("filesystem" in e) {
           assert.equal(

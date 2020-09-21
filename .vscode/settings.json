@@ -5,6 +5,13 @@
     "aurl",
     "bundle",
     "bundle aurl",
-    "jojo"
+    "columnify",
+    "deduplicated",
+    "fixturify",
+    "fullname",
+    "gensync",
+    "jojo",
+    "msgpack",
+    "pkgs"
   ]
 }

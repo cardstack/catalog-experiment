@@ -1,6 +1,6 @@
 import Service from "@ember/service";
-import { Event } from "builder-worker/src/event";
-import { UIManagerCommand } from "builder-worker/src/ui-manager";
+import { Event } from "@catalogjs/builder-worker/src/event";
+import { UIManagerCommand } from "@catalogjs/builder-worker/src/ui-manager";
 
 export default class UIManagerService extends Service {
   constructor(...args: any[]) {

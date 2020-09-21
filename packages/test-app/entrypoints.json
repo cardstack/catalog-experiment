@@ -1,6 +1,7 @@
 {
-  "html": ["index.html", "test/index.html"],
-  "dependencies": {
-    "test-lib": "http://localhost:4200/test-lib"
-  }
+  "$schema": "../builder-worker/entrypoints-schema.json",
+  "html": [
+    "index.html",
+    "test/index.html"
+  ]
 }
