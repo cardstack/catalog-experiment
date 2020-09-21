@@ -310,6 +310,30 @@ module("Install from npm", function () {
           module.exports.nope = function(filename) {
             return fs.readFileSync(filename);
           }`,
+        "f.js": `
+          const sample = require('./sample.json');
+          module.exports.foo = sample.foo;`,
+        "sample.json": `{
+          "foo": "bar"
+        }`,
+        "es-module.js": `
+          import { foo } from "./sample2.json";
+          export { bleep } from "./sample3.json";
+          export { json } from "./sample4.json";
+          export default function() { console.log(foo); };
+        `,
+        "sample2.json": `{
+          "foo": "bar"
+        }`,
+        "sample3.json": `{
+          "bleep": "bloop"
+        }`,
+        "sample4.json": `{
+          "json": "foo"
+        }`,
+        "not-a-dep.json": `{
+          "foo": "bar"
+        }`,
       });
 
       let pkgDep = pkg.addDependency("test-pkg-dep", "4.5.6");
@@ -558,6 +582,120 @@ module.exports.nope = function (filename) {
         }
         export default implementation;`
       );
+    });
+
+    test("it provides support for require() of JSON files", async function (assert) {
+      let [testPkg] = packages;
+      let src = await (
+        await fs.openFile(new URL(`${buildSrcDir}f.cjs.js`, testPkg.url))
+      ).readText();
+      assert.codeEqual(
+        src,
+        `
+        import sampleJSON from "./sample.json.js";
+        let module;
+        function implementation() {
+          if (!module) {
+            module = { exports: {} };
+            Function(
+              "module",
+              "exports",
+              "dependencies",
+              \`const sample = dependencies[0]();
+
+module.exports.foo = sample.foo;\`
+            )(module, module.exports, [getSampleJSON]);
+          }
+          return module.exports;
+        }
+        function getSampleJSON() { return sampleJSON; }
+        export default implementation;`
+      );
+
+      let json = await (
+        await fs.openFile(new URL(`${buildSrcDir}sample.json.js`, testPkg.url))
+      ).readText();
+      assert.codeEqual(
+        json,
+        `
+        const json = {
+          "foo": "bar"
+        };
+        const { foo } = json;
+        export default json;
+        export { foo };
+        `
+      );
+    });
+
+    test("it rewrites imported JSON files for ES6 modules", async function (assert) {
+      let [testPkg] = packages;
+      let json = await (
+        await fs.openFile(new URL(`${buildSrcDir}sample2.json.js`, testPkg.url))
+      ).readText();
+      assert.codeEqual(
+        json,
+        `
+        const json = {
+          "foo": "bar"
+        };
+        const { foo } = json;
+        export default json;
+        export { foo };
+        `
+      );
+    });
+
+    test("it rewrites reexported JSON files for ES6 modules", async function (assert) {
+      let [testPkg] = packages;
+      let json = await (
+        await fs.openFile(new URL(`${buildSrcDir}sample3.json.js`, testPkg.url))
+      ).readText();
+      assert.codeEqual(
+        json,
+        `
+        const json = {
+          "bleep": "bloop"
+        };
+        const { bleep } = json;
+        export default json;
+        export { bleep };
+        `
+      );
+    });
+
+    test("prop name collides with 'json' var in rewritten json", async function (assert) {
+      let [testPkg] = packages;
+      let json = await (
+        await fs.openFile(new URL(`${buildSrcDir}sample4.json.js`, testPkg.url))
+      ).readText();
+      assert.codeEqual(
+        json,
+        `
+        const json0 = {
+          "json": "foo"
+        };
+        const { json } = json0;
+        export default json0;
+        export { json };
+        `
+      );
+    });
+
+    test("does not rewrite JSON that is not required nor imported", async function (assert) {
+      let [testPkg] = packages;
+      try {
+        await fs.openFile(
+          new URL(`${buildSrcDir}not-a-dep.json.js`, testPkg.url)
+        );
+        throw new Error(`a rewritten json file should not exist`);
+      } catch (err) {
+        if (err.code === "NOT_FOUND") {
+          assert.ok(true, "rewritten JSON file does not exist");
+        } else {
+          throw err;
+        }
+      }
     });
   });
 });
