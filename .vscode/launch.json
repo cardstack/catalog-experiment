@@ -47,6 +47,7 @@
       "cwd": "${workspaceRoot}",
       "env": {},
       "program": "${workspaceRoot}/packages/builder-node/bin/build.js",
+      "console": "integratedTerminal",
       "args": [
         "--project=packages/test-app,http://build-output",
         "--project=packages/test-lib,http://localhost:4200/test-lib/",

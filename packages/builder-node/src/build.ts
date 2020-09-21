@@ -33,7 +33,7 @@ let { project: rawProjects, overlay } = yargs
       type: "boolean",
       default: false,
       description:
-        "a flag indicating if the unbuilt assets in the input URL should be included in the output URL. This is would include application assets like images. Otherwise the build output is purely aretifacts emitted from the build.",
+        "a flag indicating if the un-built assets in the input URL should be included in the output URL. This is would include application assets like images. Otherwise the build output is purely artifacts emitted from the build.",
     },
   })
   .boolean("overlay")
