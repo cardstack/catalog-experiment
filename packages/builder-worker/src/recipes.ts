@@ -97,13 +97,14 @@ let cache: Map<string, Recipe | undefined> = new Map();
 export async function getRecipe(
   pkgName: string,
   version: string,
-  fs: FileSystem
+  fs: FileSystem,
+  _recipesURL: URL = recipesURL
 ): Promise<Recipe | undefined> {
   if (cache.has(`${pkgName}:${version}`)) {
     return cache.get(`${pkgName}:${version}`);
   }
 
-  let url = new URL(`${pkgName}.json`, recipesURL);
+  let url = new URL(`${pkgName}.json`, _recipesURL);
   let fd: FileDescriptor | undefined;
   let recipes: Recipe[];
   try {

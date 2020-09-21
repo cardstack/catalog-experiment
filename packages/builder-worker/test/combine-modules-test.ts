@@ -15,6 +15,7 @@ import {
 import { url } from "./helpers/file-assertions";
 import { FileSystem } from "../src/filesystem";
 import { parse } from "@babel/core";
+import { recipesURL } from "../src/recipes";
 
 async function makeModuleResolutions(
   fs: FileSystem,
@@ -25,7 +26,7 @@ async function makeModuleResolutions(
     importAssignments?: ImportAssignments;
   } = {}
 ): Promise<ModuleResolution> {
-  let resolver = new Resolver(fs);
+  let resolver = new Resolver(fs, recipesURL);
   let source = await (await fs.openFile(moduleURL)).readText();
   let parsed = parse(source);
   if (parsed?.type !== "File") {

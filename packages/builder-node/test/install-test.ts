@@ -8,11 +8,12 @@ import { closeAll } from "../src/node-filesystem-driver";
 import merge from "lodash/merge";
 import { Package, buildSrcDir } from "../src/nodes/package";
 import { Resolver } from "../../builder-worker/src/resolver";
+import { recipesURL } from "../../builder-worker/src/recipes";
 
-const { test, module } = QUnit;
+const { test } = QUnit;
 
-module("Install from npm", function () {
-  module("pkg dependencies", function (hooks) {
+QUnit.module("Install from npm", function () {
+  QUnit.module("pkg dependencies", function (hooks) {
     let project: Project;
     let fs: FileSystem;
     let packages: Package[];
@@ -20,7 +21,7 @@ module("Install from npm", function () {
     hooks.before(async function () {
       project = new Project("test-lib");
       fs = new FileSystem();
-      let resolver = new Resolver(fs);
+      let resolver = new Resolver(fs, recipesURL);
       let a = project.addDependency("a", "1.2.3");
       a.pkg = {
         name: "a",
@@ -66,7 +67,7 @@ module("Install from npm", function () {
         workingDir,
         resolver
       );
-      let builder = new Builder(fs, [builderRoot]);
+      let builder = new Builder(fs, [builderRoot], recipesURL);
       packages = (await builder.build())[0];
     });
 
@@ -267,14 +268,14 @@ module("Install from npm", function () {
     });
   });
 
-  module("ES interop", function (hooks) {
+  QUnit.module("ES interop", function (hooks) {
     let project: Project;
     let fs: FileSystem;
     let packages: Package[];
     hooks.before(async function () {
       project = new Project("test-lib");
       fs = new FileSystem();
-      let resolver = new Resolver(fs);
+      let resolver = new Resolver(fs, recipesURL);
       let pkg = project.addDependency("test-pkg", "1.2.3");
       pkg.pkg = {
         name: "test-pkg",
@@ -355,7 +356,7 @@ module("Install from npm", function () {
         workingDir,
         resolver
       );
-      let builder = new Builder(fs, [builderRoot]);
+      let builder = new Builder(fs, [builderRoot], recipesURL);
       packages = (await builder.build())[0];
     });
 

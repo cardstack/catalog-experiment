@@ -59,16 +59,20 @@ async function activate() {
   let uiDriver = new HttpFileSystemDriver(uiURL);
   let clientDriver = new FileDaemonClientDriver(originURL, websocketURL);
   let [, clientVolume] = await Promise.all([
-    // TODO need to mount recipes...
     fs.mount(new URL(`/catalogjs/ui/`, originURL), uiDriver),
     fs.mount(new URL("https://local-disk/"), clientDriver),
   ]);
-  // TODO refactor how we handle client volumes events shuch that we don't need
+  // TODO refactor how we handle client volumes events such that we don't need
   // to get a handle on the "Volume" instance. Consider writing a file for the
   // connected and sync events in a special folder that we can monitor.
   volume = clientVolume as FileDaemonClientVolume;
 
-  buildManager = new BuildManager(fs);
+  // For now the recipes live at http://local-disk/recipes/ (which we have
+  // included in our file daemon start script for the test-app). Eventually
+  // we'll want to point to a CDN that is serving the recipes (and to optionally
+  // point the recipes that you are actively developing - ?). Or maybe this URL
+  // is something you can specify in the UI?
+  buildManager = new BuildManager(fs, new URL("https://local-disk/recipes/"));
   await fs.displayListing(log);
   activated();
 }
@@ -117,7 +121,7 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
 })();
 
 // Check to make sure that our backend is _really_ ours. Otherwise unregister
-// this service worker so it doesnt get in the way of non catalogjs web apps.
+// this service worker so it doesn't get in the way of non catalogjs web apps.
 async function checkForOurBackend() {
   while (true) {
     let status;
@@ -131,7 +135,7 @@ async function checkForOurBackend() {
     }
     if (status === 404) {
       console.error(
-        "some other server is running instead of the file daemon, unregistering this service worker."
+        "some other server is running instead of the file daemon, un-registering this service worker."
       );
       isDisabled = true;
       await worker.registration.unregister();

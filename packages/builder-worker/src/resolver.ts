@@ -41,7 +41,7 @@ export class Resolver {
     string,
     { lockfile: LockFile; url: URL }
   > = new Map();
-  constructor(private fs: FileSystem) {}
+  constructor(private fs: FileSystem, private recipesURL: URL) {}
 
   async resolve(specifier: string, source: URL): Promise<URL> {
     if (specifier.startsWith("http://")) {
@@ -59,7 +59,12 @@ export class Resolver {
       pkgInfoFromCatalogJsURL(source) ?? {};
     if (sourcePkgName && sourcePkgVersion) {
       let { resolutions } =
-        (await getRecipe(sourcePkgName, sourcePkgVersion, this.fs)) ?? {};
+        (await getRecipe(
+          sourcePkgName,
+          sourcePkgVersion,
+          this.fs,
+          this.recipesURL
+        )) ?? {};
       let href = resolutions?.[specifier];
       if (href) {
         return new URL(href);

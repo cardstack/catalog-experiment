@@ -9,6 +9,7 @@ import { FileSystem } from "../src/filesystem";
 import { flushEvents, removeAllEventListeners } from "../src/event-bus";
 import { annotationRegex } from "../src/nodes/common";
 import { Logger } from "../src/logger";
+import { recipesURL } from "../src/recipes";
 
 Logger.setLogLevel("debug");
 Logger.echoInConsole(true);
@@ -37,14 +38,18 @@ QUnit.module("module builder", function (origHooks) {
     fs: FileSystem,
     outputURL = new URL("/output/", origin)
   ) {
-    return Builder.forProjects(fs, [[new URL(origin), outputURL]]);
+    return Builder.forProjects(fs, [[new URL(origin), outputURL]], recipesURL);
   }
 
   function makeRebuilder(
     fs: FileSystem,
     outputURL = new URL("/output/", outputOrigin)
   ) {
-    return Rebuilder.forProjects(fs, [[new URL(origin), outputURL]]);
+    return Rebuilder.forProjects(
+      fs,
+      [[new URL(origin), outputURL]],
+      recipesURL
+    );
   }
 
   async function buildBundle(
@@ -1064,11 +1069,15 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
 
-      let builder = Builder.forProjects(assert.fs, [
-        [url("driver/"), url("/output/driver")],
-        [url("pets/"), petsOutputURL],
-        [url("names/"), namesOutputURL],
-      ]);
+      let builder = Builder.forProjects(
+        assert.fs,
+        [
+          [url("driver/"), url("/output/driver")],
+          [url("pets/"), petsOutputURL],
+          [url("names/"), namesOutputURL],
+        ],
+        recipesURL
+      );
 
       await builder.build();
 
@@ -1562,9 +1571,11 @@ QUnit.module("module builder", function (origHooks) {
     test("throws when the input origin is the same as the output origin", async function (assert) {
       await assert.setupFiles({});
       try {
-        rebuilder = Rebuilder.forProjects(assert.fs, [
-          [new URL(origin), new URL("/output/", origin)],
-        ]);
+        rebuilder = Rebuilder.forProjects(
+          assert.fs,
+          [[new URL(origin), new URL("/output/", origin)]],
+          recipesURL
+        );
         throw new Error("should not be able to create Rebuilder");
       } catch (e) {
         assert.ok(

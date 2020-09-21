@@ -4,8 +4,10 @@ import { resolve, join } from "path";
 import { NodeFileSystemDriver, closeAll } from "./node-filesystem-driver";
 import { FileSystem } from "../../builder-worker/src/filesystem";
 import { Builder } from "../../builder-worker/src/builder";
+import { resolveNodePkg } from "./resolve";
 import { ensureDirSync, removeSync } from "fs-extra";
 import fetch from "node-fetch";
+import { recipesURL } from "../../builder-worker/src/recipes";
 
 if (!globalThis.fetch) {
   (globalThis.fetch as any) = fetch;
@@ -76,6 +78,8 @@ async function prepare() {
     let inputURL = new URL(`http://project-src${count++}`);
     let driver = new NodeFileSystemDriver(resolve(path));
     await fs.mount(inputURL, driver);
+    let recipesPath = join(resolveNodePkg("@catalogjs/recipes"), "recipes");
+    await fs.mount(recipesURL, new NodeFileSystemDriver(recipesPath));
     projectRoots.push([inputURL, new URL(outputHref)]);
   }
 }
@@ -100,6 +104,6 @@ async function build() {
     await doOverlay();
   }
 
-  let builder = Builder.forProjects(fs, projectRoots);
+  let builder = Builder.forProjects(fs, projectRoots, recipesURL);
   await builder.build();
 }

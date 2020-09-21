@@ -108,6 +108,7 @@ class BuildRunner<Input> {
   constructor(
     private fs: FileSystem,
     private roots: Input,
+    private recipesURL: URL,
     private inputDidChange?: () => void
   ) {}
 
@@ -365,7 +366,7 @@ class BuildRunner<Input> {
     pkgName: string,
     version: string
   ): Promise<Recipe | undefined> {
-    return await getRecipe(pkgName, version, this.fs);
+    return await getRecipe(pkgName, version, this.fs, this.recipesURL);
   }
 
   @bind
@@ -404,13 +405,13 @@ class BuildRunner<Input> {
 export class Builder<Input> {
   private runner: BuildRunner<Input>;
 
-  constructor(fs: FileSystem, roots: Input) {
-    this.runner = new BuildRunner(fs, roots);
+  constructor(fs: FileSystem, roots: Input, recipesURL: URL) {
+    this.runner = new BuildRunner(fs, roots, recipesURL);
   }
 
   // roots lists [inputRoot, outputRoot]
-  static forProjects(fs: FileSystem, roots: [URL, URL][]) {
-    return new this(fs, projectsToNodes(roots, fs));
+  static forProjects(fs: FileSystem, roots: [URL, URL][], recipesURL: URL) {
+    return new this(fs, projectsToNodes(roots, fs, recipesURL), recipesURL);
   }
 
   async build(): ReturnType<BuildRunner<Input>["build"]> {
@@ -455,12 +456,12 @@ export class Rebuilder<Input> {
   };
   private nextState: Deferred<RebuilderState> = new Deferred();
 
-  constructor(fs: FileSystem, roots: Input) {
-    this.runner = new BuildRunner(fs, roots, this.inputDidChange);
+  constructor(fs: FileSystem, roots: Input, recipesURL: URL) {
+    this.runner = new BuildRunner(fs, roots, recipesURL, this.inputDidChange);
   }
 
   // roots lists [inputRoot, outputRoot]
-  static forProjects(fs: FileSystem, roots: [URL, URL][]) {
+  static forProjects(fs: FileSystem, roots: [URL, URL][], recipesURL: URL) {
     for (let [input, output] of roots) {
       if (input.origin === output.origin) {
         throw new Error(
@@ -468,7 +469,7 @@ export class Rebuilder<Input> {
         );
       }
     }
-    return new this(fs, projectsToNodes(roots, fs));
+    return new this(fs, projectsToNodes(roots, fs, recipesURL), recipesURL);
   }
 
   get status():
@@ -639,9 +640,10 @@ export function explainAsDot(explanation: Explanation): string {
   return output.join("\n");
 }
 
-function projectsToNodes(roots: [URL, URL][], fs: FileSystem) {
+function projectsToNodes(roots: [URL, URL][], fs: FileSystem, recipesURL: URL) {
   return roots.map(
-    ([input, output]) => new MakeProjectNode(input, output, new Resolver(fs))
+    ([input, output]) =>
+      new MakeProjectNode(input, output, new Resolver(fs, recipesURL))
   );
 }
 
