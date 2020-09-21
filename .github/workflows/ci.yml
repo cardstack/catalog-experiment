@@ -20,9 +20,15 @@ jobs:
 
       - name: install
         run: yarn install
+        with:
+          node-version: "14.5.0"
 
       - name: build
         run: yarn build
+        with:
+          node-version: "14.5.0"
 
       - name: test
         run: yarn test
+        with:
+          node-version: "14.5.0"
