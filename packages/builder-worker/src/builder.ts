@@ -228,6 +228,7 @@ class BuildRunner<Input> {
   private internalize(node: BuilderNode) {
     if (FileNode.isFileNode(node)) {
       return new InternalFileNode(
+        node.cacheKey,
         node.url,
         this.fs,
         this.getCurrentContext,
@@ -648,20 +649,18 @@ function projectsToNodes(roots: [URL, URL][], fs: FileSystem, recipesURL: URL) {
 }
 
 class InternalFileNode<Input> implements BuilderNode<string> {
-  cacheKey: string;
   volatile = true;
 
   private firstRun = true;
 
   constructor(
+    readonly cacheKey: string,
     private url: URL,
     private fs: FileSystem,
     private getCurrentContext: () => CurrentContext,
     private roots: Input,
     private ensureWatching: BuildRunner<Input>["ensureWatching"]
-  ) {
-    this.cacheKey = `file:${this.url.href}`;
-  }
+  ) {}
 
   async deps() {
     // TODO a more rigorous way to do this is to match the entrypoints.json file directly
@@ -720,7 +719,7 @@ class InternalWriteFileNode implements BuilderNode<void> {
   cacheKey: string;
   constructor(private writeFileNode: WriteFileNode, private fs: FileSystem) {
     this.url = writeFileNode.url;
-    this.cacheKey = `write-file:${this.url.href}`;
+    this.cacheKey = writeFileNode.cacheKey;
   }
   async deps() {
     let source = (await this.writeFileNode.deps()).source;
@@ -761,7 +760,7 @@ class InternalFileExistsNode implements BuilderNode<boolean> {
   cacheKey: string;
   constructor(fileExistsNode: FileExistsNode, private fs: FileSystem) {
     this.url = fileExistsNode.url;
-    this.cacheKey = `file-exists:${this.url.href}`;
+    this.cacheKey = fileExistsNode.cacheKey;
   }
 
   async deps() {}
@@ -791,7 +790,7 @@ class InternalFileListingNode implements BuilderNode<ListingEntry[]> {
   constructor(fileListingNode: FileListingNode, private fs: FileSystem) {
     this.url = fileListingNode.url;
     this.recurse = Boolean(fileListingNode.recurse);
-    this.cacheKey = `file-listing:${this.url.href}`;
+    this.cacheKey = fileListingNode.cacheKey;
   }
 
   async deps() {}

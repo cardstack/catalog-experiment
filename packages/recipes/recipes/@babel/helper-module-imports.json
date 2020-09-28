@@ -11,9 +11,6 @@
       "entrypoints": [
         "./src/index.js"
       ],
-      "additionalDependencies": {
-        "@catalogjs/polyfills": "*"
-      },
       "resolutions": {
         "assert": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/assert.js"
       },

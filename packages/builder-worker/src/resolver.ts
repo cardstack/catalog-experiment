@@ -12,6 +12,7 @@ export interface LockFile {
 interface PkgInfo {
   pkgName: string;
   version: string | undefined;
+  hash: string | undefined;
   modulePath: string | undefined;
 }
 
@@ -37,10 +38,7 @@ function resolveFileExtension(url: URL, useCJSInterop: boolean): URL {
 }
 
 export class Resolver {
-  private lockFileCache: Map<
-    string,
-    { lockfile: LockFile; url: URL }
-  > = new Map();
+  private lockFileLocationCache: Map<string, URL> = new Map();
   constructor(private fs: FileSystem, private recipesURL: URL) {}
 
   async resolve(specifier: string, source: URL): Promise<URL> {
@@ -128,18 +126,23 @@ export class Resolver {
     url: URL
   ): Promise<{ lockfile: LockFile; url: URL }> {
     let lastCandidate: URL | undefined;
-    if (this.lockFileCache.has(url.href)) {
-      return this.lockFileCache.get(url.href)!;
+    let candidateURL: URL | undefined = this.lockFileLocationCache.get(
+      url.href
+    );
+    if (!candidateURL) {
+      candidateURL = new URL("./catalogjs.lock", url);
     }
-    let candidateURL = new URL("./catalogjs.lock", url);
     while (lastCandidate?.href !== candidateURL.href) {
       lastCandidate = candidateURL;
       let fd: FileDescriptor | undefined;
       try {
         fd = await this.fs.openFile(candidateURL);
         let lockfile = JSON.parse(await fd.readText());
+        // Note that the lock file can change during the build as we discover
+        // more dependencies, so we're not caching the actual contents of the
+        // lock file since they are volatile.
+        this.lockFileLocationCache.set(url.href, fd.url);
         let result = { lockfile, url: fd.url };
-        this.lockFileCache.set(url.href, result);
         return result;
       } catch (err) {
         if (err.code !== "NOT_FOUND") {
@@ -196,6 +199,7 @@ export class Resolver {
 }
 
 export function pkgInfoFromSpecifier(specifier: string): PkgInfo | undefined {
+  specifier = specifier.replace(/\$cjs\$$/, "");
   if (specifier.startsWith("https://")) {
     throw new Error(`not implemented`);
   }
@@ -210,37 +214,42 @@ export function pkgInfoFromSpecifier(specifier: string): PkgInfo | undefined {
   }
   let modulePath =
     specifierParts.length > 0 ? specifierParts.join("/") : undefined;
-  return { pkgName, modulePath, version: undefined };
+  return { pkgName, modulePath, version: undefined, hash: undefined };
 }
 
-function pkgInfoFromCatalogJsURL(url: URL): PkgInfo | undefined {
+export function pkgInfoFromCatalogJsURL(url: URL): PkgInfo | undefined {
   let catalogjsHref = "https://catalogjs.com/pkgs/";
-  if (!url.href.startsWith(catalogjsHref)) {
+  let workingHref = "https://working/";
+  if (
+    !url.href.startsWith(catalogjsHref) &&
+    !url.href.startsWith(workingHref)
+  ) {
     return;
   }
 
   let pkgName: string;
   let version: string;
+  let hash: string;
   let modulePath: string | undefined;
-  if (url.href.startsWith(`${catalogjsHref}@catalogjs/`)) {
-    let parts = url.href.slice(catalogjsHref.length).split("/");
-    pkgName = `${parts.shift()}/${parts.shift()}`;
-    version = parts.shift()!;
-    modulePath = parts.length > 0 ? parts.join("/") : undefined;
-  } else if (url.href.startsWith(`${catalogjsHref}npm/`)) {
-    let parts = url.href.slice(`${catalogjsHref}npm/`.length).split("/");
-    let scopedName = parts.shift()!;
-    pkgName = scopedName.startsWith("@")
-      ? `${scopedName}/${parts.shift()}`
-      : scopedName;
-    version = parts.shift()!;
-    modulePath = parts.length > 0 ? parts.join("/") : undefined;
-  } else {
-    return;
+  let path = url.href
+    .replace(`${catalogjsHref}npm/`, "")
+    .replace(catalogjsHref, "")
+    .replace(workingHref, "");
+  let parts = path.split("/");
+  let scopedName = parts.shift()!;
+  pkgName = scopedName.startsWith("@")
+    ? `${scopedName}/${parts.shift()}`
+    : scopedName;
+  version = parts.shift()!;
+  hash = parts.shift()!;
+  if (parts[0] === "__build_src") {
+    parts.shift();
   }
+  modulePath = parts.length > 0 ? parts.join("/") : undefined;
   return {
     pkgName,
     version,
+    hash,
     modulePath,
   };
 }

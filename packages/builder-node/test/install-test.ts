@@ -6,17 +6,17 @@ import { Builder } from "../../builder-worker/src/builder";
 import { FileSystem } from "../../builder-worker/src/filesystem";
 import { closeAll } from "../src/node-filesystem-driver";
 import merge from "lodash/merge";
-import { Package, buildSrcDir } from "../src/nodes/package";
+import { buildSrcDir } from "../src/nodes/package";
 import { Resolver } from "../../builder-worker/src/resolver";
 import { recipesURL } from "../../builder-worker/src/recipes";
-
-const { test } = QUnit;
+import { installFileAssertions } from "../../builder-worker/test/helpers/file-assertions";
 
 QUnit.module("Install from npm", function () {
-  QUnit.module("pkg dependencies", function (hooks) {
+  QUnit.module("pkg dependencies", function (origHooks) {
+    let { test, hooks } = installFileAssertions(origHooks);
     let project: Project;
     let fs: FileSystem;
-    let packages: Package[];
+    let packageURLs: URL[];
 
     hooks.before(async function () {
       project = new Project("test-lib");
@@ -27,38 +27,76 @@ QUnit.module("Install from npm", function () {
         name: "a",
         version: "1.2.3",
       };
-      a.files["index.js"] = "console.log('a')";
+      a.files = {
+        "index.js": `
+        import b from "b";
+        import e from "e";
+        b();
+        e();
+        console.log('a')`,
+      };
       let b1 = a.addDependency("b", "4.5.6");
       b1.pkg = {
         name: "b",
         version: "4.5.6",
         main: "./b.js",
       };
-      b1.files["b.js"] = "console.log('b1')";
+      b1.files = {
+        "b.js": `
+        import d from "d";
+        export default function() {
+          d();
+          console.log('b1');
+        };`,
+      };
+      let e = a.addDependency("e", "2.3.4");
+      e.pkg = {
+        name: "e",
+        version: "2.3.4",
+      };
+      e.files = {
+        "index.js": "export default function() { console.log('e'); }",
+      };
       let c = project.addDependency("c", "1.2.3");
       c.pkg = {
         name: "c",
         version: "1.2.3",
       };
-      c.files["index.js"] = "console.log('c')";
+      c.files = {
+        "index.js": `
+        import b from "b";
+        b();
+        console.log('c');`,
+      };
       let b2 = c.addDependency("b", "7.8.9");
       b2.pkg = {
         name: "b",
         version: "7.8.9",
       };
-      b2.files["index.js"] = "console.log('b2')";
+      b2.files = {
+        "index.js": `
+        import d from "d";
+        export default function() {
+          d();
+          console.log('b2');
+        };`,
+      };
       let d1 = b1.addDependency("d", "10.11.12");
       d1.pkg = {
         name: "d",
         version: "10.11.12",
       };
-      d1.files["index.js"] = "console.log('d')";
+      d1.files = {
+        "index.js": "export default function() { console.log('d'); }",
+      };
       let d2 = b2.addDependency("d", "10.11.12");
       d2.pkg = {
         name: "d",
         version: "10.11.12",
       };
-      d2.files["index.js"] = "console.log('d')";
+      d2.files = {
+        "index.js": "export default function() { console.log('d'); }",
+      };
       project.writeSync();
       let workingDir = join(project.root, "working");
       let builderRoot = new NpmImportPackagesNode(
@@ -68,7 +106,7 @@ QUnit.module("Install from npm", function () {
         resolver
       );
       let builder = new Builder(fs, [builderRoot], recipesURL);
-      packages = (await builder.build())[0];
+      packageURLs = (await builder.build())[0].map(({ finalURL }) => finalURL);
     });
 
     hooks.after(function () {
@@ -77,22 +115,61 @@ QUnit.module("Install from npm", function () {
     });
 
     test("updates node_modules packages with entrypoints.json", async function (assert) {
-      let [pkgA, pkgC] = packages;
+      let [pkgAURL, pkgCURL] = packageURLs;
       let aEntrypoints = JSON.parse(
         await (
-          await fs.openFile(new URL("entrypoints.json", pkgA.url))
+          await fs.openFile(new URL("entrypoints.json", pkgAURL))
         ).readText()
       );
       assert.deepEqual(aEntrypoints.js, ["./index.js"]);
       assert.notOk(aEntrypoints.html);
       assert.deepEqual(aEntrypoints.dependencies, {
         b: { url: "https://catalogjs.com/pkgs/npm/b/", range: "4.5.6" },
+        e: { url: "https://catalogjs.com/pkgs/npm/e/", range: "2.3.4" },
       });
 
-      let [pkgB1] = pkgA.dependencies;
+      let cEntrypoints = JSON.parse(
+        await (
+          await fs.openFile(new URL("entrypoints.json", pkgCURL))
+        ).readText()
+      );
+      assert.deepEqual(cEntrypoints.js, ["./index.js"]);
+      assert.notOk(cEntrypoints.html);
+      assert.deepEqual(cEntrypoints.dependencies, {
+        b: { url: "https://catalogjs.com/pkgs/npm/b/", range: "7.8.9" },
+      });
+    });
+
+    test("it creates lock files for packages", async function (assert) {
+      let [pkgAURL, pkgCURL] = packageURLs;
+      let lock = JSON.parse(
+        await (await fs.openFile(new URL("catalogjs.lock", pkgAURL))).readText()
+      );
+      assert.deepEqual(lock, {
+        b:
+          "https://catalogjs.com/pkgs/npm/b/4.5.6/GPK8msJ9aPVm9Y8BPhPPh5fA5M4=/",
+        e:
+          "https://catalogjs.com/pkgs/npm/e/2.3.4/3HHDrHWAD4EmwKIiLurOF2RsOr0=/",
+      });
+
+      lock = JSON.parse(
+        await (await fs.openFile(new URL("catalogjs.lock", pkgCURL))).readText()
+      );
+      assert.deepEqual(lock, {
+        b:
+          "https://catalogjs.com/pkgs/npm/b/7.8.9/cMh7+-SOkesYmVx7wn6d74z5o7M=/",
+      });
+    });
+
+    test("builds package dependencies", async function (assert) {
+      let [pkgAURL, pkgCURL] = packageURLs;
+      let aLock = JSON.parse(
+        await (await fs.openFile(new URL("catalogjs.lock", pkgAURL))).readText()
+      );
+      let { b: pkgB1URL } = aLock;
       let b1Entrypoints = JSON.parse(
         await (
-          await fs.openFile(new URL("entrypoints.json", pkgB1.url))
+          await fs.openFile(new URL("entrypoints.json", pkgB1URL))
         ).readText()
       );
       assert.deepEqual(b1Entrypoints.js, ["./b.js"]);
@@ -101,177 +178,71 @@ QUnit.module("Install from npm", function () {
         d: { url: "https://catalogjs.com/pkgs/npm/d/", range: "10.11.12" },
       });
 
-      let cEntrypoints = JSON.parse(
+      let { e: pkgEURL } = aLock;
+      let eEntrypoints = JSON.parse(
         await (
-          await fs.openFile(new URL("entrypoints.json", pkgC.url))
+          await fs.openFile(new URL("entrypoints.json", pkgEURL))
         ).readText()
       );
-      assert.deepEqual(cEntrypoints.js, ["./index.js"]);
-      assert.notOk(cEntrypoints.html);
-      assert.deepEqual(cEntrypoints.dependencies, {
-        b: { url: "https://catalogjs.com/pkgs/npm/b/", range: "7.8.9" },
-      });
+      assert.deepEqual(eEntrypoints.js, ["./index.js"]);
+      assert.notOk(eEntrypoints.html);
+      assert.deepEqual(eEntrypoints.dependencies, {});
+      await assert.file(new URL("catalogjs.lock", pkgEURL).href).doesNotExist();
 
-      let [pkgB2] = pkgC.dependencies;
+      let b1Lock = JSON.parse(
+        await (
+          await fs.openFile(new URL("catalogjs.lock", pkgB1URL))
+        ).readText()
+      );
+      assert.deepEqual(b1Lock, {
+        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/hloD8imK3ZAOrPIM2sC5dT2ouY8=/`,
+      });
+      let { d: pkgD1URL } = b1Lock;
+      let d1Entrypoints = JSON.parse(
+        await (
+          await fs.openFile(new URL("entrypoints.json", pkgD1URL))
+        ).readText()
+      );
+      assert.deepEqual(d1Entrypoints.js, ["./index.js"]);
+      assert.deepEqual(d1Entrypoints.dependencies, {});
+      assert.notOk(d1Entrypoints.html);
+      await assert
+        .file(new URL("catalogjs.lock", pkgD1URL).href)
+        .doesNotExist();
+
+      let cLock = JSON.parse(
+        await (await fs.openFile(new URL("catalogjs.lock", pkgCURL))).readText()
+      );
+      let { b: pkgB2URL } = cLock;
       let b2Entrypoints = JSON.parse(
         await (
-          await fs.openFile(new URL("entrypoints.json", pkgB2.url))
+          await fs.openFile(new URL("entrypoints.json", pkgB2URL))
         ).readText()
       );
       assert.deepEqual(b2Entrypoints.js, ["./index.js"]);
       assert.notOk(b2Entrypoints.html);
-      assert.deepEqual(b1Entrypoints.dependencies, {
+      assert.deepEqual(b2Entrypoints.dependencies, {
         d: { url: "https://catalogjs.com/pkgs/npm/d/", range: "10.11.12" },
       });
 
-      let [pkgD1] = pkgB1.dependencies;
-      let [pkgD2] = pkgB2.dependencies;
-      let d1Entrypoints = JSON.parse(
+      let b2Lock = JSON.parse(
         await (
-          await fs.openFile(new URL("entrypoints.json", pkgD1.url))
+          await fs.openFile(new URL("catalogjs.lock", pkgB2URL))
         ).readText()
       );
-      let d2Entrypoints = JSON.parse(
-        await (
-          await fs.openFile(new URL("entrypoints.json", pkgD2.url))
-        ).readText()
-      );
-      assert.deepEqual(d1Entrypoints, d2Entrypoints);
-      assert.deepEqual(d1Entrypoints.js, ["./index.js"]);
-      assert.deepEqual(d1Entrypoints.dependencies, {});
-      assert.notOk(d1Entrypoints.html);
-    });
-
-    test("build output returns package info", async function (assert) {
-      assert.equal(packages.length, 2);
-      let [pkgA, pkgC] = packages;
-      assert.equal(pkgA.packageJSON.name, "a");
-      assert.equal(pkgA.packageJSON.version, "1.2.3");
-      assert.deepEqual(pkgA.packageJSON.dependencies, { b: "4.5.6" });
-      assert.equal(pkgA.hash, "651BAwceOf4ctC4Aru+5SCwhX5w=");
-      assert.equal(
-        pkgA.url.href,
-        `https://catalogjs.com/pkgs/npm/${pkgA.packageJSON.name}/${pkgA.packageJSON.version}/${pkgA.hash}/`
-      );
-      assert.equal(pkgA.dependencies.length, 1);
-
-      let [pkgB1] = pkgA.dependencies;
-      assert.equal(pkgB1.packageJSON.name, "b");
-      assert.equal(pkgB1.packageJSON.version, "4.5.6");
-      assert.deepEqual(pkgB1.packageJSON.dependencies, {
-        d: "10.11.12",
+      assert.deepEqual(b2Lock, {
+        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/hloD8imK3ZAOrPIM2sC5dT2ouY8=/`,
       });
-      assert.equal(pkgB1.hash, "7tZJmfXDuIqZnobQcW6vgc6XpR8=");
-      assert.equal(
-        pkgB1.url.href,
-        `https://catalogjs.com/pkgs/npm/${pkgB1.packageJSON.name}/${pkgB1.packageJSON.version}/${pkgB1.hash}/`
-      );
-      assert.equal(pkgB1.dependencies.length, 1);
-
-      let [pkgD1] = pkgB1.dependencies;
-      assert.equal(pkgD1.packageJSON.name, "d");
-      assert.equal(pkgD1.packageJSON.version, "10.11.12");
-      assert.deepEqual(pkgD1.packageJSON.dependencies, {});
-      assert.equal(pkgD1.hash, "hloD8imK3ZAOrPIM2sC5dT2ouY8=");
-      assert.equal(
-        pkgD1.url.href,
-        `https://catalogjs.com/pkgs/npm/${pkgD1.packageJSON.name}/${pkgD1.packageJSON.version}/${pkgD1.hash}/`
-      );
-      assert.equal(pkgD1.dependencies.length, 0);
-
-      assert.equal(pkgC.packageJSON.name, "c");
-      assert.equal(pkgC.packageJSON.version, "1.2.3");
-      assert.deepEqual(pkgC.packageJSON.dependencies, { b: "7.8.9" });
-      assert.equal(pkgC.hash, "apNVJQxLZdbFr32-hLWmICcfWSA=");
-      assert.equal(
-        pkgC.url.href,
-        `https://catalogjs.com/pkgs/npm/${pkgC.packageJSON.name}/${pkgC.packageJSON.version}/${pkgC.hash}/`
-      );
-      assert.equal(pkgC.dependencies.length, 1);
-
-      let [pkgB2] = pkgC.dependencies;
-      assert.equal(pkgB2.packageJSON.name, "b");
-      assert.equal(pkgB2.packageJSON.version, "7.8.9");
-      assert.deepEqual(pkgB2.packageJSON.dependencies, {
-        d: "10.11.12",
-      });
-      assert.equal(pkgB2.hash, "B0OQjsmiq-CP1KXT1OB4Ck0-8QQ=");
-      assert.equal(
-        pkgB2.url.href,
-        `https://catalogjs.com/pkgs/npm/${pkgB2.packageJSON.name}/${pkgB2.packageJSON.version}/${pkgB2.hash}/`
-      );
-      assert.equal(pkgB2.dependencies.length, 1);
-
-      let [pkgD2] = pkgB2.dependencies;
-      assert.deepEqual(pkgD1, pkgD2);
-    });
-
-    test("it creates lock files for packages", async function (assert) {
-      let [pkgA, pkgC] = packages;
-      let [pkgB1] = pkgA.dependencies;
-      let [pkgB2] = pkgC.dependencies;
-      let [pkgD] = pkgB1.dependencies; // we proved in previous test that pkgD1 is deep equal to pkgD2
-
-      let lock = JSON.parse(
-        await (
-          await fs.openFile(new URL("catalogjs.lock", pkgA.url))
-        ).readText()
-      );
-      assert.deepEqual(lock, {
-        b: `https://catalogjs.com/pkgs/npm/b/4.5.6/${pkgB1.hash}/`,
-        "@catalogjs/loader":
-          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/",
-      });
-
-      lock = JSON.parse(
-        await (
-          await fs.openFile(new URL("catalogjs.lock", pkgB1.url))
-        ).readText()
-      );
-      assert.deepEqual(lock, {
-        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/${pkgD.hash}/`,
-        "@catalogjs/loader":
-          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/",
-      });
-
-      lock = JSON.parse(
-        await (
-          await fs.openFile(new URL("catalogjs.lock", pkgC.url))
-        ).readText()
-      );
-      assert.deepEqual(lock, {
-        b: `https://catalogjs.com/pkgs/npm/b/7.8.9/${pkgB2.hash}/`,
-        "@catalogjs/loader":
-          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/",
-      });
-
-      lock = JSON.parse(
-        await (
-          await fs.openFile(new URL("catalogjs.lock", pkgB2.url))
-        ).readText()
-      );
-      assert.deepEqual(lock, {
-        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/${pkgD.hash}/`,
-        "@catalogjs/loader":
-          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/",
-      });
-
-      lock = JSON.parse(
-        await (
-          await fs.openFile(new URL("catalogjs.lock", pkgD.url))
-        ).readText()
-      );
-      assert.deepEqual(lock, {
-        "@catalogjs/loader":
-          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/",
-      });
+      let { d: pkgD2URL } = b2Lock;
+      assert.deepEqual(pkgD2URL, pkgD1URL);
     });
   });
 
-  QUnit.module("ES interop", function (hooks) {
+  QUnit.module("ES interop", function (origHooks) {
+    let { test, hooks } = installFileAssertions(origHooks);
     let project: Project;
     let fs: FileSystem;
-    let packages: Package[];
+    let packageURLs: URL[];
     hooks.before(async function () {
       project = new Project("test-lib");
       fs = new FileSystem();
@@ -357,7 +328,9 @@ QUnit.module("Install from npm", function () {
         resolver
       );
       let builder = new Builder(fs, [builderRoot], recipesURL);
-      packages = (await builder.build())[0];
+      packageURLs = (await builder.build())[0].map(
+        ({ workingURL }) => workingURL
+      );
     });
 
     hooks.after(function () {
@@ -366,10 +339,10 @@ QUnit.module("Install from npm", function () {
     });
 
     test("it wraps CJS files with runtime loader", async function (assert) {
-      let [testPkg] = packages;
+      let [testPkgURL] = packageURLs;
 
       let src = await (
-        await fs.openFile(new URL(`${buildSrcDir}index.cjs.js`, testPkg.url))
+        await fs.openFile(new URL(`${buildSrcDir}index.cjs.js`, testPkgURL))
       ).readText();
       assert.codeEqual(
         src,
@@ -408,7 +381,7 @@ module.exports = {
       );
 
       src = await (
-        await fs.openFile(new URL(`${buildSrcDir}a.cjs.js`, testPkg.url))
+        await fs.openFile(new URL(`${buildSrcDir}a.cjs.js`, testPkgURL))
       ).readText();
       assert.codeEqual(
         src,
@@ -431,9 +404,9 @@ module.exports = {
     });
 
     test("it generates ES module shim for CJS files", async function (assert) {
-      let [testPkg] = packages;
+      let [testPkgURL] = packageURLs;
       let src = await (
-        await fs.openFile(new URL(`${buildSrcDir}index.js`, testPkg.url))
+        await fs.openFile(new URL(`${buildSrcDir}index.js`, testPkgURL))
       ).readText();
       assert.codeEqual(
         src,
@@ -443,7 +416,7 @@ module.exports = {
         `
       );
       src = await (
-        await fs.openFile(new URL(`${buildSrcDir}a.js`, testPkg.url))
+        await fs.openFile(new URL(`${buildSrcDir}a.js`, testPkgURL))
       ).readText();
       assert.codeEqual(
         src,
@@ -455,10 +428,10 @@ module.exports = {
     });
 
     test("it can wrap CJS that has duplicate require() call expressions", async function (assert) {
-      let [testPkg] = packages;
+      let [testPkgURL] = packageURLs;
 
       let src = await (
-        await fs.openFile(new URL(`${buildSrcDir}b.cjs.js`, testPkg.url))
+        await fs.openFile(new URL(`${buildSrcDir}b.cjs.js`, testPkgURL))
       ).readText();
       assert.codeEqual(
         src,
@@ -497,9 +470,9 @@ module.exports = {
     });
 
     test("it can wrap CJS that has module scoped binding named 'dependencies' (collision)", async function (assert) {
-      let [testPkg] = packages;
+      let [testPkgURL] = packageURLs;
       let src = await (
-        await fs.openFile(new URL(`${buildSrcDir}c.cjs.js`, testPkg.url))
+        await fs.openFile(new URL(`${buildSrcDir}c.cjs.js`, testPkgURL))
       ).readText();
       assert.codeEqual(
         src,
@@ -528,9 +501,9 @@ module.exports.default = dependencies;\`
     });
 
     test("it includes a runtime 'error' loader for require() with non-string literal specifier", async function (assert) {
-      let [testPkg] = packages;
+      let [testPkgURL] = packageURLs;
       let src = await (
-        await fs.openFile(new URL(`${buildSrcDir}d.cjs.js`, testPkg.url))
+        await fs.openFile(new URL(`${buildSrcDir}d.cjs.js`, testPkgURL))
       ).readText();
       assert.codeEqual(
         src,
@@ -547,7 +520,7 @@ module.exports.default = dependencies;\`
               \`module.exports.boom = function (file) {
   dependencies[0]();
 };\`,
-            )(module, module.exports, [requireHasNonStringLiteralSpecifier("https://catalogjs.com/pkgs/npm/test-pkg/1.2.3/FIuxK7Xk60rE9Nd6D9-8snnkWSU=/build_src/d.js")]);
+            )(module, module.exports, [requireHasNonStringLiteralSpecifier("test-pkg", "1.2.3", "d.js")]);
           }
           return module.exports;
         }
@@ -556,9 +529,9 @@ module.exports.default = dependencies;\`
     });
 
     test("it includes a special runtime loader for require() of node builtin module", async function (assert) {
-      let [testPkg] = packages;
+      let [testPkgURL] = packageURLs;
       let src = await (
-        await fs.openFile(new URL(`${buildSrcDir}e.cjs.js`, testPkg.url))
+        await fs.openFile(new URL(`${buildSrcDir}e.cjs.js`, testPkgURL))
       ).readText();
       assert.codeEqual(
         src,
@@ -586,9 +559,9 @@ module.exports.nope = function (filename) {
     });
 
     test("it provides support for require() of JSON files", async function (assert) {
-      let [testPkg] = packages;
+      let [testPkgURL] = packageURLs;
       let src = await (
-        await fs.openFile(new URL(`${buildSrcDir}f.cjs.js`, testPkg.url))
+        await fs.openFile(new URL(`${buildSrcDir}f.cjs.js`, testPkgURL))
       ).readText();
       assert.codeEqual(
         src,
@@ -614,7 +587,7 @@ module.exports.foo = sample.foo;\`
       );
 
       let json = await (
-        await fs.openFile(new URL(`${buildSrcDir}sample.json.js`, testPkg.url))
+        await fs.openFile(new URL(`${buildSrcDir}sample.json.js`, testPkgURL))
       ).readText();
       assert.codeEqual(
         json,
@@ -630,9 +603,9 @@ module.exports.foo = sample.foo;\`
     });
 
     test("it rewrites imported JSON files for ES6 modules", async function (assert) {
-      let [testPkg] = packages;
+      let [testPkgURL] = packageURLs;
       let json = await (
-        await fs.openFile(new URL(`${buildSrcDir}sample2.json.js`, testPkg.url))
+        await fs.openFile(new URL(`${buildSrcDir}sample2.json.js`, testPkgURL))
       ).readText();
       assert.codeEqual(
         json,
@@ -648,9 +621,9 @@ module.exports.foo = sample.foo;\`
     });
 
     test("it rewrites reexported JSON files for ES6 modules", async function (assert) {
-      let [testPkg] = packages;
+      let [testPkgURL] = packageURLs;
       let json = await (
-        await fs.openFile(new URL(`${buildSrcDir}sample3.json.js`, testPkg.url))
+        await fs.openFile(new URL(`${buildSrcDir}sample3.json.js`, testPkgURL))
       ).readText();
       assert.codeEqual(
         json,
@@ -666,9 +639,9 @@ module.exports.foo = sample.foo;\`
     });
 
     test("prop name collides with 'json' var in rewritten json", async function (assert) {
-      let [testPkg] = packages;
+      let [testPkgURL] = packageURLs;
       let json = await (
-        await fs.openFile(new URL(`${buildSrcDir}sample4.json.js`, testPkg.url))
+        await fs.openFile(new URL(`${buildSrcDir}sample4.json.js`, testPkgURL))
       ).readText();
       assert.codeEqual(
         json,
@@ -684,10 +657,10 @@ module.exports.foo = sample.foo;\`
     });
 
     test("does not rewrite JSON that is not required nor imported", async function (assert) {
-      let [testPkg] = packages;
+      let [testPkgURL] = packageURLs;
       try {
         await fs.openFile(
-          new URL(`${buildSrcDir}not-a-dep.json.js`, testPkg.url)
+          new URL(`${buildSrcDir}not-a-dep.json.js`, testPkgURL)
         );
         throw new Error(`a rewritten json file should not exist`);
       } catch (err) {

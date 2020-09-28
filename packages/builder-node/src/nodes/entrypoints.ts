@@ -6,7 +6,6 @@ import {
   RecipeGetter,
 } from "../../../builder-worker/src/nodes/common";
 import { PackageJSON, buildSrcDir } from "./package";
-import { MakePkgESCompliantNode } from "./cjs-interop";
 import {
   FileExistsNode,
   WriteFileNode,
@@ -15,9 +14,11 @@ import {
   Dependencies,
   EntrypointsJSON,
 } from "../../../builder-worker/src/nodes/entrypoint";
+import { MakePkgESCompliantNode } from "./cjs-interop";
 
 export class EntrypointsNode implements BuilderNode {
   cacheKey: string;
+  private jsEntrypoints: string[] = [];
   constructor(
     private pkgJSON: PackageJSON,
     private pkgURL: URL,
@@ -35,10 +36,10 @@ export class EntrypointsNode implements BuilderNode {
         `No entrypoints were specified for the package ${name} ${version} at ${this.pkgURL.href}`
       );
     }
+    this.jsEntrypoints = entrypoints;
 
     return {
-      esCompliant: this.esCompliantNode,
-      entrypoints: new ConstantNode(entrypoints),
+      esCompliance: this.esCompliantNode,
       entrypointsExist: new AllNode(
         entrypoints.map(
           (e) => new FileExistsNode(new URL(e, `${this.pkgURL}${buildSrcDir}`))
@@ -48,10 +49,8 @@ export class EntrypointsNode implements BuilderNode {
   }
 
   async run({
-    entrypoints,
     entrypointsExist,
   }: {
-    entrypoints: string[];
     entrypointsExist: boolean[];
   }): Promise<NextNode<void>> {
     let { name, version } = this.pkgJSON;
@@ -68,19 +67,19 @@ export class EntrypointsNode implements BuilderNode {
         // range on the right-hand side of the dep name (src URL, SHA, tag,
         // branch, etc). work with Ed to figure out a better/less npm-ish
         // thing(s) to capture here
-        range: range,
+        range,
       };
     }
 
     let entrypointsJSON: EntrypointsJSON = {
-      js: entrypoints,
+      js: this.jsEntrypoints,
       dependencies,
     };
 
     return {
       node: new WriteFileNode(
         new ConstantNode(JSON.stringify(entrypointsJSON, null, 2)),
-        new URL("entrypoints.json", this.pkgURL)
+        new URL("entrypoints.json", `${this.pkgURL}${buildSrcDir}`)
       ),
     };
   }

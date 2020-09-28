@@ -2,6 +2,9 @@ import { BuilderNode, Value } from "./common";
 import { FileSystemDriver } from "../filesystem-drivers/filesystem-driver";
 import { ListingEntry } from "../filesystem";
 
+let clock = 0;
+let updatedAt = new Map<string, number>();
+
 export class FileNode implements BuilderNode {
   isFileNode = true;
   cacheKey: string;
@@ -12,6 +15,9 @@ export class FileNode implements BuilderNode {
 
   constructor(public url: URL) {
     this.cacheKey = `file:${this.url.href}`;
+    this.cacheKey = `file:${this.url.href}:${
+      updatedAt.get(this.url.href) ?? 0
+    }`;
   }
 
   async deps() {}
@@ -49,7 +55,7 @@ export class FileListingNode implements BuilderNode {
   }
 
   constructor(public url: URL, public recurse?: true) {
-    this.cacheKey = `file-listing:${this.url.href}`;
+    this.cacheKey = `file-listing:${this.url.href}:${clock}`;
   }
 
   async deps() {}
@@ -68,7 +74,9 @@ export class FileExistsNode implements BuilderNode {
   }
 
   constructor(public url: URL) {
-    this.cacheKey = `file-exists:${this.url.href}`;
+    this.cacheKey = `file-exists:${this.url.href}:${
+      updatedAt.get(this.url.href) ?? 0
+    }`;
   }
 
   async deps() {}
@@ -87,7 +95,10 @@ export class WriteFileNode implements BuilderNode<void> {
   }
 
   constructor(private source: BuilderNode<string>, public url: URL) {
-    this.cacheKey = `write-file:${this.url.href}`;
+    updatedAt.set(this.url.href, ++clock);
+    this.cacheKey = `write-file:${this.url.href}:${updatedAt.get(
+      this.url.href
+    )!}`;
   }
 
   async deps() {

@@ -1,5 +1,5 @@
 import { BundleAssignment } from "./nodes/bundle";
-import { ModuleResolution, CyclicModuleResolution } from "./nodes/resolution";
+import { ModuleResolution, Resolution } from "./nodes/resolution";
 import {
   NamespaceMarker,
   isNamespaceMarker,
@@ -376,7 +376,7 @@ class ModuleRewriter {
           remoteName = nameDesc.original.exportedName;
           remoteModuleHref = nameDesc.original.moduleHref;
         } else if (nameDesc.type === "import") {
-          let remoteModule: ModuleResolution | CyclicModuleResolution;
+          let remoteModule: Resolution;
           ({ name: remoteName, module: remoteModule } = resolveReexport(
             nameDesc.name,
             this.module.resolvedImports[nameDesc.importIndex]
@@ -604,7 +604,7 @@ function setBindingDependencies(
   assignments: BundleAssignment[]
 ) {
   for (let [originalName, desc] of module.desc.names) {
-    let currentModule: ModuleResolution | CyclicModuleResolution = module;
+    let currentModule: Resolution = module;
     let name: string | undefined;
     // ignore circular dependencies (which is the result of recursion) so we
     // don't end up with cycles in our graph
@@ -819,9 +819,7 @@ function assignedExports(
   let reexports: Map<string, Map<string, string>> = new Map();
   for (let assignment of ownAssignments) {
     for (let [original, exposed] of assignment.exposedNames) {
-      let {
-        module,
-      }: { module: ModuleResolution | CyclicModuleResolution } = assignment;
+      let { module }: { module: Resolution } = assignment;
       if (
         (!isNamespaceMarker(original) &&
           module.desc.exports.get(original)?.type === "reexport") ||
@@ -1005,10 +1003,10 @@ function assignedImports(
 
 function resolveReexport(
   name: string | NamespaceMarker,
-  module: ModuleResolution | CyclicModuleResolution
+  module: Resolution
 ): {
   name: string | NamespaceMarker;
-  module: ModuleResolution | CyclicModuleResolution;
+  module: Resolution;
 } {
   if (isNamespaceMarker(name)) {
     return { name, module };

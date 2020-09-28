@@ -42,16 +42,6 @@
           "title": "Source Ignore Glob",
           "description": "This is a glob that describes all the files to ignore in the javascript build from the package. By default this is \"{node_modules,test}/**\", and can be overridden using the \"srcIgnoreGlob\" property."
         },
-        "additionalDependencies": {
-          "$ref": "#/definitions/additionalDependencies",
-          "title": "Additional Dependencies",
-          "description": "By default only the package.json's \"dependencies\" will be installed when processing a package. You may also specify additional dependencies, or override the package.json dependencies with the \"additionalDependencies\" property. This is helpful when the package author is relying on shadowed dependencies that are not explicitly specified, or you want to force a dependency to use a different version."
-        },
-        "skipDependencies": {
-          "$ref": "#/definitions/skipDependencies",
-          "title": "Skip Dependencies",
-          "description": "In the scenario where a package has defined a dependency that it doesn't actually consume, it can be skipped by including it in the \"skipDependencies\" list. By default all the package.json \"dependencies\" will be processed."
-        },
         "babelPlugins": {
           "$ref": "#/definitions/babelPlugins",
           "title": "Babel Plugins",
@@ -92,21 +82,6 @@
       "additionalProperties": false
     },
     "entrypoints": {
-      "type": "array",
-      "minItems": 1,
-      "items": {
-        "type": "string"
-      },
-      "additionalItems": false
-    },
-    "additionalDependencies": {
-      "type": "object",
-      "minItems": 1,
-      "additionalProperties": {
-        "type": "string"
-      }
-    },
-    "skipDependencies": {
       "type": "array",
       "minItems": 1,
       "items": {
