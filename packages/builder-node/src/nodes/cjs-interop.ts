@@ -22,7 +22,10 @@ import { JSParseNode } from "../../../builder-worker/src/nodes/js";
 import { File } from "@babel/types";
 import upperFirst from "lodash/upperFirst";
 import { RegionEditor } from "../../../builder-worker/src/code-region";
-import { pkgInfoFromSpecifier } from "../../../builder-worker/src/resolver";
+import {
+  pkgInfoFromCatalogJsURL,
+  pkgInfoFromSpecifier,
+} from "../../../builder-worker/src/resolver";
 import { PackageSrcNode, buildSrcDir } from "./package";
 // @ts-ignore repl.builtinModules is a new API added in node 14.5.0, looks like TS lint has not caught up
 import { builtinModules } from "repl";
@@ -237,7 +240,15 @@ class RewriteCJSNode implements BuilderNode {
     );
     let deps: string[] = this.desc.requires.map(({ specifier }) => {
       if (specifier == null) {
-        return `requireHasNonStringLiteralSpecifier("${this.outputURL.href}")`;
+        // the module output URL is the temp working URL which is not the same
+        // as the final URL. The final URL is impossible to know at this point
+        // in the build. Split the output URL apart into info that is useful
+        // enough to track down the problem at runtime.
+        let pkgInfo = pkgInfoFromCatalogJsURL(this.outputURL)!;
+        let { pkgName, version, modulePath } = pkgInfo;
+        return `requireHasNonStringLiteralSpecifier("${pkgName}", "${version}", ${
+          modulePath ? '"' + modulePath + '"' : "undefined"
+        })`;
       }
       let pkgInfo = pkgInfoFromSpecifier(specifier);
       if (builtinModules.includes(pkgInfo?.pkgName)) {

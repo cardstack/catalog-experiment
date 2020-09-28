@@ -5,32 +5,38 @@ import {
   Value,
   NodeOutput,
   RecipeGetter,
+  ConstantNode,
 } from "../../../builder-worker/src/nodes/common";
+import { MountNode } from "../../../builder-worker/src/nodes/file";
+import { createHash } from "crypto";
 import {
-  MountNode,
-  WriteFileNode,
-  FileNode,
-} from "../../../builder-worker/src/nodes/file";
-import { MakePkgESCompliantNode } from "./cjs-interop";
-import {
-  Package,
   PackageJSON,
-  PackageSrcNode,
-  PackageHashNode,
+  PreparePackageNode,
+  PublishPackageNode,
   getPackageJSON,
-  CreateLockFileNode,
   buildSrcDir,
+  buildOutputDir,
 } from "./package";
 import _glob from "glob";
 import { join } from "path";
 import { resolveNodePkg } from "../resolve";
 import { NodeFileSystemDriver } from "../node-filesystem-driver";
-import { ensureDirSync } from "fs-extra";
-import { EntrypointsNode } from "./entrypoints";
 import { log } from "../../../builder-worker/src/logger";
 import { MakeProjectNode } from "../../../builder-worker/src/nodes/project";
-import { Resolver } from "../../../builder-worker/src/resolver";
+import {
+  pkgInfoFromCatalogJsURL,
+  pkgInfoFromSpecifier,
+  Resolver,
+} from "../../../builder-worker/src/resolver";
 import { recipesURL } from "../../../builder-worker/src/recipes";
+import {
+  getNodeForImportResolution,
+  CyclicModuleResolution,
+  ModuleResolution,
+  ImportResolutionNodeEmitter,
+} from "../../../builder-worker/src/nodes/resolution";
+import bind from "bind-decorator";
+import { UpdateLockFileNode } from "./lock";
 
 export class NpmImportPackagesNode implements BuilderNode {
   // TODO the cache key for this should probably be some kind of lock file hash.
@@ -52,13 +58,11 @@ export class NpmImportPackagesNode implements BuilderNode {
 
   async deps() {
     return {
-      mountLoader: new MountLoaderNode(),
-      mountRecipes: new MountRecipesNode(),
-      mountPolyfills: new MountPolyfillsNode(),
+      mounts: new MakeMountsNode(),
     };
   }
 
-  async run(): Promise<NextNode<Package[]>> {
+  async run(): Promise<NextNode<{ finalURL: URL; workingURL: URL }[]>> {
     let nodes = this.pkgs.map(
       (p) =>
         new NpmImportPackageNode(
@@ -69,7 +73,6 @@ export class NpmImportPackagesNode implements BuilderNode {
         )
     );
     return {
-      // TODO add another node to unpack the PackageInfo and turn into project input/output roots
       node: new AllNode(nodes),
     };
   }
@@ -97,174 +100,30 @@ class NpmImportPackageNode implements BuilderNode {
   }
 
   async deps() {
-    return {
-      package: new MakePackageNode(this.pkgPath, this.pkgJSON, this.workingDir),
-    };
-  }
-
-  async run(
-    {
-      package: { url, hash },
-    }: {
-      package: Omit<Package, "dependencies" | "devDependencies">;
-    },
-    getRecipe: RecipeGetter
-  ): Promise<NextNode<Package>> {
-    let { name: pkgName, version, dependencies = {} } = this.pkgJSON;
-    let { additionalDependencies = {}, skipDependencies } =
-      (await getRecipe(pkgName, version)) ?? {};
-    let allDependencies = {
-      ...dependencies,
-      ...additionalDependencies,
-    };
-    if (Array.isArray(skipDependencies)) {
-      for (let skip of skipDependencies) {
-        delete allDependencies[skip];
-      }
-    }
-    let deps = Object.entries(allDependencies).map(
-      ([name]) =>
-        new NpmImportPackageNode(
-          name,
-          this.pkgPath,
-          this.workingDir,
-          this.resolver
-        )
+    log(
+      `entering package dependency: ${this.pkgJSON.name} ${this.pkgJSON.version}`
     );
     return {
-      node: new FinishNpmImportPackageNode(
-        this.pkgJSON,
-        url,
-        hash,
-        deps,
-        this.resolver
-      ),
-    };
-  }
-}
-
-class MakePackageNode implements BuilderNode {
-  cacheKey: string;
-  constructor(
-    private pkgPath: string,
-    private pkgJSON: PackageJSON,
-    private workingDir: string
-  ) {
-    this.cacheKey = `make-pkg:${pkgPath}`;
-  }
-
-  async deps() {
-    return {
-      pkgURL: new PreparePackageNode(
+      workingPkgURL: new PreparePackageNode(
         this.pkgPath,
         this.pkgJSON,
         this.workingDir
       ),
-      pkgHash: new PackageHashNode(this.pkgPath, this.pkgJSON),
     };
   }
 
   async run({
-    pkgURL,
-    pkgHash,
+    workingPkgURL,
   }: {
-    pkgURL: URL;
-    pkgHash: string;
-  }): Promise<NextNode<Omit<Package, "dependencies" | "devDependencies">>> {
+    workingPkgURL: URL;
+  }): Promise<NextNode<{ finalURL: URL; workingURL: URL }>> {
     return {
-      node: new FinishPackageNode(
-        this.pkgPath,
-        pkgURL,
-        pkgHash,
-        this.pkgJSON,
-        this.workingDir
-      ),
-    };
-  }
-}
-
-class FinishPackageNode implements BuilderNode {
-  cacheKey: string;
-  constructor(
-    private pkgPath: string,
-    private pkgURL: URL,
-    private pkgHash: string,
-    private pkgJSON: PackageJSON,
-    private workingDir: string
-  ) {
-    this.cacheKey = `finish-pkg:${pkgPath}`;
-  }
-
-  async deps() {
-    let esCompliantNode = new MakePkgESCompliantNode(
-      this.pkgURL,
-      new PackageSrcNode(
+      node: new CoreBuildNode(
         this.pkgJSON,
         this.pkgPath,
-        this.pkgURL,
+        workingPkgURL,
+        this.resolver,
         this.workingDir
-      )
-    );
-    return {
-      entrypoints: new EntrypointsNode(
-        this.pkgJSON,
-        this.pkgURL,
-        esCompliantNode
-      ),
-      esCompliant: esCompliantNode,
-    };
-  }
-
-  async run(): Promise<
-    Value<Omit<Package, "dependencies" | "devDependencies">>
-  > {
-    return {
-      value: {
-        url: this.pkgURL,
-        packageJSON: this.pkgJSON,
-        hash: this.pkgHash,
-      },
-    };
-  }
-}
-
-class PreparePackageNode implements BuilderNode {
-  cacheKey: string;
-  constructor(
-    private pkgPath: string,
-    private pkgJSON: PackageJSON,
-    private workingDir: string
-  ) {
-    this.cacheKey = `prepare-pkg:${pkgPath}`;
-  }
-
-  async deps() {
-    return {
-      hash: new PackageHashNode(this.pkgPath, this.pkgJSON),
-    };
-  }
-
-  async run({ hash }: { hash: string }): Promise<NextNode<URL>> {
-    log(
-      `entering package dependency: ${this.pkgJSON.name} ${this.pkgJSON.version}`
-    );
-    let underlyingPkgPath = join(
-      this.workingDir,
-      "cdn",
-      this.pkgJSON.name,
-      this.pkgJSON.version,
-      hash
-    ); // this is just temp until we don't need to debug any longer..
-    ensureDirSync(underlyingPkgPath);
-    return {
-      node: new MountNode(
-        new URL(
-          `https://catalogjs.com/pkgs/npm/${this.pkgJSON.name}/${this.pkgJSON.version}/${hash}/`
-        ),
-        // TODO turn this into MemoryDriver after getting the node pre-build
-        // wired into the core build, using node fs for now because it easy to
-        // debug.
-        new NodeFileSystemDriver(underlyingPkgPath)
       ),
     };
   }
@@ -272,126 +131,281 @@ class PreparePackageNode implements BuilderNode {
 
 // All node builds automatically include the @catalogjs/loader, so we
 // mount the loader so the core build has access to it.
-class MountLoaderNode implements BuilderNode {
-  cacheKey = `mount-loader`;
+class MakeMountsNode implements BuilderNode {
+  cacheKey = `make-mounts`;
 
   async deps() {}
 
-  async run(): Promise<NodeOutput<URL>> {
-    let underlyingPkgPath = resolveNodePkg("@catalogjs/loader");
-    return {
-      node: new MountNode(
+  async run(): Promise<NodeOutput<URL[]>> {
+    let loaderPath = resolveNodePkg("@catalogjs/loader");
+    let nodes: MountNode[] = [];
+    nodes.push(
+      new MountNode(
         new URL(`https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/`),
-        new NodeFileSystemDriver(underlyingPkgPath)
-      ),
-    };
-  }
-}
-
-class MountPolyfillsNode implements BuilderNode {
-  cacheKey = `mount-polyfills`;
-
-  async deps() {}
-
-  async run(): Promise<NodeOutput<URL>> {
-    let underlyingPkgPath = resolveNodePkg("@catalogjs/polyfills");
-    return {
-      node: new MountNode(
+        new NodeFileSystemDriver(loaderPath)
+      )
+    );
+    let polyfillsPath = resolveNodePkg("@catalogjs/polyfills");
+    nodes.push(
+      new MountNode(
         new URL(`https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/`),
-        new NodeFileSystemDriver(underlyingPkgPath)
-      ),
-    };
-  }
-}
-
-class MountRecipesNode implements BuilderNode {
-  cacheKey = `mount-recipes`;
-
-  async deps() {}
-
-  async run(): Promise<NodeOutput<URL>> {
-    let underlyingPath = join(resolveNodePkg("@catalogjs/recipes"), "recipes");
+        new NodeFileSystemDriver(polyfillsPath)
+      )
+    );
+    let recipesPath = join(resolveNodePkg("@catalogjs/recipes"), "recipes");
+    nodes.push(
+      new MountNode(recipesURL, new NodeFileSystemDriver(recipesPath))
+    );
     return {
-      node: new MountNode(recipesURL, new NodeFileSystemDriver(underlyingPath)),
-    };
-  }
-}
-
-class FinishNpmImportPackageNode implements BuilderNode {
-  cacheKey: FinishNpmImportPackageNode;
-  constructor(
-    private pkgJSON: PackageJSON,
-    private pkgURL: URL,
-    private pkgHash: string,
-    private dependencies: NpmImportPackageNode[],
-    private resolver: Resolver
-  ) {
-    this.cacheKey = this;
-  }
-  async deps() {
-    return this.dependencies;
-  }
-  async run(deps: { [index: number]: Package }): Promise<NextNode<Package>> {
-    let dependencies = this.dependencies.map((_, index) => deps[index]);
-    return {
-      node: new CoreBuildNode(
-        {
-          packageJSON: this.pkgJSON,
-          url: this.pkgURL,
-          hash: this.pkgHash,
-          dependencies,
-        },
-        this.resolver
-      ),
+      node: new AllNode(nodes),
     };
   }
 }
 
 class CoreBuildNode implements BuilderNode {
   cacheKey: string;
-  constructor(private pkg: Package, private resolver: Resolver) {
-    this.cacheKey = `core-build:${pkg.url.href}`;
+  private pkgDeps: Map<string, URL> = new Map();
+  constructor(
+    private pkgJSON: PackageJSON,
+    private pkgPath: string,
+    private pkgWorkingURL: URL,
+    private resolver: Resolver,
+    private workingDir: string
+  ) {
+    this.cacheKey = `core-build:${pkgWorkingURL.href}`;
   }
 
-  async deps() {
-    return {
-      lock: new CreateLockFileNode(this.pkg),
-      entrypoints: new WriteFileNode(
-        new FileNode(new URL("entrypoints.json", this.pkg.url)),
-        new URL(`${buildSrcDir}entrypoints.json`, this.pkg.url)
-      ),
-    };
-  }
-
-  async run(): Promise<NextNode<Package>> {
-    return {
-      node: new FinishCoreBuildNode(this.pkg, this.resolver),
-    };
-  }
-}
-
-class FinishCoreBuildNode implements BuilderNode {
-  cacheKey: string;
-  constructor(private pkg: Package, private resolver: Resolver) {
-    this.cacheKey = `finish-core-build:${pkg.url.href}`;
+  @bind
+  captureDependencyInfo(depName: string, depURL: URL) {
+    this.pkgDeps.set(depName, depURL);
   }
 
   async deps() {
     return {
       build: new MakeProjectNode(
-        new URL(buildSrcDir, this.pkg.url),
-        this.pkg.url,
+        new URL(buildSrcDir, this.pkgWorkingURL),
+        new URL(buildOutputDir, this.pkgWorkingURL),
+        this.resolver,
+        makeDependencyDescentEmitter(
+          this.pkgPath,
+          this.pkgWorkingURL,
+          this.workingDir,
+          this.captureDependencyInfo
+        )
+      ),
+    };
+  }
+
+  async run(): Promise<NextNode<{ finalURL: URL; workingURL: URL }>> {
+    return {
+      node: new FinishCoreBuild(
+        this.pkgJSON,
+        this.pkgWorkingURL,
+        this.pkgDeps,
+        this.workingDir
+      ),
+    };
+  }
+}
+
+class FinishCoreBuild implements BuilderNode {
+  cacheKey: string;
+  private pkgFinalURL: URL;
+  constructor(
+    private pkgJSON: PackageJSON,
+    private pkgWorkingURL: URL,
+    pkgDeps: Map<string, URL>,
+    private workingDir: string
+  ) {
+    let { name, version } = pkgJSON;
+    let depHrefs = [...pkgDeps.keys()]
+      .sort()
+      .map((depName) => pkgDeps.get(depName)!.href);
+    let hash = createHash("sha1")
+      .update(`${name}${version}${depHrefs.join("")}`)
+      .digest("base64")
+      .replace(/\//g, "-");
+    this.pkgFinalURL = new URL(
+      `https://catalogjs.com/pkgs/npm/${name}/${version}/${hash}/`
+    );
+    this.cacheKey = `finish-core-build:${this.pkgFinalURL.href}`;
+  }
+
+  async deps() {
+    return {
+      publish: new PublishPackageNode(
+        this.pkgWorkingURL,
+        this.pkgFinalURL,
+        this.workingDir
+      ),
+    };
+  }
+
+  async run(): Promise<Value<{ finalURL: URL; workingURL: URL }>> {
+    log(
+      `exiting package dependency: ${this.pkgJSON.name} ${this.pkgJSON.version}`
+    );
+    return {
+      value: { finalURL: this.pkgFinalURL, workingURL: this.pkgWorkingURL },
+    };
+  }
+}
+
+class EnterDependencyNode implements BuilderNode {
+  cacheKey: string;
+  private depName: string;
+  constructor(
+    private specifier: string,
+    private consumedFromPath: string,
+    private consumedFromURL: URL,
+    private consumptionStack: string[],
+    private workingDir: string,
+    private resolver: Resolver,
+    private captureDependencyInfo: (depName: string, depURL: URL) => void
+  ) {
+    let pkgInfo = pkgInfoFromSpecifier(specifier);
+    if (!pkgInfo) {
+      throw new Error(
+        `bug: could not figure out package name from specifier ${specifier} when resolving module ${consumedFromURL.href}`
+      );
+    }
+    this.depName = pkgInfo.pkgName;
+    this.cacheKey = `enter-dep:${this.depName},consumedFrom=${consumedFromURL.href}`;
+  }
+
+  async deps(getRecipe: RecipeGetter) {
+    let pkgInfo = pkgInfoFromCatalogJsURL(this.consumedFromURL)!;
+    let { pkgName, version } = pkgInfo;
+    if (version == null) {
+      throw new Error(
+        `bug: cannot determine version from URL ${this.consumedFromURL.href}`
+      );
+    }
+    let { resolutions } = (await getRecipe(pkgName, version)) ?? {};
+    let resolution = resolutions?.[this.depName];
+    if (resolution) {
+      return {
+        depOutput: new ConstantNode({ finalURL: new URL(resolution) }),
+      };
+    }
+
+    return {
+      depOutput: new NpmImportPackageNode(
+        this.depName,
+        this.consumedFromPath,
+        this.workingDir,
         this.resolver
       ),
     };
   }
 
-  async run(): Promise<Value<Package>> {
-    log(
-      `exiting package dependency: ${this.pkg.packageJSON.name} ${this.pkg.packageJSON.version}`
-    );
+  async run({
+    depOutput,
+  }: {
+    depOutput: { finalURL: URL; workingURL?: URL };
+  }): Promise<NextNode<ModuleResolution | CyclicModuleResolution>> {
+    let { finalURL: depURL } = depOutput;
+    this.captureDependencyInfo(this.depName, depURL);
     return {
-      value: this.pkg,
+      node: new ExitDependencyNode(
+        this.depName,
+        depURL,
+        this.specifier,
+        this.consumedFromURL,
+        this.consumedFromPath,
+        this.consumptionStack,
+        this.resolver,
+        this.workingDir,
+        this.captureDependencyInfo
+      ),
     };
   }
+}
+
+class ExitDependencyNode implements BuilderNode {
+  cacheKey: string;
+  constructor(
+    private depName: string,
+    private depURL: URL,
+    private specifier: string,
+    private consumedFromURL: URL,
+    private consumedFromPath: string,
+    private consumptionStack: string[],
+    private resolver: Resolver,
+    private workingDir: string,
+    private captureDependencyInfo: (depName: string, depURL: URL) => void
+  ) {
+    this.cacheKey = `exit-dep:${depURL.href},consumedFrom=${consumedFromURL.href}`;
+  }
+
+  async deps() {
+    let pkgWorkingURL = new URL(
+      this.consumedFromURL.href.split(buildSrcDir)[0]
+    );
+    return {
+      updateLockFile: new UpdateLockFileNode(
+        pkgWorkingURL,
+        this.depURL,
+        this.depName
+      ),
+    };
+  }
+
+  async run(): Promise<NextNode<ModuleResolution | CyclicModuleResolution>> {
+    let importResolutionNodeEmitter = makeDependencyDescentEmitter(
+      this.consumedFromPath,
+      this.consumedFromURL,
+      this.workingDir,
+      this.captureDependencyInfo,
+      this.specifier
+    );
+    return {
+      node: await importResolutionNodeEmitter(
+        this.specifier,
+        this.consumedFromURL,
+        this.resolver,
+        importResolutionNodeEmitter,
+        this.consumptionStack
+      ),
+    };
+  }
+}
+
+function makeDependencyDescentEmitter(
+  pkgPath: string,
+  pkgWorkingURL: URL,
+  workingDir: string,
+  captureDependencyInfo: (depName: string, depURL: URL) => void,
+  onExitSpecifier?: string
+): ImportResolutionNodeEmitter {
+  return async (
+    specifier: string,
+    source: URL,
+    resolver: Resolver,
+    nextEmitter: ImportResolutionNodeEmitter,
+    stack: string[] = []
+  ) => {
+    if (
+      specifier.startsWith(".") ||
+      specifier.startsWith("/") ||
+      specifier === onExitSpecifier
+    ) {
+      return getNodeForImportResolution(
+        specifier,
+        source,
+        resolver,
+        nextEmitter,
+        stack
+      );
+    }
+    return new EnterDependencyNode(
+      specifier,
+      pkgPath,
+      pkgWorkingURL,
+      stack,
+      workingDir,
+      resolver,
+      captureDependencyInfo
+    );
+  };
 }

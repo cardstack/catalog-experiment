@@ -160,7 +160,7 @@ export class HTMLEntrypoint {
 
   private replace(from: dom.Element, to: dom.Element) {
     // if the script tag is actually a root node (i.e. not a descendant of <html>
-    // element), we need to handle replacement a little diferently
+    // element), we need to handle replacement a little differently
     if (this.parsedHTML.includes(from)) {
       let index = this.parsedHTML.findIndex((i) => i === from);
       this.parsedHTML[index] = to;

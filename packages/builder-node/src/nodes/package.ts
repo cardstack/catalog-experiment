@@ -7,33 +7,36 @@ import {
   NodeOutput,
   RecipeGetter,
 } from "../../../builder-worker/src/nodes/common";
+import { pkgInfoFromCatalogJsURL } from "../../../builder-worker/src/resolver";
+import { MakePkgESCompliantNode } from "./cjs-interop";
+import { createHash } from "crypto";
+import { NodeFileSystemDriver } from "../node-filesystem-driver";
+import { EntrypointsNode } from "./entrypoints";
 import { log, debug } from "../../../builder-worker/src/logger";
 import childProcess from "child_process";
 import { promisify } from "util";
 import { ensureDirSync, existsSync, readJSONSync } from "fs-extra";
 import fs from "fs";
 import { join } from "path";
-import { resolveNodePkg } from "../resolve";
-import { createHash } from "crypto";
 import _glob from "glob";
-import { WriteFileNode } from "../../../builder-worker/src/nodes/file";
+import {
+  WriteFileNode,
+  MountNode,
+  FileListingNode,
+  FileNode,
+  FileExistsNode,
+} from "../../../builder-worker/src/nodes/file";
+import { ListingEntry } from "../../../builder-worker/src/filesystem";
 import { SrcTransformNode } from "./src-transform";
-import { LockFile } from "../../../builder-worker/src/resolver";
 import { Recipe } from "../../../builder-worker/src/recipes";
 import { coerce } from "semver";
 
-export const buildSrcDir = `build_src/`;
+export const buildOutputDir = "__output/";
+export const buildSrcDir = `__build_src/`;
 const glob = promisify(_glob);
 const readFile = promisify(fs.readFile);
 const exec = promisify(childProcess.exec);
 const githubRepoRegex = /^https:\/\/github.com\/(?<org>[^\/]+)\/(?<repo>[^\/]+)(\/tree\/(?<branch>[^\/]+)(?<subdir>\/.+|\/)?)?$/;
-
-export interface Package {
-  packageJSON: PackageJSON;
-  url: URL;
-  hash: string;
-  dependencies: Package[];
-}
 
 export interface PackageJSON {
   name: string;
@@ -43,100 +46,204 @@ export interface PackageJSON {
   dependencies?: {
     [depName: string]: string;
   };
-  devDependencies?: {
-    [depName: string]: string;
-  };
 }
 
 export function getPackageJSON(pkgPath: string): PackageJSON {
   return readJSONSync(join(pkgPath, "package.json")) as PackageJSON;
 }
 
-export class CreateLockFileNode implements BuilderNode {
+export class PreparePackageNode implements BuilderNode {
   cacheKey: string;
-  constructor(private pkg: Package) {
-    this.cacheKey = `create-pkg-lock-file:${pkg.url.href}`;
+  constructor(
+    private pkgPath: string,
+    private pkgJSON: PackageJSON,
+    private workingDir: string
+  ) {
+    this.cacheKey = `prepare-pkg:${pkgPath}`;
   }
 
-  async deps() {}
-
-  async run(): Promise<NodeOutput<void[]>> {
-    let lockfile: LockFile = {
-      // All node builds automatically get this as a dependency
-      "@catalogjs/loader":
-        "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/",
+  async deps() {
+    return {
+      pkgURL: new MakePackageWorkingAreaNode(
+        this.pkgPath,
+        this.pkgJSON,
+        this.workingDir
+      ),
     };
-    for (let dep of this.pkg.dependencies) {
-      lockfile[dep.packageJSON.name] = dep.url.href;
+  }
+
+  async run({ pkgURL }: { pkgURL: URL }): Promise<NextNode<URL>> {
+    return {
+      node: new FinishPackagePreparationNode(
+        this.pkgPath,
+        pkgURL,
+        this.pkgJSON,
+        this.workingDir
+      ),
+    };
+  }
+}
+
+class MakePackageWorkingAreaNode implements BuilderNode {
+  cacheKey: string;
+  constructor(
+    private pkgPath: string,
+    private pkgJSON: PackageJSON,
+    private workingDir: string
+  ) {
+    this.cacheKey = `make-pkg-working-area:${pkgPath}`;
+  }
+
+  async deps() {
+    return;
+  }
+
+  async run(): Promise<NextNode<URL>> {
+    // we hash the pkgPath so that we can disambiguate between multiple copies
+    // of the same pkg in different consumers--this should not be confused
+    // with the hash that is ultimately used in the canonical URL for the pkg
+    // which includes a rolled up hash of all the transitive dependencies.
+    let hash = createHash("sha1")
+      .update(this.pkgPath)
+      .digest("base64")
+      .replace(/\//g, "-");
+    let underlyingPkgPath = join(
+      this.workingDir,
+      "build",
+      this.pkgJSON.name,
+      this.pkgJSON.version,
+      hash
+    ); // this is just temp until we don't need to debug any longer..
+    ensureDirSync(underlyingPkgPath);
+    return {
+      node: new MountNode(
+        new URL(
+          `https://working/${this.pkgJSON.name}/${this.pkgJSON.version}/${hash}/`
+        ),
+        // TODO make this configurably be a memory driver. using node fs by
+        // default because it easy to debug when there are build failures.
+        new NodeFileSystemDriver(underlyingPkgPath)
+      ),
+    };
+  }
+}
+
+class FinishPackagePreparationNode implements BuilderNode {
+  cacheKey: string;
+  constructor(
+    private pkgPath: string,
+    private pkgURL: URL,
+    private pkgJSON: PackageJSON,
+    private workingDir: string
+  ) {
+    this.cacheKey = `finish-pkg-preparation:${pkgPath}`;
+  }
+
+  async deps() {
+    let esCompliance = new MakePkgESCompliantNode(
+      this.pkgURL,
+      new PackageSrcNode(
+        this.pkgJSON,
+        this.pkgPath,
+        this.pkgURL,
+        this.workingDir
+      )
+    );
+    return {
+      entrypoints: new EntrypointsNode(this.pkgJSON, this.pkgURL, esCompliance),
+      esCompliance,
+    };
+  }
+
+  async run(): Promise<Value<URL>> {
+    return { value: this.pkgURL };
+  }
+}
+
+export class PublishPackageNode implements BuilderNode {
+  cacheKey: string;
+  lockFileURL: URL;
+  constructor(
+    private pkgWorkingURL: URL,
+    private pkgFinalURL: URL,
+    private workingDir: string
+  ) {
+    this.cacheKey = `publish-pkg:${pkgFinalURL.href}`;
+    this.lockFileURL = new URL("catalogjs.lock", pkgWorkingURL);
+  }
+
+  async deps() {
+    let pkgInfo = pkgInfoFromCatalogJsURL(this.pkgFinalURL);
+    if (!pkgInfo?.pkgName || !pkgInfo?.version || !pkgInfo?.hash) {
+      throw new Error(
+        `bug: cannot figure out pkg name, version, and/or hash from URL ${this.pkgFinalURL}`
+      );
     }
+    let { pkgName, version, hash } = pkgInfo;
+    let underlyingPkgPath = join(
+      this.workingDir,
+      "cdn",
+      pkgName,
+      version,
+      hash
+    ); // this is just temp until we don't need to debug any longer..
+    ensureDirSync(underlyingPkgPath);
+    return {
+      mount: new MountNode(
+        this.pkgFinalURL,
+        new NodeFileSystemDriver(underlyingPkgPath)
+      ),
+      listingEntries: new FileListingNode(
+        new URL(buildOutputDir, this.pkgWorkingURL),
+        true
+      ),
+      hasLockFile: new FileExistsNode(this.lockFileURL),
+    };
+  }
+  async run({
+    listingEntries,
+    hasLockFile,
+  }: {
+    listingEntries: ListingEntry[];
+    hasLockFile: boolean;
+  }): Promise<NodeOutput<void[]>> {
     return {
       node: new AllNode([
-        new WriteFileNode(
-          new ConstantNode(JSON.stringify(lockfile, null, 2)),
-          new URL("catalogjs.lock", this.pkg.url)
-        ),
-        new WriteFileNode(
-          new ConstantNode(JSON.stringify(lockfile, null, 2)),
-          new URL(`${buildSrcDir}catalogjs.lock`, this.pkg.url)
+        ...listingEntries
+          .filter(({ stat }) => stat.type === "file")
+          .map(({ url }) => new PublishFileNode(url, this.pkgFinalURL)),
+        ...(hasLockFile
+          ? [new PublishFileNode(this.lockFileURL, this.pkgFinalURL)]
+          : []),
+        new PublishFileNode(
+          new URL(`${buildSrcDir}entrypoints.json`, this.pkgWorkingURL),
+          this.pkgFinalURL
         ),
       ]),
     };
   }
 }
 
-export class PackageHashNode implements BuilderNode {
+class PublishFileNode implements BuilderNode {
   cacheKey: string;
-  constructor(private pkgPath: string, private pkgJSON: PackageJSON) {
-    this.cacheKey = `package-identifier:${pkgPath}`;
-  }
-
-  async deps() {}
-
-  async run(_: never, getRecipe: RecipeGetter): Promise<NextNode<string>> {
-    let { name, version, dependencies = {} } = this.pkgJSON;
-    let { additionalDependencies = {}, skipDependencies } =
-      (await getRecipe(name, version)) ?? {};
-    let allDependencies = { ...dependencies, ...additionalDependencies };
-    if (Array.isArray(skipDependencies)) {
-      for (let skip of skipDependencies) {
-        delete allDependencies[skip];
-      }
-    }
-    let deps = Object.entries(allDependencies).map(([name]) => {
-      let depPkgPath = resolveNodePkg(name, this.pkgPath);
-      return new PackageHashNode(depPkgPath, getPackageJSON(depPkgPath));
-    });
-    return {
-      node: new FinishPackageHashNode(this.pkgJSON, deps),
-    };
-  }
-}
-
-class FinishPackageHashNode implements BuilderNode {
-  cacheKey: FinishPackageHashNode;
-  constructor(
-    private pkgJSON: PackageJSON,
-    private dependencies: PackageHashNode[]
-  ) {
-    this.cacheKey = this;
+  constructor(private url: URL, private pkgFinalURL: URL) {
+    this.cacheKey = `publish-pkg:${url.href}`;
   }
 
   async deps() {
-    return this.dependencies;
+    return { contents: new FileNode(this.url) };
   }
 
-  async run(dependencies: { [index: number]: string }): Promise<Value<string>> {
-    let depHashes = this.dependencies.map((_, index) => dependencies[index]);
-    let hash = createHash("sha1")
-      .update(
-        `${this.pkgJSON.name}${this.pkgJSON.version}${depHashes.join("")}`
-      )
-      .digest("base64")
-      .replace(/\//g, "-");
-    return { value: hash };
+  async run({ contents }: { contents: string }): Promise<NodeOutput<void>> {
+    let url = new URL(
+      this.url.href.split(buildOutputDir)[1] ?? this.url.href.split("/").pop(), // this is to handle the lock file which is placed at the root of the pkgWorkingURL
+      this.pkgFinalURL
+    );
+    return {
+      node: new WriteFileNode(new ConstantNode(contents), url),
+    };
   }
 }
-
 export class PackageSrcNode implements BuilderNode {
   cacheKey: string;
   constructor(

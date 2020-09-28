@@ -24,7 +24,8 @@ export class ModuleResolutionsNode implements BuilderNode {
   constructor(
     private projectInput: URL,
     private projectOutput: URL,
-    private resolver: Resolver
+    private resolver: Resolver,
+    private importResolutionNodeEmitter: ImportResolutionNodeEmitter
   ) {
     this.cacheKey = `module-resolutions:input=${projectInput.href},output=${projectOutput.href}`;
   }
@@ -42,7 +43,7 @@ export class ModuleResolutionsNode implements BuilderNode {
     entrypoints,
   }: {
     entrypoints: Entrypoint[];
-  }): Promise<NextNode<(ModuleResolution | CyclicModuleResolution)[]>> {
+  }): Promise<NextNode<Resolution[]>> {
     let jsEntrypoints: Set<string> = new Set();
     for (let entrypoint of entrypoints) {
       if (entrypoint instanceof HTMLEntrypoint) {
@@ -55,18 +56,24 @@ export class ModuleResolutionsNode implements BuilderNode {
     }
     let resolutions = [...jsEntrypoints].map(
       (jsEntrypoint) =>
-        new ModuleResolutionNode(new URL(jsEntrypoint), this.resolver)
+        new ModuleResolutionNode(
+          new URL(jsEntrypoint),
+          this.resolver,
+          this.importResolutionNodeEmitter
+        )
     );
     return { node: new AllNode(resolutions) };
   }
 }
+
+export type Resolution = ModuleResolution | CyclicModuleResolution;
 
 export interface ModuleResolution {
   type: "standard";
   url: URL;
   source: string;
   desc: ModuleDescription;
-  resolvedImports: (ModuleResolution | CyclicModuleResolution)[];
+  resolvedImports: Resolution[];
   resolvedImportsWithCyclicGroups: (ModuleResolution | ModuleResolution[])[];
 }
 
@@ -74,7 +81,6 @@ export interface CyclicModuleResolution {
   type: "cyclic";
   url: URL;
   desc: ModuleDescription;
-  imports: URL[];
   hrefStack: string[];
   cyclicGroup: Set<ModuleResolution>;
 }
@@ -128,11 +134,7 @@ export class ModuleDescriptionNode implements BuilderNode {
 
 export class CyclicModuleResolutionNode implements BuilderNode {
   cacheKey: string;
-  constructor(
-    private url: URL,
-    private resolver: Resolver,
-    private stack: string[]
-  ) {
+  constructor(private url: URL, private stack: string[]) {
     this.cacheKey = `cyclic-module-resolution:${url.href}`;
   }
 
@@ -152,11 +154,6 @@ export class CyclicModuleResolutionNode implements BuilderNode {
         desc,
         hrefStack: this.stack,
         cyclicGroup: new Set(), // we patch this as we exit the recursion stack
-        imports: await Promise.all(
-          desc.imports.map((imp) =>
-            this.resolver.resolve(imp.specifier, this.url)
-          )
-        ),
       },
     };
   }
@@ -167,10 +164,12 @@ export class ModuleResolutionNode implements BuilderNode {
   constructor(
     private url: URL,
     private resolver: Resolver,
+    private importResolutionNodeEmitter: ImportResolutionNodeEmitter,
     private stack: string[] = []
   ) {
     this.cacheKey = `module-resolution:${url.href}`;
   }
+
   async deps() {
     let fileNode = new FileNode(this.url);
     return { desc: new ModuleAnnotationNode(fileNode), source: fileNode };
@@ -181,23 +180,17 @@ export class ModuleResolutionNode implements BuilderNode {
   }: {
     desc: ModuleDescription;
     source: string;
-  }): Promise<NextNode<ModuleResolution | CyclicModuleResolution>> {
-    let imports: (ModuleResolutionNode | CyclicModuleResolutionNode)[];
-    imports = await Promise.all(
-      desc.imports.map(async (imp) => {
-        let depURL = await this.resolver.resolve(imp.specifier, this.url);
-        if (this.stack.includes(depURL.href)) {
-          return new CyclicModuleResolutionNode(depURL, this.resolver, [
-            ...this.stack,
-            this.url.href,
-          ]);
-        } else {
-          return new ModuleResolutionNode(depURL, this.resolver, [
-            ...this.stack,
-            this.url.href,
-          ]);
-        }
-      })
+  }): Promise<NextNode<Resolution>> {
+    let imports = await Promise.all(
+      desc.imports.map((imp) =>
+        this.importResolutionNodeEmitter(
+          imp.specifier,
+          this.url,
+          this.resolver,
+          this.importResolutionNodeEmitter,
+          this.stack
+        )
+      )
     );
     source = source.replace(annotationRegex, "");
 
@@ -211,7 +204,7 @@ class FinishResolutionNode implements BuilderNode {
   cacheKey: FinishResolutionNode;
   constructor(
     private url: URL,
-    private imports: (ModuleResolutionNode | CyclicModuleResolutionNode)[],
+    private imports: BuilderNode[],
     private desc: ModuleDescription,
     private source: string
   ) {
@@ -221,7 +214,7 @@ class FinishResolutionNode implements BuilderNode {
     return this.imports;
   }
   async run(resolutions: {
-    [importIndex: number]: ModuleResolution | CyclicModuleResolution;
+    [importIndex: number]: Resolution;
   }): Promise<Value<ModuleResolution>> {
     let module: ModuleResolution = {
       type: "standard",
@@ -275,6 +268,32 @@ class FinishResolutionNode implements BuilderNode {
     return {
       value: module,
     };
+  }
+}
+
+export type ImportResolutionNodeEmitter = (
+  specifier: string,
+  source: URL,
+  resolver: Resolver,
+  nextEmitter: ImportResolutionNodeEmitter,
+  stack: string[]
+) => Promise<BuilderNode<Resolution>>;
+
+export async function getNodeForImportResolution(
+  specifier: string,
+  source: URL,
+  resolver: Resolver,
+  nextEmitter: ImportResolutionNodeEmitter,
+  stack: string[] = []
+): Promise<CyclicModuleResolutionNode | ModuleResolutionNode> {
+  let depURL = await resolver.resolve(specifier, source);
+  if (stack.includes(depURL.href)) {
+    return new CyclicModuleResolutionNode(depURL, [...stack, source.href]);
+  } else {
+    return new ModuleResolutionNode(depURL, resolver, nextEmitter, [
+      ...stack,
+      source.href,
+    ]);
   }
 }
 
