@@ -3,7 +3,7 @@ import { installFileAssertions } from "./helpers/file-assertions";
 import "./helpers/code-equality-assertions";
 import { combineModules, ImportAssignments } from "../src/combine-modules";
 import { ModuleResolution } from "../src/nodes/resolution";
-import { Resolver } from "../src/resolver";
+import { CoreResolver } from "../src/resolver";
 import { HTMLEntrypoint } from "../src/nodes/entrypoint";
 import { BundleAssignment, Assigner } from "../src/nodes/bundle";
 import {
@@ -26,7 +26,7 @@ async function makeModuleResolutions(
     importAssignments?: ImportAssignments;
   } = {}
 ): Promise<ModuleResolution> {
-  let resolver = new Resolver(fs, recipesURL);
+  let resolver = new CoreResolver(fs, recipesURL);
   let source = await (await fs.openFile(moduleURL)).readText();
   let parsed = parse(source);
   if (parsed?.type !== "File") {

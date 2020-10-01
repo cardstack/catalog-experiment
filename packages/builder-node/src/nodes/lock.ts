@@ -49,7 +49,7 @@ export class UpdateLockFileNode implements BuilderNode {
   }
 }
 
-class ReadLockFileNode implements BuilderNode {
+export class ReadLockFileNode implements BuilderNode {
   volatile = true;
   cacheKey: ReadLockFileNode;
   constructor(private lockFileURL: URL) {

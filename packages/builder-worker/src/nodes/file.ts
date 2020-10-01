@@ -14,7 +14,7 @@ export class FileNode implements BuilderNode {
   }
 
   constructor(public url: URL) {
-    this.cacheKey = `file:${this.url.href}`;
+    // TODO don't create a new node identity--rather use the "changed" property in the node output to indicate if this is different or not....
     this.cacheKey = `file:${this.url.href}:${
       updatedAt.get(this.url.href) ?? 0
     }`;

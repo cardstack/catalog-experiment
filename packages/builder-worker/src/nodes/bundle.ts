@@ -11,7 +11,6 @@ import {
   ModuleResolution,
   isCyclicModuleResolution,
   Resolution,
-  ImportResolutionNodeEmitter,
 } from "./resolution";
 import { combineModules } from "../combine-modules";
 import { File } from "@babel/types";
@@ -33,8 +32,7 @@ export class BundleAssignmentsNode implements BuilderNode {
   constructor(
     private projectInput: URL,
     private projectOutput: URL,
-    private resolver: Resolver,
-    private importResolutionNodeEmitter: ImportResolutionNodeEmitter
+    private resolver: Resolver
   ) {
     this.cacheKey = `bundle-assignments:input=${projectInput.href},output=${projectOutput.href}`;
   }
@@ -48,8 +46,7 @@ export class BundleAssignmentsNode implements BuilderNode {
       resolutions: new ModuleResolutionsNode(
         this.projectInput,
         this.projectOutput,
-        this.resolver,
-        this.importResolutionNodeEmitter
+        this.resolver
       ),
     };
   }
@@ -281,8 +278,7 @@ export class BundleNode implements BuilderNode {
     private bundle: URL,
     private inputRoot: URL,
     private outputRoot: URL,
-    private resolver: Resolver,
-    private importResolutionNodeEmitter: ImportResolutionNodeEmitter
+    private resolver: Resolver
   ) {
     this.cacheKey = `bundle-node:url=${this.bundle.href},inputRoot=${this.inputRoot.href},outputRoot=${this.outputRoot.href}`;
   }
@@ -292,8 +288,7 @@ export class BundleNode implements BuilderNode {
       bundleAssignments: new BundleAssignmentsNode(
         this.inputRoot,
         this.outputRoot,
-        this.resolver,
-        this.importResolutionNodeEmitter
+        this.resolver
       ),
     };
   }

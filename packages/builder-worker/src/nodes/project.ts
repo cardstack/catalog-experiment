@@ -5,10 +5,6 @@ import uniqBy from "lodash/uniqBy";
 import flatten from "lodash/flatten";
 import { BundleAssignmentsNode, BundleNode, BundleAssignment } from "./bundle";
 import { Resolver } from "../resolver";
-import {
-  getNodeForImportResolution,
-  ImportResolutionNodeEmitter,
-} from "./resolution";
 
 // This can leverage global bundle assignments (that spans all projects), or it
 // can derive bundle assignments for just its own project. The latter is
@@ -28,8 +24,7 @@ export class MakeProjectNode implements BuilderNode {
   constructor(
     private inputRoot: URL,
     readonly projectOutputRoot: URL,
-    private resolver: Resolver,
-    private importResolutionNodeEmitter: ImportResolutionNodeEmitter = getNodeForImportResolution
+    private resolver: Resolver
   ) {
     this.cacheKey = `project:input=${inputRoot.href},output=${projectOutputRoot.href}`;
   }
@@ -44,8 +39,7 @@ export class MakeProjectNode implements BuilderNode {
       bundleAssignments: new BundleAssignmentsNode(
         this.inputRoot,
         this.projectOutputRoot,
-        this.resolver,
-        this.importResolutionNodeEmitter
+        this.resolver
       ),
     };
   }
@@ -78,8 +72,7 @@ export class MakeProjectNode implements BuilderNode {
             bundleURL,
             this.inputRoot,
             this.projectOutputRoot,
-            this.resolver,
-            this.importResolutionNodeEmitter
+            this.resolver
           ),
           bundleURL
         )

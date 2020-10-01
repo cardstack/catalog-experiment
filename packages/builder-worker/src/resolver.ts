@@ -1,12 +1,23 @@
 import { FileSystem } from "./filesystem";
 import { FileDescriptor } from "./filesystem-drivers/filesystem-driver";
+import { BuilderNode, ConstantNode } from "./nodes/common";
 import { EntrypointsJSON } from "./nodes/entrypoint";
 import { makeURLEndInDir } from "./path";
 import { getRecipe } from "./recipes";
 
+export const catalogjsHref = "https://catalogjs.com/pkgs/";
+export const workingHref = "https://working/";
 // TODO move this to a better place
 export interface LockFile {
   [pkgName: string]: string;
+}
+
+export interface Resolver {
+  resolveAsBuilderNode(
+    specifier: string,
+    source: URL
+  ): Promise<BuilderNode<URL>>;
+  resolve(specifier: string, source: URL): Promise<URL>;
 }
 
 interface PkgInfo {
@@ -37,9 +48,14 @@ function resolveFileExtension(url: URL, useCJSInterop: boolean): URL {
   return new URL(href);
 }
 
-export class Resolver {
+export abstract class AbstractResolver implements Resolver {
   private lockFileLocationCache: Map<string, URL> = new Map();
-  constructor(private fs: FileSystem, private recipesURL: URL) {}
+  constructor(protected fs: FileSystem, private recipesURL: URL) {}
+
+  abstract resolveAsBuilderNode(
+    specifier: string,
+    source: URL
+  ): Promise<BuilderNode<URL>>;
 
   async resolve(specifier: string, source: URL): Promise<URL> {
     if (specifier.startsWith("http://")) {
@@ -198,6 +214,20 @@ export class Resolver {
   }
 }
 
+export class CoreResolver extends AbstractResolver {
+  // TODO let's move the logic that we have to build projects from File Node
+  // URLs that match the project root input folder (currently in the Builder's
+  // InternalFileNode) into here--this is a more natural place for
+  // that.
+  async resolveAsBuilderNode(
+    specifier: string,
+    source: URL
+  ): Promise<BuilderNode<URL>> {
+    let url = await this.resolve(specifier, source);
+    return new ConstantNode(url);
+  }
+}
+
 export function pkgInfoFromSpecifier(specifier: string): PkgInfo | undefined {
   specifier = specifier.replace(/\$cjs\$$/, "");
   if (specifier.startsWith("https://")) {
@@ -218,8 +248,6 @@ export function pkgInfoFromSpecifier(specifier: string): PkgInfo | undefined {
 }
 
 export function pkgInfoFromCatalogJsURL(url: URL): PkgInfo | undefined {
-  let catalogjsHref = "https://catalogjs.com/pkgs/";
-  let workingHref = "https://working/";
   if (
     !url.href.startsWith(catalogjsHref) &&
     !url.href.startsWith(workingHref)

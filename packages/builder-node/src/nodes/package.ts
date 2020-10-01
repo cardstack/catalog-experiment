@@ -7,7 +7,7 @@ import {
   NodeOutput,
   RecipeGetter,
 } from "../../../builder-worker/src/nodes/common";
-import { pkgInfoFromCatalogJsURL } from "../../../builder-worker/src/resolver";
+import { workingHref } from "../../../builder-worker/src/resolver";
 import { MakePkgESCompliantNode } from "./cjs-interop";
 import { createHash } from "crypto";
 import { NodeFileSystemDriver } from "../node-filesystem-driver";
@@ -22,17 +22,14 @@ import _glob from "glob";
 import {
   WriteFileNode,
   MountNode,
-  FileListingNode,
-  FileNode,
-  FileExistsNode,
 } from "../../../builder-worker/src/nodes/file";
-import { ListingEntry } from "../../../builder-worker/src/filesystem";
 import { SrcTransformNode } from "./src-transform";
 import { Recipe } from "../../../builder-worker/src/recipes";
 import { coerce } from "semver";
 
 export const buildOutputDir = "__output/";
 export const buildSrcDir = `__build_src/`;
+export const pkgPathFile = `__pkgPath`;
 const glob = promisify(_glob);
 const readFile = promisify(fs.readFile);
 const exec = promisify(childProcess.exec);
@@ -118,7 +115,7 @@ class MakePackageWorkingAreaNode implements BuilderNode {
     return {
       node: new MountNode(
         new URL(
-          `https://working/${this.pkgJSON.name}/${this.pkgJSON.version}/${hash}/`
+          `${workingHref}${this.pkgJSON.name}/${this.pkgJSON.version}/${hash}/`
         ),
         // TODO make this configurably be a memory driver. using node fs by
         // default because it easy to debug when there are build failures.
@@ -150,6 +147,10 @@ class FinishPackagePreparationNode implements BuilderNode {
       )
     );
     return {
+      pkgPathFile: new WriteFileNode(
+        new ConstantNode(this.pkgPath),
+        new URL(pkgPathFile, this.pkgURL)
+      ),
       entrypoints: new EntrypointsNode(this.pkgJSON, this.pkgURL, esCompliance),
       esCompliance,
     };
@@ -160,90 +161,6 @@ class FinishPackagePreparationNode implements BuilderNode {
   }
 }
 
-export class PublishPackageNode implements BuilderNode {
-  cacheKey: string;
-  lockFileURL: URL;
-  constructor(
-    private pkgWorkingURL: URL,
-    private pkgFinalURL: URL,
-    private workingDir: string
-  ) {
-    this.cacheKey = `publish-pkg:${pkgFinalURL.href}`;
-    this.lockFileURL = new URL("catalogjs.lock", pkgWorkingURL);
-  }
-
-  async deps() {
-    let pkgInfo = pkgInfoFromCatalogJsURL(this.pkgFinalURL);
-    if (!pkgInfo?.pkgName || !pkgInfo?.version || !pkgInfo?.hash) {
-      throw new Error(
-        `bug: cannot figure out pkg name, version, and/or hash from URL ${this.pkgFinalURL}`
-      );
-    }
-    let { pkgName, version, hash } = pkgInfo;
-    let underlyingPkgPath = join(
-      this.workingDir,
-      "cdn",
-      pkgName,
-      version,
-      hash
-    ); // this is just temp until we don't need to debug any longer..
-    ensureDirSync(underlyingPkgPath);
-    return {
-      mount: new MountNode(
-        this.pkgFinalURL,
-        new NodeFileSystemDriver(underlyingPkgPath)
-      ),
-      listingEntries: new FileListingNode(
-        new URL(buildOutputDir, this.pkgWorkingURL),
-        true
-      ),
-      hasLockFile: new FileExistsNode(this.lockFileURL),
-    };
-  }
-  async run({
-    listingEntries,
-    hasLockFile,
-  }: {
-    listingEntries: ListingEntry[];
-    hasLockFile: boolean;
-  }): Promise<NodeOutput<void[]>> {
-    return {
-      node: new AllNode([
-        ...listingEntries
-          .filter(({ stat }) => stat.type === "file")
-          .map(({ url }) => new PublishFileNode(url, this.pkgFinalURL)),
-        ...(hasLockFile
-          ? [new PublishFileNode(this.lockFileURL, this.pkgFinalURL)]
-          : []),
-        new PublishFileNode(
-          new URL(`${buildSrcDir}entrypoints.json`, this.pkgWorkingURL),
-          this.pkgFinalURL
-        ),
-      ]),
-    };
-  }
-}
-
-class PublishFileNode implements BuilderNode {
-  cacheKey: string;
-  constructor(private url: URL, private pkgFinalURL: URL) {
-    this.cacheKey = `publish-pkg:${url.href}`;
-  }
-
-  async deps() {
-    return { contents: new FileNode(this.url) };
-  }
-
-  async run({ contents }: { contents: string }): Promise<NodeOutput<void>> {
-    let url = new URL(
-      this.url.href.split(buildOutputDir)[1] ?? this.url.href.split("/").pop(), // this is to handle the lock file which is placed at the root of the pkgWorkingURL
-      this.pkgFinalURL
-    );
-    return {
-      node: new WriteFileNode(new ConstantNode(contents), url),
-    };
-  }
-}
 export class PackageSrcNode implements BuilderNode {
   cacheKey: string;
   constructor(
