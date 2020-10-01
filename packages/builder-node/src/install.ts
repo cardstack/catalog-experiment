@@ -7,8 +7,8 @@ import { NpmImportPackagesNode } from "./nodes/npm-import";
 import { ensureDirSync } from "fs-extra";
 import fetch from "node-fetch";
 import { closeAll } from "./node-filesystem-driver";
-import { Resolver } from "../../builder-worker/src/resolver";
 import { recipesURL } from "../../builder-worker/src/recipes";
+import { NodeResolver } from "./resolver";
 
 if (!globalThis.fetch) {
   (globalThis.fetch as any) = fetch;
@@ -41,7 +41,7 @@ let projectDir = resolve(join(process.cwd(), project));
   let workingDir = join(process.cwd(), "working");
   ensureDirSync(workingDir);
   let fs = new FileSystem();
-  let resolver = new Resolver(fs, recipesURL);
+  let resolver = new NodeResolver(fs, workingDir);
   let builderRoot = new NpmImportPackagesNode(
     pkgs,
     projectDir,

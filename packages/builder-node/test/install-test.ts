@@ -7,9 +7,9 @@ import { FileSystem } from "../../builder-worker/src/filesystem";
 import { closeAll } from "../src/node-filesystem-driver";
 import merge from "lodash/merge";
 import { buildSrcDir } from "../src/nodes/package";
-import { Resolver } from "../../builder-worker/src/resolver";
 import { recipesURL } from "../../builder-worker/src/recipes";
 import { installFileAssertions } from "../../builder-worker/test/helpers/file-assertions";
+import { NodeResolver } from "../src/resolver";
 
 QUnit.module("Install from npm", function () {
   QUnit.module("pkg dependencies", function (origHooks) {
@@ -21,7 +21,6 @@ QUnit.module("Install from npm", function () {
     hooks.before(async function () {
       project = new Project("test-lib");
       fs = new FileSystem();
-      let resolver = new Resolver(fs, recipesURL);
       let a = project.addDependency("a", "1.2.3");
       a.pkg = {
         name: "a",
@@ -99,6 +98,7 @@ QUnit.module("Install from npm", function () {
       };
       project.writeSync();
       let workingDir = join(project.root, "working");
+      let resolver = new NodeResolver(fs, workingDir);
       let builderRoot = new NpmImportPackagesNode(
         ["a", "c"],
         join(project.root, "test-lib"),
@@ -147,9 +147,9 @@ QUnit.module("Install from npm", function () {
       );
       assert.deepEqual(lock, {
         b:
-          "https://catalogjs.com/pkgs/npm/b/4.5.6/GPK8msJ9aPVm9Y8BPhPPh5fA5M4=/",
+          "https://catalogjs.com/pkgs/npm/b/4.5.6/q-VwjabeuTToknSVrW+emXye55w=/b.js",
         e:
-          "https://catalogjs.com/pkgs/npm/e/2.3.4/3HHDrHWAD4EmwKIiLurOF2RsOr0=/",
+          "https://catalogjs.com/pkgs/npm/e/2.3.4/3HHDrHWAD4EmwKIiLurOF2RsOr0=/index.js",
       });
 
       lock = JSON.parse(
@@ -157,7 +157,7 @@ QUnit.module("Install from npm", function () {
       );
       assert.deepEqual(lock, {
         b:
-          "https://catalogjs.com/pkgs/npm/b/7.8.9/cMh7+-SOkesYmVx7wn6d74z5o7M=/",
+          "https://catalogjs.com/pkgs/npm/b/7.8.9/6LqJQFQXBznRzHbvKXVsF39KLTE=/index.js",
       });
     });
 
@@ -195,7 +195,7 @@ QUnit.module("Install from npm", function () {
         ).readText()
       );
       assert.deepEqual(b1Lock, {
-        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/hloD8imK3ZAOrPIM2sC5dT2ouY8=/`,
+        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/hloD8imK3ZAOrPIM2sC5dT2ouY8=/index.js`,
       });
       let { d: pkgD1URL } = b1Lock;
       let d1Entrypoints = JSON.parse(
@@ -231,7 +231,7 @@ QUnit.module("Install from npm", function () {
         ).readText()
       );
       assert.deepEqual(b2Lock, {
-        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/hloD8imK3ZAOrPIM2sC5dT2ouY8=/`,
+        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/hloD8imK3ZAOrPIM2sC5dT2ouY8=/index.js`,
       });
       let { d: pkgD2URL } = b2Lock;
       assert.deepEqual(pkgD2URL, pkgD1URL);
@@ -246,7 +246,6 @@ QUnit.module("Install from npm", function () {
     hooks.before(async function () {
       project = new Project("test-lib");
       fs = new FileSystem();
-      let resolver = new Resolver(fs, recipesURL);
       let pkg = project.addDependency("test-pkg", "1.2.3");
       pkg.pkg = {
         name: "test-pkg",
@@ -321,6 +320,7 @@ QUnit.module("Install from npm", function () {
       });
       project.writeSync();
       let workingDir = join(project.root, "working");
+      let resolver = new NodeResolver(fs, workingDir);
       let builderRoot = new NpmImportPackagesNode(
         ["test-pkg"],
         join(project.root, "test-lib"),

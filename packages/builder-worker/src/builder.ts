@@ -24,7 +24,7 @@ import { Deferred } from "./deferred";
 import { assertNever } from "@catalogjs/shared/util";
 import { error } from "./logger";
 import sortBy from "lodash/sortBy";
-import { Resolver } from "./resolver";
+import { CoreResolver } from "./resolver";
 import { getRecipe, Recipe } from "./recipes";
 
 type BoolForEach<T> = {
@@ -246,7 +246,12 @@ class BuildRunner<Input> {
     }
 
     if (FileExistsNode.isFileExistsNode(node)) {
-      return new InternalFileExistsNode(node, this.fs);
+      return new InternalFileExistsNode(
+        node,
+        this.fs,
+        this.getCurrentContext,
+        this.ensureWatching
+      );
     }
 
     if (FileListingNode.isFileListingNode(node)) {
@@ -412,7 +417,7 @@ export class Builder<Input> {
 
   // roots lists [inputRoot, outputRoot]
   static forProjects(fs: FileSystem, roots: [URL, URL][], recipesURL: URL) {
-    return new this(fs, projectsToNodes(roots, fs, recipesURL), recipesURL);
+    return new this(fs, projectsToNodes(roots, fs), recipesURL);
   }
 
   async build(): ReturnType<BuildRunner<Input>["build"]> {
@@ -470,7 +475,7 @@ export class Rebuilder<Input> {
         );
       }
     }
-    return new this(fs, projectsToNodes(roots, fs, recipesURL), recipesURL);
+    return new this(fs, projectsToNodes(roots, fs), recipesURL);
   }
 
   get status():
@@ -641,10 +646,10 @@ export function explainAsDot(explanation: Explanation): string {
   return output.join("\n");
 }
 
-function projectsToNodes(roots: [URL, URL][], fs: FileSystem, recipesURL: URL) {
+function projectsToNodes(roots: [URL, URL][], fs: FileSystem) {
   return roots.map(
     ([input, output]) =>
-      new MakeProjectNode(input, output, new Resolver(fs, recipesURL))
+      new MakeProjectNode(input, output, new CoreResolver(fs))
   );
 }
 
@@ -714,6 +719,52 @@ class InternalFileNode<Input> implements BuilderNode<string> {
   }
 }
 
+class InternalFileExistsNode<Input> implements BuilderNode<boolean> {
+  private url: URL;
+  cacheKey: string;
+  volatile = true;
+  private firstRun = true;
+  constructor(
+    fileExistsNode: FileExistsNode,
+    private fs: FileSystem,
+    private getCurrentContext: () => CurrentContext,
+    private ensureWatching: BuildRunner<Input>["ensureWatching"]
+  ) {
+    this.url = fileExistsNode.url;
+    this.cacheKey = fileExistsNode.cacheKey;
+  }
+
+  async deps() {}
+
+  async run(): Promise<NodeOutput<boolean>> {
+    this.ensureWatching(this.url);
+    if (
+      !this.firstRun &&
+      !this.getCurrentContext().changedFiles.has(this.url.href)
+    ) {
+      return { unchanged: true };
+    }
+    if (this.firstRun) {
+      this.firstRun = false;
+    }
+
+    let d: DirectoryDescriptor | FileDescriptor | undefined;
+    try {
+      d = await this.fs.open(this.url);
+      return { value: true };
+    } catch (e) {
+      if (e.code === "NOT_FOUND") {
+        return { value: false };
+      }
+      throw e;
+    } finally {
+      if (d) {
+        await d.close();
+      }
+    }
+  }
+}
+
 class InternalWriteFileNode implements BuilderNode<void> {
   private url: URL;
   cacheKey: string;
@@ -752,34 +803,6 @@ class InternalMountNode implements BuilderNode<URL> {
   async run(): Promise<NodeOutput<URL>> {
     await this.fs.mount(this.mountURL, this.driver);
     return { value: this.mountURL };
-  }
-}
-
-class InternalFileExistsNode implements BuilderNode<boolean> {
-  private url: URL;
-  cacheKey: string;
-  constructor(fileExistsNode: FileExistsNode, private fs: FileSystem) {
-    this.url = fileExistsNode.url;
-    this.cacheKey = fileExistsNode.cacheKey;
-  }
-
-  async deps() {}
-
-  async run(): Promise<NodeOutput<boolean>> {
-    let d: DirectoryDescriptor | FileDescriptor | undefined;
-    try {
-      d = await this.fs.open(this.url);
-      return { value: true };
-    } catch (e) {
-      if (e.code === "NOT_FOUND") {
-        return { value: false };
-      }
-      throw e;
-    } finally {
-      if (d) {
-        await d.close();
-      }
-    }
   }
 }
 

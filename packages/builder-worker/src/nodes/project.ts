@@ -1,14 +1,11 @@
-import { BuilderNode, NextNode, AllNode, ConstantNode } from "./common";
+import { BuilderNode, NextNode, AllNode, ConstantNode, Value } from "./common";
 import { EntrypointsJSONNode, HTMLEntrypoint, Entrypoint } from "./entrypoint";
 import { WriteFileNode } from "./file";
 import uniqBy from "lodash/uniqBy";
 import flatten from "lodash/flatten";
 import { BundleAssignmentsNode, BundleNode, BundleAssignment } from "./bundle";
 import { Resolver } from "../resolver";
-import {
-  getNodeForImportResolution,
-  ImportResolutionNodeEmitter,
-} from "./resolution";
+import { LockEntries } from "./lock-file";
 
 // This can leverage global bundle assignments (that spans all projects), or it
 // can derive bundle assignments for just its own project. The latter is
@@ -22,14 +19,14 @@ import {
 // has a declared dependency on another project, and allowing the dependent
 // project to build its specific bundle, which can then be consumed by the
 // global bundle assignment effort.
-export class MakeProjectNode implements BuilderNode {
+export class MakeProjectNode implements BuilderNode<LockEntries> {
   cacheKey: string;
+  private lockEntries: LockEntries = new Map();
 
   constructor(
     private inputRoot: URL,
     readonly projectOutputRoot: URL,
-    private resolver: Resolver,
-    private importResolutionNodeEmitter: ImportResolutionNodeEmitter = getNodeForImportResolution
+    private resolver: Resolver
   ) {
     this.cacheKey = `project:input=${inputRoot.href},output=${projectOutputRoot.href}`;
   }
@@ -45,7 +42,7 @@ export class MakeProjectNode implements BuilderNode {
         this.inputRoot,
         this.projectOutputRoot,
         this.resolver,
-        this.importResolutionNodeEmitter
+        this.lockEntries
       ),
     };
   }
@@ -56,20 +53,48 @@ export class MakeProjectNode implements BuilderNode {
   }: {
     entrypoints: Entrypoint[];
     bundleAssignments: BundleAssignment[];
-  }): Promise<NextNode<void[]>> {
+  }): Promise<NextNode<LockEntries>> {
+    return {
+      node: new FinishProjectNode(
+        this.inputRoot,
+        this.projectOutputRoot,
+        entrypoints,
+        bundleAssignments,
+        this.resolver,
+        this.lockEntries
+      ),
+    };
+  }
+}
+
+class FinishProjectNode implements BuilderNode<LockEntries> {
+  cacheKey: string;
+
+  constructor(
+    private inputRoot: URL,
+    readonly projectOutputRoot: URL,
+    private entrypoints: Entrypoint[],
+    private bundleAssignments: BundleAssignment[],
+    private resolver: Resolver,
+    private lockEntries: LockEntries = new Map()
+  ) {
+    this.cacheKey = `finish-project:input=${inputRoot.href},output=${projectOutputRoot.href}`;
+  }
+
+  async deps() {
     let htmls = (uniqBy(
-      flatten(entrypoints).filter((e) => e instanceof HTMLEntrypoint),
+      flatten(this.entrypoints).filter((e) => e instanceof HTMLEntrypoint),
       "destURL"
     ) as HTMLEntrypoint[]).map(
       (htmlEntrypoint) =>
         new WriteFileNode(
-          new ConstantNode(htmlEntrypoint.render(bundleAssignments)),
+          new ConstantNode(htmlEntrypoint.render(this.bundleAssignments)),
           htmlEntrypoint.destURL
         )
     );
 
     let bundles = uniqBy(
-      bundleAssignments.map((a) => a.bundleURL),
+      this.bundleAssignments.map((a) => a.bundleURL),
       (url) => url.href
     ).map(
       (bundleURL) =>
@@ -79,12 +104,16 @@ export class MakeProjectNode implements BuilderNode {
             this.inputRoot,
             this.projectOutputRoot,
             this.resolver,
-            this.importResolutionNodeEmitter
+            this.lockEntries
           ),
           bundleURL
         )
     );
 
-    return { node: new AllNode([...htmls, ...bundles]) };
+    return { build: new AllNode([...htmls, ...bundles]) };
+  }
+
+  async run(): Promise<Value<LockEntries>> {
+    return { value: this.lockEntries };
   }
 }
