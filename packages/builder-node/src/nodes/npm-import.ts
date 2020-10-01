@@ -16,13 +16,14 @@ import {
 import { PublishPackageNode } from "./publish";
 import _glob from "glob";
 import { join } from "path";
-import { resolveNodePkg } from "../resolve";
+import { resolveNodePkg } from "../pkg-resolve";
 import { NodeFileSystemDriver } from "../node-filesystem-driver";
 import { log } from "../../../builder-worker/src/logger";
 import { MakeProjectNode } from "../../../builder-worker/src/nodes/project";
 import { Resolver } from "../../../builder-worker/src/resolver";
 import { recipesURL } from "../../../builder-worker/src/recipes";
 import { catalogjsHref } from "../../../builder-worker/src/resolver";
+import { LockEntries } from "../../../builder-worker/src/nodes/lock-file";
 
 export class NpmImportPackagesNode implements BuilderNode {
   // TODO the cache key for this should probably be some kind of lock file hash.
@@ -160,7 +161,7 @@ class CoreBuildNode implements BuilderNode {
 
   async deps() {
     return {
-      build: new MakeProjectNode(
+      lockEntries: new MakeProjectNode(
         new URL(buildSrcDir, this.pkgWorkingURL),
         new URL(buildOutputDir, this.pkgWorkingURL),
         this.resolver
@@ -168,12 +169,17 @@ class CoreBuildNode implements BuilderNode {
     };
   }
 
-  async run(): Promise<NextNode<{ finalURL: URL; workingURL: URL }>> {
+  async run({
+    lockEntries,
+  }: {
+    lockEntries: LockEntries;
+  }): Promise<NextNode<{ finalURL: URL; workingURL: URL }>> {
     return {
       node: new FinishCoreBuild(
         this.pkgJSON,
         this.pkgWorkingURL,
-        this.workingDir
+        this.workingDir,
+        lockEntries
       ),
     };
   }
@@ -184,14 +190,19 @@ class FinishCoreBuild implements BuilderNode {
   constructor(
     private pkgJSON: PackageJSON,
     private pkgWorkingURL: URL,
-    private workingDir: string
+    private workingDir: string,
+    private lockEntries: LockEntries
   ) {
     this.cacheKey = `finish-core-build:${this.pkgWorkingURL.href}`;
   }
 
   async deps() {
     return {
-      pkgFinalURL: new PublishPackageNode(this.pkgWorkingURL, this.workingDir),
+      pkgFinalURL: new PublishPackageNode(
+        this.pkgWorkingURL,
+        this.workingDir,
+        this.lockEntries
+      ),
     };
   }
 
@@ -204,7 +215,10 @@ class FinishCoreBuild implements BuilderNode {
       `exiting package dependency: ${this.pkgJSON.name} ${this.pkgJSON.version}`
     );
     return {
-      value: { finalURL: pkgFinalURL, workingURL: this.pkgWorkingURL },
+      value: {
+        finalURL: pkgFinalURL,
+        workingURL: this.pkgWorkingURL,
+      },
     };
   }
 }

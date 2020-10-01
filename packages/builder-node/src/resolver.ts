@@ -1,9 +1,9 @@
 import {
   BuilderNode,
-  NextNode,
   RecipeGetter,
   ConstantNode,
-  NodeOutput,
+  Value,
+  NextNode,
 } from "../../builder-worker/src/nodes/common";
 import { NpmImportPackageNode } from "./nodes/npm-import";
 import {
@@ -12,30 +12,34 @@ import {
   Resolver,
   AbstractResolver,
 } from "../../builder-worker/src/resolver";
-import { UpdateLockFileNode } from "./nodes/lock";
-import { buildSrcDir, pkgPathFile } from "./nodes/package";
+import { LockEntries } from "../../builder-worker/src/nodes/lock-file";
+import { pkgPathFile } from "./nodes/package";
 import { FileSystem } from "../../builder-worker/src/filesystem";
 import { FileDescriptor } from "../../builder-worker/src/filesystem-drivers/filesystem-driver";
+import { FileNode } from "../../builder-worker/src/nodes/file";
+import { EntrypointsJSON } from "../../builder-worker/src/nodes/entrypoint";
 
 export class NodeResolver extends AbstractResolver {
   private pkgPathFileCache: Map<string, string> = new Map();
-  constructor(fs: FileSystem, recipesURL: URL, private workingDir: string) {
-    super(fs, recipesURL);
+  constructor(fs: FileSystem, private workingDir: string) {
+    super(fs);
   }
   async resolveAsBuilderNode(
     specifier: string,
-    source: URL
-  ): Promise<BuilderNode<URL>> {
+    source: URL,
+    lockEntries: LockEntries
+  ): Promise<BuilderNode<{ resolution: URL; lockEntries: LockEntries }>> {
     if (specifier.startsWith(".") || specifier.startsWith("/")) {
-      let url = await this.resolve(specifier, source);
-      return new ConstantNode(url);
+      let resolution = await this.resolve(specifier, source);
+      return new ConstantNode({ resolution, lockEntries });
     }
     return new EnterDependencyNode(
       specifier,
       await this.getPkgPath(source),
       source,
       this.workingDir,
-      this
+      this,
+      lockEntries
     );
   }
 
@@ -69,7 +73,8 @@ export class NodeResolver extends AbstractResolver {
   }
 }
 
-class EnterDependencyNode implements BuilderNode<URL> {
+class EnterDependencyNode
+  implements BuilderNode<{ resolution: URL; lockEntries: LockEntries }> {
   cacheKey: string;
   private depName: string;
   constructor(
@@ -77,7 +82,8 @@ class EnterDependencyNode implements BuilderNode<URL> {
     private consumedFromPath: string,
     private consumedFromURL: URL,
     private workingDir: string,
-    private resolver: Resolver
+    private resolver: Resolver,
+    private lockEntries: LockEntries
   ) {
     let pkgInfo = pkgInfoFromSpecifier(specifier);
     if (!pkgInfo) {
@@ -118,50 +124,68 @@ class EnterDependencyNode implements BuilderNode<URL> {
   async run({
     depOutput: { finalURL },
   }: {
-    depOutput: { finalURL: URL; workingURL?: URL };
-  }): Promise<NextNode<URL>> {
+    depOutput: { finalURL: URL };
+  }): Promise<NextNode<{ resolution: URL; lockEntries: LockEntries }>> {
     return {
       node: new ExitDependencyNode(
         this.specifier,
-        this.depName,
         finalURL,
         this.consumedFromURL,
+        this.lockEntries,
         this.resolver
       ),
     };
   }
 }
 
-class ExitDependencyNode implements BuilderNode<URL> {
+class ExitDependencyNode
+  implements BuilderNode<{ resolution: URL; lockEntries: LockEntries }> {
   cacheKey: string;
   constructor(
     private specifier: string,
-    private depName: string,
-    private depFinalURL: URL,
-    private consumedFromURL: URL,
+    private depPkgFinalURL: URL,
+    consumedFromURL: URL,
+    private lockEntries: LockEntries,
     private resolver: Resolver
   ) {
-    this.cacheKey = `exit-dep:${depFinalURL.href},consumedFrom=${consumedFromURL.href}`;
+    this.cacheKey = `exit-dep:${depPkgFinalURL.href},consumedFrom=${consumedFromURL.href}`;
   }
 
   async deps() {
-    let pkgWorkingURL = new URL(
-      this.consumedFromURL.href.split(buildSrcDir)[0]
-    );
     return {
-      updateLockFile: new UpdateLockFileNode(
-        pkgWorkingURL,
-        this.depFinalURL,
-        this.depName
+      entrypointsFile: new FileNode(
+        new URL("entrypoints.json", this.depPkgFinalURL)
       ),
     };
   }
 
-  async run(): Promise<NodeOutput<URL>> {
-    let resolvedURL = await this.resolver.resolve(
-      this.specifier,
-      this.consumedFromURL
-    );
-    return { value: resolvedURL };
+  async run({
+    entrypointsFile,
+  }: {
+    entrypointsFile: string;
+  }): Promise<Value<{ resolution: URL; lockEntries: LockEntries }>> {
+    let entrypointsJSON: EntrypointsJSON = JSON.parse(entrypointsFile);
+    let resolution: URL;
+
+    let { modulePath } = pkgInfoFromSpecifier(this.specifier)!;
+    if (modulePath) {
+      // deal with specifiers that look like "lodash/flatMap", where there is a
+      // corresponding bundle in the pkg folder
+      resolution = await this.resolver.resolve(
+        `./${modulePath}`,
+        this.depPkgFinalURL
+      );
+    } else {
+      // otherwise we use the first entrypoint in the entrypoints.json
+      let entrypoint = entrypointsJSON.js?.[0];
+      if (!entrypoint) {
+        throw new Error(
+          `Cannot find js entrypoint for package ${this.depPkgFinalURL}`
+        );
+      }
+      resolution = new URL(entrypoint, this.depPkgFinalURL);
+    }
+    this.lockEntries.set(this.specifier, resolution);
+    return { value: { resolution, lockEntries: this.lockEntries } };
   }
 }

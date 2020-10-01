@@ -4,7 +4,7 @@ import { resolve, join } from "path";
 import { NodeFileSystemDriver, closeAll } from "./node-filesystem-driver";
 import { FileSystem } from "../../builder-worker/src/filesystem";
 import { Builder } from "../../builder-worker/src/builder";
-import { resolveNodePkg } from "./resolve";
+import { resolveNodePkg } from "./pkg-resolve";
 import { ensureDirSync, removeSync } from "fs-extra";
 import fetch from "node-fetch";
 import { recipesURL } from "../../builder-worker/src/recipes";

@@ -25,6 +25,7 @@ import { JSParseNode } from "./js";
 import { encodeModuleDescription } from "../description-encoder";
 import { makeURLEndInDir } from "../path";
 import { Resolver } from "../resolver";
+import { LockEntries } from "./lock-file";
 
 export class BundleAssignmentsNode implements BuilderNode {
   cacheKey: string;
@@ -32,7 +33,8 @@ export class BundleAssignmentsNode implements BuilderNode {
   constructor(
     private projectInput: URL,
     private projectOutput: URL,
-    private resolver: Resolver
+    private resolver: Resolver,
+    private lockEntries: LockEntries
   ) {
     this.cacheKey = `bundle-assignments:input=${projectInput.href},output=${projectOutput.href}`;
   }
@@ -46,7 +48,8 @@ export class BundleAssignmentsNode implements BuilderNode {
       resolutions: new ModuleResolutionsNode(
         this.projectInput,
         this.projectOutput,
-        this.resolver
+        this.resolver,
+        this.lockEntries
       ),
     };
   }
@@ -278,7 +281,8 @@ export class BundleNode implements BuilderNode {
     private bundle: URL,
     private inputRoot: URL,
     private outputRoot: URL,
-    private resolver: Resolver
+    private resolver: Resolver,
+    private lockEntries: LockEntries
   ) {
     this.cacheKey = `bundle-node:url=${this.bundle.href},inputRoot=${this.inputRoot.href},outputRoot=${this.outputRoot.href}`;
   }
@@ -288,7 +292,8 @@ export class BundleNode implements BuilderNode {
       bundleAssignments: new BundleAssignmentsNode(
         this.inputRoot,
         this.outputRoot,
-        this.resolver
+        this.resolver,
+        this.lockEntries
       ),
     };
   }

@@ -417,7 +417,7 @@ export class Builder<Input> {
 
   // roots lists [inputRoot, outputRoot]
   static forProjects(fs: FileSystem, roots: [URL, URL][], recipesURL: URL) {
-    return new this(fs, projectsToNodes(roots, fs, recipesURL), recipesURL);
+    return new this(fs, projectsToNodes(roots, fs), recipesURL);
   }
 
   async build(): ReturnType<BuildRunner<Input>["build"]> {
@@ -475,7 +475,7 @@ export class Rebuilder<Input> {
         );
       }
     }
-    return new this(fs, projectsToNodes(roots, fs, recipesURL), recipesURL);
+    return new this(fs, projectsToNodes(roots, fs), recipesURL);
   }
 
   get status():
@@ -646,10 +646,10 @@ export function explainAsDot(explanation: Explanation): string {
   return output.join("\n");
 }
 
-function projectsToNodes(roots: [URL, URL][], fs: FileSystem, recipesURL: URL) {
+function projectsToNodes(roots: [URL, URL][], fs: FileSystem) {
   return roots.map(
     ([input, output]) =>
-      new MakeProjectNode(input, output, new CoreResolver(fs, recipesURL))
+      new MakeProjectNode(input, output, new CoreResolver(fs))
   );
 }
 

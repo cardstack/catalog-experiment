@@ -115,7 +115,7 @@ class MakePackageWorkingAreaNode implements BuilderNode {
     return {
       node: new MountNode(
         new URL(
-          `${workingHref}${this.pkgJSON.name}/${this.pkgJSON.version}/${hash}/`
+          `${workingHref}npm/${this.pkgJSON.name}/${this.pkgJSON.version}/${hash}/`
         ),
         // TODO make this configurably be a memory driver. using node fs by
         // default because it easy to debug when there are build failures.

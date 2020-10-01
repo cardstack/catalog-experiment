@@ -41,7 +41,7 @@ let projectDir = resolve(join(process.cwd(), project));
   let workingDir = join(process.cwd(), "working");
   ensureDirSync(workingDir);
   let fs = new FileSystem();
-  let resolver = new NodeResolver(fs, recipesURL, workingDir);
+  let resolver = new NodeResolver(fs, workingDir);
   let builderRoot = new NpmImportPackagesNode(
     pkgs,
     projectDir,

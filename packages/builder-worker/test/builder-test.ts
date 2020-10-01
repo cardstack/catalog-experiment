@@ -1367,7 +1367,7 @@ QUnit.module("module builder", function (origHooks) {
     test("can resolve entrypoint module from pkg in lock file", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["index.js"] }`,
-        "catalogjs.lock": `{ "a": "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/" }`,
+        "catalogjs.lock": `{ "a": "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/dist/a-es6.js" }`,
         "index.js": `
           import a from "a";
           export default function() { a(); }
@@ -1394,7 +1394,7 @@ QUnit.module("module builder", function (origHooks) {
     test("can resolve entrypoint module from pkg with scoped name in lock file", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["index.js"] }`,
-        "catalogjs.lock": `{ "@mango/a": "https://catalogjs.com/pkgs/npm/@mango/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/" }`,
+        "catalogjs.lock": `{ "@mango/a": "https://catalogjs.com/pkgs/npm/@mango/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/dist/a-es6.js" }`,
         "index.js": `
           import a from "@mango/a";
           export default function() { a(); }
@@ -1421,7 +1421,10 @@ QUnit.module("module builder", function (origHooks) {
     test("can resolve non-primary entrypoint module from pkg in lock file", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["index.js"] }`,
-        "catalogjs.lock": `{ "a": "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/" }`,
+        "catalogjs.lock": `{
+          "a": "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/a.js",
+          "a/b": "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/b.js"
+        }`,
         "index.js": `
           import a from "a/b";
           export default function() { a(); }

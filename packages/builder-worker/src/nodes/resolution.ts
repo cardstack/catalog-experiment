@@ -5,6 +5,8 @@ import {
   AllNode,
   annotationRegex,
   NodeOutput,
+  ConstantNode,
+  RecipeGetter,
 } from "./common";
 import { EntrypointsJSONNode, HTMLEntrypoint, Entrypoint } from "./entrypoint";
 import { FileNode } from "./file";
@@ -16,7 +18,8 @@ import {
 } from "../describe-file";
 import { File } from "@babel/types";
 import { decodeModuleDescription } from "../description-encoder";
-import { Resolver } from "../resolver";
+import { Resolver, pkgInfoFromCatalogJsURL } from "../resolver";
+import { LockFile, GetLockFileNode, LockEntries } from "./lock-file";
 
 export class ModuleResolutionsNode implements BuilderNode {
   cacheKey: string;
@@ -24,7 +27,8 @@ export class ModuleResolutionsNode implements BuilderNode {
   constructor(
     private projectInput: URL,
     private projectOutput: URL,
-    private resolver: Resolver
+    private resolver: Resolver,
+    private lockEntries: LockEntries
   ) {
     this.cacheKey = `module-resolutions:input=${projectInput.href},output=${projectOutput.href}`;
   }
@@ -55,7 +59,11 @@ export class ModuleResolutionsNode implements BuilderNode {
     }
     let resolutions = [...jsEntrypoints].map(
       (jsEntrypoint) =>
-        new ModuleResolutionNode(new URL(jsEntrypoint), this.resolver)
+        new ModuleResolutionNode(
+          new URL(jsEntrypoint),
+          this.resolver,
+          this.lockEntries
+        )
     );
     return { node: new AllNode(resolutions) };
   }
@@ -132,6 +140,7 @@ export class ModuleResolutionNode implements BuilderNode<Resolution> {
   constructor(
     private url: URL,
     private resolver: Resolver,
+    private lockEntries: LockEntries,
     private stack: string[] = []
   ) {
     this.cacheKey = `module-resolution:${url.href}`;
@@ -144,40 +153,90 @@ export class ModuleResolutionNode implements BuilderNode<Resolution> {
       desc: new ModuleAnnotationNode(file),
     };
   }
-  async run({
-    desc,
-    source,
-  }: {
-    desc: ModuleDescription;
-    source: string;
-  }): Promise<NextNode<Resolution>> {
+  async run(
+    {
+      desc,
+      source,
+    }: {
+      desc: ModuleDescription;
+      source: string;
+    },
+    getRecipe: RecipeGetter
+  ): Promise<NextNode<Resolution>> {
     let urlNodes = await Promise.all(
-      desc.imports.map((imp) =>
-        this.resolver.resolveAsBuilderNode(imp.specifier, this.url)
-      )
+      desc.imports.map(async (imp) => {
+        let { pkgName: sourcePkgName, version: sourcePkgVersion } =
+          pkgInfoFromCatalogJsURL(this.url) ?? {};
+        if (sourcePkgName && sourcePkgVersion) {
+          let { resolutions } =
+            (await getRecipe(sourcePkgName, sourcePkgVersion)) ?? {};
+          let href = resolutions?.[imp.specifier];
+          if (href) {
+            return new ConstantNode(new URL(href));
+          }
+        }
+        return new ResolveFromLock(imp.specifier, this.url, this.lockEntries);
+      })
     );
     return {
-      node: new ResolveDepURLsNode(
+      node: new FinishResolutionsFromLockNode(
         urlNodes,
         this.url,
         desc,
         source,
-        this.stack,
-        this.resolver
+        this.resolver,
+        this.lockEntries,
+        this.stack
       ),
     };
   }
 }
 
-class ResolveDepURLsNode implements BuilderNode {
-  cacheKey: ResolveDepURLsNode;
+class ResolveFromLock implements BuilderNode<URL | undefined> {
+  cacheKey: string;
   constructor(
-    private depURLNodes: BuilderNode<URL>[],
+    private specifier: string,
+    private moduleURL: URL,
+    private lockEntries: LockEntries
+  ) {
+    this.cacheKey = `resolve-from-lock:${this.specifier},module=${moduleURL.href}`;
+  }
+
+  async deps() {
+    return {
+      lockFile: new GetLockFileNode(this.moduleURL),
+    };
+  }
+
+  async run({
+    lockFile,
+  }: {
+    lockFile: LockFile | undefined;
+  }): Promise<Value<URL | undefined>> {
+    let locks = new Map<string, URL>([
+      ...new Map(
+        Object.entries(lockFile ?? {}).map(([pkgName, lockHref]) => [
+          pkgName,
+          new URL(lockHref),
+        ])
+      ),
+      ...this.lockEntries,
+    ]);
+    let resolution = locks.get(this.specifier);
+    return { value: resolution };
+  }
+}
+
+class FinishResolutionsFromLockNode implements BuilderNode {
+  cacheKey: FinishResolutionsFromLockNode;
+  constructor(
+    private depURLNodes: BuilderNode<URL | undefined>[],
     private consumerURL: URL,
     private consumerDesc: ModuleDescription,
     private consumerSource: string,
-    private stack: string[],
-    private resolver: Resolver
+    private resolver: Resolver,
+    private lockEntries: LockEntries,
+    private stack: string[]
   ) {
     this.cacheKey = this;
   }
@@ -187,16 +246,75 @@ class ResolveDepURLsNode implements BuilderNode {
       urls: new AllNode(this.depURLNodes),
     };
   }
+  async run({
+    urls,
+  }: {
+    urls: (URL | undefined)[];
+  }): Promise<NextNode<Resolution>> {
+    let depNodes = await Promise.all(
+      this.consumerDesc.imports.map(async (imp, index) => {
+        if (urls[index]) {
+          return new ConstantNode({
+            resolution: urls[index]!,
+            lockEntries: this.lockEntries,
+          });
+        }
+        return await this.resolver.resolveAsBuilderNode(
+          imp.specifier,
+          this.consumerURL,
+          this.lockEntries
+        );
+      })
+    );
+    return {
+      node: new FinishResolutionsFromResolverNode(
+        depNodes,
+        this.consumerURL,
+        this.consumerDesc,
+        this.consumerSource,
+        this.resolver,
+        this.lockEntries,
+        this.stack
+      ),
+    };
+  }
+}
+class FinishResolutionsFromResolverNode implements BuilderNode {
+  cacheKey: FinishResolutionsFromResolverNode;
+  constructor(
+    private depURLNodes: BuilderNode<{
+      resolution: URL;
+      lockEntries: LockEntries;
+    }>[],
+    private consumerURL: URL,
+    private consumerDesc: ModuleDescription,
+    private consumerSource: string,
+    private resolver: Resolver,
+    private lockEntries: LockEntries,
+    private stack: string[]
+  ) {
+    this.cacheKey = this;
+  }
 
-  async run({ urls }: { urls: URL[] }): Promise<NextNode<Resolution>> {
-    let imports = urls.map((url) => {
+  async deps() {
+    return {
+      deps: new AllNode(this.depURLNodes),
+    };
+  }
+
+  async run({
+    deps,
+  }: {
+    deps: { resolution: URL; lockEntries: LockEntries }[];
+  }): Promise<NextNode<Resolution>> {
+    let imports = deps.map(({ resolution: url }) => {
       if (this.stack.includes(url.href)) {
         return new CyclicModuleResolutionNode(url, [
           ...this.stack,
           this.consumerURL.href,
         ]);
       } else {
-        return new ModuleResolutionNode(url, this.resolver, [
+        return new ModuleResolutionNode(url, this.resolver, this.lockEntries, [
           ...this.stack,
           this.consumerURL.href,
         ]);

@@ -8,7 +8,6 @@ import {
 } from "../../../builder-worker/src/nodes/common";
 import {
   catalogjsHref,
-  LockFile,
   pkgInfoFromCatalogJsURL,
 } from "../../../builder-worker/src/resolver";
 import { createHash } from "crypto";
@@ -21,46 +20,43 @@ import {
   MountNode,
   FileListingNode,
   FileNode,
-  FileExistsNode,
 } from "../../../builder-worker/src/nodes/file";
 import { ListingEntry } from "../../../builder-worker/src/filesystem";
-import { ReadLockFileNode } from "./lock";
+import {
+  LockEntries,
+  WriteLockFileNode,
+} from "../../../builder-worker/src/nodes/lock-file";
 import { buildOutputDir, buildSrcDir } from "./package";
 
 export class MakePackageHashNode implements BuilderNode {
   cacheKey: string;
-  lockFileURL: URL;
-  constructor(private pkgWorkingURL: URL) {
-    this.lockFileURL = new URL("catalogjs.lock", this.pkgWorkingURL);
+  constructor(
+    private pkgWorkingURL: URL,
+    private writeLockFileNode: WriteLockFileNode
+  ) {
     this.cacheKey = `make-pkg-hash:${pkgWorkingURL.href}`;
   }
   async deps() {
     return {
-      lockFileStr: new ReadLockFileNode(this.lockFileURL),
+      lockEntries: this.writeLockFileNode,
     };
   }
 
   async run({
-    lockFileStr,
+    lockEntries,
   }: {
-    lockFileStr: string | undefined;
+    lockEntries: LockEntries;
   }): Promise<Value<string>> {
-    let pkgInfo = pkgInfoFromCatalogJsURL(this.lockFileURL);
+    let pkgInfo = pkgInfoFromCatalogJsURL(this.pkgWorkingURL);
     if (!pkgInfo || !pkgInfo.version) {
       throw new Error(
         `bug: cannot determine pkg name nor version from URL ${this.pkgWorkingURL.href}`
       );
     }
     let { pkgName, version } = pkgInfo;
-    let lockFile: LockFile;
-    if (lockFileStr) {
-      lockFile = JSON.parse(lockFileStr);
-    } else {
-      lockFile = {};
-    }
-    let depHrefs = Object.values(lockFile)
+    let depHrefs = [...lockEntries.keys()]
       .sort()
-      .map((depName) => lockFile[depName]);
+      .map((depName) => lockEntries.get(depName));
     let hash = createHash("sha1")
       .update(`${pkgName}${version}${depHrefs.join("")}`)
       .digest("base64")
@@ -71,13 +67,16 @@ export class MakePackageHashNode implements BuilderNode {
 
 export class PackageFinalURLNode implements BuilderNode {
   cacheKey: string;
-  constructor(private pkgWorkingURL: URL) {
+  constructor(
+    private pkgWorkingURL: URL,
+    private writeLockFileNode: WriteLockFileNode
+  ) {
     this.cacheKey = `pkg-final-url:${pkgWorkingURL.href}`;
   }
 
   async deps() {
     return {
-      hash: new MakePackageHashNode(this.pkgWorkingURL),
+      hash: new MakePackageHashNode(this.pkgWorkingURL, this.writeLockFileNode),
     };
   }
 
@@ -97,13 +96,21 @@ export class PackageFinalURLNode implements BuilderNode {
 
 export class PreparePackagePublishNode implements BuilderNode {
   cacheKey: string;
-  constructor(private pkgWorkingURL: URL, private workingDir: string) {
+  constructor(
+    private pkgWorkingURL: URL,
+    private workingDir: string,
+    private writeLockFileNode: WriteLockFileNode
+  ) {
     this.cacheKey = `prepare-pkg-publish:${pkgWorkingURL.href}`;
   }
 
   async deps() {
     return {
-      pkgFinalURL: new PackageFinalURLNode(this.pkgWorkingURL),
+      pkgFinalURL: new PackageFinalURLNode(
+        this.pkgWorkingURL,
+        this.writeLockFileNode
+      ),
+      lockEntries: this.writeLockFileNode,
     };
   }
 
@@ -134,40 +141,47 @@ export class PreparePackagePublishNode implements BuilderNode {
 
 export class PublishPackageNode implements BuilderNode {
   cacheKey: string;
-  private lockFileURL: URL;
-  constructor(private pkgWorkingURL: URL, private workingDir: string) {
+  constructor(
+    private pkgWorkingURL: URL,
+    private workingDir: string,
+    private lockEntries: LockEntries
+  ) {
     this.cacheKey = `publish-pkg:${pkgWorkingURL.href}`;
-    this.lockFileURL = new URL("catalogjs.lock", pkgWorkingURL);
   }
 
   async deps() {
+    let writeLockFile = new WriteLockFileNode(
+      this.pkgWorkingURL,
+      this.lockEntries
+    ); // this outputs lock entries that are merged with a lock file if it exists..
     return {
       pkgFinalURL: new PreparePackagePublishNode(
         this.pkgWorkingURL,
-        this.workingDir
+        this.workingDir,
+        writeLockFile
       ),
       listingEntries: new FileListingNode(
         new URL(buildOutputDir, this.pkgWorkingURL),
         true
       ),
-      hasLockFile: new FileExistsNode(this.lockFileURL),
+      finalLockEntries: writeLockFile,
     };
   }
   async run({
     pkgFinalURL,
     listingEntries,
-    hasLockFile,
+    finalLockEntries,
   }: {
     pkgFinalURL: URL;
     listingEntries: ListingEntry[];
-    hasLockFile: boolean;
+    finalLockEntries: LockEntries;
   }): Promise<NextNode<URL>> {
     return {
       node: new FinishPackagePublishNode(
         this.pkgWorkingURL,
         pkgFinalURL,
         listingEntries,
-        hasLockFile
+        finalLockEntries.size > 0
       ),
     };
   }
