@@ -7,6 +7,16 @@ import { BundleAssignmentsNode, BundleNode, BundleAssignment } from "./bundle";
 import { Resolver } from "../resolver";
 import { LockEntries } from "./lock-file";
 
+export interface Options {
+  // parsing a bundle can be a very expensive operation, if the bundle
+  // does not appear to be meant for js consumption (because it is
+  // being built for an HTML entrypoint), then we should skip parsing
+  // it. Also, we should consider skipping parsing in a "rebuilder"
+  // situation when the developer is actively modifying the code
+  // within the bundle.
+  skipAnnotationForHtmlConsumedBundles: boolean; // defaults to true
+}
+
 // This can leverage global bundle assignments (that spans all projects), or it
 // can derive bundle assignments for just its own project. The latter is
 // necessary in the scenario where you have a project that depends on the build
@@ -22,13 +32,19 @@ import { LockEntries } from "./lock-file";
 export class MakeProjectNode implements BuilderNode<LockEntries> {
   cacheKey: string;
   private lockEntries: LockEntries = new Map();
+  private optsWithDefaults: Options;
 
   constructor(
     private inputRoot: URL,
     readonly projectOutputRoot: URL,
-    private resolver: Resolver
+    private resolver: Resolver,
+    options?: Partial<Options>
   ) {
     this.cacheKey = `project:input=${inputRoot.href},output=${projectOutputRoot.href}`;
+    this.optsWithDefaults = {
+      skipAnnotationForHtmlConsumedBundles: true,
+      ...options,
+    };
   }
 
   async deps() {
@@ -61,7 +77,8 @@ export class MakeProjectNode implements BuilderNode<LockEntries> {
         entrypoints,
         bundleAssignments,
         this.resolver,
-        this.lockEntries
+        this.lockEntries,
+        this.optsWithDefaults
       ),
     };
   }
@@ -76,7 +93,8 @@ class FinishProjectNode implements BuilderNode<LockEntries> {
     private entrypoints: Entrypoint[],
     private bundleAssignments: BundleAssignment[],
     private resolver: Resolver,
-    private lockEntries: LockEntries = new Map()
+    private lockEntries: LockEntries = new Map(),
+    private options: Options
   ) {
     this.cacheKey = `finish-project:input=${inputRoot.href},output=${projectOutputRoot.href}`;
   }
@@ -121,13 +139,8 @@ class FinishProjectNode implements BuilderNode<LockEntries> {
             this.projectOutputRoot,
             this.resolver,
             this.lockEntries,
-            // parsing a bundle can be a very expensive operation, if the bundle
-            // does not appear to be meant for js consumption (because it is
-            // being built for an HTML entrypoint), then we should skip parsing
-            // it. Also, we should consider skipping parsing in a "rebuilder"
-            // situation when the developer is actively modifying the code
-            // within the bundle.
-            bundleHrefsConsumedByHtml.has(bundleURL.href)
+            this.options.skipAnnotationForHtmlConsumedBundles &&
+              bundleHrefsConsumedByHtml.has(bundleURL.href)
           ),
           bundleURL
         )

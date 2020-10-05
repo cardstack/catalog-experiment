@@ -16,6 +16,7 @@ import { HttpFileSystemDriver } from "./filesystem-drivers/http-driver";
 import { BuildManager } from "./build-manager";
 import { handleListing } from "./request-handlers/project-listing-handler";
 import { handleSetProjects } from "./request-handlers/set-projects-handler";
+import { explainAsDot } from "./builder";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 const fs = new FileSystem();
@@ -72,7 +73,15 @@ async function activate() {
   // we'll want to point to a CDN that is serving the recipes (and to optionally
   // point the recipes that you are actively developing - ?). Or maybe this URL
   // is something you can specify in the UI?
-  buildManager = new BuildManager(fs, new URL("https://local-disk/recipes/"));
+  buildManager = new BuildManager(
+    fs,
+    new URL("https://local-disk/recipes/"),
+    undefined,
+    () => {
+      let dot = explainAsDot(buildManager.rebuilder!.explain());
+      console.log(dot);
+    }
+  );
   await fs.displayListing(log);
   activated();
 }

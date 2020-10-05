@@ -283,10 +283,6 @@ export class BundleNode implements BuilderNode {
     private outputRoot: URL,
     private resolver: Resolver,
     private lockEntries: LockEntries,
-    // parsing the bundle in order to perform bundle annotation can be a very
-    // expensive operation. when it seems clear that the bundle is not being
-    // consumed by JS (because it is consumed by an HTML entrypoint) then we
-    // will skip parsing the bundle.
     private skipBundleAnnotation: boolean
   ) {
     this.cacheKey = `bundle-node:url=${this.bundle.href},inputRoot=${this.inputRoot.href},outputRoot=${this.outputRoot.href}`;

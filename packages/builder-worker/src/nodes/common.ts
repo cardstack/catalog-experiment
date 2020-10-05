@@ -48,7 +48,7 @@ export function debugName(node: BuilderNode): string {
   if (!name) {
     let cacheKey = node.cacheKey;
     if (typeof cacheKey === "string") {
-      const maxCacheKeyLen = 60;
+      const maxCacheKeyLen = 80;
       if (cacheKey.length > maxCacheKeyLen) {
         name = `${cacheKey.slice(0, maxCacheKeyLen)}...`;
       } else {

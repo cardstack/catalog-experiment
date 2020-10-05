@@ -7,6 +7,7 @@ import {
 } from "./describe-file";
 import { maybeRelativeURL } from "./path";
 import { RegionEditor } from "./code-region";
+import { warn } from "./logger";
 
 // This is an inverted State.assignedImportedNames, where the key is the
 // assigned name in the bundle and the value is the original moduleHref and
@@ -20,6 +21,7 @@ export function combineModules(
   bundle: URL,
   assignments: BundleAssignment[]
 ): { code: string; importAssignments: ImportAssignments } {
+  let start = Date.now();
   let state: State = {
     bundle,
     assignedLocalNames: new Map(),
@@ -57,6 +59,7 @@ export function combineModules(
   );
   let removedBindings = new Set<string>();
   let consumptionCache = new Map<string, Map<string, boolean>>();
+  let treeShakingStart = Date.now();
   for (let bindingName of state.usedNames.keys()) {
     if (
       [
@@ -82,6 +85,12 @@ export function combineModules(
 
     removedBindings.add(bindingName);
     removeBinding(bindingName, rewriters, bundle, state, assignments);
+  }
+  let treeShakingTime = Date.now() - treeShakingStart;
+  if (treeShakingTime > 100) {
+    warn(
+      `combineModules - completed tree shaking bindings in bundle ${bundle.href} in ${treeShakingTime}ms`
+    );
   }
 
   let output = [];
@@ -238,6 +247,16 @@ export function combineModules(
   const importAssignments = invertAssignedImportedNames(
     state.assignedImportedNames
   );
+  let combineTime = Date.now() - start;
+  if (combineTime > 100) {
+    warn(
+      `combineModules - completed bundle ${bundle.href} in ${combineTime}ms`
+    );
+  } else {
+    console.log(
+      `combineModules - completed bundle ${bundle.href} in ${combineTime}ms`
+    );
+  }
   return {
     code: output.join("\n").trim(),
     importAssignments,
@@ -351,7 +370,14 @@ class ModuleRewriter {
       module.desc,
       this.unusedNameLike.bind(this)
     );
+    let start = Date.now();
     this.rewriteScope();
+    let time = Date.now() - start;
+    if (time > 100) {
+      warn(
+        `combineModules - completed rewriting scope for module ${module.url.href} in ${time}ms`
+      );
+    }
   }
 
   serialize(): string {
@@ -592,10 +618,17 @@ function gatherModuleRewriters(
   // the order of any side effects in the modules.
   rewriters.set(module.url.href, rewriter);
 
+  let start = Date.now();
   // Additionally, at this point all of our dependencies should have been
   // assigned names, so we can populate the sharedState.bindingDependsOn
   // with our modules binding dependencies using their assigned names.
   setBindingDependencies(rewriter.module, state, assignments);
+  let time = Date.now() - start;
+  if (time > 100) {
+    warn(
+      `combineModules - completed setting binding dependencies for module ${rewriter.module.url.href} in ${time}ms`
+    );
+  }
 }
 
 function setBindingDependencies(
