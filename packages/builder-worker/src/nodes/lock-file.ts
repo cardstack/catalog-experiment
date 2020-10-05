@@ -81,12 +81,12 @@ class FinishWritingLockFileNode implements BuilderNode<LockEntries> {
 }
 
 export class GetLockFileNode implements BuilderNode {
-  cacheKey: GetLockFileNode;
+  cacheKey: string;
   constructor(
     private moduleURL: URL,
     private candidateURL: URL = new URL("./catalogjs.lock", moduleURL)
   ) {
-    this.cacheKey = this;
+    this.cacheKey = `get-lock-file:${candidateURL.href}`;
   }
 
   async deps() {
