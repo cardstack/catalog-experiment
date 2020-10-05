@@ -1,0 +1,71 @@
+{
+  "js": [
+    "./src/index.js"
+  ],
+  "dependencies": {
+    "@babel/code-frame": {
+      "url": "https://catalogjs.com/pkgs/npm/@babel/code-frame/",
+      "range": "^7.8.3"
+    },
+    "@babel/generator": {
+      "url": "https://catalogjs.com/pkgs/npm/@babel/generator/",
+      "range": "^7.9.0"
+    },
+    "@babel/helper-module-transforms": {
+      "url": "https://catalogjs.com/pkgs/npm/@babel/helper-module-transforms/",
+      "range": "^7.9.0"
+    },
+    "@babel/helpers": {
+      "url": "https://catalogjs.com/pkgs/npm/@babel/helpers/",
+      "range": "^7.9.0"
+    },
+    "@babel/parser": {
+      "url": "https://catalogjs.com/pkgs/npm/@babel/parser/",
+      "range": "^7.9.0"
+    },
+    "@babel/template": {
+      "url": "https://catalogjs.com/pkgs/npm/@babel/template/",
+      "range": "^7.8.6"
+    },
+    "@babel/traverse": {
+      "url": "https://catalogjs.com/pkgs/npm/@babel/traverse/",
+      "range": "^7.9.0"
+    },
+    "@babel/types": {
+      "url": "https://catalogjs.com/pkgs/npm/@babel/types/",
+      "range": "^7.9.0"
+    },
+    "convert-source-map": {
+      "url": "https://catalogjs.com/pkgs/npm/convert-source-map/",
+      "range": "^1.7.0"
+    },
+    "debug": {
+      "url": "https://catalogjs.com/pkgs/npm/debug/",
+      "range": "^4.1.0"
+    },
+    "gensync": {
+      "url": "https://catalogjs.com/pkgs/npm/gensync/",
+      "range": "^1.0.0-beta.1"
+    },
+    "json5": {
+      "url": "https://catalogjs.com/pkgs/npm/json5/",
+      "range": "^2.1.2"
+    },
+    "lodash": {
+      "url": "https://catalogjs.com/pkgs/npm/lodash/",
+      "range": "^4.17.13"
+    },
+    "resolve": {
+      "url": "https://catalogjs.com/pkgs/npm/resolve/",
+      "range": "^1.3.2"
+    },
+    "semver": {
+      "url": "https://catalogjs.com/pkgs/npm/semver/",
+      "range": "^5.4.1"
+    },
+    "source-map": {
+      "url": "https://catalogjs.com/pkgs/npm/source-map/",
+      "range": "^0.5.0"
+    }
+  }
+}
