@@ -82,10 +82,26 @@ class FinishProjectNode implements BuilderNode<LockEntries> {
   }
 
   async deps() {
-    let htmls = (uniqBy(
+    let htmlEntrypoints = uniqBy(
       flatten(this.entrypoints).filter((e) => e instanceof HTMLEntrypoint),
       "destURL"
-    ) as HTMLEntrypoint[]).map(
+    ) as HTMLEntrypoint[];
+    let bundleHrefsConsumedByHtml: Set<string> = new Set();
+    for (let htmlEntrypoint of htmlEntrypoints) {
+      let bundleHrefs = [...htmlEntrypoint.jsEntrypoints.keys()]
+        .map(
+          (entrypointHref) =>
+            this.bundleAssignments.find(
+              (a) => a.module.url.href === entrypointHref
+            )!
+        )
+        .map((b) => b.bundleURL.href);
+      bundleHrefsConsumedByHtml = new Set([
+        ...bundleHrefsConsumedByHtml,
+        ...bundleHrefs,
+      ]);
+    }
+    let htmls = htmlEntrypoints.map(
       (htmlEntrypoint) =>
         new WriteFileNode(
           new ConstantNode(htmlEntrypoint.render(this.bundleAssignments)),
@@ -104,7 +120,14 @@ class FinishProjectNode implements BuilderNode<LockEntries> {
             this.inputRoot,
             this.projectOutputRoot,
             this.resolver,
-            this.lockEntries
+            this.lockEntries,
+            // parsing a bundle can be a very expensive operation, if the bundle
+            // does not appear to be meant for js consumption (because it is
+            // being built for an HTML entrypoint), then we should skip parsing
+            // it. Also, we should consider skipping parsing in a "rebuilder"
+            // situation when the developer is actively modifying the code
+            // within the bundle.
+            bundleHrefsConsumedByHtml.has(bundleURL.href)
           ),
           bundleURL
         )

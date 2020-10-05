@@ -1,10 +1,10 @@
 import {
   BuilderNode,
   Value,
-  NextNode,
   ConstantNode,
   annotationEnd,
   annotationStart,
+  NodeOutput,
 } from "./common";
 import {
   ModuleResolutionsNode,
@@ -282,7 +282,12 @@ export class BundleNode implements BuilderNode {
     private inputRoot: URL,
     private outputRoot: URL,
     private resolver: Resolver,
-    private lockEntries: LockEntries
+    private lockEntries: LockEntries,
+    // parsing the bundle in order to perform bundle annotation can be a very
+    // expensive operation. when it seems clear that the bundle is not being
+    // consumed by JS (because it is consumed by an HTML entrypoint) then we
+    // will skip parsing the bundle.
+    private skipBundleAnnotation: boolean
   ) {
     this.cacheKey = `bundle-node:url=${this.bundle.href},inputRoot=${this.inputRoot.href},outputRoot=${this.outputRoot.href}`;
   }
@@ -302,11 +307,14 @@ export class BundleNode implements BuilderNode {
     bundleAssignments,
   }: {
     bundleAssignments: BundleAssignment[];
-  }): Promise<NextNode<string>> {
+  }): Promise<NodeOutput<string>> {
+    let { code } = combineModules(this.bundle, bundleAssignments);
+    if (this.skipBundleAnnotation) {
+      return { value: code };
+    }
+
     return {
-      node: new BundleSerializerNode(
-        combineModules(this.bundle, bundleAssignments).code
-      ),
+      node: new BundleSerializerNode(code),
     };
   }
 }

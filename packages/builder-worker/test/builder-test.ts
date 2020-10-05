@@ -993,6 +993,8 @@ QUnit.module("module builder", function (origHooks) {
       );
     });
 
+    test("skips parse if bundle is consumed by HTML entrypoint", async function (assert) {});
+
     test("uses bundle annotation to tree shake unused exports from bundle", async function (assert) {
       let bundleSrc = await buildBundle(assert, url("output/index.js"), {
         "entrypoints.json": `{ "js": ["index.js"] }`,
