@@ -6,16 +6,17 @@ import { Builder } from "../../builder-worker/src/builder";
 import { NpmImportPackagesNode } from "./nodes/npm-import";
 import { ensureDirSync } from "fs-extra";
 import fetch from "node-fetch";
-import { closeAll } from "./node-filesystem-driver";
+import { closeAll, NodeFileSystemDriver } from "./node-filesystem-driver";
 import { recipesURL } from "../../builder-worker/src/recipes";
 import { NodeResolver } from "./resolver";
+import { catalogjsHref } from "../../builder-worker/src/resolver";
 
 if (!globalThis.fetch) {
   (globalThis.fetch as any) = fetch;
 }
 
 Logger.echoInConsole(true);
-Logger.setLogLevel("debug");
+Logger.setLogLevel("info");
 let { _: pkgs, project } = yargs
   .options({
     project: {
@@ -39,8 +40,12 @@ let projectDir = resolve(join(process.cwd(), project));
   // very expensive task, so it is beneficial to retain this directory for
   // future executions of this command
   let workingDir = join(process.cwd(), "working");
-  ensureDirSync(workingDir);
+  let cdnDir = join(workingDir, "cdn");
+  ensureDirSync(cdnDir);
+
   let fs = new FileSystem();
+  let driver = new NodeFileSystemDriver(cdnDir);
+  await fs.mount(new URL(catalogjsHref), driver);
   let resolver = new NodeResolver(fs, workingDir);
   let builderRoot = new NpmImportPackagesNode(
     pkgs,

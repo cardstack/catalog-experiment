@@ -4,7 +4,7 @@
 // removed.
 
 import { NodePath } from "@babel/traverse";
-import { Program, isIdentifier } from "@babel/types";
+import { Program } from "@babel/types";
 import { assertNever } from "@catalogjs/shared/util";
 import { FileDescription, isModuleDescription } from "./describe-file";
 
@@ -355,22 +355,28 @@ export class RegionEditor {
     }));
   }
 
-  removeDeclaration(name: string) {
+  removeDeclaration(name: string, removeSideEffects = false) {
     let nameDesc = this.desc.names.get(name);
     if (!nameDesc) {
       throw new Error(`tried to remove unknown declaration ${name}`);
     }
     let region = nameDesc.declaration;
-    if (nameDesc.declarationSideEffects != null) {
+    if (nameDesc.declarationSideEffects != null && !removeSideEffects) {
       this.dispositions[region] = {
         state: "unwrap",
         beginning: "(",
         end: ")",
         region,
       };
-      this.rename(name, this.unusedNameLike(name));
+      this.rename(name, this.unusedNameLike(`unused_${name}`));
     } else {
       this.dispositions[region] = { state: "removed", region };
+      if (removeSideEffects && nameDesc.declarationSideEffects) {
+        this.dispositions[nameDesc.declarationSideEffects] = {
+          state: "removed",
+          region: nameDesc.declarationSideEffects,
+        };
+      }
     }
   }
 
@@ -649,9 +655,6 @@ function shorthandMode(path: NodePath): PathFacts["shorthand"] {
 // without the ObjectPatten "{ bar }", and if "{ bar }" is removed, then we
 // must remove "foo".
 function dependsOnSiblingPresence(path: NodePath) {
-  if (!isIdentifier(path.node)) {
-    return false;
-  }
   return (
     path.parent.type === "VariableDeclarator" && path.parent.init === path.node
   );

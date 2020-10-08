@@ -11,13 +11,9 @@ import {
   pkgInfoFromCatalogJsURL,
 } from "../../../builder-worker/src/resolver";
 import { createHash } from "crypto";
-import { NodeFileSystemDriver } from "../node-filesystem-driver";
-import { ensureDirSync } from "fs-extra";
-import { join } from "path";
 import _glob from "glob";
 import {
   WriteFileNode,
-  MountNode,
   FileListingNode,
   FileNode,
 } from "../../../builder-worker/src/nodes/file";
@@ -27,6 +23,11 @@ import {
   WriteLockFileNode,
 } from "../../../builder-worker/src/nodes/lock-file";
 import { buildOutputDir, buildSrcDir } from "./package";
+import {
+  addDescriptionToSource,
+  extractDescriptionFromSource,
+} from "../../../builder-worker/src/description-encoder";
+import groupBy from "lodash/groupBy";
 
 export class MakePackageHashNode implements BuilderNode {
   cacheKey: string;
@@ -54,9 +55,21 @@ export class MakePackageHashNode implements BuilderNode {
       );
     }
     let { pkgName, version } = pkgInfo;
-    let depHrefs = [...lockEntries.keys()]
-      .sort()
-      .map((depName) => lockEntries.get(depName));
+    // there might be entries in the lock file that are different entrypoints of
+    // the same package version--flatten these down so that we are only considering the
+    // pkgs themselves.
+    let pkgInfos = [...lockEntries.values()].map((url) =>
+      pkgInfoFromCatalogJsURL(url)
+    );
+    let pkgGroups = groupBy(
+      pkgInfos,
+      (pkgInfo) =>
+        `${catalogjsHref}${pkgInfo!.registry ? pkgInfo!.registry + "/" : ""}${
+          pkgInfo!.pkgName
+        }/${pkgInfo!.version}/${pkgInfo!.hash}/`
+    );
+
+    let depHrefs = Object.keys(pkgGroups).sort();
     let hash = createHash("sha1")
       .update(`${pkgName}${version}${depHrefs.join("")}`)
       .digest("base64")
@@ -98,7 +111,6 @@ export class PreparePackagePublishNode implements BuilderNode {
   cacheKey: string;
   constructor(
     private pkgWorkingURL: URL,
-    private workingDir: string,
     private writeLockFileNode: WriteLockFileNode
   ) {
     this.cacheKey = `prepare-pkg-publish:${pkgWorkingURL.href}`;
@@ -114,38 +126,14 @@ export class PreparePackagePublishNode implements BuilderNode {
     };
   }
 
-  async run({ pkgFinalURL }: { pkgFinalURL: URL }): Promise<NodeOutput<URL>> {
-    let pkgInfo = pkgInfoFromCatalogJsURL(pkgFinalURL);
-    if (!pkgInfo || !pkgInfo.version || !pkgInfo.hash) {
-      throw new Error(
-        `bug: cannot determine pkg name, version, nor hash from URL ${pkgFinalURL.href}`
-      );
-    }
-    let { pkgName, version, hash } = pkgInfo;
-    let underlyingPkgPath = join(
-      this.workingDir,
-      "cdn",
-      pkgName,
-      version,
-      hash
-    ); // this is just temp until we don't need to debug any longer..
-    ensureDirSync(underlyingPkgPath);
-    return {
-      node: new MountNode(
-        pkgFinalURL,
-        new NodeFileSystemDriver(underlyingPkgPath)
-      ),
-    };
+  async run({ pkgFinalURL }: { pkgFinalURL: URL }): Promise<Value<URL>> {
+    return { value: pkgFinalURL };
   }
 }
 
 export class PublishPackageNode implements BuilderNode {
   cacheKey: string;
-  constructor(
-    private pkgWorkingURL: URL,
-    private workingDir: string,
-    private lockEntries: LockEntries
-  ) {
+  constructor(private pkgWorkingURL: URL, private lockEntries: LockEntries) {
     this.cacheKey = `publish-pkg:${pkgWorkingURL.href}`;
   }
 
@@ -157,7 +145,6 @@ export class PublishPackageNode implements BuilderNode {
     return {
       pkgFinalURL: new PreparePackagePublishNode(
         this.pkgWorkingURL,
-        this.workingDir,
         writeLockFile
       ),
       listingEntries: new FileListingNode(
@@ -205,13 +192,23 @@ class FinishPackagePublishNode implements BuilderNode {
       publish: new AllNode([
         ...this.listingEntries
           .filter(({ stat }) => stat.type === "file")
-          .map(({ url }) => new PublishFileNode(url, this.pkgFinalURL)),
+          .map(
+            ({ url }) =>
+              new PublishFileNode(url, this.pkgFinalURL, this.pkgWorkingURL)
+          ),
         ...(this.hasLockFile
-          ? [new PublishFileNode(this.lockFileURL, this.pkgFinalURL)]
+          ? [
+              new PublishFileNode(
+                this.lockFileURL,
+                this.pkgFinalURL,
+                this.pkgWorkingURL
+              ),
+            ]
           : []),
         new PublishFileNode(
           new URL(`${buildSrcDir}entrypoints.json`, this.pkgWorkingURL),
-          this.pkgFinalURL
+          this.pkgFinalURL,
+          this.pkgWorkingURL
         ),
       ]),
     };
@@ -224,7 +221,11 @@ class FinishPackagePublishNode implements BuilderNode {
 
 class PublishFileNode implements BuilderNode {
   cacheKey: string;
-  constructor(private url: URL, private pkgFinalURL: URL) {
+  constructor(
+    private url: URL,
+    private pkgFinalURL: URL,
+    private pkgWorkingURL: URL
+  ) {
     this.cacheKey = `publish-pkg:${url.href}`;
   }
 
@@ -237,8 +238,39 @@ class PublishFileNode implements BuilderNode {
       this.url.href.split(buildOutputDir)[1] ?? this.url.href.split("/").pop(), // this is to handle the lock file which is placed at the root of the pkgWorkingURL
       this.pkgFinalURL
     );
+
+    // we need to make sure that in the bundle annotation we update any
+    // working pkg URLs in the original.moduleHref to the final pkg URL, as at
+    // the time input root folder was created for the pkg, it was not possible
+    // to know the final URL (which requires knowledge of all the pkg deps
+    // that we discover along the way). The working URLs are fine to
+    // disambiguate the same pkgs that have different consumers in the
+    // node_modules tree, but the working URL is not capable of detecting
+    // changes to transitive dependencies like the final pkg URL can (because
+    // the final pkg URL includes a hash of the lock file).
+    let { source, desc } = extractDescriptionFromSource(contents);
+    if (desc) {
+      for (let nameDesc of desc.names.values()) {
+        if (nameDesc.type !== "local") {
+          continue;
+        }
+        if (
+          nameDesc.original?.moduleHref &&
+          nameDesc.original.moduleHref.startsWith(
+            `${this.pkgWorkingURL.href}${buildSrcDir}`
+          )
+        ) {
+          nameDesc.original.moduleHref = nameDesc.original.moduleHref.replace(
+            `${this.pkgWorkingURL.href}${buildSrcDir}`,
+            this.pkgFinalURL.href
+          );
+        }
+      }
+      source = addDescriptionToSource(desc, source);
+    }
+
     return {
-      node: new WriteFileNode(new ConstantNode(contents), url),
+      node: new WriteFileNode(new ConstantNode(source), url),
     };
   }
 }

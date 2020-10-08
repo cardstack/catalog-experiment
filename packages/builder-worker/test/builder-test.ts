@@ -7,9 +7,10 @@ import {
 import { Builder, Rebuilder, explainAsDot } from "../src/builder";
 import { FileSystem } from "../src/filesystem";
 import { flushEvents, removeAllEventListeners } from "../src/event-bus";
-import { annotationRegex } from "../src/nodes/common";
 import { Logger } from "../src/logger";
 import { recipesURL } from "../src/recipes";
+import { extractDescriptionFromSource } from "../src/description-encoder";
+import { Options } from "../src/nodes/project";
 
 Logger.setLogLevel("debug");
 Logger.echoInConsole(true);
@@ -36,9 +37,15 @@ QUnit.module("module builder", function (origHooks) {
 
   function makeBuilder(
     fs: FileSystem,
-    outputURL = new URL("/output/", origin)
+    outputURL = new URL("/output/", origin),
+    options?: Partial<Options>
   ) {
-    return Builder.forProjects(fs, [[new URL(origin), outputURL]], recipesURL);
+    return Builder.forProjects(
+      fs,
+      [[new URL(origin), outputURL]],
+      recipesURL,
+      options
+    );
   }
 
   function makeRebuilder(
@@ -926,9 +933,8 @@ QUnit.module("module builder", function (origHooks) {
       let bundleSrc = await (
         await assert.fs.openFile(url("output/index.js"))
       ).readText();
-      let match = annotationRegex.exec(bundleSrc);
-      let annotation = Array.isArray(match) ? match[1] : undefined;
-      assert.ok(annotation, "bundle annotation exists");
+      let { desc } = extractDescriptionFromSource(bundleSrc);
+      assert.ok(desc, "bundle annotation exists");
     });
 
     test("performs parse if annotation does not exist in bundle", async function (assert) {
@@ -943,7 +949,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
         "puppies.js": `export const puppies = ["mango", "van gogh"];`,
       });
-      bundleSrc = bundleSrc.replace(annotationRegex, "");
+      ({ source: bundleSrc } = extractDescriptionFromSource(bundleSrc));
 
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["driver.js"] }`,
@@ -993,7 +999,159 @@ QUnit.module("module builder", function (origHooks) {
       );
     });
 
-    test("skips parse if bundle is consumed by HTML entrypoint", async function (assert) {});
+    test("bundles include origin info for bindings", async function (assert) {
+      let puppiesPkgHref =
+        "https://catalogjs.com/pkgs/npm/puppies/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "catalogjs.lock": `{ "puppies": "${puppiesPkgHref}/index.js" }`,
+        "index.js": `
+          import { puppies } from "puppies";
+          function getPuppies() { return puppies; }
+          function getCats() { return ["jojo"]; }
+          function getRats() { return ["pizza rat"]; }
+          export { getPuppies, getCats, getRats };
+        `,
+        [`${puppiesPkgHref}/entrypoints.json`]: `{"js": ["index.js"] }`,
+        [`${puppiesPkgHref}/index.js`]: `export const puppies = ["mango", "van gogh"];`,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      let bundleSrc = await (
+        await assert.fs.openFile(url("output/index.js"))
+      ).readText();
+      let { desc } = extractDescriptionFromSource(bundleSrc);
+      let nameDesc = desc!.names.get("puppies")!;
+      assert.equal(nameDesc.type, "local");
+      if (nameDesc.type === "local") {
+        assert.equal(
+          nameDesc.original?.moduleHref,
+          `${puppiesPkgHref}/index.js`
+        );
+        assert.equal(nameDesc.original?.exportedName, "puppies");
+      }
+    });
+
+    test("bundle's binding's origin info is carried forward in subsequent builds", async function (assert) {
+      let puppiesPkgHref =
+        "https://catalogjs.com/pkgs/npm/puppies/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "catalogjs.lock": `{ "puppies": "${puppiesPkgHref}/index.js" }`,
+        "index.js": `
+          import { puppies } from "puppies";
+          function getPuppies() { return puppies; }
+          function getCats() { return ["jojo"]; }
+          function getRats() { return ["pizza rat"]; }
+          export { getPuppies, getCats, getRats };
+        `,
+        [`${puppiesPkgHref}/entrypoints.json`]: `{"js": ["index.js"] }`,
+        [`${puppiesPkgHref}/index.js`]: `export const puppies = ["mango", "van gogh"];`,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      let bundleSrc = await (
+        await assert.fs.openFile(url("output/index.js"))
+      ).readText();
+
+      let libPkgHref =
+        "https://catalogjs.com/pkgs/npm/lib/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["driver.js"] }`,
+        "catalogjs.lock": `{ "lib": "${libPkgHref}/lib.js" }`,
+        "driver.js": `
+          import { getPuppies } from "lib";
+          console.log(getPuppies());
+        `,
+        [`${libPkgHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
+        [`${libPkgHref}/lib.js`]: bundleSrc,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+
+      let nextBuildSrc = await (
+        await assert.fs.openFile(url("output/index.js"))
+      ).readText();
+      let { desc } = extractDescriptionFromSource(nextBuildSrc);
+      let nameDesc = desc!.names.get("puppies")!;
+      assert.equal(nameDesc.type, "local");
+      if (nameDesc.type === "local") {
+        assert.equal(
+          nameDesc.original?.moduleHref,
+          `${puppiesPkgHref}/index.js`
+        );
+        assert.equal(nameDesc.original?.exportedName, "puppies");
+      }
+    });
+
+    test("skips parse if bundle is consumed by HTML entrypoint", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "html": ["index.html"] }`,
+        "index.html": `<html><script type="module" src="./index.js"></script></html>`,
+        "index.js": `
+          import { puppies } from "./puppies.js";
+          function getPuppies() { return puppies; }
+          function getCats() { return ["jojo"]; }
+          function getRats() { return ["pizza rat"]; }
+          export { getPuppies, getCats, getRats };
+        `,
+        "puppies.js": `export const puppies = ["mango", "van gogh"];`,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      let bundleSrc = await (
+        await assert.fs.openFile(url("output/dist/0.js"))
+      ).readText();
+      let { desc } = extractDescriptionFromSource(bundleSrc);
+      assert.notOk(desc, "bundle annotation does not exist");
+    });
+
+    test("the option to force a parse of a bundle consumed by HTML entrypoint creates bundle annotation", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "html": ["index.html"] }`,
+        "index.html": `<html><script type="module" src="./index.js"></script></html>`,
+        "index.js": `
+          import { puppies } from "./puppies.js";
+          function getPuppies() { return puppies; }
+          function getCats() { return ["jojo"]; }
+          function getRats() { return ["pizza rat"]; }
+          export { getPuppies, getCats, getRats };
+        `,
+        "puppies.js": `export const puppies = ["mango", "van gogh"];`,
+      });
+      builder = makeBuilder(assert.fs, undefined, {
+        skipAnnotationForHtmlConsumedBundles: false,
+      });
+      await builder.build();
+      let bundleSrc = await (
+        await assert.fs.openFile(url("output/dist/0.js"))
+      ).readText();
+      let { desc } = extractDescriptionFromSource(bundleSrc);
+      assert.ok(desc, "bundle annotation exists");
+    });
+
+    test("skips parse of bundle for js entrypoint if option to disable bundle annotation is enabled", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { puppies } from "./puppies.js";
+          function getPuppies() { return puppies; }
+          function getCats() { return ["jojo"]; }
+          function getRats() { return ["pizza rat"]; }
+          export { getPuppies, getCats, getRats };
+        `,
+        "puppies.js": `export const puppies = ["mango", "van gogh"];`,
+      });
+      builder = makeBuilder(assert.fs, undefined, {
+        skipBundleAnnotation: true,
+      });
+      await builder.build();
+      let bundleSrc = await (
+        await assert.fs.openFile(url("output/index.js"))
+      ).readText();
+      let { desc } = extractDescriptionFromSource(bundleSrc);
+      assert.notOk(desc, "bundle annotation does not exist");
+    });
 
     test("uses bundle annotation to tree shake unused exports from bundle", async function (assert) {
       let bundleSrc = await buildBundle(assert, url("output/index.js"), {

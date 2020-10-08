@@ -26,7 +26,7 @@ const levelValue = {
   error: 3,
 };
 
-const echoInConsole = true;
+const echoInConsole = false;
 
 export interface LogMessage {
   level: LogLevel;

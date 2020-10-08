@@ -1,4 +1,4 @@
-import { parseSync } from "https://local-disk/bundles/@babel/core/7.9.0/yG-PJiOx-Rx6wOMZ9aPHX-3u0ug=/src/index.js";
+import { parseSync } from "https://local-disk/bundles/@babel/core/7.9.0/+lkupB9rVZmANvVnjl80s+kiEdg=/src/index.js";
 import flatMap from "https://local-disk/bundles/lodash/4.17.19/LKnRSC1Bqwt5GkxGS8dQDX-oFPk=/flatMap.js";
 
 export function introspectESModule(code) {

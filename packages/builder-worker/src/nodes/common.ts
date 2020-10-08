@@ -1,9 +1,5 @@
 import { Recipe } from "../recipes";
 
-export const annotationStart = `\n/*====catalogjs annotation start====\n`;
-export const annotationEnd = `\n====catalogjs annotation end====*/`;
-export const annotationRegex = /\/\*====catalogjs annotation start====\n(.+)\n====catalogjs annotation end====\*\/\s*$/;
-
 export type OutputType<T> = T extends BuilderNode<infer Output>
   ? Output
   : never;

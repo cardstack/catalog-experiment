@@ -3,7 +3,6 @@ import {
   Value,
   NextNode,
   AllNode,
-  annotationRegex,
   NodeOutput,
   ConstantNode,
   RecipeGetter,
@@ -17,7 +16,7 @@ import {
   isModuleDescription,
 } from "../describe-file";
 import { File } from "@babel/types";
-import { decodeModuleDescription } from "../description-encoder";
+import { extractDescriptionFromSource } from "../description-encoder";
 import { Resolver, pkgInfoFromCatalogJsURL } from "../resolver";
 import { LockFile, GetLockFileNode, LockEntries } from "./lock-file";
 
@@ -106,11 +105,12 @@ export class ModuleAnnotationNode implements BuilderNode {
     source,
   }: {
     source: string;
-  }): Promise<NodeOutput<ModuleDescription>> {
-    let match = annotationRegex.exec(source);
-    if (match) {
-      let value = decodeModuleDescription(match[1]);
-      return { value };
+  }): Promise<NodeOutput<{ desc: ModuleDescription; source: string }>> {
+    let { source: unannotatedSource, desc } = extractDescriptionFromSource(
+      source
+    );
+    if (desc) {
+      return { value: { desc, source: unannotatedSource } };
     }
     return { node: new ModuleDescriptionNode(this.fileNode) };
   }
@@ -122,16 +122,25 @@ export class ModuleDescriptionNode implements BuilderNode {
     this.cacheKey = `module-description:${fileNode.url.href}`;
   }
   async deps() {
-    return { parsed: new JSParseNode(this.fileNode) };
+    return {
+      source: this.fileNode,
+      parsed: new JSParseNode(this.fileNode),
+    };
   }
-  async run({ parsed }: { parsed: File }): Promise<Value<ModuleDescription>> {
-    let desc = describeFile(parsed);
+  async run({
+    source,
+    parsed,
+  }: {
+    source: string;
+    parsed: File;
+  }): Promise<Value<{ desc: ModuleDescription; source: string }>> {
+    let desc = describeFile(parsed, { filename: this.fileNode.url.href });
     if (!isModuleDescription(desc)) {
       throw Error(
         `cannot build module description for CJS file ${this.fileNode.url.href}`
       );
     }
-    return { value: desc };
+    return { value: { desc, source } };
   }
 }
 
@@ -147,19 +156,15 @@ export class ModuleResolutionNode implements BuilderNode<Resolution> {
   }
 
   async deps() {
-    let file = new FileNode(this.url);
     return {
-      source: file,
-      desc: new ModuleAnnotationNode(file),
+      info: new ModuleAnnotationNode(new FileNode(this.url)),
     };
   }
   async run(
     {
-      desc,
-      source,
+      info: { desc, source },
     }: {
-      desc: ModuleDescription;
-      source: string;
+      info: { desc: ModuleDescription; source: string };
     },
     getRecipe: RecipeGetter
   ): Promise<NextNode<Resolution>> {
@@ -320,14 +325,13 @@ class FinishResolutionsFromResolverNode implements BuilderNode {
         ]);
       }
     });
-    let source = this.consumerSource.replace(annotationRegex, "");
 
     return {
       node: new FinishResolutionNode(
         this.consumerURL,
         imports,
         this.consumerDesc,
-        source
+        this.consumerSource
       ),
     };
   }
@@ -340,15 +344,14 @@ export class CyclicModuleResolutionNode implements BuilderNode<Resolution> {
   }
 
   async deps() {
-    let file = new FileNode(this.url);
     return {
-      desc: new ModuleAnnotationNode(file),
+      info: new ModuleAnnotationNode(new FileNode(this.url)),
     };
   }
   async run({
-    desc,
+    info: { desc },
   }: {
-    desc: ModuleDescription;
+    info: { desc: ModuleDescription; source: string };
   }): Promise<Value<CyclicModuleResolution>> {
     return {
       value: {

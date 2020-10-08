@@ -21,6 +21,10 @@ import invert from "lodash/invert";
 import { CodeRegion } from "./code-region";
 import { assertNever } from "@catalogjs/shared/util";
 
+const annotationStart = `\n/*====catalogjs annotation start====\n`;
+const annotationEnd = `\n====catalogjs annotation end====*/`;
+const annotationRegex = /\/\*====catalogjs annotation start====\n(.+)\n====catalogjs annotation end====\*\/\s*$/;
+
 const moduleDescLegend = [
   "imports", // array of import descriptions
   "exports", // [name: string]: array of export descriptions
@@ -75,10 +79,34 @@ interface Pojo {
   [key: string]: any;
 }
 
+export function addDescriptionToSource(
+  desc: ModuleDescription,
+  source: string
+): string {
+  return [
+    source,
+    annotationStart,
+    encodeModuleDescription(desc),
+    annotationEnd,
+  ].join("");
+}
+
+export function extractDescriptionFromSource(
+  source: string
+): { desc: ModuleDescription | undefined; source: string } {
+  let match = annotationRegex.exec(source);
+  if (match) {
+    let desc = decodeModuleDescription(match[1]);
+    let unannotatedSource = source.slice(0, source.indexOf(annotationStart));
+    return { source: unannotatedSource, desc };
+  }
+  return { source, desc: undefined };
+}
+
 // TODO we can generalize this even farther if we nest the legends, and make
 // general rules around how to deal with Maps, Sets, and arrays, and include
 // shorthand rules in the legend...
-export function encodeModuleDescription(desc: ModuleDescription): string {
+function encodeModuleDescription(desc: ModuleDescription): string {
   let encoded = [];
   for (let prop of moduleDescLegend) {
     switch (prop) {
@@ -135,7 +163,7 @@ export function encodeModuleDescription(desc: ModuleDescription): string {
   return base64Encode(msgpackEncode(encoded));
 }
 
-export function decodeModuleDescription(encoded: string): ModuleDescription {
+function decodeModuleDescription(encoded: string): ModuleDescription {
   let buffer = base64Decode(encoded);
   let encodedDesc = msgpackDecode(buffer) as any[];
 

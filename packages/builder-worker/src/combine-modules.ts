@@ -7,7 +7,7 @@ import {
 } from "./describe-file";
 import { maybeRelativeURL } from "./path";
 import { RegionEditor } from "./code-region";
-import { warn } from "./logger";
+import { debug } from "./logger";
 
 // This is an inverted State.assignedImportedNames, where the key is the
 // assigned name in the bundle and the value is the original moduleHref and
@@ -27,6 +27,7 @@ export function combineModules(
     assignedLocalNames: new Map(),
     usedNames: new Map(),
     assignedImportedNames: new Map(),
+    assignedNamesWithForeignOrigins: new Map(),
     sideEffectOnlyImports: new Set(),
     consumedBundles: new Set(),
     bindingDependsOn: new Map(),
@@ -88,7 +89,7 @@ export function combineModules(
   }
   let treeShakingTime = Date.now() - treeShakingStart;
   if (treeShakingTime > 100) {
-    warn(
+    debug(
       `combineModules - completed tree shaking bindings in bundle ${bundle.href} in ${treeShakingTime}ms`
     );
   }
@@ -249,11 +250,11 @@ export function combineModules(
   );
   let combineTime = Date.now() - start;
   if (combineTime > 100) {
-    warn(
+    debug(
       `combineModules - completed bundle ${bundle.href} in ${combineTime}ms`
     );
   } else {
-    console.log(
+    debug(
       `combineModules - completed bundle ${bundle.href} in ${combineTime}ms`
     );
   }
@@ -342,6 +343,16 @@ interface State {
   // module, and the value is it's assigned name in the resulting bundle.
   assignedLocalNames: Map<string, Map<string, string>>;
 
+  // This is synonymous with assignedImportedNames, but it's used specifically
+  // to help us keep track of local name assignments that originated from
+  // different bundles. outer map is the href of the module. the inner map's key
+  // is the original name of the binding in the module, and the value is it's
+  // assigned name in the resulting bundle.
+  assignedNamesWithForeignOrigins: Map<
+    string,
+    Map<string | NamespaceMarker, string>
+  >;
+
   // keys are the module-scoped names within our bundle (same as usedNames).
   // values are lists of other module-scoped names within our bundle that the
   // given binding depends upon.
@@ -374,7 +385,7 @@ class ModuleRewriter {
     this.rewriteScope();
     let time = Date.now() - start;
     if (time > 100) {
-      warn(
+      debug(
         `combineModules - completed rewriting scope for module ${module.url.href} in ${time}ms`
       );
     }
@@ -387,8 +398,9 @@ class ModuleRewriter {
   rewriteScope(): void {
     let assignedDefaultName: string | undefined;
     for (let [name, nameDesc] of this.module.desc.names) {
+      let isDupeBinding = false;
       let isDefaultExport = false;
-      let assignedName: string;
+      let assignedName: string | undefined;
 
       // figure out which names in module scope are imports vs things that
       // live inside this module
@@ -398,9 +410,33 @@ class ModuleRewriter {
       ) {
         let remoteName: string | NamespaceMarker;
         let remoteModuleHref: string;
+        let localName: string | NamespaceMarker | undefined;
+        let localModuleHref: string | undefined;
         if (nameDesc.type === "local" && nameDesc.original) {
+          // TODO eventually we'll use the consumer's semver range for this
+          // binding's pkg to find these dupes
           remoteName = nameDesc.original.exportedName;
           remoteModuleHref = nameDesc.original.moduleHref;
+          localName = name;
+          localModuleHref = this.module.url.href;
+          isDupeBinding = Boolean(
+            this.sharedState.assignedImportedNames
+              .get(remoteModuleHref)
+              ?.get(remoteName)
+          );
+          if (!isDupeBinding) {
+            let nameMapping = this.sharedState.assignedNamesWithForeignOrigins.get(
+              remoteModuleHref
+            );
+            if (!nameMapping) {
+              nameMapping = new Map();
+              this.sharedState.assignedNamesWithForeignOrigins.set(
+                remoteModuleHref,
+                nameMapping
+              );
+            }
+            nameMapping.set(remoteName, name);
+          }
         } else if (nameDesc.type === "import") {
           let remoteModule: Resolution;
           ({ name: remoteName, module: remoteModule } = resolveReexport(
@@ -412,46 +448,71 @@ class ModuleRewriter {
         assignedName = this.maybeAssignImportName(
           remoteModuleHref!,
           remoteName!,
-          name
+          name,
+          localModuleHref,
+          localName
         );
       } else {
         let entry = [...this.module.desc.exports].find(
           ([_, desc]) => desc.type === "local" && desc.name === name
         );
         isDefaultExport = entry?.[0] === "default";
-        if (isDefaultExport) {
-          // check to see if we have already assigned this binding as a result
-          // of processing it's consumer
-          assignedDefaultName = this.sharedState.assignedImportedNames
+        if (entry) {
+          // check to see if the binding we are currently considering is
+          // actually the original source of previously assigned bindings that
+          // derived from this binding via previous bundle builds (in other words:
+          // previously assigned bindings have an "original" property that points
+          // specifically to this module and binding)
+          let maybeAssignedName = this.sharedState.assignedNamesWithForeignOrigins
             .get(this.module.url.href)
-            ?.get("default");
-          if (assignedDefaultName) {
-            // the consumer of this module has already assigned this name
-            assignedName = assignedDefaultName;
-          } else {
-            if (!assignedDefaultName && name !== "default") {
-              // the export is a named default export.
-              assignedDefaultName = this.unusedNameLike(name);
-            } else if (!assignedDefaultName) {
-              // the export is an unnamed default export.
-              assignedDefaultName = this.unusedNameLike("_default");
-            }
-            assignedName = assignedDefaultName;
+            ?.get(entry[0]);
+          if (maybeAssignedName) {
+            isDupeBinding = true;
+            assignedName = maybeAssignedName;
           }
-          this.assignLocalName("default", assignedName);
-        } else if (entry?.[0]) {
-          assignedName = this.maybeAssignImportName(
-            this.module.url.href,
-            entry[0],
-            name
-          );
-        } else {
-          assignedName = this.unusedNameLike(name);
         }
+        if (!assignedName) {
+          if (isDefaultExport) {
+            // check to see if we have already assigned this binding as a result
+            // of processing it's consumer
+            assignedDefaultName = this.sharedState.assignedImportedNames
+              .get(this.module.url.href)
+              ?.get("default");
+            if (assignedDefaultName) {
+              // the consumer of this module has already assigned this name
+              assignedName = assignedDefaultName;
+            } else {
+              if (!assignedDefaultName && name !== "default") {
+                // the export is a named default export.
+                assignedDefaultName = this.unusedNameLike(name);
+              } else if (!assignedDefaultName) {
+                // the export is an unnamed default export.
+                assignedDefaultName = this.unusedNameLike("_default");
+              }
+              assignedName = assignedDefaultName;
+            }
+            this.assignLocalName("default", assignedName);
+          } else if (entry?.[0]) {
+            assignedName = this.maybeAssignImportName(
+              this.module.url.href,
+              entry[0],
+              name
+            );
+          } else {
+            assignedName = this.unusedNameLike(name);
+          }
 
-        this.assignLocalName(name, assignedName);
+          this.assignLocalName(name, assignedName);
+        }
       }
       this.claimAndRename(this.module.url.href, name, assignedName);
+      if (isDupeBinding) {
+        // remove this binding's declaration, since it has already been added to
+        // the bundle the first time we encountered it. we also want to make
+        // sure to remove the side effects as well, which would otherwise be
+        // preserved, since that would result in duplicated side effects.
+        this.editor.removeDeclaration(name, true);
+      }
     }
 
     let myAssignment = this.assignments.find(
@@ -510,11 +571,26 @@ class ModuleRewriter {
   private maybeAssignImportName(
     remoteModuleHref: string,
     remoteName: string | NamespaceMarker,
-    suggestedName: string
+    suggestedName: string,
+    localModuleHref?: string,
+    localName?: string | NamespaceMarker
   ): string {
-    let alreadyAssignedName = this.sharedState.assignedImportedNames
-      .get(remoteModuleHref)
-      ?.get(remoteName);
+    let alreadyAssignedName =
+      this.sharedState.assignedImportedNames
+        .get(remoteModuleHref)
+        ?.get(remoteName) ??
+      // in the scenario where we have exposed in our bundle a reexport of a
+      // binding that was originally imported into our module and then
+      // subsequently built into a bundle--thus making the formerly imported
+      // binding local to the resulting bundle (and bestowing an "original"
+      // property in its description), we may encounter the binding via the
+      // consumer of the bundle's export first. in this case we need to make sure
+      // to check for the assignment that the consumer made.
+      (localModuleHref && localName
+        ? this.sharedState.assignedImportedNames
+            .get(localModuleHref)
+            ?.get(localName)
+        : undefined);
 
     if (alreadyAssignedName) {
       return alreadyAssignedName;
@@ -625,7 +701,7 @@ function gatherModuleRewriters(
   setBindingDependencies(rewriter.module, state, assignments);
   let time = Date.now() - start;
   if (time > 100) {
-    warn(
+    debug(
       `combineModules - completed setting binding dependencies for module ${rewriter.module.url.href} in ${time}ms`
     );
   }
@@ -649,10 +725,29 @@ function setBindingDependencies(
       name = state.assignedLocalNames
         .get(currentModule.url.href)
         ?.get(originalName);
+      if (!name) {
+        let [exportedName] =
+          [...module.desc.exports.entries()].find(
+            ([, exportDesc]) =>
+              exportDesc.type === "local" && exportDesc.name === originalName
+          ) ?? [];
+        if (exportedName) {
+          name = state.assignedNamesWithForeignOrigins
+            .get(currentModule.url.href)
+            ?.get(exportedName);
+        }
+      }
     } else if (desc.type === "local" && desc.original) {
-      name = state.assignedImportedNames
-        .get(desc.original.moduleHref)
-        ?.get(desc.original.exportedName);
+      name =
+        state.assignedImportedNames
+          .get(desc.original.moduleHref)
+          ?.get(desc.original.exportedName) ??
+        // if the consumer of this binding was processed first, then we'll find it
+        // in its current location (the bundle module), so fall back to that if we
+        // can't find it in the original module href
+        state.assignedImportedNames
+          .get(currentModule.url.href)
+          ?.get(originalName);
     } else if (desc.type === "import") {
       // the module that holds the binding dependency to set is actually a
       // different module. follow the export to get to the module where the
@@ -716,11 +811,13 @@ function setBindingDependencies(
             state.assignedLocalNames
               .get(currentModule.url.href)
               ?.get(localName) ??
-            // also need to check assigned imported names as our binding might be
-            // explicitly imported and then explicitly exported
+            // also need to check assigned imported names as our binding might
+            // be explicitly imported and then explicitly exported, in this case
+            // we need to use the outsideName, since that is how the inner
+            // map of assignedImports is keyed
             state.assignedImportedNames
               .get(currentModule.url.href)
-              ?.get(localName);
+              ?.get(outsideName);
           originalDependsOn = [
             ...currentModule.desc.names.get(localName)!.dependsOn,
           ].filter((d) => d !== localName);
@@ -784,9 +881,20 @@ function setBindingDependencies(
           .get(remoteModule.url.href)!
           .get(remoteName)!;
       } else {
-        depName = state.assignedLocalNames
-          .get(currentModule.url.href)!
-          .get(originalDepName)!;
+        let original = desc.original;
+        if (original) {
+          depName =
+            state.assignedImportedNames
+              .get(original.moduleHref)
+              ?.get(original.exportedName) ??
+            state.assignedNamesWithForeignOrigins
+              .get(original.moduleHref)!
+              .get(original.exportedName)!;
+        } else {
+          depName = state.assignedLocalNames
+            .get(currentModule.url.href)!
+            .get(originalDepName)!;
+        }
       }
       if (depName) {
         dependsOn.add(depName);
@@ -803,25 +911,28 @@ function isConsumedBy(
   bundle: URL,
   visitedConsumers: string[] = []
 ): boolean {
-  if (!cache.has(consumingBinding)) {
-    cache.set(consumingBinding, new Map());
-  }
   let consumesCache = cache.get(consumingBinding);
-  if (consumesCache?.has(consumedBinding)) {
+  if (!consumesCache) {
+    consumesCache = new Map();
+    cache.set(consumingBinding, consumesCache);
+  }
+  if (consumesCache.has(consumedBinding)) {
     return consumesCache.get(consumingBinding)!;
   }
 
   // Collapse cycles in binding consumption which are likely the result of recursion
   if (visitedConsumers.includes(consumingBinding)) {
-    consumesCache?.set(consumedBinding, true);
+    consumesCache.set(consumedBinding, true);
     return true;
   }
   visitedConsumers = [...visitedConsumers, consumingBinding];
   let deps = bindingDependencies.get(consumingBinding);
   if (!deps) {
+    consumesCache.set(consumedBinding, false);
     return false;
   }
   if (deps.has(consumedBinding)) {
+    consumesCache.set(consumedBinding, true);
     return true;
   }
 
@@ -835,7 +946,7 @@ function isConsumedBy(
       visitedConsumers
     )
   );
-  consumesCache?.set(consumedBinding, result);
+  consumesCache.set(consumedBinding, result);
   return result;
 }
 
@@ -888,22 +999,33 @@ function assignedExports(
           state.assignedLocalNames.get(module.url.href)?.get(original) ??
           state.assignedImportedNames.get(module.url.href)?.get(original);
       } else {
-        let originalInternalName = !isNamespaceMarker(original)
-          ? (module.desc.exports.get(original)!.name as string)
+        let desc = !isNamespaceMarker(original)
+          ? module.desc.names.get(original)
           : undefined;
-        insideName =
-          !isNamespaceMarker(original) && originalInternalName
-            ? state.assignedLocalNames
-                .get(module.url.href)
-                ?.get(originalInternalName)
+        if (desc?.type === "local" && desc.original) {
+          insideName = state.assignedNamesWithForeignOrigins
+            .get(desc.original.moduleHref)
+            ?.get(desc.original.exportedName);
+        } else {
+          let originalInternalName = !isNamespaceMarker(original)
+            ? (module.desc.exports.get(original)!.name as string)
             : undefined;
+          insideName =
+            !isNamespaceMarker(original) && originalInternalName
+              ? state.assignedLocalNames
+                  .get(module.url.href)
+                  ?.get(originalInternalName)
+              : undefined;
+        }
         insideName =
           insideName ??
           state.assignedImportedNames.get(module.url.href)?.get(original);
       }
 
       if (!insideName) {
-        throw new Error(`bug: no internal mapping for '${exposed}'`);
+        throw new Error(
+          `bug: no internal mapping for '${exposed}' when making bundle ${bundleURL.href}`
+        );
       }
       exports.set(exposed, insideName);
     }

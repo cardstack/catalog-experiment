@@ -105,12 +105,7 @@ export class NpmImportPackageNode implements BuilderNode {
     workingPkgURL: URL;
   }): Promise<NextNode<{ finalURL: URL; workingURL: URL }>> {
     return {
-      node: new CoreBuildNode(
-        this.pkgJSON,
-        workingPkgURL,
-        this.resolver,
-        this.workingDir
-      ),
+      node: new CoreBuildNode(this.pkgJSON, workingPkgURL, this.resolver),
     };
   }
 }
@@ -153,8 +148,7 @@ class CoreBuildNode implements BuilderNode {
   constructor(
     private pkgJSON: PackageJSON,
     private pkgWorkingURL: URL,
-    private resolver: Resolver,
-    private workingDir: string
+    private resolver: Resolver
   ) {
     this.cacheKey = `core-build:${pkgWorkingURL.href}`;
   }
@@ -175,12 +169,7 @@ class CoreBuildNode implements BuilderNode {
     lockEntries: LockEntries;
   }): Promise<NextNode<{ finalURL: URL; workingURL: URL }>> {
     return {
-      node: new FinishCoreBuild(
-        this.pkgJSON,
-        this.pkgWorkingURL,
-        this.workingDir,
-        lockEntries
-      ),
+      node: new FinishCoreBuild(this.pkgJSON, this.pkgWorkingURL, lockEntries),
     };
   }
 }
@@ -190,7 +179,6 @@ class FinishCoreBuild implements BuilderNode {
   constructor(
     private pkgJSON: PackageJSON,
     private pkgWorkingURL: URL,
-    private workingDir: string,
     private lockEntries: LockEntries
   ) {
     this.cacheKey = `finish-core-build:${this.pkgWorkingURL.href}`;
@@ -198,11 +186,7 @@ class FinishCoreBuild implements BuilderNode {
 
   async deps() {
     return {
-      pkgFinalURL: new PublishPackageNode(
-        this.pkgWorkingURL,
-        this.workingDir,
-        this.lockEntries
-      ),
+      pkgFinalURL: new PublishPackageNode(this.pkgWorkingURL, this.lockEntries),
     };
   }
 

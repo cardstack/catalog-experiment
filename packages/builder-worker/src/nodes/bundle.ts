@@ -1,18 +1,11 @@
-import {
-  BuilderNode,
-  Value,
-  ConstantNode,
-  annotationEnd,
-  annotationStart,
-  NodeOutput,
-} from "./common";
+import { BuilderNode, Value, ConstantNode, NodeOutput } from "./common";
 import {
   ModuleResolutionsNode,
   ModuleResolution,
   isCyclicModuleResolution,
   Resolution,
 } from "./resolution";
-import { combineModules } from "../combine-modules";
+import { combineModules, ImportAssignments } from "../combine-modules";
 import { File } from "@babel/types";
 import {
   NamespaceMarker,
@@ -22,7 +15,7 @@ import {
 } from "../describe-file";
 import { EntrypointsJSONNode, Entrypoint, HTMLEntrypoint } from "./entrypoint";
 import { JSParseNode } from "./js";
-import { encodeModuleDescription } from "../description-encoder";
+import { addDescriptionToSource } from "../description-encoder";
 import { makeURLEndInDir } from "../path";
 import { Resolver } from "../resolver";
 import { LockEntries } from "./lock-file";
@@ -304,13 +297,16 @@ export class BundleNode implements BuilderNode {
   }: {
     bundleAssignments: BundleAssignment[];
   }): Promise<NodeOutput<string>> {
-    let { code } = combineModules(this.bundle, bundleAssignments);
+    let { code, importAssignments } = combineModules(
+      this.bundle,
+      bundleAssignments
+    );
     if (this.skipBundleAnnotation) {
       return { value: code };
     }
 
     return {
-      node: new BundleSerializerNode(code),
+      node: new BundleSerializerNode(code, importAssignments, this.bundle),
     };
   }
 }
@@ -318,7 +314,11 @@ export class BundleNode implements BuilderNode {
 export class BundleSerializerNode implements BuilderNode {
   cacheKey = this;
 
-  constructor(private unannotatedSrc: string) {}
+  constructor(
+    private unannotatedSrc: string,
+    private importAssignments: ImportAssignments,
+    private bundleURL: URL
+  ) {}
 
   async deps() {
     return {
@@ -327,16 +327,14 @@ export class BundleSerializerNode implements BuilderNode {
   }
 
   async run({ parsed }: { parsed: File }): Promise<Value<string>> {
-    let desc = describeFile(parsed);
+    let desc = describeFile(parsed, {
+      importAssignments: this.importAssignments,
+      filename: this.bundleURL.href,
+    });
     if (!isModuleDescription(desc)) {
       throw new Error(`Cannot encode description for CJS file`);
     }
-    let value = [
-      this.unannotatedSrc,
-      annotationStart,
-      encodeModuleDescription(desc),
-      annotationEnd,
-    ].join("");
+    let value = addDescriptionToSource(desc, this.unannotatedSrc);
     return { value };
   }
 }

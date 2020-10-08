@@ -10,6 +10,7 @@ import { buildSrcDir } from "../src/nodes/package";
 import { recipesURL } from "../../builder-worker/src/recipes";
 import { installFileAssertions } from "../../builder-worker/test/helpers/file-assertions";
 import { NodeResolver } from "../src/resolver";
+import { extractDescriptionFromSource } from "../../builder-worker/src/description-encoder";
 
 QUnit.module("Install from npm", function () {
   QUnit.module("pkg dependencies", function (origHooks) {
@@ -28,11 +29,17 @@ QUnit.module("Install from npm", function () {
       };
       a.files = {
         "index.js": `
-        import b from "b";
-        import e from "e";
-        b();
-        e();
-        console.log('a')`,
+          import a from "./a";
+          import b from "b";
+          import e from "e";
+          a();
+          b();
+          e();
+          console.log('a')`,
+        "a.js": `
+          export default function() {
+            console.log('a');
+          };`,
       };
       let b1 = a.addDependency("b", "4.5.6");
       b1.pkg = {
@@ -147,7 +154,7 @@ QUnit.module("Install from npm", function () {
       );
       assert.deepEqual(lock, {
         b:
-          "https://catalogjs.com/pkgs/npm/b/4.5.6/q-VwjabeuTToknSVrW+emXye55w=/b.js",
+          "https://catalogjs.com/pkgs/npm/b/4.5.6/GPK8msJ9aPVm9Y8BPhPPh5fA5M4=/b.js",
         e:
           "https://catalogjs.com/pkgs/npm/e/2.3.4/3HHDrHWAD4EmwKIiLurOF2RsOr0=/index.js",
       });
@@ -157,7 +164,7 @@ QUnit.module("Install from npm", function () {
       );
       assert.deepEqual(lock, {
         b:
-          "https://catalogjs.com/pkgs/npm/b/7.8.9/6LqJQFQXBznRzHbvKXVsF39KLTE=/index.js",
+          "https://catalogjs.com/pkgs/npm/b/7.8.9/cMh7+-SOkesYmVx7wn6d74z5o7M=/index.js",
       });
     });
 
@@ -235,6 +242,29 @@ QUnit.module("Install from npm", function () {
       });
       let { d: pkgD2URL } = b2Lock;
       assert.deepEqual(pkgD2URL, pkgD1URL);
+    });
+
+    test("bundle metadata utilize final pkg URLs", async function (assert) {
+      let [pkgAURL] = packageURLs;
+      let source = await (
+        await fs.openFile(new URL("index.js", pkgAURL))
+      ).readText();
+      let { desc } = extractDescriptionFromSource(source);
+
+      let nameDesc = desc!.names.get("a")!;
+      assert.equal(nameDesc?.type, "local");
+      if (nameDesc.type === "local") {
+        assert.equal(nameDesc.original?.moduleHref, `${pkgAURL}a.js`);
+      }
+
+      nameDesc = desc!.names.get("b")!;
+      assert.equal(nameDesc?.type, "local");
+      if (nameDesc.type === "local") {
+        assert.equal(
+          nameDesc.original?.moduleHref,
+          "https://catalogjs.com/pkgs/npm/b/4.5.6/GPK8msJ9aPVm9Y8BPhPPh5fA5M4=/b.js"
+        );
+      }
     });
   });
 

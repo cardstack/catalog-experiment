@@ -15,6 +15,7 @@ export interface Options {
   // situation when the developer is actively modifying the code
   // within the bundle.
   skipAnnotationForHtmlConsumedBundles: boolean; // defaults to true
+  skipBundleAnnotation: boolean; // defaults to false. this will override the skipAnnotationForHtmlConsumedBundles setting
 }
 
 // This can leverage global bundle assignments (that spans all projects), or it
@@ -43,6 +44,7 @@ export class MakeProjectNode implements BuilderNode<LockEntries> {
     this.cacheKey = `project:input=${inputRoot.href},output=${projectOutputRoot.href}`;
     this.optsWithDefaults = {
       skipAnnotationForHtmlConsumedBundles: true,
+      skipBundleAnnotation: false,
       ...options,
     };
   }
@@ -139,8 +141,9 @@ class FinishProjectNode implements BuilderNode<LockEntries> {
             this.projectOutputRoot,
             this.resolver,
             this.lockEntries,
-            this.options.skipAnnotationForHtmlConsumedBundles &&
-              bundleHrefsConsumedByHtml.has(bundleURL.href)
+            this.options.skipBundleAnnotation ||
+              (this.options.skipAnnotationForHtmlConsumedBundles &&
+                bundleHrefsConsumedByHtml.has(bundleURL.href))
           ),
           bundleURL
         )

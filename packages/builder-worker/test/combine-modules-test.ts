@@ -1969,7 +1969,7 @@ QUnit.module("combine modules", function (origHooks) {
 
       function b() { return bar0; }
       let bar2 = 4;
-      let bar00 = 5
+      let bar00 = 5;
       console.log(b() + bar2 + bar00);
       export {};
       `

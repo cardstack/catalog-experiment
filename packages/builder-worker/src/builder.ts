@@ -264,7 +264,6 @@ class BuildRunner<Input> {
 
   private async evaluate(node: BuilderNode, maybeDeps: unknown) {
     let start = Date.now();
-    console.log(`entering node ${debugName(node)}`);
     let state = this.startEvaluating(node, maybeDeps);
     let result = await state.output;
     this.getCurrentContext().nodeStates.set(node.cacheKey, {
@@ -275,9 +274,6 @@ class BuildRunner<Input> {
       didChange: result.changed,
       buildTime: Date.now() - start,
     });
-    console.log(
-      `exiting node ${debugName(node)}, elapsed time: ${Date.now() - start}`
-    );
     return result;
   }
 
