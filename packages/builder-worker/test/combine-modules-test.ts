@@ -907,6 +907,103 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
+  test("can access nested namespace imports within a bundle", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import * as lib from './lib.js';
+        console.log(lib.hello + lib.goodbye + lib.japanese.sayonara);
+      `,
+      "lib.js": `
+        import * as japanese from './deep.js';
+        export const hello = 'hello';
+        export const goodbye = 'goodbye';
+        export { japanese };
+      `,
+      "deep.js": `
+        export const konnichiwa = 'konnichiwa';
+        export const sayonara = 'sayonara';
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+      const konnichiwa = 'konnichiwa';
+      const sayonara = 'sayonara';
+      const japanese = { konnichiwa, sayonara };
+      const hello = 'hello';
+      const goodbye = 'goodbye';
+      const lib = { hello, goodbye, japanese };
+      console.log(lib.hello + lib.goodbye + lib.japanese.sayonara );
+      export {};
+      `
+    );
+  });
+
+  test("can access namespace import that is comprised of reexported bindings", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import * as lib from './lib.js';
+        console.log(lib.hello() + lib.goodbye);
+      `,
+      "lib.js": `
+        export { default as hello } from "./hello.js";
+        export const goodbye = 'goodbye';
+      `,
+      "hello.js": `
+        export default function() { return 'hello'; }
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+      const _default = (function() { return 'hello'; });
+      const goodbye = 'goodbye';
+      const lib = { hello: _default, goodbye };
+      console.log(lib.hello() + lib.goodbye);
+      export {};
+      `
+    );
+  });
+
+  test("can access namespace import that is comprised of manually reexported (explicit import and export statements) bindings", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import * as lib from './lib.js';
+        console.log(lib.hello() + lib.goodbye);
+      `,
+      "lib.js": `
+        import { default as hello } from "./hello.js";
+        export { hello };
+        export const goodbye = 'goodbye';
+      `,
+      "hello.js": `
+        export default function() { return 'hello'; }
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+      const hello = (function() { return 'hello'; });
+      const goodbye = 'goodbye';
+      const lib = { hello, goodbye };
+      console.log(lib.hello() + lib.goodbye);
+      export {};
+      `
+    );
+  });
+
   test("can access namespace of module with renamed exports within bundle", async function (assert) {
     await assert.setupFiles({
       "index.js": `
