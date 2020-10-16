@@ -34,8 +34,8 @@ function values(object) {
   return object == null ? [] : baseValues(object, keys(object));
 }
 
-const _default = (values);
-export { _default as default };
+
+export { values as default };
 /*====catalogjs annotation start====
-lZKTwqwuL2Rpc3QvOTYuanMBk8KpLi9rZXlzLmpzBYGnZGVmYXVsdJShbKhfZGVmYXVsdBDAkZMQwMKEqmJhc2VWYWx1ZXOboWmQwgLAkgMEwADAp2RlZmF1bHSQpGtleXOboWmQwgbAkgcIwAHAp2RlZmF1bHSQpnZhbHVlc5uhbJKqYmFzZVZhbHVlc6RrZXlzwgnAkgoLwMDAwJCoX2RlZmF1bHSboWyRpnZhbHVlc8INwJIOD8DAwMCQ3AARlgAAAcDCw5YAFwIFwsKWCQADwMLClgsKwMDCwpYqCsAIwsKWARQGCcLClgkAB8DCwpYLBMDAwsKWCQTAwMLCls0CIQwKDMLClgkGwATCwpYEBsDAwsKWAgENEMLClgYBDsDCwpYACMALwsKWCQjAwMLClgEOD8DCwg==
+lZKVwqwuL2Rpc3QvOTYuanMBwsCVwqkuL2tleXMuanMFwsCBp2RlZmF1bHSUoWymdmFsdWVzDMCRkwzAwIOqYmFzZVZhbHVlc5uhaZDCAsCSAwTAAMCnZGVmYXVsdJCka2V5c5uhaZDCBsCSBwjAAcCnZGVmYXVsdJCmdmFsdWVzm6FskqpiYXNlVmFsdWVzpGtleXPCCcCSCgvAwMDAkJ2WAAABwMLDlgAXAgXCwpYJAAPAwsKWCwrAwMLClioKwAjCwpYBFAYJwsKWCQAHwMLClgsEwMDCwpYJBMDAwsKWzQIhDAoMwsKWCQbABMLClgkGwMDCwpYDDgvAwsI=
 ====catalogjs annotation end====*/

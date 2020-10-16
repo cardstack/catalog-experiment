@@ -27,8 +27,8 @@ function toString(value) {
   return value == null ? '' : baseToString(value);
 }
 
-const _default = (toString);
-export { _default as default };
+
+export { toString as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvMjIuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DMCRkwzAwoOsYmFzZVRvU3RyaW5nm6FpkMICwJIDBMAAwKdkZWZhdWx0kKh0b1N0cmluZ5uhbJGsYmFzZVRvU3RyaW5nwgXAkgYHwMDAwJCoX2RlZmF1bHSboWyRqHRvU3RyaW5nwgnAkgoLwMDAwJCdlgAAAcDCw5YAFwIFwsKWCQADwMLClgsMwMDCwpYoDMDAwsKWzQGsCgYIwsKWCQjABMLClgQIwMDCwpYCAQkMwsKWBgEKwMLClgAIwAfCwpYJCMDAwsKWAQ4LwMLC
+lZGVwqwuL2Rpc3QvMjIuanMBwsCBp2RlZmF1bHSUoWyodG9TdHJpbmcIwJGTCMDAgqxiYXNlVG9TdHJpbmeboWmQwgLAkgMEwADAp2RlZmF1bHSQqHRvU3RyaW5nm6FskaxiYXNlVG9TdHJpbmfCBcCSBgfAwMDAkJmWAAABwMLDlgAXAgXCwpYJAAPAwsKWCwzAwMLCligMwMDCwpbNAawKBgjCwpYJCMAEwsKWCQjAwMLClgMOB8DCwg==
 ====catalogjs annotation end====*/

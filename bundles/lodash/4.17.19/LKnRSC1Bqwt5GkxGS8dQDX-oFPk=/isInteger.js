@@ -32,8 +32,8 @@ function isInteger(value) {
   return typeof value == 'number' && value == toInteger(value);
 }
 
-const _default = (isInteger);
-export { _default as default };
+
+export { isInteger as default };
 /*====catalogjs annotation start====
-lZGTwq4uL3RvSW50ZWdlci5qcwGBp2RlZmF1bHSUoWyoX2RlZmF1bHQMwJGTDMDCg6l0b0ludGVnZXKboWmQwgLAkgMEwADAp2RlZmF1bHSQqWlzSW50ZWdlcpuhbJGpdG9JbnRlZ2VywgXAkgYHwMDAwJCoX2RlZmF1bHSboWyRqWlzSW50ZWdlcsIJwJIKC8DAwMCQnZYAAAHAwsOWABkCBcLClgkAA8DCwpYLCcDAwsKWOAnAwMLCls0B/QoGCMLClgkJwATCwpYECcDAwsKWAgEJDMLClgYBCsDCwpYACMAHwsKWCQjAwMLClgEOC8DCwg==
+lZGVwq4uL3RvSW50ZWdlci5qcwHCwIGnZGVmYXVsdJShbKlpc0ludGVnZXIIwJGTCMDAgql0b0ludGVnZXKboWmQwgLAkgMEwADAp2RlZmF1bHSQqWlzSW50ZWdlcpuhbJGpdG9JbnRlZ2VywgXAkgYHwMDAwJCZlgAAAcDCw5YAGQIFwsKWCQADwMLClgsJwMDCwpY4CcDAwsKWzQH9CgYIwsKWCQnABMLClgkJwMDCwpYDDgfAwsI=
 ====catalogjs annotation end====*/

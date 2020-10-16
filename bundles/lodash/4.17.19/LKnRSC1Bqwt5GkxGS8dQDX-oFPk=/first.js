@@ -1,4 +1,4 @@
 export { default } from "./head.js";
 /*====catalogjs annotation start====
-lZGTwqkuL2hlYWQuanMBgadkZWZhdWx0lKFyp2RlZmF1bHQBAJGTAcDCgJKWAAABwMLDlgAkwMDCwg==
+lZGVwqkuL2hlYWQuanMBw8CBp2RlZmF1bHSUoXKnZGVmYXVsdAEAkZMBwMCAkpYAAAHAwsOWACTAwMLC
 ====catalogjs annotation end====*/

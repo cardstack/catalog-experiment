@@ -26,8 +26,8 @@ function fromPairs(pairs) {
   return result;
 }
 
-const _default = (fromPairs);
-export { _default as default };
+
+export { fromPairs as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQIwJGTCMDCgqlmcm9tUGFpcnOboWyQwgHAkgIDwMDAwJCoX2RlZmF1bHSboWyRqWZyb21QYWlyc8IFwJIGB8DAwMCQmZYAAAHAwsOWzQFUzNECBMLClgkJwMDCwpYECcDAwsKWAgEFCMLClgYBBsDCwpYACMADwsKWCQjAwMLClgEOB8DCwg==
+lZCBp2RlZmF1bHSUoWypZnJvbVBhaXJzBMCRkwTAwIGpZnJvbVBhaXJzm6FskMIBwJICA8DAwMCQlZYAAAHAwsOWzQFUzNECBMLClgkJwMDCwpYJCcDAwsKWAw4DwMLC
 ====catalogjs annotation end====*/

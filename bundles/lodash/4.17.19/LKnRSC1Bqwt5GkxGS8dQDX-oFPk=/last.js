@@ -17,8 +17,8 @@ function last(array) {
   return length ? array[length - 1] : undefined;
 }
 
-const _default = (last);
-export { _default as default };
+
+export { last as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQIwJGTCMDCgqRsYXN0m6FskMIBwJICA8DAwMCQqF9kZWZhdWx0m6FskaRsYXN0wgXAkgYHwMDAwJCZlgAAAcDCw5bM/m0CBMLClgkEwMDCwpYEBMDAwsKWAgEFCMLClgYBBsDCwpYACMADwsKWCQjAwMLClgEOB8DCwg==
+lZCBp2RlZmF1bHSUoWykbGFzdATAkZMEwMCBpGxhc3SboWyQwgHAkgIDwMDAwJCVlgAAAcDCw5bM/m0CBMLClgkEwMDCwpYJBMDAwsKWAw4DwMLC
 ====catalogjs annotation end====*/

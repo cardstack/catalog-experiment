@@ -23,8 +23,8 @@ function sortedIndex(array, value) {
   return baseSortedIndex(array, value);
 }
 
-const _default = (sortedIndex);
-export { _default as default };
+
+export { sortedIndex as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvMzAuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DMCRkwzAwoOvYmFzZVNvcnRlZEluZGV4m6FpkMICwJIDBMAAwKdkZWZhdWx0kKtzb3J0ZWRJbmRleJuhbJGvYmFzZVNvcnRlZEluZGV4wgXAkgYHwMDAwJCoX2RlZmF1bHSboWyRq3NvcnRlZEluZGV4wgnAkgoLwMDAwJCdlgAAAcDCw5YAFwIFwsKWCQADwMLClgsPwMDCwpYaD8DAwsKWzQHSEQYIwsKWCQvABMLClgQLwMDCwpYCAQkMwsKWBgEKwMLClgAIwAfCwpYJCMDAwsKWAQ4LwMLC
+lZGVwqwuL2Rpc3QvMzAuanMBwsCBp2RlZmF1bHSUoWyrc29ydGVkSW5kZXgIwJGTCMDAgq9iYXNlU29ydGVkSW5kZXiboWmQwgLAkgMEwADAp2RlZmF1bHSQq3NvcnRlZEluZGV4m6Fska9iYXNlU29ydGVkSW5kZXjCBcCSBgfAwMDAkJmWAAABwMLDlgAXAgXCwpYJAAPAwsKWCw/AwMLClhoPwMDCwpbNAdIRBgjCwpYJC8AEwsKWCQvAwMLClgMOB8DCwg==
 ====catalogjs annotation end====*/

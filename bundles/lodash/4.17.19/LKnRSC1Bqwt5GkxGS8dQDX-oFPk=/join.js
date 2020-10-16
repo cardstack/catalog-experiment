@@ -23,8 +23,8 @@ function join(array, separator) {
   return array == null ? '' : nativeJoin.call(array, separator);
 }
 
-const _default = (join);
-export { _default as default };
+
+export { join as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQSwJGTEsDChKphcnJheVByb3Rvm6FskaVBcnJhecICBZIDBMDAwMCQqm5hdGl2ZUpvaW6boWyRqmFycmF5UHJvdG/CBwqSCAnAwMDAkaphcnJheVByb3RvpGpvaW6boWyRqm5hdGl2ZUpvaW7CC8CSDA3AwMDAkKhfZGVmYXVsdJuhbJGkam9pbsIPwJIQEcDAwMCQ3AATlgAAAcDCw5YsAQIGwsKWBAADwMLClgAKwAXCwpYACsDAwsKWAw/AwMLCllsBBwvCwpYEAAjAwsKWAArACsLCljMKwMDCwpYDBQTAwsKWzQFvGgwOwsKWCQTACcLClgQEwMDCwpYCAQ8SwsKWBgEQwMLClgAIwA3CwpYJCMDAwsKWAQ4RwMLC
+lZCBp2RlZmF1bHSUoWykam9pbg7AkZMOwMCDqmFycmF5UHJvdG+boWyRpUFycmF5wgIFkgMEwMDAwJCqbmF0aXZlSm9pbpuhbJGqYXJyYXlQcm90b8IHCpIICcDAwMCRqmFycmF5UHJvdG+kam9pbpuhbJGqbmF0aXZlSm9pbsILwJIMDcDAwMCQn5YAAAHAwsOWLAECBsLClgQAA8DCwpYACsAFwsKWAArAwMLClgMPwMDCwpZbAQcLwsKWBAAIwMLClgAKwArCwpYzCsDAwsKWAwUEwMLCls0BbxoMDsLClgkEwAnCwpYJBMDAwsKWAw4NwMLC
 ====catalogjs annotation end====*/

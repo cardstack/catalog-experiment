@@ -23,8 +23,8 @@ function constant(value) {
   };
 }
 
-const _default = (constant);
-export { _default as default };
+
+export { constant as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQIwJGTCMDCgqhjb25zdGFudJuhbJDCAcCSAgPAwMDAkKhfZGVmYXVsdJuhbJGoY29uc3RhbnTCBcCSBgfAwMDAkJmWAAABwMLDls0BqjkCBMLClgkIwMDCwpYECMDAwsKWAgEFCMLClgYBBsDCwpYACMADwsKWCQjAwMLClgEOB8DCwg==
+lZCBp2RlZmF1bHSUoWyoY29uc3RhbnQEwJGTBMDAgahjb25zdGFudJuhbJDCAcCSAgPAwMDAkJWWAAABwMLDls0BqjkCBMLClgkIwMDCwpYJCMDAwsKWAw4DwMLC
 ====catalogjs annotation end====*/

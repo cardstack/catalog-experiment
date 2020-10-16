@@ -20,8 +20,8 @@ function wrapperToIterator() {
   return this;
 }
 
-const _default = (wrapperToIterator);
-export { _default as default };
+
+export { wrapperToIterator as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQIwJGTCMDCgrF3cmFwcGVyVG9JdGVyYXRvcpuhbJDCAcCSAgPAwMDAkKhfZGVmYXVsdJuhbJGxd3JhcHBlclRvSXRlcmF0b3LCBcCSBgfAwMDAkJmWAAABwMLDls0BPhUCBMLClgkRwMDCwpYEEcDAwsKWAgEFCMLClgYBBsDCwpYACMADwsKWCQjAwMLClgEOB8DCwg==
+lZCBp2RlZmF1bHSUoWyxd3JhcHBlclRvSXRlcmF0b3IEwJGTBMDAgbF3cmFwcGVyVG9JdGVyYXRvcpuhbJDCAcCSAgPAwMDAkJWWAAABwMLDls0BPhUCBMLClgkRwMDCwpYJEcDAwsKWAw4DwMLC
 ====catalogjs annotation end====*/

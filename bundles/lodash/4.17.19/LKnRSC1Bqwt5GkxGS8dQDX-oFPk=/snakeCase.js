@@ -26,8 +26,8 @@ import { default as createCompounder } from "./dist/19.js";
 var snakeCase = createCompounder(function (result, word, index) {
   return result + (index ? '_' : '') + word.toLowerCase();
 });
-const _default = (snakeCase);
-export { _default as default };
+
+export { snakeCase as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvMTkuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DsCRkw7AwoOwY3JlYXRlQ29tcG91bmRlcpuhaZDCAsCSAwTAAMCnZGVmYXVsdJCpc25ha2VDYXNlm6FskbBjcmVhdGVDb21wb3VuZGVywgYJkgcIwMDAwJGwY3JlYXRlQ29tcG91bmRlcqhfZGVmYXVsdJuhbJGpc25ha2VDYXNlwgvAkgwNwMDAwJCflgAAAcDCw5YAFwIFwsKWCQADwMLClgsQwMDCwpYAEMDAwsKWzQGtAQYKwsKWBAAHwMLClgAJwAnCwpYECcDAwsKWA18EwMLClgEBCw7CwpYGAQzAwsKWAAjACMLClgkIwMDCwpYBDg3AwsI=
+lZGVwqwuL2Rpc3QvMTkuanMBwsCBp2RlZmF1bHSUoWypc25ha2VDYXNlCsCRkwrAwIKwY3JlYXRlQ29tcG91bmRlcpuhaZDCAsCSAwTAAMCnZGVmYXVsdJCpc25ha2VDYXNlm6FskbBjcmVhdGVDb21wb3VuZGVywgYJkgcIwMDAwJGwY3JlYXRlQ29tcG91bmRlcpuWAAABwMLDlgAXAgXCwpYJAAPAwsKWCxDAwMLClgAQwMDCwpbNAa0BBgrCwpYEAAfAwsKWAAnACcLClgkJwMDCwpYDXwTAwsKWAg4IwMLC
 ====catalogjs annotation end====*/

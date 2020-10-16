@@ -40,8 +40,8 @@ function isEqualWith(value, other, customizer) {
   return result === undefined ? baseIsEqual(value, other, undefined, customizer) : !!result;
 }
 
-const _default = (isEqualWith);
-export { _default as default };
+
+export { isEqualWith as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvNDMuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DMCRkwzAwoOrYmFzZUlzRXF1YWyboWmQwgLAkgMEwADAp2RlZmF1bHSQq2lzRXF1YWxXaXRom6FskatiYXNlSXNFcXVhbMIFwJIGB8DAwMCQqF9kZWZhdWx0m6Fskatpc0VxdWFsV2l0aMIJwJIKC8DAwMCQnZYAAAHAwsOWABcCBcLClgkAA8DCwpYLC8DAwsKWzMgLwMDCwpbNA+QzBgjCwpYJC8AEwsKWBAvAwMLClgIBCQzCwpYGAQrAwsKWAAjAB8LClgkIwMDCwpYBDgvAwsI=
+lZGVwqwuL2Rpc3QvNDMuanMBwsCBp2RlZmF1bHSUoWyraXNFcXVhbFdpdGgIwJGTCMDAgqtiYXNlSXNFcXVhbJuhaZDCAsCSAwTAAMCnZGVmYXVsdJCraXNFcXVhbFdpdGiboWyRq2Jhc2VJc0VxdWFswgXAkgYHwMDAwJCZlgAAAcDCw5YAFwIFwsKWCQADwMLClgsLwMDCwpbMyAvAwMLCls0D5DMGCMLClgkLwATCwpYJC8DAwsKWAw4HwMLC
 ====catalogjs annotation end====*/

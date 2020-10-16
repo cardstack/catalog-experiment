@@ -24,8 +24,8 @@ function sortedLastIndex(array, value) {
   return baseSortedIndex(array, value, true);
 }
 
-const _default = (sortedLastIndex);
-export { _default as default };
+
+export { sortedLastIndex as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvMzAuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DMCRkwzAwoOvYmFzZVNvcnRlZEluZGV4m6FpkMICwJIDBMAAwKdkZWZhdWx0kK9zb3J0ZWRMYXN0SW5kZXiboWyRr2Jhc2VTb3J0ZWRJbmRleMIFwJIGB8DAwMCQqF9kZWZhdWx0m6Fska9zb3J0ZWRMYXN0SW5kZXjCCcCSCgvAwMDAkJ2WAAABwMLDlgAXAgXCwpYJAAPAwsKWCw/AwMLClhoPwMDCwpbNAfkXBgjCwpYJD8AEwsKWBA/AwMLClgIBCQzCwpYGAQrAwsKWAAjAB8LClgkIwMDCwpYBDgvAwsI=
+lZGVwqwuL2Rpc3QvMzAuanMBwsCBp2RlZmF1bHSUoWyvc29ydGVkTGFzdEluZGV4CMCRkwjAwIKvYmFzZVNvcnRlZEluZGV4m6FpkMICwJIDBMAAwKdkZWZhdWx0kK9zb3J0ZWRMYXN0SW5kZXiboWyRr2Jhc2VTb3J0ZWRJbmRleMIFwJIGB8DAwMCQmZYAAAHAwsOWABcCBcLClgkAA8DCwpYLD8DAwsKWGg/AwMLCls0B+RcGCMLClgkPwATCwpYJD8DAwsKWAw4HwMLC
 ====catalogjs annotation end====*/

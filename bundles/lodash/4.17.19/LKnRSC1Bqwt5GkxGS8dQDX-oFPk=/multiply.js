@@ -20,8 +20,8 @@ import { default as createMathOperation } from "./dist/0.js";
 var multiply = createMathOperation(function (multiplier, multiplicand) {
   return multiplier * multiplicand;
 }, 1);
-const _default = (multiply);
-export { _default as default };
+
+export { multiply as default };
 /*====catalogjs annotation start====
-lZGTwqsuL2Rpc3QvMC5qcwGBp2RlZmF1bHSUoWyoX2RlZmF1bHQOwJGTDsDCg7NjcmVhdGVNYXRoT3BlcmF0aW9um6FpkMICwJIDBMAAwKdkZWZhdWx0kKhtdWx0aXBseZuhbJGzY3JlYXRlTWF0aE9wZXJhdGlvbsIGCZIHCMDAwMCRs2NyZWF0ZU1hdGhPcGVyYXRpb26oX2RlZmF1bHSboWyRqG11bHRpcGx5wgvAkgwNwMDAwJCflgAAAcDCw5YAFgIFwsKWCQADwMLClgsTwMDCwpYAE8DAwsKWzQFJAQYKwsKWBAAHwMLClgAIwAnCwpYECMDAwsKWA1AEwMLClgEBCw7CwpYGAQzAwsKWAAjACMLClgkIwMDCwpYBDg3AwsI=
+lZGVwqsuL2Rpc3QvMC5qcwHCwIGnZGVmYXVsdJShbKhtdWx0aXBseQrAkZMKwMCCs2NyZWF0ZU1hdGhPcGVyYXRpb26boWmQwgLAkgMEwADAp2RlZmF1bHSQqG11bHRpcGx5m6FskbNjcmVhdGVNYXRoT3BlcmF0aW9uwgYJkgcIwMDAwJGzY3JlYXRlTWF0aE9wZXJhdGlvbpuWAAABwMLDlgAWAgXCwpYJAAPAwsKWCxPAwMLClgATwMDCwpbNAUkBBgrCwpYEAAfAwsKWAAjACcLClgkIwMDCwpYDUATAwsKWAg4IwMLC
 ====catalogjs annotation end====*/

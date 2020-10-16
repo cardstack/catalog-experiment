@@ -15,8 +15,8 @@ function stubFalse() {
   return false;
 }
 
-const _default = (stubFalse);
-export { _default as default };
+
+export { stubFalse as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQIwJGTCMDCgqlzdHViRmFsc2WboWyQwgHAkgIDwMDAwJCoX2RlZmF1bHSboWyRqXN0dWJGYWxzZcIFwJIGB8DAwMCQmZYAAAHAwsOWzNIWAgTCwpYJCcDAwsKWBAnAwMLClgIBBQjCwpYGAQbAwsKWAAjAA8LClgkIwMDCwpYBDgfAwsI=
+lZCBp2RlZmF1bHSUoWypc3R1YkZhbHNlBMCRkwTAwIGpc3R1YkZhbHNlm6FskMIBwJICA8DAwMCQlZYAAAHAwsOWzNIWAgTCwpYJCcDAwsKWCQnAwMLClgMOA8DCwg==
 ====catalogjs annotation end====*/

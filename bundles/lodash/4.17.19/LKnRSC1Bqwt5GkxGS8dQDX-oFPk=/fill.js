@@ -15,7 +15,7 @@ import { default as isIterateeCall } from "./dist/70.js";
  * @returns {Array} Returns `array`.
  */
 
-function baseFill0(array, value, start, end) {
+function baseFill(array, value, start, end) {
   var length = array.length;
   start = toInteger(start);
 
@@ -38,7 +38,7 @@ function baseFill0(array, value, start, end) {
   return array;
 }
 
-const baseFill = (baseFill0);
+
 
 
 
@@ -87,8 +87,8 @@ function fill(array, value, start, end) {
   return baseFill(array, value, start, end);
 }
 
-const _default = (fill);
-export { _default as default };
+
+export { fill as default };
 /*====catalogjs annotation start====
-lZOTwq4uL3RvSW50ZWdlci5qcwGTwq0uL3RvTGVuZ3RoLmpzBpPCrC4vZGlzdC83MC5qcwqBp2RlZmF1bHSUoWyoX2RlZmF1bHQcwJGTHMDCh6l0b0ludGVnZXKboWmQwgLAkwMEBcAAwKdkZWZhdWx0kKh0b0xlbmd0aJuhaZDCB8CSCAnAAcCnZGVmYXVsdJCuaXNJdGVyYXRlZUNhbGyboWmQwgvAkgwNwALAp2RlZmF1bHSQqWJhc2VGaWxsMJuhbJKpdG9JbnRlZ2VyqHRvTGVuZ3Rowg7Akg8QwMDAwJCoYmFzZUZpbGyboWyRqWJhc2VGaWxsMMISwJITFJLZV2h0dHBzOi8vY2F0YWxvZ2pzLmNvbS9wa2dzL25wbS9sb2Rhc2gvNC4xNy4xOS9MS25SU0MxQnF3dDVHa3hHUzhkUURYLW9GUGs9L19iYXNlRmlsbC5qc6dkZWZhdWx0wMDAkKRmaWxsm6Fskq5pc0l0ZXJhdGVlQ2FsbKhiYXNlRmlsbMIVwJIWF8DAwMCQqF9kZWZhdWx0m6FskaRmaWxswhnAkhobwMDAwJDcAB2WAAABwMLDlgAZAgbCwpYJAAPAwsKWCwnAwMLClkQJwAXCwpbMiQnACcLClgEYBwrCwpYJAAjAwsKWCwjAwMLClksIwMDCwpYBFwsOwsKWCQAMwMLClgsOwMDCwpbMnw7AFMLCls0BUFIPEcLClgkJwATCwpYECcDAwsKWAgESFcLClgYBE8DCwpYACMAQwsKWSAjAwMLCls0Cph0WGMLClgkEwA3CwpYEBMDAwsKWAgEZHMLClgYBGsDCwpYACMAXwsKWCQjAwMLClgEOG8DCwg==
+lZOVwq4uL3RvSW50ZWdlci5qcwHCwJXCrS4vdG9MZW5ndGguanMGwsCVwqwuL2Rpc3QvNzAuanMKwsCBp2RlZmF1bHSUoWykZmlsbBTAkZMUwMCFqXRvSW50ZWdlcpuhaZDCAsCTAwQFwADAp2RlZmF1bHSQqHRvTGVuZ3Rom6FpkMIHwJIICcABwKdkZWZhdWx0kK5pc0l0ZXJhdGVlQ2FsbJuhaZDCC8CSDA3AAsCnZGVmYXVsdJCoYmFzZUZpbGyboWySqXRvSW50ZWdlcqh0b0xlbmd0aMIOwJIPEJLZV2h0dHBzOi8vY2F0YWxvZ2pzLmNvbS9wa2dzL25wbS9sb2Rhc2gvNC4xNy4xOS9MS25SU0MxQnF3dDVHa3hHUzhkUURYLW9GUGs9L19iYXNlRmlsbC5qc6dkZWZhdWx0wMDAkKRmaWxsm6Fskq5pc0l0ZXJhdGVlQ2FsbKhiYXNlRmlsbMIRwJISE8DAwMCQ3AAVlgAAAcDCw5YAGQIGwsKWCQADwMLClgsJwMDCwpZECcAFwsKWzIkJwAnCwpYBGAcKwsKWCQAIwMLClgsIwMDCwpZLCMDAwsKWARcLDsLClgkADMDCwpYLDsDAwsKWzJ8OwBDCwpbNAVBSDxHCwpYJCMAEwsKWSAjAwMLCls0CqB0SFMLClgkEwA3CwpYJBMDAwsKWAw4TwMLC
 ====catalogjs annotation end====*/

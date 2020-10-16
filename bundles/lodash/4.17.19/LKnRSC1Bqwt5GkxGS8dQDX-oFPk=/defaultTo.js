@@ -22,8 +22,8 @@ function defaultTo(value, defaultValue) {
   return value == null || value !== value ? defaultValue : value;
 }
 
-const _default = (defaultTo);
-export { _default as default };
+
+export { defaultTo as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQIwJGTCMDCgqlkZWZhdWx0VG+boWyQwgHAkgIDwMDAwJCoX2RlZmF1bHSboWyRqWRlZmF1bHRUb8IFwJIGB8DAwMCQmZYAAAHAwsOWzQHTWwIEwsKWCQnAwMLClgQJwMDCwpYCAQUIwsKWBgEGwMLClgAIwAPCwpYJCMDAwsKWAQ4HwMLC
+lZCBp2RlZmF1bHSUoWypZGVmYXVsdFRvBMCRkwTAwIGpZGVmYXVsdFRvm6FskMIBwJICA8DAwMCQlZYAAAHAwsOWzQHTWwIEwsKWCQnAwMLClgkJwMDCwpYDDgPAwsI=
 ====catalogjs annotation end====*/

@@ -29,8 +29,8 @@ function nth(array, n) {
   return array && array.length ? baseNth(array, toInteger(n)) : undefined;
 }
 
-const _default = (nth);
-export { _default as default };
+
+export { nth as default };
 /*====catalogjs annotation start====
-lZKTwq0uL2Rpc3QvMTI3LmpzAZPCri4vdG9JbnRlZ2VyLmpzBYGnZGVmYXVsdJShbKhfZGVmYXVsdBDAkZMQwMKEp2Jhc2VOdGiboWmQwgLAkgMEwADAp2RlZmF1bHSQqXRvSW50ZWdlcpuhaZDCBsCSBwjAAcCnZGVmYXVsdJCjbnRom6FskqdiYXNlTnRoqXRvSW50ZWdlcsIJwJIKC8DAwMCQqF9kZWZhdWx0m6FskaNudGjCDcCSDg/AwMDAkNwAEZYAAAHAwsOWABgCBcLClgkAA8DCwpYLB8DAwsKWLgfACMLClgEZBgnCwpYJAAfAwsKWCwnAwMLClggJwMDCwpbNAdcTCgzCwpYJA8AEwsKWBAPAwMLClgIBDRDCwpYGAQ7AwsKWAAjAC8LClgkIwMDCwpYBDg/AwsI=
+lZKVwq0uL2Rpc3QvMTI3LmpzAcLAlcKuLi90b0ludGVnZXIuanMFwsCBp2RlZmF1bHSUoWyjbnRoDMCRkwzAwIOnYmFzZU50aJuhaZDCAsCSAwTAAMCnZGVmYXVsdJCpdG9JbnRlZ2Vym6FpkMIGwJIHCMABwKdkZWZhdWx0kKNudGiboWySp2Jhc2VOdGipdG9JbnRlZ2VywgnAkgoLwMDAwJCdlgAAAcDCw5YAGAIFwsKWCQADwMLClgsHwMDCwpYuB8AIwsKWARkGCcLClgkAB8DCwpYLCcDAwsKWCAnAwMLCls0B1xMKDMLClgkDwATCwpYJA8DAwsKWAw4LwMLC
 ====catalogjs annotation end====*/

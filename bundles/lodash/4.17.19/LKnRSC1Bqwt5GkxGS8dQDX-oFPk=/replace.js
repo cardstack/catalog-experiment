@@ -27,8 +27,8 @@ function replace() {
   return args.length < 3 ? string : string.replace(args[1], args[2]);
 }
 
-const _default = (replace);
-export { _default as default };
+
+export { replace as default };
 /*====catalogjs annotation start====
-lZGTwq0uL3RvU3RyaW5nLmpzAYGnZGVmYXVsdJShbKhfZGVmYXVsdAzAkZMMwMKDqHRvU3RyaW5nm6FpkMICwJIDBMAAwKdkZWZhdWx0kKdyZXBsYWNlm6Fskah0b1N0cmluZ8IFwJIGB8DAwMCQqF9kZWZhdWx0m6FskadyZXBsYWNlwgnAkgoLwMDAwJCdlgAAAcDCw5YAGAIFwsKWCQADwMLClgsIwMDCwpYsCMDAwsKWzQIcUgYIwsKWCQfABMLClgQHwMDCwpYCAQkMwsKWBgEKwMLClgAIwAfCwpYJCMDAwsKWAQ4LwMLC
+lZGVwq0uL3RvU3RyaW5nLmpzAcLAgadkZWZhdWx0lKFsp3JlcGxhY2UIwJGTCMDAgqh0b1N0cmluZ5uhaZDCAsCSAwTAAMCnZGVmYXVsdJCncmVwbGFjZZuhbJGodG9TdHJpbmfCBcCSBgfAwMDAkJmWAAABwMLDlgAYAgXCwpYJAAPAwsKWCwjAwMLCliwIwMDCwpbNAhxSBgjCwpYJB8AEwsKWCQfAwMLClgMOB8DCwg==
 ====catalogjs annotation end====*/

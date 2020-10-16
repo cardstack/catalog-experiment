@@ -37,8 +37,8 @@ function wrapperNext() {
   };
 }
 
-const _default = (wrapperNext);
-export { _default as default };
+
+export { wrapperNext as default };
 /*====catalogjs annotation start====
-lZGTwqwuL3RvQXJyYXkuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DMCRkwzAwoOndG9BcnJheZuhaZDCAsCSAwTAAMCnZGVmYXVsdJCrd3JhcHBlck5leHSboWyRp3RvQXJyYXnCBcCSBgfAwMDAkKhfZGVmYXVsdJuhbJGrd3JhcHBlck5leHTCCcCSCgvAwMDAkJ2WAAABwMLDlgAXAgXCwpYJAAPAwsKWCwfAwMLClkIHwMDCwpbNAerMxgYIwsKWCQvABMLClgQLwMDCwpYCAQkMwsKWBgEKwMLClgAIwAfCwpYJCMDAwsKWAQ4LwMLC
+lZGVwqwuL3RvQXJyYXkuanMBwsCBp2RlZmF1bHSUoWyrd3JhcHBlck5leHQIwJGTCMDAgqd0b0FycmF5m6FpkMICwJIDBMAAwKdkZWZhdWx0kKt3cmFwcGVyTmV4dJuhbJGndG9BcnJhecIFwJIGB8DAwMCQmZYAAAHAwsOWABcCBcLClgkAA8DCwpYLB8DAwsKWQgfAwMLCls0B6szGBgjCwpYJC8AEwsKWCQvAwMLClgMOB8DCwg==
 ====catalogjs annotation end====*/

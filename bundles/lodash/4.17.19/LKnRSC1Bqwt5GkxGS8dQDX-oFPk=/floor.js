@@ -24,8 +24,8 @@ import { default as createRound } from "./dist/20.js";
  */
 
 var floor = createRound('floor');
-const _default = (floor);
-export { _default as default };
+
+export { floor as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvMjAuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DsCRkw7AwoOrY3JlYXRlUm91bmSboWmQwgLAkgMEwADAp2RlZmF1bHSQpWZsb29ym6FskatjcmVhdGVSb3VuZMIGCZIHCMDAwMCRq2NyZWF0ZVJvdW5kqF9kZWZhdWx0m6FskaVmbG9vcsILwJIMDcDAwMCQn5YAAAHAwsOWABcCBcLClgkAA8DCwpYLC8DAwsKWAAvAwMLCls0BpAEGCsLClgQAB8DCwpYABcAJwsKWBAXAwMLClgMJBMDCwpYBAQsOwsKWBgEMwMLClgAIwAjCwpYJCMDAwsKWAQ4NwMLC
+lZGVwqwuL2Rpc3QvMjAuanMBwsCBp2RlZmF1bHSUoWylZmxvb3IKwJGTCsDAgqtjcmVhdGVSb3VuZJuhaZDCAsCSAwTAAMCnZGVmYXVsdJClZmxvb3KboWyRq2NyZWF0ZVJvdW5kwgYJkgcIwMDAwJGrY3JlYXRlUm91bmSblgAAAcDCw5YAFwIFwsKWCQADwMLClgsLwMDCwpYAC8DAwsKWzQGkAQYKwsKWBAAHwMLClgAFwAnCwpYJBcDAwsKWAwkEwMLClgIOCMDCwg==
 ====catalogjs annotation end====*/

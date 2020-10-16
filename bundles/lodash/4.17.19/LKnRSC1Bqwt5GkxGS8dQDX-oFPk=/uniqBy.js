@@ -31,8 +31,8 @@ function uniqBy(array, iteratee) {
   return array && array.length ? baseUniq(array, baseIteratee(iteratee, 2)) : [];
 }
 
-const _default = (uniqBy);
-export { _default as default };
+
+export { uniqBy as default };
 /*====catalogjs annotation start====
-lZKTwqsuL2Rpc3QvNi5qcwGTwqwuL2Rpc3QvNjMuanMFgadkZWZhdWx0lKFsqF9kZWZhdWx0EMCRkxDAwoSsYmFzZUl0ZXJhdGVlm6FpkMICwJIDBMAAwKdkZWZhdWx0kKhiYXNlVW5pcZuhaZDCBsCSBwjAAcCnZGVmYXVsdJCmdW5pcUJ5m6FskqhiYXNlVW5pcaxiYXNlSXRlcmF0ZWXCCcCSCgvAwMDAkKhfZGVmYXVsdJuhbJGmdW5pcUJ5wg3Akg4PwMDAwJDcABGWAAABwMLDlgAWAgXCwpYJAAPAwsKWCwzAwMLClggMwMDCwpYBFwYJwsKWCQAHwMLClgsIwMDCwpY1CMAEwsKWzQMQFgoMwsKWCQbACMLClgQGwMDCwpYCAQ0QwsKWBgEOwMLClgAIwAvCwpYJCMDAwsKWAQ4PwMLC
+lZKVwqsuL2Rpc3QvNi5qcwHCwJXCrC4vZGlzdC82My5qcwXCwIGnZGVmYXVsdJShbKZ1bmlxQnkMwJGTDMDAg6xiYXNlSXRlcmF0ZWWboWmQwgLAkgMEwADAp2RlZmF1bHSQqGJhc2VVbmlxm6FpkMIGwJIHCMABwKdkZWZhdWx0kKZ1bmlxQnmboWySqGJhc2VVbmlxrGJhc2VJdGVyYXRlZcIJwJIKC8DAwMCQnZYAAAHAwsOWABYCBcLClgkAA8DCwpYLDMDAwsKWCAzAwMLClgEXBgnCwpYJAAfAwsKWCwjAwMLCljUIwATCwpbNAxAWCgzCwpYJBsAIwsKWCQbAwMLClgMOC8DCwg==
 ====catalogjs annotation end====*/

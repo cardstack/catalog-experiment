@@ -25,8 +25,8 @@ function thru(value, interceptor) {
   return interceptor(value);
 }
 
-const _default = (thru);
-export { _default as default };
+
+export { thru as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQIwJGTCMDCgqR0aHJ1m6FskMIBwJICA8DAwMCQqF9kZWZhdWx0m6FskaR0aHJ1wgXAkgYHwMDAwJCZlgAAAcDCw5bNAkc1AgTCwpYJBMDAwsKWBATAwMLClgIBBQjCwpYGAQbAwsKWAAjAA8LClgkIwMDCwpYBDgfAwsI=
+lZCBp2RlZmF1bHSUoWykdGhydQTAkZMEwMCBpHRocnWboWyQwgHAkgIDwMDAwJCVlgAAAcDCw5bNAkc1AgTCwpYJBMDAwsKWCQTAwMLClgMOA8DCwg==
 ====catalogjs annotation end====*/

@@ -24,8 +24,8 @@ function uniq(array) {
   return array && array.length ? baseUniq(array) : [];
 }
 
-const _default = (uniq);
-export { _default as default };
+
+export { uniq as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvNjMuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DMCRkwzAwoOoYmFzZVVuaXGboWmQwgLAkgMEwADAp2RlZmF1bHSQpHVuaXGboWyRqGJhc2VVbmlxwgXAkgYHwMDAwJCoX2RlZmF1bHSboWyRpHVuaXHCCcCSCgvAwMDAkJ2WAAABwMLDlgAXAgXCwpYJAAPAwsKWCwjAwMLClisIwMDCwpbNAiIPBgjCwpYJBMAEwsKWBATAwMLClgIBCQzCwpYGAQrAwsKWAAjAB8LClgkIwMDCwpYBDgvAwsI=
+lZGVwqwuL2Rpc3QvNjMuanMBwsCBp2RlZmF1bHSUoWykdW5pcQjAkZMIwMCCqGJhc2VVbmlxm6FpkMICwJIDBMAAwKdkZWZhdWx0kKR1bmlxm6FskahiYXNlVW5pccIFwJIGB8DAwMCQmZYAAAHAwsOWABcCBcLClgkAA8DCwpYLCMDAwsKWKwjAwMLCls0CIg8GCMLClgkEwATCwpYJBMDAwsKWAw4HwMLC
 ====catalogjs annotation end====*/

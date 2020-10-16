@@ -24,8 +24,8 @@ import { default as createFlow } from "./dist/36.js";
  */
 
 var flowRight = createFlow(true);
-const _default = (flowRight);
-export { _default as default };
+
+export { flowRight as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvMzYuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DsCRkw7AwoOqY3JlYXRlRmxvd5uhaZDCAsCSAwTAAMCnZGVmYXVsdJCpZmxvd1JpZ2h0m6FskapjcmVhdGVGbG93wgYJkgcIwMDAwJGqY3JlYXRlRmxvd6hfZGVmYXVsdJuhbJGpZmxvd1JpZ2h0wgvAkgwNwMDAwJCflgAAAcDCw5YAFwIFwsKWCQADwMLClgsKwMDCwpYACsDAwsKWzQHnAQYKwsKWBAAHwMLClgAJwAnCwpYECcDAwsKWAwYEwMLClgEBCw7CwpYGAQzAwsKWAAjACMLClgkIwMDCwpYBDg3AwsI=
+lZGVwqwuL2Rpc3QvMzYuanMBwsCBp2RlZmF1bHSUoWypZmxvd1JpZ2h0CsCRkwrAwIKqY3JlYXRlRmxvd5uhaZDCAsCSAwTAAMCnZGVmYXVsdJCpZmxvd1JpZ2h0m6FskapjcmVhdGVGbG93wgYJkgcIwMDAwJGqY3JlYXRlRmxvd5uWAAABwMLDlgAXAgXCwpYJAAPAwsKWCwrAwMLClgAKwMDCwpbNAecBBgrCwpYEAAfAwsKWAAnACcLClgkJwMDCwpYDBgTAwsKWAg4IwMLC
 ====catalogjs annotation end====*/

@@ -21,8 +21,8 @@ function initial(array) {
   return length ? baseSlice(array, 0, -1) : [];
 }
 
-const _default = (initial);
-export { _default as default };
+
+export { initial as default };
 /*====catalogjs annotation start====
-lZGTwq0uL2Rpc3QvMTQyLmpzAYGnZGVmYXVsdJShbKhfZGVmYXVsdAzAkZMMwMKDqWJhc2VTbGljZZuhaZDCAsCSAwTAAMCnZGVmYXVsdJCnaW5pdGlhbJuhbJGpYmFzZVNsaWNlwgXAkgYHwMDAwJCoX2RlZmF1bHSboWyRp2luaXRpYWzCCcCSCgvAwMDAkJ2WAAABwMLDlgAYAgXCwpYJAAPAwsKWCwnAwMLClk0JwMDCwpbNAQ8WBgjCwpYJB8AEwsKWBAfAwMLClgIBCQzCwpYGAQrAwsKWAAjAB8LClgkIwMDCwpYBDgvAwsI=
+lZGVwq0uL2Rpc3QvMTQyLmpzAcLAgadkZWZhdWx0lKFsp2luaXRpYWwIwJGTCMDAgqliYXNlU2xpY2WboWmQwgLAkgMEwADAp2RlZmF1bHSQp2luaXRpYWyboWyRqWJhc2VTbGljZcIFwJIGB8DAwMCQmZYAAAHAwsOWABgCBcLClgkAA8DCwpYLCcDAwsKWTQnAwMLCls0BDxYGCMLClgkHwATCwpYJB8DAwsKWAw4HwMLC
 ====catalogjs annotation end====*/

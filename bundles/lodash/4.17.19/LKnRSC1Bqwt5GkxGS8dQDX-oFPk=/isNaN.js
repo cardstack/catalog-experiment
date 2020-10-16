@@ -37,8 +37,8 @@ function isNaN(value) {
   return isNumber(value) && value != +value;
 }
 
-const _default = (isNaN);
-export { _default as default };
+
+export { isNaN as default };
 /*====catalogjs annotation start====
-lZGTwq0uL2lzTnVtYmVyLmpzAYGnZGVmYXVsdJShbKhfZGVmYXVsdAzAkZMMwMKDqGlzTnVtYmVym6FpkMICwJIDBMAAwKdkZWZhdWx0kKVpc05hTpuhbJGoaXNOdW1iZXLCBcCSBgfAwMDAkKhfZGVmYXVsdJuhbJGlaXNOYU7CCcCSCgvAwMDAkJ2WAAABwMLDlgAYAgXCwpYJAAPAwsKWCwjAwMLClsy7CMDAwsKWzQJkHQYIwsKWCQXABMLClgQFwMDCwpYCAQkMwsKWBgEKwMLClgAIwAfCwpYJCMDAwsKWAQ4LwMLC
+lZGVwq0uL2lzTnVtYmVyLmpzAcLAgadkZWZhdWx0lKFspWlzTmFOCMCRkwjAwIKoaXNOdW1iZXKboWmQwgLAkgMEwADAp2RlZmF1bHSQpWlzTmFOm6Fskahpc051bWJlcsIFwJIGB8DAwMCQmZYAAAHAwsOWABgCBcLClgkAA8DCwpYLCMDAwsKWzLsIwMDCwpbNAmQdBgjCwpYJBcAEwsKWCQXAwMLClgMOB8DCwg==
 ====catalogjs annotation end====*/

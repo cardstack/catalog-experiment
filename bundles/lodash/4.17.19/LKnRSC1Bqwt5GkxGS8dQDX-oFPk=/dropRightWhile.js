@@ -43,8 +43,8 @@ function dropRightWhile(array, predicate) {
   return array && array.length ? baseWhile(array, baseIteratee(predicate, 3), true, true) : [];
 }
 
-const _default = (dropRightWhile);
-export { _default as default };
+
+export { dropRightWhile as default };
 /*====catalogjs annotation start====
-lZKTwqsuL2Rpc3QvNi5qcwGTwq0uL2Rpc3QvMTQxLmpzBYGnZGVmYXVsdJShbKhfZGVmYXVsdBDAkZMQwMKErGJhc2VJdGVyYXRlZZuhaZDCAsCSAwTAAMCnZGVmYXVsdJCpYmFzZVdoaWxlm6FpkMIGwJIHCMABwKdkZWZhdWx0kK5kcm9wUmlnaHRXaGlsZZuhbJKpYmFzZVdoaWxlrGJhc2VJdGVyYXRlZcIJwJIKC8DAwMCQqF9kZWZhdWx0m6Fska5kcm9wUmlnaHRXaGlsZcINwJIOD8DAwMCQ3AARlgAAAcDCw5YAFgIFwsKWCQADwMLClgsMwMDCwpYIDMDAwsKWARgGCcLClgkAB8DCwpYLCcDAwsKWNgnABMLCls0EdiMKDMLClgkOwAjCwpYEDsDAwsKWAgENEMLClgYBDsDCwpYACMALwsKWCQjAwMLClgEOD8DCwg==
+lZKVwqsuL2Rpc3QvNi5qcwHCwJXCrS4vZGlzdC8xNDEuanMFwsCBp2RlZmF1bHSUoWyuZHJvcFJpZ2h0V2hpbGUMwJGTDMDAg6xiYXNlSXRlcmF0ZWWboWmQwgLAkgMEwADAp2RlZmF1bHSQqWJhc2VXaGlsZZuhaZDCBsCSBwjAAcCnZGVmYXVsdJCuZHJvcFJpZ2h0V2hpbGWboWySqWJhc2VXaGlsZaxiYXNlSXRlcmF0ZWXCCcCSCgvAwMDAkJ2WAAABwMLDlgAWAgXCwpYJAAPAwsKWCwzAwMLClggMwMDCwpYBGAYJwsKWCQAHwMLClgsJwMDCwpY2CcAEwsKWzQR2IwoMwsKWCQ7ACMLClgkOwMDCwpYDDgvAwsI=
 ====catalogjs annotation end====*/

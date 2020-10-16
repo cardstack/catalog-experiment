@@ -26,8 +26,8 @@ function isObjectLike(value) {
   return value != null && typeof value == 'object';
 }
 
-const _default = (isObjectLike);
-export { _default as default };
+
+export { isObjectLike as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQIwJGTCMDCgqxpc09iamVjdExpa2WboWyQwgHAkgIDwMDAwJCoX2RlZmF1bHSboWyRrGlzT2JqZWN0TGlrZcIFwJIGB8DAwMCQmZYAAAHAwsOWzQHxPwIEwsKWCQzAwMLClgQMwMDCwpYCAQUIwsKWBgEGwMLClgAIwAPCwpYJCMDAwsKWAQ4HwMLC
+lZCBp2RlZmF1bHSUoWysaXNPYmplY3RMaWtlBMCRkwTAwIGsaXNPYmplY3RMaWtlm6FskMIBwJICA8DAwMCQlZYAAAHAwsOWzQHxPwIEwsKWCQzAwMLClgkMwMDCwpYDDgPAwsI=
 ====catalogjs annotation end====*/

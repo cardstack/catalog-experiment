@@ -43,8 +43,8 @@ function create(prototype, properties) {
   return properties == null ? result : baseAssign(result, properties);
 }
 
-const _default = (create);
-export { _default as default };
+
+export { create as default };
 /*====catalogjs annotation start====
-lZKTwqwuL2Rpc3QvNTIuanMBk8KtLi9kaXN0LzEwNi5qcwWBp2RlZmF1bHSUoWyoX2RlZmF1bHQQwJGTEMDChKpiYXNlQXNzaWdum6FpkMICwJIDBMAAwKdkZWZhdWx0kKpiYXNlQ3JlYXRlm6FpkMIGwJIHCMABwKdkZWZhdWx0kKZjcmVhdGWboWySqmJhc2VDcmVhdGWqYmFzZUFzc2lnbsIJwJIKC8DAwMCQqF9kZWZhdWx0m6FskaZjcmVhdGXCDcCSDg/AwMDAkNwAEZYAAAHAwsOWABcCBcLClgkAA8DCwpYLCsDAwsKWNArAwMLClgEYBgnCwpYJAAfAwsKWCwrAwMLClikKwATCwpbNAwQXCgzCwpYJBsAIwsKWBAbAwMLClgIBDRDCwpYGAQ7AwsKWAAjAC8LClgkIwMDCwpYBDg/AwsI=
+lZKVwqwuL2Rpc3QvNTIuanMBwsCVwq0uL2Rpc3QvMTA2LmpzBcLAgadkZWZhdWx0lKFspmNyZWF0ZQzAkZMMwMCDqmJhc2VBc3NpZ26boWmQwgLAkgMEwADAp2RlZmF1bHSQqmJhc2VDcmVhdGWboWmQwgbAkgcIwAHAp2RlZmF1bHSQpmNyZWF0ZZuhbJKqYmFzZUNyZWF0ZapiYXNlQXNzaWduwgnAkgoLwMDAwJCdlgAAAcDCw5YAFwIFwsKWCQADwMLClgsKwMDCwpY0CsDAwsKWARgGCcLClgkAB8DCwpYLCsDAwsKWKQrABMLCls0DBBcKDMLClgkGwAjCwpYJBsDAwsKWAw4LwMLC
 ====catalogjs annotation end====*/

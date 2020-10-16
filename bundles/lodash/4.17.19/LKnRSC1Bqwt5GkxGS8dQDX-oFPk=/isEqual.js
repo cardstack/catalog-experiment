@@ -34,8 +34,8 @@ function isEqual(value, other) {
   return baseIsEqual(value, other);
 }
 
-const _default = (isEqual);
-export { _default as default };
+
+export { isEqual as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvNDMuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DMCRkwzAwoOrYmFzZUlzRXF1YWyboWmQwgLAkgMEwADAp2RlZmF1bHSQp2lzRXF1YWyboWyRq2Jhc2VJc0VxdWFswgXAkgYHwMDAwJCoX2RlZmF1bHSboWyRp2lzRXF1YWzCCcCSCgvAwMDAkJ2WAAABwMLDlgAXAgXCwpYJAAPAwsKWCwvAwMLClhoLwMDCwpbNA04RBgjCwpYJB8AEwsKWBAfAwMLClgIBCQzCwpYGAQrAwsKWAAjAB8LClgkIwMDCwpYBDgvAwsI=
+lZGVwqwuL2Rpc3QvNDMuanMBwsCBp2RlZmF1bHSUoWynaXNFcXVhbAjAkZMIwMCCq2Jhc2VJc0VxdWFsm6FpkMICwJIDBMAAwKdkZWZhdWx0kKdpc0VxdWFsm6FskatiYXNlSXNFcXVhbMIFwJIGB8DAwMCQmZYAAAHAwsOWABcCBcLClgkAA8DCwpYLC8DAwsKWGgvAwMLCls0DThEGCMLClgkHwATCwpYJB8DAwsKWAw4HwMLC
 ====catalogjs annotation end====*/

@@ -28,8 +28,8 @@ import { default as upperFirst } from "./upperFirst.js";
 var startCase = createCompounder(function (result, word, index) {
   return result + (index ? ' ' : '') + upperFirst(word);
 });
-const _default = (startCase);
-export { _default as default };
+
+export { startCase as default };
 /*====catalogjs annotation start====
-lZKTwqwuL2Rpc3QvMTkuanMBk8KvLi91cHBlckZpcnN0LmpzBYGnZGVmYXVsdJShbKhfZGVmYXVsdBLAkZMSwMKEsGNyZWF0ZUNvbXBvdW5kZXKboWmQwgLAkgMEwADAp2RlZmF1bHSQqnVwcGVyRmlyc3SboWmQwgbAkgcIwAHAp2RlZmF1bHSQqXN0YXJ0Q2FzZZuhbJKwY3JlYXRlQ29tcG91bmRlcqp1cHBlckZpcnN0wgoNkgsMwMDAwJKwY3JlYXRlQ29tcG91bmRlcqp1cHBlckZpcnN0qF9kZWZhdWx0m6FskalzdGFydENhc2XCD8CSEBHAwMDAkNwAE5YAAAHAwsOWABcCBcLClgkAA8DCwpYLEMDAwsKWABDACMLClgEaBgnCwpYJAAfAwsKWCwrAwMLClkkKwMDCwpbNAdIBCg7CwpYEAAvAwsKWAAnADcLClgQJwMDCwpYDCgTAwsKWAQEPEsLClgYBEMDCwpYACMAMwsKWCQjAwMLClgEOEcDCwg==
+lZKVwqwuL2Rpc3QvMTkuanMBwsCVwq8uL3VwcGVyRmlyc3QuanMFwsCBp2RlZmF1bHSUoWypc3RhcnRDYXNlDsCRkw7AwIOwY3JlYXRlQ29tcG91bmRlcpuhaZDCAsCSAwTAAMCnZGVmYXVsdJCqdXBwZXJGaXJzdJuhaZDCBsCSBwjAAcCnZGVmYXVsdJCpc3RhcnRDYXNlm6FskrBjcmVhdGVDb21wb3VuZGVyqnVwcGVyRmlyc3TCCg2SCwzAwMDAkrBjcmVhdGVDb21wb3VuZGVyqnVwcGVyRmlyc3SflgAAAcDCw5YAFwIFwsKWCQADwMLClgsQwMDCwpYAEMAIwsKWARoGCcLClgkAB8DCwpYLCsDAwsKWSQrAwMLCls0B0gEKDsLClgQAC8DCwpYACcANwsKWCQnAwMLClgMKBMDCwpYCDgzAwsI=
 ====catalogjs annotation end====*/

@@ -29,8 +29,8 @@ function propertyOf(object) {
   };
 }
 
-const _default = (propertyOf);
-export { _default as default };
+
+export { propertyOf as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvMTQuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DMCRkwzAwoOnYmFzZUdldJuhaZDCAsCSAwTAAMCnZGVmYXVsdJCqcHJvcGVydHlPZpuhbJGnYmFzZUdldMIFwJIGB8DAwMCQqF9kZWZhdWx0m6Fskapwcm9wZXJ0eU9mwgnAkgoLwMDAwJCdlgAAAcDCw5YAFwIFwsKWCQADwMLClgsHwMDCwpZOB8DAwsKWzQIeFgYIwsKWCQrABMLClgQKwMDCwpYCAQkMwsKWBgEKwMLClgAIwAfCwpYJCMDAwsKWAQ4LwMLC
+lZGVwqwuL2Rpc3QvMTQuanMBwsCBp2RlZmF1bHSUoWyqcHJvcGVydHlPZgjAkZMIwMCCp2Jhc2VHZXSboWmQwgLAkgMEwADAp2RlZmF1bHSQqnByb3BlcnR5T2aboWyRp2Jhc2VHZXTCBcCSBgfAwMDAkJmWAAABwMLDlgAXAgXCwpYJAAPAwsKWCwfAwMLClk4HwMDCwpbNAh4WBgjCwpYJCsAEwsKWCQrAwMLClgMOB8DCwg==
 ====catalogjs annotation end====*/

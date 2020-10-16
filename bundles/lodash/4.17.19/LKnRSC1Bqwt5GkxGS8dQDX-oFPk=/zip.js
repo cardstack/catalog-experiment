@@ -21,8 +21,8 @@ import { default as unzip } from "./unzip.js";
  */
 
 var zip = baseRest(unzip);
-const _default = (zip);
-export { _default as default };
+
+export { zip as default };
 /*====catalogjs annotation start====
-lZKTwqwuL2Rpc3QvNDkuanMBk8KqLi91bnppcC5qcwWBp2RlZmF1bHSUoWyoX2RlZmF1bHQSwJGTEsDChKhiYXNlUmVzdJuhaZDCAsCSAwTAAMCnZGVmYXVsdJCldW56aXCboWmQwgbAkgcIwAHAp2RlZmF1bHSQo3ppcJuhbJKoYmFzZVJlc3SldW56aXDCCg2SCwzAwMDAkqhiYXNlUmVzdKV1bnppcKhfZGVmYXVsdJuhbJGjemlwwg/AkhARwMDAwJDcABOWAAABwMLDlgAXAgXCwpYJAAPAwsKWCwjAwMLClgAIwAjCwpYBFQYJwsKWCQAHwMLClgsFwMDCwpYBBcDAwsKWzQHsAQoOwsKWBAALwMLClgADwA3CwpYEA8DAwsKWAwEEwMLClgEBDxLCwpYGARDAwsKWAAjADMLClgkIwMDCwpYBDhHAwsI=
+lZKVwqwuL2Rpc3QvNDkuanMBwsCVwqouL3VuemlwLmpzBcLAgadkZWZhdWx0lKFso3ppcA7AkZMOwMCDqGJhc2VSZXN0m6FpkMICwJIDBMAAwKdkZWZhdWx0kKV1bnppcJuhaZDCBsCSBwjAAcCnZGVmYXVsdJCjemlwm6FskqhiYXNlUmVzdKV1bnppcMIKDZILDMDAwMCSqGJhc2VSZXN0pXVuemlwn5YAAAHAwsOWABcCBcLClgkAA8DCwpYLCMDAwsKWAAjACMLClgEVBgnCwpYJAAfAwsKWCwXAwMLClgEFwMDCwpbNAewBCg7CwpYEAAvAwsKWAAPADcLClgkDwMDCwpYDAQTAwsKWAg4MwMLC
 ====catalogjs annotation end====*/

@@ -38,8 +38,8 @@ function take(array, n, guard) {
   return baseSlice(array, 0, n < 0 ? 0 : n);
 }
 
-const _default = (take);
-export { _default as default };
+
+export { take as default };
 /*====catalogjs annotation start====
-lZKTwq0uL2Rpc3QvMTQyLmpzAZPCri4vdG9JbnRlZ2VyLmpzBYGnZGVmYXVsdJShbKhfZGVmYXVsdBDAkZMQwMKEqWJhc2VTbGljZZuhaZDCAsCSAwTAAMCnZGVmYXVsdJCpdG9JbnRlZ2Vym6FpkMIGwJIHCMABwKdkZWZhdWx0kKR0YWtlm6Fskql0b0ludGVnZXKpYmFzZVNsaWNlwgnAkgoLwMDAwJCoX2RlZmF1bHSboWyRpHRha2XCDcCSDg/AwMDAkNwAEZYAAAHAwsOWABgCBcLClgkAA8DCwpYLCcDAwsKWDgnAwMLClgEZBgnCwpYJAAfAwsKWCwnAwMLClm8JwATCwpbNAjQcCgzCwpYJBMAIwsKWBATAwMLClgIBDRDCwpYGAQ7AwsKWAAjAC8LClgkIwMDCwpYBDg/AwsI=
+lZKVwq0uL2Rpc3QvMTQyLmpzAcLAlcKuLi90b0ludGVnZXIuanMFwsCBp2RlZmF1bHSUoWykdGFrZQzAkZMMwMCDqWJhc2VTbGljZZuhaZDCAsCSAwTAAMCnZGVmYXVsdJCpdG9JbnRlZ2Vym6FpkMIGwJIHCMABwKdkZWZhdWx0kKR0YWtlm6Fskql0b0ludGVnZXKpYmFzZVNsaWNlwgnAkgoLwMDAwJCdlgAAAcDCw5YAGAIFwsKWCQADwMLClgsJwMDCwpYOCcDAwsKWARkGCcLClgkAB8DCwpYLCcDAwsKWbwnABMLCls0CNBwKDMLClgkEwAjCwpYJBMDAwsKWAw4LwMLC
 ====catalogjs annotation end====*/

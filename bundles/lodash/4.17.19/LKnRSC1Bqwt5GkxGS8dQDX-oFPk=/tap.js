@@ -26,8 +26,8 @@ function tap(value, interceptor) {
   return value;
 }
 
-const _default = (tap);
-export { _default as default };
+
+export { tap as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQIwJGTCMDCgqN0YXCboWyQwgHAkgIDwMDAwJCoX2RlZmF1bHSboWyRo3RhcMIFwJIGB8DAwMCQmZYAAAHAwsOWzQJdPgIEwsKWCQPAwMLClgQDwMDCwpYCAQUIwsKWBgEGwMLClgAIwAPCwpYJCMDAwsKWAQ4HwMLC
+lZCBp2RlZmF1bHSUoWyjdGFwBMCRkwTAwIGjdGFwm6FskMIBwJICA8DAwMCQlZYAAAHAwsOWzQJdPgIEwsKWCQPAwMLClgkDwMDCwpYDDgPAwsI=
 ====catalogjs annotation end====*/

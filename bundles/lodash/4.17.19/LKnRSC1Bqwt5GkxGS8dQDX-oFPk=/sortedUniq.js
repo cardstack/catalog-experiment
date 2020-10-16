@@ -21,8 +21,8 @@ function sortedUniq(array) {
   return array && array.length ? baseSortedUniq(array) : [];
 }
 
-const _default = (sortedUniq);
-export { _default as default };
+
+export { sortedUniq as default };
 /*====catalogjs annotation start====
-lZGTwq0uL2Rpc3QvMTMxLmpzAYGnZGVmYXVsdJShbKhfZGVmYXVsdAzAkZMMwMKDrmJhc2VTb3J0ZWRVbmlxm6FpkMICwJIDBMAAwKdkZWZhdWx0kKpzb3J0ZWRVbmlxm6Fska5iYXNlU29ydGVkVW5pccIFwJIGB8DAwMCQqF9kZWZhdWx0m6Fskapzb3J0ZWRVbmlxwgnAkgoLwMDAwJCdlgAAAcDCw5YAGAIFwsKWCQADwMLClgsOwMDCwpYrDsDAwsKWzQFNDwYIwsKWCQrABMLClgQKwMDCwpYCAQkMwsKWBgEKwMLClgAIwAfCwpYJCMDAwsKWAQ4LwMLC
+lZGVwq0uL2Rpc3QvMTMxLmpzAcLAgadkZWZhdWx0lKFsqnNvcnRlZFVuaXEIwJGTCMDAgq5iYXNlU29ydGVkVW5pcZuhaZDCAsCSAwTAAMCnZGVmYXVsdJCqc29ydGVkVW5pcZuhbJGuYmFzZVNvcnRlZFVuaXHCBcCSBgfAwMDAkJmWAAABwMLDlgAYAgXCwpYJAAPAwsKWCw7AwMLClisOwMDCwpbNAU0PBgjCwpYJCsAEwsKWCQrAwMLClgMOB8DCwg==
 ====catalogjs annotation end====*/

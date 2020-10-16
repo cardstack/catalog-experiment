@@ -1,4 +1,4 @@
 export { default } from "./assignIn.js";
 /*====catalogjs annotation start====
-lZGTwq0uL2Fzc2lnbkluLmpzAYGnZGVmYXVsdJShcqdkZWZhdWx0AQCRkwHAwoCSlgAAAcDCw5YAKMDAwsI=
+lZGVwq0uL2Fzc2lnbkluLmpzAcPAgadkZWZhdWx0lKFyp2RlZmF1bHQBAJGTAcDAgJKWAAABwMLDlgAowMDCwg==
 ====catalogjs annotation end====*/

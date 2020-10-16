@@ -24,8 +24,8 @@ import { default as createRound } from "./dist/20.js";
  */
 
 var ceil = createRound('ceil');
-const _default = (ceil);
-export { _default as default };
+
+export { ceil as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvMjAuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DsCRkw7AwoOrY3JlYXRlUm91bmSboWmQwgLAkgMEwADAp2RlZmF1bHSQpGNlaWyboWyRq2NyZWF0ZVJvdW5kwgYJkgcIwMDAwJGrY3JlYXRlUm91bmSoX2RlZmF1bHSboWyRpGNlaWzCC8CSDA3AwMDAkJ+WAAABwMLDlgAXAgXCwpYJAAPAwsKWCwvAwMLClgALwMDCwpbNAZkBBgrCwpYEAAfAwsKWAATACcLClgQEwMDCwpYDCATAwsKWAQELDsLClgYBDMDCwpYACMAIwsKWCQjAwMLClgEODcDCwg==
+lZGVwqwuL2Rpc3QvMjAuanMBwsCBp2RlZmF1bHSUoWykY2VpbArAkZMKwMCCq2NyZWF0ZVJvdW5km6FpkMICwJIDBMAAwKdkZWZhdWx0kKRjZWlsm6FskatjcmVhdGVSb3VuZMIGCZIHCMDAwMCRq2NyZWF0ZVJvdW5km5YAAAHAwsOWABcCBcLClgkAA8DCwpYLC8DAwsKWAAvAwMLCls0BmQEGCsLClgQAB8DCwpYABMAJwsKWCQTAwMLClgMIBMDCwpYCDgjAwsI=
 ====catalogjs annotation end====*/

@@ -13,8 +13,8 @@
 function noop() {// No operation performed.
 }
 
-const _default = (noop);
-export { _default as default };
+
+export { noop as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQIwJGTCMDCgqRub29wm6FskMIBwJICA8DAwMCQqF9kZWZhdWx0m6FskaRub29wwgXAkgYHwMDAwJCZlgAAAcDCw5bMsSACBMLClgkEwMDCwpYEBMDAwsKWAgEFCMLClgYBBsDCwpYACMADwsKWCQjAwMLClgEOB8DCwg==
+lZCBp2RlZmF1bHSUoWykbm9vcATAkZMEwMCBpG5vb3CboWyQwgHAkgIDwMDAwJCVlgAAAcDCw5bMsSACBMLClgkEwMDCwpYJBMDAwsKWAw4DwMLC
 ====catalogjs annotation end====*/

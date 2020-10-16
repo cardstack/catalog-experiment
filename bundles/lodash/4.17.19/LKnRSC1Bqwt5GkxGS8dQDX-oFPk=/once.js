@@ -24,8 +24,8 @@ function once(func) {
   return before(2, func);
 }
 
-const _default = (once);
-export { _default as default };
+
+export { once as default };
 /*====catalogjs annotation start====
-lZGTwqsuL2JlZm9yZS5qcwGBp2RlZmF1bHSUoWyoX2RlZmF1bHQMwJGTDMDCg6ZiZWZvcmWboWmQwgLAkgMEwADAp2RlZmF1bHSQpG9uY2WboWyRpmJlZm9yZcIFwJIGB8DAwMCQqF9kZWZhdWx0m6FskaRvbmNlwgnAkgoLwMDAwJCdlgAAAcDCw5YAFgIFwsKWCQADwMLClgsGwMDCwpYSBsDAwsKWzQIwDAYIwsKWCQTABMLClgQEwMDCwpYCAQkMwsKWBgEKwMLClgAIwAfCwpYJCMDAwsKWAQ4LwMLC
+lZGVwqsuL2JlZm9yZS5qcwHCwIGnZGVmYXVsdJShbKRvbmNlCMCRkwjAwIKmYmVmb3Jlm6FpkMICwJIDBMAAwKdkZWZhdWx0kKRvbmNlm6FskaZiZWZvcmXCBcCSBgfAwMDAkJmWAAABwMLDlgAWAgXCwpYJAAPAwsKWCwbAwMLClhIGwMDCwpbNAjAMBgjCwpYJBMAEwsKWCQTAwMLClgMOB8DCwg==
 ====catalogjs annotation end====*/

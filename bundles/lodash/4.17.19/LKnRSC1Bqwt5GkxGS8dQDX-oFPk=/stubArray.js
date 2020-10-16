@@ -20,8 +20,8 @@ function stubArray() {
   return [];
 }
 
-const _default = (stubArray);
-export { _default as default };
+
+export { stubArray as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQIwJGTCMDCgqlzdHViQXJyYXmboWyQwgHAkgIDwMDAwJCoX2RlZmF1bHSboWyRqXN0dWJBcnJhecIFwJIGB8DAwMCQmZYAAAHAwsOWzQFDEwIEwsKWCQnAwMLClgQJwMDCwpYCAQUIwsKWBgEGwMLClgAIwAPCwpYJCMDAwsKWAQ4HwMLC
+lZCBp2RlZmF1bHSUoWypc3R1YkFycmF5BMCRkwTAwIGpc3R1YkFycmF5m6FskMIBwJICA8DAwMCQlZYAAAHAwsOWzQFDEwIEwsKWCQnAwMLClgkJwMDCwpYDDgPAwsI=
 ====catalogjs annotation end====*/

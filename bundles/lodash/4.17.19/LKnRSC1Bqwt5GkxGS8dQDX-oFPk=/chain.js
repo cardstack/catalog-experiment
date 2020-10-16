@@ -37,8 +37,8 @@ function chain(value) {
   return result;
 }
 
-const _default = (chain);
-export { _default as default };
+
+export { chain as default };
 /*====catalogjs annotation start====
-lZGTwrIuL3dyYXBwZXJMb2Rhc2guanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DMCRkwzAwoOmbG9kYXNom6FpkMICwJIDBMAAwKdkZWZhdWx0kKVjaGFpbpuhbJGmbG9kYXNowgXAkgYHwMDAwJCoX2RlZmF1bHSboWyRpWNoYWluwgnAkgoLwMDAwJCdlgAAAcDCw5YAHQIFwsKWCQADwMLClgsGwMDCwpYZBsDAwsKWzQKwNgYIwsKWCQXABMLClgQFwMDCwpYCAQkMwsKWBgEKwMLClgAIwAfCwpYJCMDAwsKWAQ4LwMLC
+lZGVwrIuL3dyYXBwZXJMb2Rhc2guanMBwsCBp2RlZmF1bHSUoWylY2hhaW4IwJGTCMDAgqZsb2Rhc2iboWmQwgLAkgMEwADAp2RlZmF1bHSQpWNoYWlum6FskaZsb2Rhc2jCBcCSBgfAwMDAkJmWAAABwMLDlgAdAgXCwpYJAAPAwsKWCwbAwMLClhkGwMDCwpbNArA2BgjCwpYJBcAEwsKWCQXAwMLClgMOB8DCwg==
 ====catalogjs annotation end====*/

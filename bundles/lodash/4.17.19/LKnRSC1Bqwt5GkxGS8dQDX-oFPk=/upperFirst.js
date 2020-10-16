@@ -20,8 +20,8 @@ import { default as createCaseFirst } from "./dist/18.js";
  */
 
 var upperFirst = createCaseFirst('toUpperCase');
-const _default = (upperFirst);
-export { _default as default };
+
+export { upperFirst as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvMTguanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DsCRkw7AwoOvY3JlYXRlQ2FzZUZpcnN0m6FpkMICwJIDBMAAwKdkZWZhdWx0kKp1cHBlckZpcnN0m6Fska9jcmVhdGVDYXNlRmlyc3TCBgmSBwjAwMDAka9jcmVhdGVDYXNlRmlyc3SoX2RlZmF1bHSboWyRqnVwcGVyRmlyc3TCC8CSDA3AwMDAkJ+WAAABwMLDlgAXAgXCwpYJAAPAwsKWCw/AwMLClgAPwMDCwpbNAVUBBgrCwpYEAAfAwsKWAArACcLClgQKwMDCwpYDDwTAwsKWAQELDsLClgYBDMDCwpYACMAIwsKWCQjAwMLClgEODcDCwg==
+lZGVwqwuL2Rpc3QvMTguanMBwsCBp2RlZmF1bHSUoWyqdXBwZXJGaXJzdArAkZMKwMCCr2NyZWF0ZUNhc2VGaXJzdJuhaZDCAsCSAwTAAMCnZGVmYXVsdJCqdXBwZXJGaXJzdJuhbJGvY3JlYXRlQ2FzZUZpcnN0wgYJkgcIwMDAwJGvY3JlYXRlQ2FzZUZpcnN0m5YAAAHAwsOWABcCBcLClgkAA8DCwpYLD8DAwsKWAA/AwMLCls0BVQEGCsLClgQAB8DCwpYACsAJwsKWCQrAwMLClgMPBMDCwpYCDgjAwsI=
 ====catalogjs annotation end====*/

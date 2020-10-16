@@ -25,8 +25,8 @@ import { default as createFlow } from "./dist/36.js";
  */
 
 var flow = createFlow();
-const _default = (flow);
-export { _default as default };
+
+export { flow as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvMzYuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DsCRkw7AwoOqY3JlYXRlRmxvd5uhaZDCAsCSAwTAAMCnZGVmYXVsdJCkZmxvd5uhbJGqY3JlYXRlRmxvd8IGCZIHCMDAwMCRqmNyZWF0ZUZsb3eoX2RlZmF1bHSboWyRpGZsb3fCC8CSDA3AwMDAkJ+WAAABwMLDlgAXAgXCwpYJAAPAwsKWCwrAwMLClgAKwMDCwpbNAkEBBgrCwpYEAAfAwsKWAATACcLClgQEwMDCwpYDAgTAwsKWAQELDsLClgYBDMDCwpYACMAIwsKWCQjAwMLClgEODcDCwg==
+lZGVwqwuL2Rpc3QvMzYuanMBwsCBp2RlZmF1bHSUoWykZmxvdwrAkZMKwMCCqmNyZWF0ZUZsb3eboWmQwgLAkgMEwADAp2RlZmF1bHSQpGZsb3eboWyRqmNyZWF0ZUZsb3fCBgmSBwjAwMDAkapjcmVhdGVGbG93m5YAAAHAwsOWABcCBcLClgkAA8DCwpYLCsDAwsKWAArAwMLCls0CQQEGCsLClgQAB8DCwpYABMAJwsKWCQTAwMLClgMCBMDCwpYCDgjAwsI=
 ====catalogjs annotation end====*/

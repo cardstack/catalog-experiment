@@ -32,8 +32,8 @@ function conformsTo(object, source) {
   return source == null || baseConformsTo(object, source, keys(source));
 }
 
-const _default = (conformsTo);
-export { _default as default };
+
+export { conformsTo as default };
 /*====catalogjs annotation start====
-lZKTwq0uL2Rpc3QvMTU3LmpzAZPCqS4va2V5cy5qcwWBp2RlZmF1bHSUoWyoX2RlZmF1bHQQwJGTEMDChK5iYXNlQ29uZm9ybXNUb5uhaZDCAsCSAwTAAMCnZGVmYXVsdJCka2V5c5uhaZDCBsCSBwjAAcCnZGVmYXVsdJCqY29uZm9ybXNUb5uhbJKuYmFzZUNvbmZvcm1zVG+ka2V5c8IJwJIKC8DAwMCQqF9kZWZhdWx0m6Fskapjb25mb3Jtc1Rvwg3Akg4PwMDAwJDcABGWAAABwMLDlgAYAgXCwpYJAAPAwsKWCw7AwMLCli4OwAjCwpYBFAYJwsKWCQAHwMLClgsEwMDCwpYRBMDAwsKWzQLeDAoMwsKWCQrABMLClgQKwMDCwpYCAQ0QwsKWBgEOwMLClgAIwAvCwpYJCMDAwsKWAQ4PwMLC
+lZKVwq0uL2Rpc3QvMTU3LmpzAcLAlcKpLi9rZXlzLmpzBcLAgadkZWZhdWx0lKFsqmNvbmZvcm1zVG8MwJGTDMDAg65iYXNlQ29uZm9ybXNUb5uhaZDCAsCSAwTAAMCnZGVmYXVsdJCka2V5c5uhaZDCBsCSBwjAAcCnZGVmYXVsdJCqY29uZm9ybXNUb5uhbJKuYmFzZUNvbmZvcm1zVG+ka2V5c8IJwJIKC8DAwMCQnZYAAAHAwsOWABgCBcLClgkAA8DCwpYLDsDAwsKWLg7ACMLClgEUBgnCwpYJAAfAwsKWCwTAwMLClhEEwMDCwpbNAt4MCgzCwpYJCsAEwsKWCQrAwMLClgMOC8DCwg==
 ====catalogjs annotation end====*/

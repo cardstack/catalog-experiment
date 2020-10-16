@@ -34,8 +34,8 @@ function set(object, path, value) {
   return object == null ? object : baseSet(object, path, value);
 }
 
-const _default = (set);
-export { _default as default };
+
+export { set as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvMTYuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DMCRkwzAwoOnYmFzZVNldJuhaZDCAsCSAwTAAMCnZGVmYXVsdJCjc2V0m6FskadiYXNlU2V0wgXAkgYHwMDAwJCoX2RlZmF1bHSboWyRo3NldMIJwJIKC8DAwMCQnZYAAAHAwsOWABcCBcLClgkAA8DCwpYLB8DAwsKWOwfAwMLCls0DIBgGCMLClgkDwATCwpYEA8DAwsKWAgEJDMLClgYBCsDCwpYACMAHwsKWCQjAwMLClgEOC8DCwg==
+lZGVwqwuL2Rpc3QvMTYuanMBwsCBp2RlZmF1bHSUoWyjc2V0CMCRkwjAwIKnYmFzZVNldJuhaZDCAsCSAwTAAMCnZGVmYXVsdJCjc2V0m6FskadiYXNlU2V0wgXAkgYHwMDAwJCZlgAAAcDCw5YAFwIFwsKWCQADwMLClgsHwMDCwpY7B8DAwsKWzQMgGAYIwsKWCQPABMLClgkDwMDCwpYDDgfAwsI=
 ====catalogjs annotation end====*/

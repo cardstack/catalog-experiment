@@ -28,8 +28,8 @@ function isObject(value) {
   return value != null && (type == 'object' || type == 'function');
 }
 
-const _default = (isObject);
-export { _default as default };
+
+export { isObject as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQIwJGTCMDCgqhpc09iamVjdJuhbJDCAcCSAgPAwMDAkKhfZGVmYXVsdJuhbJGoaXNPYmplY3TCBcCSBgfAwMDAkJmWAAABwMLDls0CRWoCBMLClgkIwMDCwpYECMDAwsKWAgEFCMLClgYBBsDCwpYACMADwsKWCQjAwMLClgEOB8DCwg==
+lZCBp2RlZmF1bHSUoWyoaXNPYmplY3QEwJGTBMDAgahpc09iamVjdJuhbJDCAcCSAgPAwMDAkJWWAAABwMLDls0CRWoCBMLClgkIwMDCwpYJCMDAwsKWAw4DwMLC
 ====catalogjs annotation end====*/

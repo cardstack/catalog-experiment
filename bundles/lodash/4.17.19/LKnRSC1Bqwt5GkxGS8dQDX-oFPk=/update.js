@@ -35,8 +35,8 @@ function update(object, path, updater) {
   return object == null ? object : baseUpdate(object, path, castFunction(updater));
 }
 
-const _default = (update);
-export { _default as default };
+
+export { update as default };
 /*====catalogjs annotation start====
-lZKTwqwuL2Rpc3QvMTMuanMBk8KtLi9kaXN0LzEwOC5qcwWBp2RlZmF1bHSUoWyoX2RlZmF1bHQQwJGTEMDChKpiYXNlVXBkYXRlm6FpkMICwJIDBMAAwKdkZWZhdWx0kKxjYXN0RnVuY3Rpb26boWmQwgbAkgcIwAHAp2RlZmF1bHSQpnVwZGF0ZZuhbJKqYmFzZVVwZGF0ZaxjYXN0RnVuY3Rpb27CCcCSCgvAwMDAkKhfZGVmYXVsdJuhbJGmdXBkYXRlwg3Akg4PwMDAwJDcABGWAAABwMLDlgAXAgXCwpYJAAPAwsKWCwrAwMLClj0KwAjCwpYBGAYJwsKWCQAHwMLClgsMwMDCwpYPDMDAwsKWzQNFDQoMwsKWCQbABMLClgQGwMDCwpYCAQ0QwsKWBgEOwMLClgAIwAvCwpYJCMDAwsKWAQ4PwMLC
+lZKVwqwuL2Rpc3QvMTMuanMBwsCVwq0uL2Rpc3QvMTA4LmpzBcLAgadkZWZhdWx0lKFspnVwZGF0ZQzAkZMMwMCDqmJhc2VVcGRhdGWboWmQwgLAkgMEwADAp2RlZmF1bHSQrGNhc3RGdW5jdGlvbpuhaZDCBsCSBwjAAcCnZGVmYXVsdJCmdXBkYXRlm6FskqpiYXNlVXBkYXRlrGNhc3RGdW5jdGlvbsIJwJIKC8DAwMCQnZYAAAHAwsOWABcCBcLClgkAA8DCwpYLCsDAwsKWPQrACMLClgEYBgnCwpYJAAfAwsKWCwzAwMLClg8MwMDCwpbNA0UNCgzCwpYJBsAEwsKWCQbAwMLClgMOC8DCwg==
 ====catalogjs annotation end====*/

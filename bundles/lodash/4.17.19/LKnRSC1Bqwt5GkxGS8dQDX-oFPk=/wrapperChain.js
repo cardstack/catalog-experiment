@@ -33,8 +33,8 @@ function wrapperChain() {
   return chain(this);
 }
 
-const _default = (wrapperChain);
-export { _default as default };
+
+export { wrapperChain as default };
 /*====catalogjs annotation start====
-lZGTwqouL2NoYWluLmpzAYGnZGVmYXVsdJShbKhfZGVmYXVsdAzAkZMMwMKDpWNoYWlum6FpkMICwJIDBMAAwKdkZWZhdWx0kKx3cmFwcGVyQ2hhaW6boWyRpWNoYWluwgXAkgYHwMDAwJCoX2RlZmF1bHSboWyRrHdyYXBwZXJDaGFpbsIJwJIKC8DAwMCQnZYAAAHAwsOWABUCBcLClgkAA8DCwpYLBcDAwsKWDgXAwMLCls0CUwkGCMLClgkMwATCwpYEDMDAwsKWAgEJDMLClgYBCsDCwpYACMAHwsKWCQjAwMLClgEOC8DCwg==
+lZGVwqouL2NoYWluLmpzAcLAgadkZWZhdWx0lKFsrHdyYXBwZXJDaGFpbgjAkZMIwMCCpWNoYWlum6FpkMICwJIDBMAAwKdkZWZhdWx0kKx3cmFwcGVyQ2hhaW6boWyRpWNoYWluwgXAkgYHwMDAwJCZlgAAAcDCw5YAFQIFwsKWCQADwMLClgsFwMDCwpYOBcDAwsKWzQJTCQYIwsKWCQzABMLClgkMwMDCwpYDDgfAwsI=
 ====catalogjs annotation end====*/

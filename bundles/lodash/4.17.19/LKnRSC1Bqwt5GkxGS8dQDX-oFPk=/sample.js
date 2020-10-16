@@ -11,12 +11,12 @@ import { default as isArray } from "./isArray.js";
  * @returns {*} Returns the random element.
  */
 
-function arraySample0(array) {
+function arraySample(array) {
   var length = array.length;
   return length ? array[baseRandom(0, length - 1)] : undefined;
 }
 
-const arraySample = (arraySample0);
+
 
 
 
@@ -28,11 +28,11 @@ const arraySample = (arraySample0);
  * @returns {*} Returns the random element.
  */
 
-function baseSample0(collection) {
+function baseSample(collection) {
   return arraySample(values(collection));
 }
 
-const baseSample = (baseSample0);
+
 
 
 
@@ -57,8 +57,8 @@ function sample(collection) {
   return func(collection);
 }
 
-const _default = (sample);
-export { _default as default };
+
+export { sample as default };
 /*====catalogjs annotation start====
-lZOTwq0uL2Rpc3QvMTcxLmpzAZPCqy4vdmFsdWVzLmpzBZPCrC4vaXNBcnJheS5qcwmBp2RlZmF1bHSUoWyoX2RlZmF1bHQjwJGTI8DCiapiYXNlUmFuZG9tm6FpkMICwJIDBMAAwKdkZWZhdWx0kKZ2YWx1ZXOboWmQwgbAkgcIwAHAp2RlZmF1bHSQp2lzQXJyYXmboWmQwgrAkgsMwALAp2RlZmF1bHSQrGFycmF5U2FtcGxlMJuhbJGqYmFzZVJhbmRvbcINwJIOD8DAwMCQq2FycmF5U2FtcGxlm6FskaxhcnJheVNhbXBsZTDCEcCTEhMUktlaaHR0cHM6Ly9jYXRhbG9nanMuY29tL3BrZ3MvbnBtL2xvZGFzaC80LjE3LjE5L0xLblJTQzFCcXd0NUdreEdTOGRRRFgtb0ZQaz0vX2FycmF5U2FtcGxlLmpzp2RlZmF1bHTAwMCQq2Jhc2VTYW1wbGUwm6FskqthcnJheVNhbXBsZaZ2YWx1ZXPCFcCSFhfAwMDAkKpiYXNlU2FtcGxlm6FskatiYXNlU2FtcGxlMMIZwJIaG5LZWWh0dHBzOi8vY2F0YWxvZ2pzLmNvbS9wa2dzL25wbS9sb2Rhc2gvNC4xNy4xOS9MS25SU0MxQnF3dDVHa3hHUzhkUURYLW9GUGs9L19iYXNlU2FtcGxlLmpzp2RlZmF1bHTAwMCQpnNhbXBsZZuhbJOnaXNBcnJheathcnJheVNhbXBsZapiYXNlU2FtcGxlwhzAkh0ewMDAwJCoX2RlZmF1bHSboWyRpnNhbXBsZcIgwJIhIsDAwMCQ3AAklgAAAcDCw5YAGAIFwsKWCQADwMLClgsKwMDCwpY/CsDAwsKWARYGCcLClgkAB8DCwpYLBsDAwsKWAQbAwMLClgEXCg3CwpYJAAvAwsKWCwfAwMLClhwHwBTCwpbMpx8OEMLClgkMwATCwpYEDMDAwsKWAgERFcLClgYBEsDCwpYAC8APwsKWGAvACMLClg8LwBvCwpbMsBAWGMLClgkLwBPCwpYEC8DAwsKWAgEZHMLClgYBGsDCwpYACsAXwsKWAwrAwMLCls0BHh4dH8LClgkGwAzCwpYEBsDAwsKWAgEgI8LClgYBIcDCwpYACMAewsKWCQjAwMLClgEOIsDCwg==
+lZOVwq0uL2Rpc3QvMTcxLmpzAcLAlcKrLi92YWx1ZXMuanMFwsCVwqwuL2lzQXJyYXkuanMJwsCBp2RlZmF1bHSUoWymc2FtcGxlF8CRkxfAwIaqYmFzZVJhbmRvbZuhaZDCAsCSAwTAAMCnZGVmYXVsdJCmdmFsdWVzm6FpkMIGwJIHCMABwKdkZWZhdWx0kKdpc0FycmF5m6FpkMIKwJILDMACwKdkZWZhdWx0kKthcnJheVNhbXBsZZuhbJGqYmFzZVJhbmRvbcINwJMODxCS2VpodHRwczovL2NhdGFsb2dqcy5jb20vcGtncy9ucG0vbG9kYXNoLzQuMTcuMTkvTEtuUlNDMUJxd3Q1R2t4R1M4ZFFEWC1vRlBrPS9fYXJyYXlTYW1wbGUuanOnZGVmYXVsdMDAwJCqYmFzZVNhbXBsZZuhbJKrYXJyYXlTYW1wbGWmdmFsdWVzwhHAkhITktlZaHR0cHM6Ly9jYXRhbG9nanMuY29tL3BrZ3MvbnBtL2xvZGFzaC80LjE3LjE5L0xLblJTQzFCcXd0NUdreEdTOGRRRFgtb0ZQaz0vX2Jhc2VTYW1wbGUuanOnZGVmYXVsdMDAwJCmc2FtcGxlm6Fsk6dpc0FycmF5q2FycmF5U2FtcGxlqmJhc2VTYW1wbGXCFMCSFRbAwMDAkNwAGJYAAAHAwsOWABgCBcLClgkAA8DCwpYLCsDAwsKWPwrAwMLClgEWBgnCwpYJAAfAwsKWCwbAwMLClgEGwMDCwpYBFwoNwsKWCQALwMLClgsHwMDCwpYcB8AQwsKWzKcfDhHCwpYJC8AEwsKWGAvACMLClg8LwBPCwpbMshASFMLClgkKwA/CwpYDCsDAwsKWzQEgHhUXwsKWCQbADMLClgkGwMDCwpYDDhbAwsI=
 ====catalogjs annotation end====*/

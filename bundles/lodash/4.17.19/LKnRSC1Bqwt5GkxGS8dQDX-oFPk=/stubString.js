@@ -15,8 +15,8 @@ function stubString() {
   return '';
 }
 
-const _default = (stubString);
-export { _default as default };
+
+export { stubString as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQIwJGTCMDCgqpzdHViU3RyaW5nm6FskMIBwJICA8DAwMCQqF9kZWZhdWx0m6FskapzdHViU3RyaW5nwgXAkgYHwMDAwJCZlgAAAcDCw5bM3RMCBMLClgkKwMDCwpYECsDAwsKWAgEFCMLClgYBBsDCwpYACMADwsKWCQjAwMLClgEOB8DCwg==
+lZCBp2RlZmF1bHSUoWyqc3R1YlN0cmluZwTAkZMEwMCBqnN0dWJTdHJpbmeboWyQwgHAkgIDwMDAwJCVlgAAAcDCw5bM3RMCBMLClgkKwMDCwpYJCsDAwsKWAw4DwMLC
 ====catalogjs annotation end====*/

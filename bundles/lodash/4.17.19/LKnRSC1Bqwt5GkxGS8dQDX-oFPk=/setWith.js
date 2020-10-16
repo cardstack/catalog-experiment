@@ -31,8 +31,8 @@ function setWith(object, path, value, customizer) {
   return object == null ? object : baseSet(object, path, value, customizer);
 }
 
-const _default = (setWith);
-export { _default as default };
+
+export { setWith as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvMTYuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DMCRkwzAwoOnYmFzZVNldJuhaZDCAsCSAwTAAMCnZGVmYXVsdJCnc2V0V2l0aJuhbJGnYmFzZVNldMIFwJIGB8DAwMCQqF9kZWZhdWx0m6FskadzZXRXaXRowgnAkgoLwMDAwJCdlgAAAcDCw5YAFwIFwsKWCQADwMLClgsHwMDCwpbMkAfAwMLCls0DFiQGCMLClgkHwATCwpYEB8DAwsKWAgEJDMLClgYBCsDCwpYACMAHwsKWCQjAwMLClgEOC8DCwg==
+lZGVwqwuL2Rpc3QvMTYuanMBwsCBp2RlZmF1bHSUoWync2V0V2l0aAjAkZMIwMCCp2Jhc2VTZXSboWmQwgLAkgMEwADAp2RlZmF1bHSQp3NldFdpdGiboWyRp2Jhc2VTZXTCBcCSBgfAwMDAkJmWAAABwMLDlgAXAgXCwpYJAAPAwsKWCwfAwMLClsyQB8DAwsKWzQMWJAYIwsKWCQfABMLClgkHwMDCwpYDDgfAwsI=
 ====catalogjs annotation end====*/

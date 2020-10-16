@@ -30,8 +30,8 @@ function compact(array) {
   return result;
 }
 
-const _default = (compact);
-export { _default as default };
+
+export { compact as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQIwJGTCMDCgqdjb21wYWN0m6FskMIBwJICA8DAwMCQqF9kZWZhdWx0m6Fskadjb21wYWN0wgXAkgYHwMDAwJCZlgAAAcDCw5bNAX7NAQECBMLClgkHwMDCwpYEB8DAwsKWAgEFCMLClgYBBsDCwpYACMADwsKWCQjAwMLClgEOB8DCwg==
+lZCBp2RlZmF1bHSUoWynY29tcGFjdATAkZMEwMCBp2NvbXBhY3SboWyQwgHAkgIDwMDAwJCVlgAAAcDCw5bNAX7NAQECBMLClgkHwMDCwpYJB8DAwsKWAw4DwMLC
 ====catalogjs annotation end====*/

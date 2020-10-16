@@ -28,8 +28,8 @@ import { default as createRelationalOperation } from "./dist/25.js";
 var gte = createRelationalOperation(function (value, other) {
   return value >= other;
 });
-const _default = (gte);
-export { _default as default };
+
+export { gte as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvMjUuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DsCRkw7AwoO5Y3JlYXRlUmVsYXRpb25hbE9wZXJhdGlvbpuhaZDCAsCSAwTAAMCnZGVmYXVsdJCjZ3Rlm6FskbljcmVhdGVSZWxhdGlvbmFsT3BlcmF0aW9uwgYJkgcIwMDAwJG5Y3JlYXRlUmVsYXRpb25hbE9wZXJhdGlvbqhfZGVmYXVsdJuhbJGjZ3RlwgvAkgwNwMDAwJCflgAAAcDCw5YAFwIFwsKWCQADwMLClgsZwMDCwpYAGcDAwsKWzQHEAQYKwsKWBAAHwMLClgADwAnCwpYEA8DAwsKWAzYEwMLClgEBCw7CwpYGAQzAwsKWAAjACMLClgkIwMDCwpYBDg3AwsI=
+lZGVwqwuL2Rpc3QvMjUuanMBwsCBp2RlZmF1bHSUoWyjZ3RlCsCRkwrAwIK5Y3JlYXRlUmVsYXRpb25hbE9wZXJhdGlvbpuhaZDCAsCSAwTAAMCnZGVmYXVsdJCjZ3Rlm6FskbljcmVhdGVSZWxhdGlvbmFsT3BlcmF0aW9uwgYJkgcIwMDAwJG5Y3JlYXRlUmVsYXRpb25hbE9wZXJhdGlvbpuWAAABwMLDlgAXAgXCwpYJAAPAwsKWCxnAwMLClgAZwMDCwpbNAcQBBgrCwpYEAAfAwsKWAAPACcLClgkDwMDCwpYDNgTAwsKWAg4IwMLC
 ====catalogjs annotation end====*/

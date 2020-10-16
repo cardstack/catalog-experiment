@@ -1,4 +1,4 @@
 export { default } from "./toPairs.js";
 /*====catalogjs annotation start====
-lZGTwqwuL3RvUGFpcnMuanMBgadkZWZhdWx0lKFyp2RlZmF1bHQBAJGTAcDCgJKWAAABwMLDlgAnwMDCwg==
+lZGVwqwuL3RvUGFpcnMuanMBw8CBp2RlZmF1bHSUoXKnZGVmYXVsdAEAkZMBwMCAkpYAAAHAwsOWACfAwMLC
 ====catalogjs annotation end====*/

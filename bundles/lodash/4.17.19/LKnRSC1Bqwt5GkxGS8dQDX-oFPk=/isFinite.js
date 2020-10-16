@@ -35,8 +35,8 @@ function isFinite(value) {
   return typeof value == 'number' && nativeIsFinite(value);
 }
 
-const _default = (isFinite);
-export { _default as default };
+
+export { isFinite as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvOTMuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0EcCRkxHAwoSkcm9vdJuhaZDCAsCSAwTAAMCnZGVmYXVsdJCubmF0aXZlSXNGaW5pdGWboWyRpHJvb3TCBgmSBwjAwMDAkaRyb290qGlzRmluaXRlm6Fska5uYXRpdmVJc0Zpbml0ZcIKwJILDMDAwMCQqF9kZWZhdWx0m6Fskahpc0Zpbml0ZcIOwJIPEMDAwMCQ3AASlgAAAcDCw5YAFwIFwsKWCQADwMLClgsEwMDCwpYABMDAwsKWXQEGCsLClgQAB8DCwpYADsAJwsKWLw7AwMLClgMJBMDCwpbNAggKCw3CwpYJCMAIwsKWBAjAwMLClgIBDhHCwpYGAQ/AwsKWAAjADMLClgkIwMDCwpYBDhDAwsI=
+lZGVwqwuL2Rpc3QvOTMuanMBwsCBp2RlZmF1bHSUoWyoaXNGaW5pdGUNwJGTDcDAg6Ryb290m6FpkMICwJIDBMAAwKdkZWZhdWx0kK5uYXRpdmVJc0Zpbml0ZZuhbJGkcm9vdMIGCZIHCMDAwMCRpHJvb3SoaXNGaW5pdGWboWyRrm5hdGl2ZUlzRmluaXRlwgrAkgsMwMDAwJCelgAAAcDCw5YAFwIFwsKWCQADwMLClgsEwMDCwpYABMDAwsKWXQEGCsLClgQAB8DCwpYADsAJwsKWLw7AwMLClgMJBMDCwpbNAggKCw3CwpYJCMAIwsKWCQjAwMLClgMODMDCwg==
 ====catalogjs annotation end====*/

@@ -25,8 +25,8 @@ import { default as baseRest } from "./dist/49.js";
 var defer = baseRest(function (func, args) {
   return baseDelay(func, 1, args);
 });
-const _default = (defer);
-export { _default as default };
+
+export { defer as default };
 /*====catalogjs annotation start====
-lZKTwq0uL2Rpc3QvMTYxLmpzAZPCrC4vZGlzdC80OS5qcwWBp2RlZmF1bHSUoWyoX2RlZmF1bHQSwJGTEsDChKliYXNlRGVsYXmboWmQwgLAkgMEwADAp2RlZmF1bHSQqGJhc2VSZXN0m6FpkMIGwJIHCMABwKdkZWZhdWx0kKVkZWZlcpuhbJKoYmFzZVJlc3SpYmFzZURlbGF5wgoNkgsMwMDAwJKpYmFzZURlbGF5qGJhc2VSZXN0qF9kZWZhdWx0m6FskaVkZWZlcsIPwJIQEcDAwMCQ3AATlgAAAcDCw5YAGAIFwsKWCQADwMLClgsJwMDCwpYiCcDAwsKWARcGCcLClgkAB8DCwpYLCMDAwsKWAAjABMLCls0B/QEKDsLClgQAC8DCwpYABcANwsKWBAXAwMLClgMTCMDCwpYBAQ8SwsKWBgEQwMLClgAIwAzCwpYJCMDAwsKWAQ4RwMLC
+lZKVwq0uL2Rpc3QvMTYxLmpzAcLAlcKsLi9kaXN0LzQ5LmpzBcLAgadkZWZhdWx0lKFspWRlZmVyDsCRkw7AwIOpYmFzZURlbGF5m6FpkMICwJIDBMAAwKdkZWZhdWx0kKhiYXNlUmVzdJuhaZDCBsCSBwjAAcCnZGVmYXVsdJClZGVmZXKboWySqGJhc2VSZXN0qWJhc2VEZWxhecIKDZILDMDAwMCSqWJhc2VEZWxheahiYXNlUmVzdJ+WAAABwMLDlgAYAgXCwpYJAAPAwsKWCwnAwMLCliIJwMDCwpYBFwYJwsKWCQAHwMLClgsIwMDCwpYACMAEwsKWzQH9AQoOwsKWBAALwMLClgAFwA3CwpYJBcDAwsKWAxMIwMLClgIODMDCwg==
 ====catalogjs annotation end====*/

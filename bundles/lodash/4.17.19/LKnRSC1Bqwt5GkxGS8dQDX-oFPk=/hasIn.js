@@ -8,11 +8,11 @@ import { default as hasPath } from "./dist/15.js";
  * @param {Array|string} key The key to check.
  * @returns {boolean} Returns `true` if `key` exists, else `false`.
  */
-function baseHasIn0(object, key) {
+function baseHasIn(object, key) {
   return object != null && key in Object(object);
 }
 
-const baseHasIn = (baseHasIn0);
+
 
 
 
@@ -47,8 +47,8 @@ function hasIn(object, path) {
   return object != null && hasPath(object, path, baseHasIn);
 }
 
-const _default = (hasIn);
-export { _default as default };
+
+export { hasIn as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvMTUuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0E8CRkxPAwoWnaGFzUGF0aJuhaZDCAsCSAwTAAMCnZGVmYXVsdJCqYmFzZUhhc0luMJuhbJDCBcCSBgfAwMDAkKliYXNlSGFzSW6boWyRqmJhc2VIYXNJbjDCCcCSCguS2VhodHRwczovL2NhdGFsb2dqcy5jb20vcGtncy9ucG0vbG9kYXNoLzQuMTcuMTkvTEtuUlNDMUJxd3Q1R2t4R1M4ZFFEWC1vRlBrPS9fYmFzZUhhc0luLmpzp2RlZmF1bHTAwMCQpWhhc0lum6FskqdoYXNQYXRoqWJhc2VIYXNJbsIMwJINDsDAwMCQqF9kZWZhdWx0m6FskaVoYXNJbsIQwJIREsDAwMCQ3AAUlgAAAcDCw5YAFwIFwsKWCQADwMLClgsHwMDCwpYsB8ALwsKWzQEFQwYIwsKWCQrAwMLClgQKwMDCwpYCAQkMwsKWBgEKwMLClgAJwAfCwpYPCcDAwsKWzQIwBA0PwsKWCQXABMLClgQFwMDCwpYCARATwsKWBgERwMLClgAIwA7CwpYJCMDAwsKWAQ4SwMLC
+lZGVwqwuL2Rpc3QvMTUuanMBwsCBp2RlZmF1bHSUoWylaGFzSW4LwJGTC8DAg6doYXNQYXRom6FpkMICwJIDBMAAwKdkZWZhdWx0kKliYXNlSGFzSW6boWyQwgXAkgYHktlYaHR0cHM6Ly9jYXRhbG9nanMuY29tL3BrZ3MvbnBtL2xvZGFzaC80LjE3LjE5L0xLblJTQzFCcXd0NUdreEdTOGRRRFgtb0ZQaz0vX2Jhc2VIYXNJbi5qc6dkZWZhdWx0wMDAkKVoYXNJbpuhbJKnaGFzUGF0aKliYXNlSGFzSW7CCMCSCQrAwMDAkJyWAAABwMLDlgAXAgXCwpYJAAPAwsKWCwfAwMLCliwHwAfCwpbNAQVDBgjCwpYJCcDAwsKWDwnAwMLCls0CMgQJC8LClgkFwATCwpYJBcDAwsKWAw4KwMLC
 ====catalogjs annotation end====*/

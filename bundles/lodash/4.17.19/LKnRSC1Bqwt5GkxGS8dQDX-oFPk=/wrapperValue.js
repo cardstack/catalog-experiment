@@ -20,8 +20,8 @@ function wrapperValue() {
   return baseWrapperValue(this.__wrapped__, this.__actions__);
 }
 
-const _default = (wrapperValue);
-export { _default as default };
+
+export { wrapperValue as default };
 /*====catalogjs annotation start====
-lZGTwq0uL2Rpc3QvMTAyLmpzAYGnZGVmYXVsdJShbKhfZGVmYXVsdAzAkZMMwMKDsGJhc2VXcmFwcGVyVmFsdWWboWmQwgLAkgMEwADAp2RlZmF1bHSQrHdyYXBwZXJWYWx1ZZuhbJGwYmFzZVdyYXBwZXJWYWx1ZcIFwJIGB8DAwMCQqF9kZWZhdWx0m6Fskax3cmFwcGVyVmFsdWXCCcCSCgvAwMDAkJ2WAAABwMLDlgAYAgXCwpYJAAPAwsKWCxDAwMLClg4QwMDCwpbNARgnBgjCwpYJDMAEwsKWBAzAwMLClgIBCQzCwpYGAQrAwsKWAAjAB8LClgkIwMDCwpYBDgvAwsI=
+lZGVwq0uL2Rpc3QvMTAyLmpzAcLAgadkZWZhdWx0lKFsrHdyYXBwZXJWYWx1ZQjAkZMIwMCCsGJhc2VXcmFwcGVyVmFsdWWboWmQwgLAkgMEwADAp2RlZmF1bHSQrHdyYXBwZXJWYWx1ZZuhbJGwYmFzZVdyYXBwZXJWYWx1ZcIFwJIGB8DAwMCQmZYAAAHAwsOWABgCBcLClgkAA8DCwpYLEMDAwsKWDhDAwMLCls0BGCcGCMLClgkMwATCwpYJDMDAwsKWAw4HwMLC
 ====catalogjs annotation end====*/

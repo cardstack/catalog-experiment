@@ -39,8 +39,8 @@ import { default as createRange } from "./dist/24.js";
  */
 
 var rangeRight = createRange(true);
-const _default = (rangeRight);
-export { _default as default };
+
+export { rangeRight as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvMjQuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DsCRkw7AwoOrY3JlYXRlUmFuZ2WboWmQwgLAkgMEwADAp2RlZmF1bHSQqnJhbmdlUmlnaHSboWyRq2NyZWF0ZVJhbmdlwgYJkgcIwMDAwJGrY3JlYXRlUmFuZ2WoX2RlZmF1bHSboWyRqnJhbmdlUmlnaHTCC8CSDA3AwMDAkJ+WAAABwMLDlgAXAgXCwpYJAAPAwsKWCwvAwMLClgALwMDCwpbNAvIBBgrCwpYEAAfAwsKWAArACcLClgQKwMDCwpYDBgTAwsKWAQELDsLClgYBDMDCwpYACMAIwsKWCQjAwMLClgEODcDCwg==
+lZGVwqwuL2Rpc3QvMjQuanMBwsCBp2RlZmF1bHSUoWyqcmFuZ2VSaWdodArAkZMKwMCCq2NyZWF0ZVJhbmdlm6FpkMICwJIDBMAAwKdkZWZhdWx0kKpyYW5nZVJpZ2h0m6FskatjcmVhdGVSYW5nZcIGCZIHCMDAwMCRq2NyZWF0ZVJhbmdlm5YAAAHAwsOWABcCBcLClgkAA8DCwpYLC8DAwsKWAAvAwMLCls0C8gEGCsLClgQAB8DCwpYACsAJwsKWCQrAwMLClgMGBMDCwpYCDgjAwsI=
 ====catalogjs annotation end====*/

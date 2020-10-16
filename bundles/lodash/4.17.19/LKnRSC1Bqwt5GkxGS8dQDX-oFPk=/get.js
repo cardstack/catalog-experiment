@@ -32,8 +32,8 @@ function get(object, path, defaultValue) {
   return result === undefined ? defaultValue : result;
 }
 
-const _default = (get);
-export { _default as default };
+
+export { get as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvMTQuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DMCRkwzAwoOnYmFzZUdldJuhaZDCAsCSAwTAAMCnZGVmYXVsdJCjZ2V0m6FskadiYXNlR2V0wgXAkgYHwMDAwJCoX2RlZmF1bHSboWyRo2dldMIJwJIKC8DAwMCQnZYAAAHAwsOWABcCBcLClgkAA8DCwpYLB8DAwsKWSwfAwMLCls0ClEgGCMLClgkDwATCwpYEA8DAwsKWAgEJDMLClgYBCsDCwpYACMAHwsKWCQjAwMLClgEOC8DCwg==
+lZGVwqwuL2Rpc3QvMTQuanMBwsCBp2RlZmF1bHSUoWyjZ2V0CMCRkwjAwIKnYmFzZUdldJuhaZDCAsCSAwTAAMCnZGVmYXVsdJCjZ2V0m6FskadiYXNlR2V0wgXAkgYHwMDAwJCZlgAAAcDCw5YAFwIFwsKWCQADwMLClgsHwMDCwpZLB8DAwsKWzQKUSAYIwsKWCQPABMLClgkDwMDCwpYDDgfAwsI=
 ====catalogjs annotation end====*/

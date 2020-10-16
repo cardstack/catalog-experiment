@@ -44,8 +44,8 @@ function castArray() {
   return isArray(value) ? value : [value];
 }
 
-const _default = (castArray);
-export { _default as default };
+
+export { castArray as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2lzQXJyYXkuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DMCRkwzAwoOnaXNBcnJheZuhaZDCAsCSAwTAAMCnZGVmYXVsdJCpY2FzdEFycmF5m6Fskadpc0FycmF5wgXAkgYHwMDAwJCoX2RlZmF1bHSboWyRqWNhc3RBcnJhecIJwJIKC8DAwMCQnZYAAAHAwsOWABcCBcLClgkAA8DCwpYLB8DAwsKWWQfAwMLCls0CNBwGCMLClgkJwATCwpYECcDAwsKWAgEJDMLClgYBCsDCwpYACMAHwsKWCQjAwMLClgEOC8DCwg==
+lZGVwqwuL2lzQXJyYXkuanMBwsCBp2RlZmF1bHSUoWypY2FzdEFycmF5CMCRkwjAwIKnaXNBcnJheZuhaZDCAsCSAwTAAMCnZGVmYXVsdJCpY2FzdEFycmF5m6Fskadpc0FycmF5wgXAkgYHwMDAwJCZlgAAAcDCw5YAFwIFwsKWCQADwMLClgsHwMDCwpZZB8DAwsKWzQI0HAYIwsKWCQnABMLClgkJwMDCwpYDDgfAwsI=
 ====catalogjs annotation end====*/

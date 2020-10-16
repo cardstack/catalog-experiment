@@ -28,8 +28,8 @@ function ary(func, n, guard) {
   return createWrap(func, WRAP_ARY_FLAG, undefined, undefined, undefined, undefined, n);
 }
 
-const _default = (ary);
-export { _default as default };
+
+export { ary as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvMjMuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0EMCRkxDAwoSqY3JlYXRlV3JhcJuhaZDCAsCSAwTAAMCnZGVmYXVsdJCtV1JBUF9BUllfRkxBR5uhbJDCBsCSBwjAwMDAkKNhcnmboWySqmNyZWF0ZVdyYXCtV1JBUF9BUllfRkxBR8IJwJIKC8DAwMCQqF9kZWZhdWx0m6FskaNhcnnCDcCSDg/AwMDAkNwAEZYAAAHAwsOWABcCBcLClgkAA8DCwpYLCsDAwsKWZArACMLCljsBBgnCwpYEBgfAwsKWAA3AwMLClgcNwMDCwpbNAgMzCgzCwpYJA8AEwsKWBAPAwMLClgIBDRDCwpYGAQ7AwsKWAAjAC8LClgkIwMDCwpYBDg/AwsI=
+lZGVwqwuL2Rpc3QvMjMuanMBwsCBp2RlZmF1bHSUoWyjYXJ5DMCRkwzAwIOqY3JlYXRlV3JhcJuhaZDCAsCSAwTAAMCnZGVmYXVsdJCtV1JBUF9BUllfRkxBR5uhbJDCBsCSBwjAwMDAkKNhcnmboWySqmNyZWF0ZVdyYXCtV1JBUF9BUllfRkxBR8IJwJIKC8DAwMCQnZYAAAHAwsOWABcCBcLClgkAA8DCwpYLCsDAwsKWZArACMLCljsBBgnCwpYEBgfAwsKWAA3AwMLClgcNwMDCwpbNAgMzCgzCwpYJA8AEwsKWCQPAwMLClgMOC8DCwg==
 ====catalogjs annotation end====*/

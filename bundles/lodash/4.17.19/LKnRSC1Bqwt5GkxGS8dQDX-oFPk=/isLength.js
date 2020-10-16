@@ -31,8 +31,8 @@ function isLength(value) {
   return typeof value == 'number' && value > -1 && value % 1 == 0 && value <= MAX_SAFE_INTEGER;
 }
 
-const _default = (isLength);
-export { _default as default };
+
+export { isLength as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQMwJGTDMDCg7BNQVhfU0FGRV9JTlRFR0VSm6FskMICwJIDBMDAwMCQqGlzTGVuZ3Rom6FskbBNQVhfU0FGRV9JTlRFR0VSwgXAkgYHwMDAwJCoX2RlZmF1bHSboWyRqGlzTGVuZ3RowgnAkgoLwMDAwJCdlgAAAcDCw5Y6AQIFwsKWBBMDwMLClgAQwMDCwpZYEMDAwsKWzQIjAwYIwsKWCQjABMLClgQIwMDCwpYCAQkMwsKWBgEKwMLClgAIwAfCwpYJCMDAwsKWAQ4LwMLC
+lZCBp2RlZmF1bHSUoWyoaXNMZW5ndGgIwJGTCMDAgrBNQVhfU0FGRV9JTlRFR0VSm6FskMICwJIDBMDAwMCQqGlzTGVuZ3Rom6FskbBNQVhfU0FGRV9JTlRFR0VSwgXAkgYHwMDAwJCZlgAAAcDCw5Y6AQIFwsKWBBMDwMLClgAQwMDCwpZYEMDAwsKWzQIjAwYIwsKWCQjABMLClgkIwMDCwpYDDgfAwsI=
 ====catalogjs annotation end====*/

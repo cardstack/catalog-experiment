@@ -20,8 +20,8 @@ import { default as createMathOperation } from "./dist/0.js";
 var subtract = createMathOperation(function (minuend, subtrahend) {
   return minuend - subtrahend;
 }, 0);
-const _default = (subtract);
-export { _default as default };
+
+export { subtract as default };
 /*====catalogjs annotation start====
-lZGTwqsuL2Rpc3QvMC5qcwGBp2RlZmF1bHSUoWyoX2RlZmF1bHQOwJGTDsDCg7NjcmVhdGVNYXRoT3BlcmF0aW9um6FpkMICwJIDBMAAwKdkZWZhdWx0kKhzdWJ0cmFjdJuhbJGzY3JlYXRlTWF0aE9wZXJhdGlvbsIGCZIHCMDAwMCRs2NyZWF0ZU1hdGhPcGVyYXRpb26oX2RlZmF1bHSboWyRqHN1YnRyYWN0wgvAkgwNwMDAwJCflgAAAcDCw5YAFgIFwsKWCQADwMLClgsTwMDCwpYAE8DAwsKWzQFAAQYKwsKWBAAHwMLClgAIwAnCwpYECMDAwsKWA0YEwMLClgEBCw7CwpYGAQzAwsKWAAjACMLClgkIwMDCwpYBDg3AwsI=
+lZGVwqsuL2Rpc3QvMC5qcwHCwIGnZGVmYXVsdJShbKhzdWJ0cmFjdArAkZMKwMCCs2NyZWF0ZU1hdGhPcGVyYXRpb26boWmQwgLAkgMEwADAp2RlZmF1bHSQqHN1YnRyYWN0m6FskbNjcmVhdGVNYXRoT3BlcmF0aW9uwgYJkgcIwMDAwJGzY3JlYXRlTWF0aE9wZXJhdGlvbpuWAAABwMLDlgAWAgXCwpYJAAPAwsKWCxPAwMLClgATwMDCwpbNAUABBgrCwpYEAAfAwsKWAAjACcLClgkIwMDCwpYDRgTAwsKWAg4IwMLC
 ====catalogjs annotation end====*/

@@ -21,8 +21,8 @@ function unary(func) {
   return ary(func, 1);
 }
 
-const _default = (unary);
-export { _default as default };
+
+export { unary as default };
 /*====catalogjs annotation start====
-lZGTwqguL2FyeS5qcwGBp2RlZmF1bHSUoWyoX2RlZmF1bHQMwJGTDMDCg6NhcnmboWmQwgLAkgMEwADAp2RlZmF1bHSQpXVuYXJ5m6FskaNhcnnCBcCSBgfAwMDAkKhfZGVmYXVsdJuhbJGldW5hcnnCCcCSCgvAwMDAkJ2WAAABwMLDlgATAgXCwpYJAAPAwsKWCwPAwMLClhIDwMDCwpbNAXMMBgjCwpYJBcAEwsKWBAXAwMLClgIBCQzCwpYGAQrAwsKWAAjAB8LClgkIwMDCwpYBDgvAwsI=
+lZGVwqguL2FyeS5qcwHCwIGnZGVmYXVsdJShbKV1bmFyeQjAkZMIwMCCo2FyeZuhaZDCAsCSAwTAAMCnZGVmYXVsdJCldW5hcnmboWyRo2FyecIFwJIGB8DAwMCQmZYAAAHAwsOWABMCBcLClgkAA8DCwpYLA8DAwsKWEgPAwMLCls0BcwwGCMLClgkFwATCwpYJBcDAwsKWAw4HwMLC
 ====catalogjs annotation end====*/

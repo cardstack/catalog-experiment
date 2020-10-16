@@ -21,8 +21,8 @@ function flatten(array) {
   return length ? baseFlatten(array, 1) : [];
 }
 
-const _default = (flatten);
-export { _default as default };
+
+export { flatten as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvODUuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DMCRkwzAwoOrYmFzZUZsYXR0ZW6boWmQwgLAkgMEwADAp2RlZmF1bHSQp2ZsYXR0ZW6boWyRq2Jhc2VGbGF0dGVuwgXAkgYHwMDAwJCoX2RlZmF1bHSboWyRp2ZsYXR0ZW7CCcCSCgvAwMDAkJ2WAAABwMLDlgAXAgXCwpYJAAPAwsKWCwvAwMLClk0LwMDCwpbNASkSBgjCwpYJB8AEwsKWBAfAwMLClgIBCQzCwpYGAQrAwsKWAAjAB8LClgkIwMDCwpYBDgvAwsI=
+lZGVwqwuL2Rpc3QvODUuanMBwsCBp2RlZmF1bHSUoWynZmxhdHRlbgjAkZMIwMCCq2Jhc2VGbGF0dGVum6FpkMICwJIDBMAAwKdkZWZhdWx0kKdmbGF0dGVum6FskatiYXNlRmxhdHRlbsIFwJIGB8DAwMCQmZYAAAHAwsOWABcCBcLClgkAA8DCwpYLC8DAwsKWTQvAwMLCls0BKRIGCMLClgkHwATCwpYJB8DAwsKWAw4HwMLC
 ====catalogjs annotation end====*/

@@ -22,8 +22,8 @@ function isNil(value) {
   return value == null;
 }
 
-const _default = (isNil);
-export { _default as default };
+
+export { isNil as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQIwJGTCMDCgqVpc05pbJuhbJDCAcCSAgPAwMDAkKhfZGVmYXVsdJuhbJGlaXNOaWzCBcCSBgfAwMDAkJmWAAABwMLDls0BXyMCBMLClgkFwMDCwpYEBcDAwsKWAgEFCMLClgYBBsDCwpYACMADwsKWCQjAwMLClgEOB8DCwg==
+lZCBp2RlZmF1bHSUoWylaXNOaWwEwJGTBMDAgaVpc05pbJuhbJDCAcCSAgPAwMDAkJWWAAABwMLDls0BXyMCBMLClgkFwMDCwpYJBcDAwsKWAw4DwMLC
 ====catalogjs annotation end====*/

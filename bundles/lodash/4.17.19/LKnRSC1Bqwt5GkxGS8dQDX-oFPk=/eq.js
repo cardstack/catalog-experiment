@@ -34,8 +34,8 @@ function eq(value, other) {
   return value === other || value !== value && other !== other;
 }
 
-const _default = (eq);
-export { _default as default };
+
+export { eq as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQIwJGTCMDCgqJlcZuhbJDCAcCSAgPAwMDAkKhfZGVmYXVsdJuhbJGiZXHCBcCSBgfAwMDAkJmWAAABwMLDls0CqVICBMLClgkCwMDCwpYEAsDAwsKWAgEFCMLClgYBBsDCwpYACMADwsKWCQjAwMLClgEOB8DCwg==
+lZCBp2RlZmF1bHSUoWyiZXEEwJGTBMDAgaJlcZuhbJDCAcCSAgPAwMDAkJWWAAABwMLDls0CqVICBMLClgkCwMDCwpYJAsDAwsKWAw4DwMLC
 ====catalogjs annotation end====*/

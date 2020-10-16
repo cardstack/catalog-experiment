@@ -27,8 +27,8 @@ function toLower(value) {
   return toString(value).toLowerCase();
 }
 
-const _default = (toLower);
-export { _default as default };
+
+export { toLower as default };
 /*====catalogjs annotation start====
-lZGTwq0uL3RvU3RyaW5nLmpzAYGnZGVmYXVsdJShbKhfZGVmYXVsdAzAkZMMwMKDqHRvU3RyaW5nm6FpkMICwJIDBMAAwKdkZWZhdWx0kKd0b0xvd2Vym6Fskah0b1N0cmluZ8IFwJIGB8DAwMCQqF9kZWZhdWx0m6Fskad0b0xvd2VywgnAkgoLwMDAwJCdlgAAAcDCw5YAGAIFwsKWCQADwMLClgsIwMDCwpYTCMDAwsKWzQHOGAYIwsKWCQfABMLClgQHwMDCwpYCAQkMwsKWBgEKwMLClgAIwAfCwpYJCMDAwsKWAQ4LwMLC
+lZGVwq0uL3RvU3RyaW5nLmpzAcLAgadkZWZhdWx0lKFsp3RvTG93ZXIIwJGTCMDAgqh0b1N0cmluZ5uhaZDCAsCSAwTAAMCnZGVmYXVsdJCndG9Mb3dlcpuhbJGodG9TdHJpbmfCBcCSBgfAwMDAkJmWAAABwMLDlgAYAgXCwpYJAAPAwsKWCwjAwMLClhMIwMDCwpbNAc4YBgjCwpYJB8AEwsKWCQfAwMLClgMOB8DCwg==
 ====catalogjs annotation end====*/

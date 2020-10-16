@@ -31,8 +31,8 @@ function sumBy(array, iteratee) {
   return array && array.length ? baseSum(array, baseIteratee(iteratee, 2)) : 0;
 }
 
-const _default = (sumBy);
-export { _default as default };
+
+export { sumBy as default };
 /*====catalogjs annotation start====
-lZKTwqsuL2Rpc3QvNi5qcwGTwq0uL2Rpc3QvMTY4LmpzBYGnZGVmYXVsdJShbKhfZGVmYXVsdBDAkZMQwMKErGJhc2VJdGVyYXRlZZuhaZDCAsCSAwTAAMCnZGVmYXVsdJCnYmFzZVN1bZuhaZDCBsCSBwjAAcCnZGVmYXVsdJClc3VtQnmboWySp2Jhc2VTdW2sYmFzZUl0ZXJhdGVlwgnAkgoLwMDAwJCoX2RlZmF1bHSboWyRpXN1bUJ5wg3Akg4PwMDAwJDcABGWAAABwMLDlgAWAgXCwpYJAAPAwsKWCwzAwMLClggMwMDCwpYBGAYJwsKWCQAHwMLClgsHwMDCwpY1B8AEwsKWzQKlFQoMwsKWCQXACMLClgQFwMDCwpYCAQ0QwsKWBgEOwMLClgAIwAvCwpYJCMDAwsKWAQ4PwMLC
+lZKVwqsuL2Rpc3QvNi5qcwHCwJXCrS4vZGlzdC8xNjguanMFwsCBp2RlZmF1bHSUoWylc3VtQnkMwJGTDMDAg6xiYXNlSXRlcmF0ZWWboWmQwgLAkgMEwADAp2RlZmF1bHSQp2Jhc2VTdW2boWmQwgbAkgcIwAHAp2RlZmF1bHSQpXN1bUJ5m6FskqdiYXNlU3VtrGJhc2VJdGVyYXRlZcIJwJIKC8DAwMCQnZYAAAHAwsOWABYCBcLClgkAA8DCwpYLDMDAwsKWCAzAwMLClgEYBgnCwpYJAAfAwsKWCwfAwMLCljUHwATCwpbNAqUVCgzCwpYJBcAIwsKWCQXAwMLClgMOC8DCwg==
 ====catalogjs annotation end====*/

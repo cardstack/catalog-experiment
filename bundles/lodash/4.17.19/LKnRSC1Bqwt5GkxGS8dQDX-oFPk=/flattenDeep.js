@@ -24,8 +24,8 @@ function flattenDeep(array) {
   return length ? baseFlatten(array, INFINITY) : [];
 }
 
-const _default = (flattenDeep);
-export { _default as default };
+
+export { flattenDeep as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvODUuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0EcCRkxHAwoSrYmFzZUZsYXR0ZW6boWmQwgLAkgMEwADAp2RlZmF1bHSQqElORklOSVRZm6FskMIGCZIHCMDAwMCQq2ZsYXR0ZW5EZWVwm6FskqtiYXNlRmxhdHRlbqhJTkZJTklUWcIKwJILDMDAwMCQqF9kZWZhdWx0m6FskatmbGF0dGVuRGVlcMIOwJIPEMDAwMCQ3AASlgAAAcDCw5YAFwIFwsKWCQADwMLClgsLwMDCwpZNC8AIwsKWPgEGCsLClgQAB8DCwpYACMAJwsKWCAjAwMLClgMFwMDCwpbNAR8JCw3CwpYJC8AEwsKWBAvAwMLClgIBDhHCwpYGAQ/AwsKWAAjADMLClgkIwMDCwpYBDhDAwsI=
+lZGVwqwuL2Rpc3QvODUuanMBwsCBp2RlZmF1bHSUoWyrZmxhdHRlbkRlZXANwJGTDcDAg6tiYXNlRmxhdHRlbpuhaZDCAsCSAwTAAMCnZGVmYXVsdJCoSU5GSU5JVFmboWyQwgYJkgcIwMDAwJCrZmxhdHRlbkRlZXCboWySq2Jhc2VGbGF0dGVuqElORklOSVRZwgrAkgsMwMDAwJCelgAAAcDCw5YAFwIFwsKWCQADwMLClgsLwMDCwpZNC8AIwsKWPgEGCsLClgQAB8DCwpYACMAJwsKWCAjAwMLClgMFwMDCwpbNAR8JCw3CwpYJC8AEwsKWCQvAwMLClgMODMDCwg==
 ====catalogjs annotation end====*/

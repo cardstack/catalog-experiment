@@ -27,8 +27,8 @@ function uniqWith(array, comparator) {
   return array && array.length ? baseUniq(array, undefined, comparator) : [];
 }
 
-const _default = (uniqWith);
-export { _default as default };
+
+export { uniqWith as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvNjMuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DMCRkwzAwoOoYmFzZVVuaXGboWmQwgLAkgMEwADAp2RlZmF1bHSQqHVuaXFXaXRom6FskahiYXNlVW5pccIFwJIGB8DAwMCQqF9kZWZhdWx0m6Fskah1bmlxV2l0aMIJwJIKC8DAwMCQnZYAAAHAwsOWABcCBcLClgkAA8DCwpYLCMDAwsKWzIAIwMDCwpbNArwmBgjCwpYJCMAEwsKWBAjAwMLClgIBCQzCwpYGAQrAwsKWAAjAB8LClgkIwMDCwpYBDgvAwsI=
+lZGVwqwuL2Rpc3QvNjMuanMBwsCBp2RlZmF1bHSUoWyodW5pcVdpdGgIwJGTCMDAgqhiYXNlVW5pcZuhaZDCAsCSAwTAAMCnZGVmYXVsdJCodW5pcVdpdGiboWyRqGJhc2VVbmlxwgXAkgYHwMDAwJCZlgAAAcDCw5YAFwIFwsKWCQADwMLClgsIwMDCwpbMgAjAwMLCls0CvCYGCMLClgkIwATCwpYJCMDAwsKWAw4HwMLC
 ====catalogjs annotation end====*/

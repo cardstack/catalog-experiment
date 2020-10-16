@@ -32,8 +32,8 @@ function wrapperCommit() {
   return new LodashWrapper(this.value(), this.__chain__);
 }
 
-const _default = (wrapperCommit);
-export { _default as default };
+
+export { wrapperCommit as default };
 /*====catalogjs annotation start====
-lZGTwq0uL2Rpc3QvMTA0LmpzAYGnZGVmYXVsdJShbKhfZGVmYXVsdAzAkZMMwMKDrUxvZGFzaFdyYXBwZXKboWmQwgLAkgMEwADAp2RlZmF1bHSQrXdyYXBwZXJDb21taXSboWyRrUxvZGFzaFdyYXBwZXLCBcCSBgfAwMDAkKhfZGVmYXVsdJuhbJGtd3JhcHBlckNvbW1pdMIJwJIKC8DAwMCQnZYAAAHAwsOWABgCBcLClgkAA8DCwpYLDcDAwsKWEg3AwMLCls0B2yEGCMLClgkNwATCwpYEDcDAwsKWAgEJDMLClgYBCsDCwpYACMAHwsKWCQjAwMLClgEOC8DCwg==
+lZGVwq0uL2Rpc3QvMTA0LmpzAcLAgadkZWZhdWx0lKFsrXdyYXBwZXJDb21taXQIwJGTCMDAgq1Mb2Rhc2hXcmFwcGVym6FpkMICwJIDBMAAwKdkZWZhdWx0kK13cmFwcGVyQ29tbWl0m6Fska1Mb2Rhc2hXcmFwcGVywgXAkgYHwMDAwJCZlgAAAcDCw5YAGAIFwsKWCQADwMLClgsNwMDCwpYSDcDAwsKWzQHbIQYIwsKWCQ3ABMLClgkNwMDCwpYDDgfAwsI=
 ====catalogjs annotation end====*/

@@ -33,8 +33,8 @@ function updateWith(object, path, updater, customizer) {
   return object == null ? object : baseUpdate(object, path, castFunction(updater), customizer);
 }
 
-const _default = (updateWith);
-export { _default as default };
+
+export { updateWith as default };
 /*====catalogjs annotation start====
-lZKTwqwuL2Rpc3QvMTMuanMBk8KtLi9kaXN0LzEwOC5qcwWBp2RlZmF1bHSUoWyoX2RlZmF1bHQQwJGTEMDChKpiYXNlVXBkYXRlm6FpkMICwJIDBMAAwKdkZWZhdWx0kKxjYXN0RnVuY3Rpb26boWmQwgbAkgcIwAHAp2RlZmF1bHSQqnVwZGF0ZVdpdGiboWySqmJhc2VVcGRhdGWsY2FzdEZ1bmN0aW9uwgnAkgoLwMDAwJCoX2RlZmF1bHSboWyRqnVwZGF0ZVdpdGjCDcCSDg/AwMDAkNwAEZYAAAHAwsOWABcCBcLClgkAA8DCwpYLCsDAwsKWzJIKwAjCwpYBGAYJwsKWCQAHwMLClgsMwMDCwpYPDMDAwsKWzQNLGQoMwsKWCQrABMLClgQKwMDCwpYCAQ0QwsKWBgEOwMLClgAIwAvCwpYJCMDAwsKWAQ4PwMLC
+lZKVwqwuL2Rpc3QvMTMuanMBwsCVwq0uL2Rpc3QvMTA4LmpzBcLAgadkZWZhdWx0lKFsqnVwZGF0ZVdpdGgMwJGTDMDAg6piYXNlVXBkYXRlm6FpkMICwJIDBMAAwKdkZWZhdWx0kKxjYXN0RnVuY3Rpb26boWmQwgbAkgcIwAHAp2RlZmF1bHSQqnVwZGF0ZVdpdGiboWySqmJhc2VVcGRhdGWsY2FzdEZ1bmN0aW9uwgnAkgoLwMDAwJCdlgAAAcDCw5YAFwIFwsKWCQADwMLClgsKwMDCwpbMkgrACMLClgEYBgnCwpYJAAfAwsKWCwzAwMLClg8MwMDCwpbNA0sZCgzCwpYJCsAEwsKWCQrAwMLClgMOC8DCwg==
 ====catalogjs annotation end====*/

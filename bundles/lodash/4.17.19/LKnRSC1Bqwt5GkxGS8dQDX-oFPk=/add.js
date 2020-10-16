@@ -20,8 +20,8 @@ import { default as createMathOperation } from "./dist/0.js";
 var add = createMathOperation(function (augend, addend) {
   return augend + addend;
 }, 0);
-const _default = (add);
-export { _default as default };
+
+export { add as default };
 /*====catalogjs annotation start====
-lZGTwqsuL2Rpc3QvMC5qcwGBp2RlZmF1bHSUoWyoX2RlZmF1bHQOwJGTDsDCg7NjcmVhdGVNYXRoT3BlcmF0aW9um6FpkMICwJIDBMAAwKdkZWZhdWx0kKNhZGSboWyRs2NyZWF0ZU1hdGhPcGVyYXRpb27CBgmSBwjAwMDAkbNjcmVhdGVNYXRoT3BlcmF0aW9uqF9kZWZhdWx0m6FskaNhZGTCC8CSDA3AwMDAkJ+WAAABwMLDlgAWAgXCwpYJAAPAwsKWCxPAwMLClgATwMDCwpbNASoBBgrCwpYEAAfAwsKWAAPACcLClgQDwMDCwpYDPATAwsKWAQELDsLClgYBDMDCwpYACMAIwsKWCQjAwMLClgEODcDCwg==
+lZGVwqsuL2Rpc3QvMC5qcwHCwIGnZGVmYXVsdJShbKNhZGQKwJGTCsDAgrNjcmVhdGVNYXRoT3BlcmF0aW9um6FpkMICwJIDBMAAwKdkZWZhdWx0kKNhZGSboWyRs2NyZWF0ZU1hdGhPcGVyYXRpb27CBgmSBwjAwMDAkbNjcmVhdGVNYXRoT3BlcmF0aW9um5YAAAHAwsOWABYCBcLClgkAA8DCwpYLE8DAwsKWABPAwMLCls0BKgEGCsLClgQAB8DCwpYAA8AJwsKWCQPAwMLClgM8BMDCwpYCDgjAwsI=
 ====catalogjs annotation end====*/

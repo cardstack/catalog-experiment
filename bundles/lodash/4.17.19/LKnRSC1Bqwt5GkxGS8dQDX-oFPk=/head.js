@@ -20,8 +20,8 @@ function head(array) {
   return array && array.length ? array[0] : undefined;
 }
 
-const _default = (head);
-export { _default as default };
+
+export { head as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQIwJGTCMDCgqRoZWFkm6FskMIBwJICA8DAwMCQqF9kZWZhdWx0m6FskaRoZWFkwgXAkgYHwMDAwJCZlgAAAcDCw5bNATVCAgTCwpYJBMDAwsKWBATAwMLClgIBBQjCwpYGAQbAwsKWAAjAA8LClgkIwMDCwpYBDgfAwsI=
+lZCBp2RlZmF1bHSUoWykaGVhZATAkZMEwMCBpGhlYWSboWyQwgHAkgIDwMDAwJCVlgAAAcDCw5bNATVCAgTCwpYJBMDAwsKWCQTAwMLClgMOA8DCwg==
 ====catalogjs annotation end====*/

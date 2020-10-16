@@ -47,8 +47,8 @@ function negate(predicate) {
   };
 }
 
-const _default = (negate);
-export { _default as default };
+
+export { negate as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQMwJGTDMDCg69GVU5DX0VSUk9SX1RFWFSboWyQwgLAkgMEwMDAwJCmbmVnYXRlm6Fska9GVU5DX0VSUk9SX1RFWFTCBcCSBgfAwMDAkKhfZGVmYXVsdJuhbJGmbmVnYXRlwgnAkgoLwMDAwJCdlgAAAcDCw5YgAQIFwsKWBBgDwMLClgAPwMDCwpZOD8DAwsKWzQH3zQGUBgjCwpYJBsAEwsKWBAbAwMLClgIBCQzCwpYGAQrAwsKWAAjAB8LClgkIwMDCwpYBDgvAwsI=
+lZCBp2RlZmF1bHSUoWymbmVnYXRlCMCRkwjAwIKvRlVOQ19FUlJPUl9URVhUm6FskMICwJIDBMDAwMCQpm5lZ2F0ZZuhbJGvRlVOQ19FUlJPUl9URVhUwgXAkgYHwMDAwJCZlgAAAcDCw5YgAQIFwsKWBBgDwMLClgAPwMDCwpZOD8DAwsKWzQH3zQGUBgjCwpYJBsAEwsKWCQbAwMLClgMOB8DCwg==
 ====catalogjs annotation end====*/

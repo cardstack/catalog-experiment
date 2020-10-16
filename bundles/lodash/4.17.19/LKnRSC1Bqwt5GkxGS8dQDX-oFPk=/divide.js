@@ -20,8 +20,8 @@ import { default as createMathOperation } from "./dist/0.js";
 var divide = createMathOperation(function (dividend, divisor) {
   return dividend / divisor;
 }, 1);
-const _default = (divide);
-export { _default as default };
+
+export { divide as default };
 /*====catalogjs annotation start====
-lZGTwqsuL2Rpc3QvMC5qcwGBp2RlZmF1bHSUoWyoX2RlZmF1bHQOwJGTDsDCg7NjcmVhdGVNYXRoT3BlcmF0aW9um6FpkMICwJIDBMAAwKdkZWZhdWx0kKZkaXZpZGWboWyRs2NyZWF0ZU1hdGhPcGVyYXRpb27CBgmSBwjAwMDAkbNjcmVhdGVNYXRoT3BlcmF0aW9uqF9kZWZhdWx0m6FskaZkaXZpZGXCC8CSDA3AwMDAkJ+WAAABwMLDlgAWAgXCwpYJAAPAwsKWCxPAwMLClgATwMDCwpbNATQBBgrCwpYEAAfAwsKWAAbACcLClgQGwMDCwpYDQgTAwsKWAQELDsLClgYBDMDCwpYACMAIwsKWCQjAwMLClgEODcDCwg==
+lZGVwqsuL2Rpc3QvMC5qcwHCwIGnZGVmYXVsdJShbKZkaXZpZGUKwJGTCsDAgrNjcmVhdGVNYXRoT3BlcmF0aW9um6FpkMICwJIDBMAAwKdkZWZhdWx0kKZkaXZpZGWboWyRs2NyZWF0ZU1hdGhPcGVyYXRpb27CBgmSBwjAwMDAkbNjcmVhdGVNYXRoT3BlcmF0aW9um5YAAAHAwsOWABYCBcLClgkAA8DCwpYLE8DAwsKWABPAwMLCls0BNAEGCsLClgQAB8DCwpYABsAJwsKWCQbAwMLClgNCBMDCwpYCDgjAwsI=
 ====catalogjs annotation end====*/

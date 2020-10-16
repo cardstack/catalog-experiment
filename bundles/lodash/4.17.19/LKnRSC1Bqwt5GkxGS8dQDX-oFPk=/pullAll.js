@@ -26,8 +26,8 @@ function pullAll(array, values) {
   return array && array.length && values && values.length ? basePullAll(array, values) : array;
 }
 
-const _default = (pullAll);
-export { _default as default };
+
+export { pullAll as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvOTcuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DMCRkwzAwoOrYmFzZVB1bGxBbGyboWmQwgLAkgMEwADAp2RlZmF1bHSQp3B1bGxBbGyboWyRq2Jhc2VQdWxsQWxswgXAkgYHwMDAwJCoX2RlZmF1bHSboWyRp3B1bGxBbGzCCcCSCgvAwMDAkJ2WAAABwMLDlgAXAgXCwpYJAAPAwsKWCwvAwMLClk4LwMDCwpbNAfMaBgjCwpYJB8AEwsKWBAfAwMLClgIBCQzCwpYGAQrAwsKWAAjAB8LClgkIwMDCwpYBDgvAwsI=
+lZGVwqwuL2Rpc3QvOTcuanMBwsCBp2RlZmF1bHSUoWyncHVsbEFsbAjAkZMIwMCCq2Jhc2VQdWxsQWxsm6FpkMICwJIDBMAAwKdkZWZhdWx0kKdwdWxsQWxsm6FskatiYXNlUHVsbEFsbMIFwJIGB8DAwMCQmZYAAAHAwsOWABcCBcLClgkAA8DCwpYLC8DAwsKWTgvAwMLCls0B8xoGCMLClgkHwATCwpYJB8DAwsKWAw4HwMLC
 ====catalogjs annotation end====*/

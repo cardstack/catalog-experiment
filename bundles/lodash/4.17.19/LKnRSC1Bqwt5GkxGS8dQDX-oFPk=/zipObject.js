@@ -24,8 +24,8 @@ function zipObject(props, values) {
   return baseZipObject(props || [], values || [], assignValue);
 }
 
-const _default = (zipObject);
-export { _default as default };
+
+export { zipObject as default };
 /*====catalogjs annotation start====
-lZKTwqwuL2Rpc3QvNTUuanMBk8KtLi9kaXN0LzE3NC5qcwWBp2RlZmF1bHSUoWyoX2RlZmF1bHQQwJGTEMDChKthc3NpZ25WYWx1ZZuhaZDCAsCSAwTAAMCnZGVmYXVsdJCtYmFzZVppcE9iamVjdJuhaZDCBsCSBwjAAcCnZGVmYXVsdJCpemlwT2JqZWN0m6Fskq1iYXNlWmlwT2JqZWN0q2Fzc2lnblZhbHVlwgnAkgoLwMDAwJCoX2RlZmF1bHSboWyRqXppcE9iamVjdMINwJIOD8DAwMCQ3AARlgAAAcDCw5YAFwIFwsKWCQADwMLClgsLwMDCwpYcC8DAwsKWARgGCcLClgkAB8DCwpYLDcDAwsKWGw3ABMLCls0BuwQKDMLClgkJwAjCwpYECcDAwsKWAgENEMLClgYBDsDCwpYACMALwsKWCQjAwMLClgEOD8DCwg==
+lZKVwqwuL2Rpc3QvNTUuanMBwsCVwq0uL2Rpc3QvMTc0LmpzBcLAgadkZWZhdWx0lKFsqXppcE9iamVjdAzAkZMMwMCDq2Fzc2lnblZhbHVlm6FpkMICwJIDBMAAwKdkZWZhdWx0kK1iYXNlWmlwT2JqZWN0m6FpkMIGwJIHCMABwKdkZWZhdWx0kKl6aXBPYmplY3SboWySrWJhc2VaaXBPYmplY3SrYXNzaWduVmFsdWXCCcCSCgvAwMDAkJ2WAAABwMLDlgAXAgXCwpYJAAPAwsKWCwvAwMLClhwLwMDCwpYBGAYJwsKWCQAHwMLClgsNwMDCwpYbDcAEwsKWzQG7BAoMwsKWCQnACMLClgkJwMDCwpYDDgvAwsI=
 ====catalogjs annotation end====*/

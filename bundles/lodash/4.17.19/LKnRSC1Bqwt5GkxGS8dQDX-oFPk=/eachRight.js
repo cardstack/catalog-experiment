@@ -1,4 +1,4 @@
 export { default } from "./forEachRight.js";
 /*====catalogjs annotation start====
-lZGTwrEuL2ZvckVhY2hSaWdodC5qcwGBp2RlZmF1bHSUoXKnZGVmYXVsdAEAkZMBwMKAkpYAAAHAwsOWACzAwMLC
+lZGVwrEuL2ZvckVhY2hSaWdodC5qcwHDwIGnZGVmYXVsdJShcqdkZWZhdWx0AQCRkwHAwICSlgAAAcDCw5YALMDAwsI=
 ====catalogjs annotation end====*/

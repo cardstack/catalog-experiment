@@ -44,8 +44,8 @@ import { default as createRange } from "./dist/24.js";
  */
 
 var range = createRange();
-const _default = (range);
-export { _default as default };
+
+export { range as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvMjQuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DsCRkw7AwoOrY3JlYXRlUmFuZ2WboWmQwgLAkgMEwADAp2RlZmF1bHSQpXJhbmdlm6FskatjcmVhdGVSYW5nZcIGCZIHCMDAwMCRq2NyZWF0ZVJhbmdlqF9kZWZhdWx0m6FskaVyYW5nZcILwJIMDcDAwMCQn5YAAAHAwsOWABcCBcLClgkAA8DCwpYLC8DAwsKWAAvAwMLCls0EIQEGCsLClgQAB8DCwpYABcAJwsKWBAXAwMLClgMCBMDCwpYBAQsOwsKWBgEMwMLClgAIwAjCwpYJCMDAwsKWAQ4NwMLC
+lZGVwqwuL2Rpc3QvMjQuanMBwsCBp2RlZmF1bHSUoWylcmFuZ2UKwJGTCsDAgqtjcmVhdGVSYW5nZZuhaZDCAsCSAwTAAMCnZGVmYXVsdJClcmFuZ2WboWyRq2NyZWF0ZVJhbmdlwgYJkgcIwMDAwJGrY3JlYXRlUmFuZ2WblgAAAcDCw5YAFwIFwsKWCQADwMLClgsLwMDCwpYAC8DAwsKWzQQhAQYKwsKWBAAHwMLClgAFwAnCwpYJBcDAwsKWAwIEwMLClgIOCMDCwg==
 ====catalogjs annotation end====*/

@@ -33,8 +33,8 @@ function unset(object, path) {
   return object == null ? true : baseUnset(object, path);
 }
 
-const _default = (unset);
-export { _default as default };
+
+export { unset as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvMTAuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DMCRkwzAwoOpYmFzZVVuc2V0m6FpkMICwJIDBMAAwKdkZWZhdWx0kKV1bnNldJuhbJGpYmFzZVVuc2V0wgXAkgYHwMDAwJCoX2RlZmF1bHSboWyRpXVuc2V0wgnAkgoLwMDAwJCdlgAAAcDCw5YAFwIFwsKWCQADwMLClgsJwMDCwpYyCcDAwsKWzQKKEQYIwsKWCQXABMLClgQFwMDCwpYCAQkMwsKWBgEKwMLClgAIwAfCwpYJCMDAwsKWAQ4LwMLC
+lZGVwqwuL2Rpc3QvMTAuanMBwsCBp2RlZmF1bHSUoWyldW5zZXQIwJGTCMDAgqliYXNlVW5zZXSboWmQwgLAkgMEwADAp2RlZmF1bHSQpXVuc2V0m6FskaliYXNlVW5zZXTCBcCSBgfAwMDAkJmWAAABwMLDlgAXAgXCwpYJAAPAwsKWCwnAwMLCljIJwMDCwpbNAooRBgjCwpYJBcAEwsKWCQXAwMLClgMOB8DCwg==
 ====catalogjs annotation end====*/

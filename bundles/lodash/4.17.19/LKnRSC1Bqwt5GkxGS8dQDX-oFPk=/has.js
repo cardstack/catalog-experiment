@@ -14,11 +14,11 @@ var hasOwnProperty = objectProto.hasOwnProperty;
  * @returns {boolean} Returns `true` if `key` exists, else `false`.
  */
 
-function baseHas0(object, key) {
+function baseHas(object, key) {
   return object != null && hasOwnProperty.call(object, key);
 }
 
-const baseHas = (baseHas0);
+
 
 
 
@@ -54,8 +54,8 @@ function has(object, path) {
   return object != null && hasPath(object, path, baseHas);
 }
 
-const _default = (has);
-export { _default as default };
+
+export { has as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvMTUuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0HcCRkx3AwoenaGFzUGF0aJuhaZDCAsCSAwTAAMCnZGVmYXVsdJCrb2JqZWN0UHJvdG+boWyRpk9iamVjdMIGCZIHCMDAwMCQrmhhc093blByb3BlcnR5m6FskatvYmplY3RQcm90b8ILDpIMDcDAwMCRq29iamVjdFByb3RvqGJhc2VIYXMwm6Fska5oYXNPd25Qcm9wZXJ0ecIPwJIQEcDAwMCQp2Jhc2VIYXOboWyRqGJhc2VIYXMwwhPAkhQVktlWaHR0cHM6Ly9jYXRhbG9nanMuY29tL3BrZ3MvbnBtL2xvZGFzaC80LjE3LjE5L0xLblJTQzFCcXd0NUdreEdTOGRRRFgtb0ZQaz0vX2Jhc2VIYXMuanOnZGVmYXVsdMDAwJCjaGFzm6FskqdoYXNQYXRop2Jhc2VIYXPCFsCSFxjAwMDAkKhfZGVmYXVsdJuhbJGjaGFzwhrAkhscwMDAwJDcAB6WAAABwMLDlgAXAgXCwpYJAAPAwsKWCwfAwMLCliwHwBXCwpYuAQYKwsKWBAAHwMLClgALwAnCwpYAC8DAwsKWAxDAwMLCljMBCw/CwpYEAAzAwsKWAA7ADsLClisOwMDCwpYDDwjAwsKWzQEDFRASwsKWCQjADcLClgQIwMDCwpYCARMWwsKWBgEUwMLClgAHwBHCwpYPB8DAwsKWzQI+BBcZwsKWCQPABMLClgQDwMDCwpYCARodwsKWBgEbwMLClgAIwBjCwpYJCMDAwsKWAQ4cwMLC
+lZGVwqwuL2Rpc3QvMTUuanMBwsCBp2RlZmF1bHSUoWyjaGFzFcCRkxXAwIWnaGFzUGF0aJuhaZDCAsCSAwTAAMCnZGVmYXVsdJCrb2JqZWN0UHJvdG+boWyRpk9iamVjdMIGCZIHCMDAwMCQrmhhc093blByb3BlcnR5m6FskatvYmplY3RQcm90b8ILDpIMDcDAwMCRq29iamVjdFByb3Rvp2Jhc2VIYXOboWyRrmhhc093blByb3BlcnR5wg/AkhARktlWaHR0cHM6Ly9jYXRhbG9nanMuY29tL3BrZ3MvbnBtL2xvZGFzaC80LjE3LjE5L0xLblJTQzFCcXd0NUdreEdTOGRRRFgtb0ZQaz0vX2Jhc2VIYXMuanOnZGVmYXVsdMDAwJCjaGFzm6FskqdoYXNQYXRop2Jhc2VIYXPCEsCSExTAwMDAkNwAFpYAAAHAwsOWABcCBcLClgkAA8DCwpYLB8DAwsKWLAfAEcLCli4BBgrCwpYEAAfAwsKWAAvACcLClgALwMDCwpYDEMDAwsKWMwELD8LClgQADMDCwpYADsAOwsKWKw7AwMLClgMPCMDCwpbNAQMVEBLCwpYJB8ANwsKWDwfAwMLCls0CQAQTFcLClgkDwATCwpYJA8DAwsKWAw4UwMLC
 ====catalogjs annotation end====*/

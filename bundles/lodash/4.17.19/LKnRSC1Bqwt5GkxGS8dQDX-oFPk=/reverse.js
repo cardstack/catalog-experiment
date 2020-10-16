@@ -31,8 +31,8 @@ function reverse(array) {
   return array == null ? array : nativeReverse.call(array);
 }
 
-const _default = (reverse);
-export { _default as default };
+
+export { reverse as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQSwJGTEsDChKphcnJheVByb3Rvm6FskaVBcnJhecICBZIDBMDAwMCQrW5hdGl2ZVJldmVyc2WboWyRqmFycmF5UHJvdG/CBwqSCAnAwMDAkaphcnJheVByb3Rvp3JldmVyc2WboWyRrW5hdGl2ZVJldmVyc2XCC8CSDA3AwMDAkKhfZGVmYXVsdJuhbJGncmV2ZXJzZcIPwJIQEcDAwMCQ3AATlgAAAcDCw5YsAQIGwsKWBAADwMLClgAKwAXCwpYACsDAwsKWAw/AwMLCllsBBwvCwpYEAAjAwsKWAA3ACsLClisNwMDCwpYDCATAwsKWzQIKDwwOwsKWCQfACcLClgQHwMDCwpYCAQ8SwsKWBgEQwMLClgAIwA3CwpYJCMDAwsKWAQ4RwMLC
+lZCBp2RlZmF1bHSUoWyncmV2ZXJzZQ7AkZMOwMCDqmFycmF5UHJvdG+boWyRpUFycmF5wgIFkgMEwMDAwJCtbmF0aXZlUmV2ZXJzZZuhbJGqYXJyYXlQcm90b8IHCpIICcDAwMCRqmFycmF5UHJvdG+ncmV2ZXJzZZuhbJGtbmF0aXZlUmV2ZXJzZcILwJIMDcDAwMCQn5YAAAHAwsOWLAECBsLClgQAA8DCwpYACsAFwsKWAArAwMLClgMPwMDCwpZbAQcLwsKWBAAIwMLClgANwArCwpYrDcDAwsKWAwgEwMLCls0CCg8MDsLClgkHwAnCwpYJB8DAwsKWAw4NwMLC
 ====catalogjs annotation end====*/

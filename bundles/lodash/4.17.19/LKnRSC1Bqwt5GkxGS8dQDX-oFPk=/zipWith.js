@@ -30,8 +30,8 @@ var zipWith = baseRest(function (arrays) {
   iteratee = typeof iteratee == 'function' ? (arrays.pop(), iteratee) : undefined;
   return unzipWith(arrays, iteratee);
 });
-const _default = (zipWith);
-export { _default as default };
+
+export { zipWith as default };
 /*====catalogjs annotation start====
-lZKTwqwuL2Rpc3QvNDkuanMBk8KuLi91bnppcFdpdGguanMFgadkZWZhdWx0lKFsqF9kZWZhdWx0EsCRkxLAwoSoYmFzZVJlc3SboWmQwgLAkgMEwADAp2RlZmF1bHSQqXVuemlwV2l0aJuhaZDCBsCSBwjAAcCnZGVmYXVsdJCnemlwV2l0aJuhbJKoYmFzZVJlc3SpdW56aXBXaXRowgoNkgsMwMDAwJKoYmFzZVJlc3SpdW56aXBXaXRoqF9kZWZhdWx0m6Fskad6aXBXaXRowg/AkhARwMDAwJDcABOWAAABwMLDlgAXAgXCwpYJAAPAwsKWCwjAwMLClgAIwAjCwpYBGQYJwsKWCQAHwMLClgsJwMDCwpbMzQnAwMLCls0CVgEKDsLClgQAC8DCwpYAB8ANwsKWBAfAwMLClgMWBMDCwpYBAQ8SwsKWBgEQwMLClgAIwAzCwpYJCMDAwsKWAQ4RwMLC
+lZKVwqwuL2Rpc3QvNDkuanMBwsCVwq4uL3VuemlwV2l0aC5qcwXCwIGnZGVmYXVsdJShbKd6aXBXaXRoDsCRkw7AwIOoYmFzZVJlc3SboWmQwgLAkgMEwADAp2RlZmF1bHSQqXVuemlwV2l0aJuhaZDCBsCSBwjAAcCnZGVmYXVsdJCnemlwV2l0aJuhbJKoYmFzZVJlc3SpdW56aXBXaXRowgoNkgsMwMDAwJKoYmFzZVJlc3SpdW56aXBXaXRon5YAAAHAwsOWABcCBcLClgkAA8DCwpYLCMDAwsKWAAjACMLClgEZBgnCwpYJAAfAwsKWCwnAwMLClszNCcDAwsKWzQJWAQoOwsKWBAALwMLClgAHwA3CwpYJB8DAwsKWAxYEwMLClgIODMDCwg==
 ====catalogjs annotation end====*/

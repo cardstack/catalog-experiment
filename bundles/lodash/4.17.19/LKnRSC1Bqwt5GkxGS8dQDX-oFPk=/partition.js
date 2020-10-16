@@ -43,8 +43,8 @@ var partition = createAggregator(function (result, value, key) {
 }, function () {
   return [[], []];
 });
-const _default = (partition);
-export { _default as default };
+
+export { partition as default };
 /*====catalogjs annotation start====
-lZGTwqsuL2Rpc3QvMi5qcwGBp2RlZmF1bHSUoWyoX2RlZmF1bHQOwJGTDsDCg7BjcmVhdGVBZ2dyZWdhdG9ym6FpkMICwJIDBMAAwKdkZWZhdWx0kKlwYXJ0aXRpb26boWyRsGNyZWF0ZUFnZ3JlZ2F0b3LCBgmSBwjAwMDAkbBjcmVhdGVBZ2dyZWdhdG9yqF9kZWZhdWx0m6FskalwYXJ0aXRpb27CC8CSDA3AwMDAkJ+WAAABwMLDlgAWAgXCwpYJAAPAwsKWCxDAwMLClgAQwMDCwpbNBRUBBgrCwpYEAAfAwsKWAAnACcLClgQJwMDCwpYDagTAwsKWAQELDsLClgYBDMDCwpYACMAIwsKWCQjAwMLClgEODcDCwg==
+lZGVwqsuL2Rpc3QvMi5qcwHCwIGnZGVmYXVsdJShbKlwYXJ0aXRpb24KwJGTCsDAgrBjcmVhdGVBZ2dyZWdhdG9ym6FpkMICwJIDBMAAwKdkZWZhdWx0kKlwYXJ0aXRpb26boWyRsGNyZWF0ZUFnZ3JlZ2F0b3LCBgmSBwjAwMDAkbBjcmVhdGVBZ2dyZWdhdG9ym5YAAAHAwsOWABYCBcLClgkAA8DCwpYLEMDAwsKWABDAwMLCls0FFQEGCsLClgQAB8DCwpYACcAJwsKWCQnAwMLClgNqBMDCwpYCDgjAwsI=
 ====catalogjs annotation end====*/

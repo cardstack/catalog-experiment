@@ -22,8 +22,8 @@ var now = function () {
   return root.Date.now();
 };
 
-const _default = (now);
-export { _default as default };
+
+export { now as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvOTMuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DcCRkw3AwoOkcm9vdJuhaZDCAsCSAwTAAMCnZGVmYXVsdJCjbm93m6FskaRyb290wgbAkgcIwMDAwJCoX2RlZmF1bHSboWyRo25vd8IKwJILDMDAwMCQnpYAAAHAwsOWABcCBcLClgkAA8DCwpYLBMDAwsKWGgTAwMLCls0BoQEGCcLClgQOB8DCwpYAA8AEwsKWBAPAwMLClgIBCg3CwpYGAQvAwsKWAAjACMLClgkIwMDCwpYBDgzAwsI=
+lZGVwqwuL2Rpc3QvOTMuanMBwsCBp2RlZmF1bHSUoWyjbm93CcCRkwnAwIKkcm9vdJuhaZDCAsCSAwTAAMCnZGVmYXVsdJCjbm93m6FskaRyb290wgbAkgcIwMDAwJCalgAAAcDCw5YAFwIFwsKWCQADwMLClgsEwMDCwpYaBMDAwsKWzQGhAQYJwsKWBA4HwMLClgADwATCwpYJA8DAwsKWAw4IwMLC
 ====catalogjs annotation end====*/

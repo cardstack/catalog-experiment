@@ -24,8 +24,8 @@ import { default as createRound } from "./dist/20.js";
  */
 
 var round = createRound('round');
-const _default = (round);
-export { _default as default };
+
+export { round as default };
 /*====catalogjs annotation start====
-lZGTwqwuL2Rpc3QvMjAuanMBgadkZWZhdWx0lKFsqF9kZWZhdWx0DsCRkw7AwoOrY3JlYXRlUm91bmSboWmQwgLAkgMEwADAp2RlZmF1bHSQpXJvdW5km6FskatjcmVhdGVSb3VuZMIGCZIHCMDAwMCRq2NyZWF0ZVJvdW5kqF9kZWZhdWx0m6FskaVyb3VuZMILwJIMDcDAwMCQn5YAAAHAwsOWABcCBcLClgkAA8DCwpYLC8DAwsKWAAvAwMLCls0BkAEGCsLClgQAB8DCwpYABcAJwsKWBAXAwMLClgMJBMDCwpYBAQsOwsKWBgEMwMLClgAIwAjCwpYJCMDAwsKWAQ4NwMLC
+lZGVwqwuL2Rpc3QvMjAuanMBwsCBp2RlZmF1bHSUoWylcm91bmQKwJGTCsDAgqtjcmVhdGVSb3VuZJuhaZDCAsCSAwTAAMCnZGVmYXVsdJClcm91bmSboWyRq2NyZWF0ZVJvdW5kwgYJkgcIwMDAwJGrY3JlYXRlUm91bmSblgAAAcDCw5YAFwIFwsKWCQADwMLClgsLwMDCwpYAC8DAwsKWzQGQAQYKwsKWBAAHwMLClgAFwAnCwpYJBcDAwsKWAwkEwMLClgIOCMDCwg==
 ====catalogjs annotation end====*/

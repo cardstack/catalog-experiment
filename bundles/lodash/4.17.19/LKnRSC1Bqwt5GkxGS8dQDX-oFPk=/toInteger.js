@@ -34,8 +34,8 @@ function toInteger(value) {
   return result === result ? remainder ? result - remainder : result : 0;
 }
 
-const _default = (toInteger);
-export { _default as default };
+
+export { toInteger as default };
 /*====catalogjs annotation start====
-lZGTwq0uL3RvRmluaXRlLmpzAYGnZGVmYXVsdJShbKhfZGVmYXVsdAzAkZMMwMKDqHRvRmluaXRlm6FpkMICwJIDBMAAwKdkZWZhdWx0kKl0b0ludGVnZXKboWyRqHRvRmluaXRlwgXAkgYHwMDAwJCoX2RlZmF1bHSboWyRqXRvSW50ZWdlcsIJwJIKC8DAwMCQnZYAAAHAwsOWABgCBcLClgkAA8DCwpYLCMDAwsKWGQjAwMLCls0CD3IGCMLClgkJwATCwpYECcDAwsKWAgEJDMLClgYBCsDCwpYACMAHwsKWCQjAwMLClgEOC8DCwg==
+lZGVwq0uL3RvRmluaXRlLmpzAcLAgadkZWZhdWx0lKFsqXRvSW50ZWdlcgjAkZMIwMCCqHRvRmluaXRlm6FpkMICwJIDBMAAwKdkZWZhdWx0kKl0b0ludGVnZXKboWyRqHRvRmluaXRlwgXAkgYHwMDAwJCZlgAAAcDCw5YAGAIFwsKWCQADwMLClgsIwMDCwpYZCMDAwsKWzQIPcgYIwsKWCQnABMLClgkJwMDCwpYDDgfAwsI=
 ====catalogjs annotation end====*/

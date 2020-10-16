@@ -22,8 +22,8 @@
  * // => false
  */
 var isArray = Array.isArray;
-const _default = (isArray);
-export { _default as default };
+
+export { isArray as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQKwJGTCsDCgqdpc0FycmF5m6FskaVBcnJhecICBZIDBMDAwMCQqF9kZWZhdWx0m6Fskadpc0FycmF5wgfAkggJwMDAwJCblgAAAcDCw5bNAbABAgbCwpYEAAPAwsKWAAfABcLClgQHwMDCwpYDDcDAwsKWAQEHCsLClgYBCMDCwpYACMAEwsKWCQjAwMLClgEOCcDCwg==
+lZCBp2RlZmF1bHSUoWynaXNBcnJheQbAkZMGwMCBp2lzQXJyYXmboWyRpUFycmF5wgIFkgMEwMDAwJCXlgAAAcDCw5bNAbABAgbCwpYEAAPAwsKWAAfABcLClgkHwMDCwpYDDcDAwsKWAg4EwMLC
 ====catalogjs annotation end====*/

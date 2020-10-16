@@ -21,8 +21,8 @@ function tail(array) {
   return length ? baseSlice(array, 1, length) : [];
 }
 
-const _default = (tail);
-export { _default as default };
+
+export { tail as default };
 /*====catalogjs annotation start====
-lZGTwq0uL2Rpc3QvMTQyLmpzAYGnZGVmYXVsdJShbKhfZGVmYXVsdAzAkZMMwMKDqWJhc2VTbGljZZuhaZDCAsCSAwTAAMCnZGVmYXVsdJCkdGFpbJuhbJGpYmFzZVNsaWNlwgXAkgYHwMDAwJCoX2RlZmF1bHSboWyRpHRhaWzCCcCSCgvAwMDAkJ2WAAABwMLDlgAYAgXCwpYJAAPAwsKWCwnAwMLClk0JwMDCwpbNAQ0aBgjCwpYJBMAEwsKWBATAwMLClgIBCQzCwpYGAQrAwsKWAAjAB8LClgkIwMDCwpYBDgvAwsI=
+lZGVwq0uL2Rpc3QvMTQyLmpzAcLAgadkZWZhdWx0lKFspHRhaWwIwJGTCMDAgqliYXNlU2xpY2WboWmQwgLAkgMEwADAp2RlZmF1bHSQpHRhaWyboWyRqWJhc2VTbGljZcIFwJIGB8DAwMCQmZYAAAHAwsOWABgCBcLClgkAA8DCwpYLCcDAwsKWTQnAwMLCls0BDRoGCMLClgkEwATCwpYJBMDAwsKWAw4HwMLC
 ====catalogjs annotation end====*/

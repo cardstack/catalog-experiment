@@ -22,8 +22,8 @@ function sum(array) {
   return array && array.length ? baseSum(array, identity) : 0;
 }
 
-const _default = (sum);
-export { _default as default };
+
+export { sum as default };
 /*====catalogjs annotation start====
-lZKTwq0uL2Rpc3QvMTY4LmpzAZPCrS4vaWRlbnRpdHkuanMFgadkZWZhdWx0lKFsqF9kZWZhdWx0EMCRkxDAwoSnYmFzZVN1bZuhaZDCAsCSAwTAAMCnZGVmYXVsdJCoaWRlbnRpdHmboWmQwgbAkgcIwAHAp2RlZmF1bHSQo3N1bZuhbJKnYmFzZVN1bahpZGVudGl0ecIJwJIKC8DAwMCQqF9kZWZhdWx0m6FskaNzdW3CDcCSDg/AwMDAkNwAEZYAAAHAwsOWABgCBcLClgkAA8DCwpYLB8DAwsKWKwfACMLClgEYBgnCwpYJAAfAwsKWCwjAwMLClggIwMDCwpbNAQYICgzCwpYJA8AEwsKWBAPAwMLClgIBDRDCwpYGAQ7AwsKWAAjAC8LClgkIwMDCwpYBDg/AwsI=
+lZKVwq0uL2Rpc3QvMTY4LmpzAcLAlcKtLi9pZGVudGl0eS5qcwXCwIGnZGVmYXVsdJShbKNzdW0MwJGTDMDAg6diYXNlU3Vtm6FpkMICwJIDBMAAwKdkZWZhdWx0kKhpZGVudGl0eZuhaZDCBsCSBwjAAcCnZGVmYXVsdJCjc3Vtm6FskqdiYXNlU3VtqGlkZW50aXR5wgnAkgoLwMDAwJCdlgAAAcDCw5YAGAIFwsKWCQADwMLClgsHwMDCwpYrB8AIwsKWARgGCcLClgkAB8DCwpYLCMDAwsKWCAjAwMLCls0BBggKDMLClgkDwATCwpYJA8DAwsKWAw4LwMLC
 ====catalogjs annotation end====*/

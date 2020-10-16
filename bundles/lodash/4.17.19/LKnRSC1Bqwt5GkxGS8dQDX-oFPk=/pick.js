@@ -14,13 +14,13 @@ import { default as flatRest } from "./dist/50.js";
  * @returns {Object} Returns the new object.
  */
 
-function basePick0(object, paths) {
+function basePick(object, paths) {
   return basePickBy(object, paths, function (value, path) {
     return hasIn(object, path);
   });
 }
 
-const basePick = (basePick0);
+
 
 
 
@@ -45,8 +45,8 @@ const basePick = (basePick0);
 var pick = flatRest(function (object, paths) {
   return object == null ? {} : basePick(object, paths);
 });
-const _default = (pick);
-export { _default as default };
+
+export { pick as default };
 /*====catalogjs annotation start====
-lZOTwqwuL2Rpc3QvMTIuanMBk8KqLi9oYXNJbi5qcwWTwqwuL2Rpc3QvNTAuanMJgadkZWZhdWx0lKFsqF9kZWZhdWx0HcCRkx3AwoeqYmFzZVBpY2tCeZuhaZDCAsCSAwTAAMCnZGVmYXVsdJClaGFzSW6boWmQwgbAkgcIwAHAp2RlZmF1bHSQqGZsYXRSZXN0m6FpkMIKwJILDMACwKdkZWZhdWx0kKliYXNlUGljazCboWySqmJhc2VQaWNrQnmlaGFzSW7CDcCSDg/AwMDAkKhiYXNlUGlja5uhbJGpYmFzZVBpY2swwhHAkhITktlXaHR0cHM6Ly9jYXRhbG9nanMuY29tL3BrZ3MvbnBtL2xvZGFzaC80LjE3LjE5L0xLblJTQzFCcXd0NUdreEdTOGRRRFgtb0ZQaz0vX2Jhc2VQaWNrLmpzp2RlZmF1bHTAwMCQpHBpY2uboWySqGZsYXRSZXN0qGJhc2VQaWNrwhUYkhYXwMDAwJKoZmxhdFJlc3SoYmFzZVBpY2uoX2RlZmF1bHSboWyRpHBpY2vCGsCSGxzAwMDAkNwAHpYAAAHAwsOWABcCBcLClgkAA8DCwpYLCsDAwsKWGwrACMLClgEVBgnCwpYJAAfAwsKWCwXAwMLCljQFwMDCwpYBFwoNwsKWCQALwMLClgsIwMDCwpYACMATwsKWzQEMFw4QwsKWCQnABMLClgQJwMDCwpYCAREUwsKWBgESwMLClgAIwA/CwpY7CMDAwsKWzQGpARUZwsKWBAAWwMLClgAEwBjCwpYEBMDAwsKWAxMMwMLClgEBGh3CwpYGARvAwsKWAAjAF8LClgkIwMDCwpYBDhzAwsI=
+lZOVwqwuL2Rpc3QvMTIuanMBwsCVwqouL2hhc0luLmpzBcLAlcKsLi9kaXN0LzUwLmpzCcLAgadkZWZhdWx0lKFspHBpY2sVwJGTFcDAhapiYXNlUGlja0J5m6FpkMICwJIDBMAAwKdkZWZhdWx0kKVoYXNJbpuhaZDCBsCSBwjAAcCnZGVmYXVsdJCoZmxhdFJlc3SboWmQwgrAkgsMwALAp2RlZmF1bHSQqGJhc2VQaWNrm6FskqpiYXNlUGlja0J5pWhhc0luwg3Akg4PktlXaHR0cHM6Ly9jYXRhbG9nanMuY29tL3BrZ3MvbnBtL2xvZGFzaC80LjE3LjE5L0xLblJTQzFCcXd0NUdreEdTOGRRRFgtb0ZQaz0vX2Jhc2VQaWNrLmpzp2RlZmF1bHTAwMCQpHBpY2uboWySqGZsYXRSZXN0qGJhc2VQaWNrwhEUkhITwMDAwJKoZmxhdFJlc3SoYmFzZVBpY2vcABaWAAABwMLDlgAXAgXCwpYJAAPAwsKWCwrAwMLClhsKwAjCwpYBFQYJwsKWCQAHwMLClgsFwMDCwpY0BcDAwsKWARcKDcLClgkAC8DCwpYLCMDAwsKWAAjAD8LCls0BDBcOEMLClgkIwATCwpY7CMDAwsKWzQGrAREVwsKWBAASwMLClgAEwBTCwpYJBMDAwsKWAxMMwMLClgIOE8DCwg==
 ====catalogjs annotation end====*/

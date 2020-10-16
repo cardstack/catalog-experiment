@@ -22,8 +22,8 @@ import { default as flatRest } from "./dist/50.js";
  */
 
 var at = flatRest(baseAt);
-const _default = (at);
-export { _default as default };
+
+export { at as default };
 /*====catalogjs annotation start====
-lZKTwqsuL2Rpc3QvMS5qcwGTwqwuL2Rpc3QvNTAuanMFgadkZWZhdWx0lKFsqF9kZWZhdWx0EsCRkxLAwoSmYmFzZUF0m6FpkMICwJIDBMAAwKdkZWZhdWx0kKhmbGF0UmVzdJuhaZDCBsCSBwjAAcCnZGVmYXVsdJCiYXSboWySqGZsYXRSZXN0pmJhc2VBdMIKDZILDMDAwMCSpmJhc2VBdKhmbGF0UmVzdKhfZGVmYXVsdJuhbJGiYXTCD8CSEBHAwMDAkNwAE5YAAAHAwsOWABYCBcLClgkAA8DCwpYLBsDAwsKWAQbAwMLClgEXBgnCwpYJAAfAwsKWCwjAwMLClgAIwATCwpbNAbgBCg7CwpYEAAvAwsKWAALADcLClgQCwMDCwpYDAQjAwsKWAQEPEsLClgYBEMDCwpYACMAMwsKWCQjAwMLClgEOEcDCwg==
+lZKVwqsuL2Rpc3QvMS5qcwHCwJXCrC4vZGlzdC81MC5qcwXCwIGnZGVmYXVsdJShbKJhdA7AkZMOwMCDpmJhc2VBdJuhaZDCAsCSAwTAAMCnZGVmYXVsdJCoZmxhdFJlc3SboWmQwgbAkgcIwAHAp2RlZmF1bHSQomF0m6FskqhmbGF0UmVzdKZiYXNlQXTCCg2SCwzAwMDAkqZiYXNlQXSoZmxhdFJlc3SflgAAAcDCw5YAFgIFwsKWCQADwMLClgsGwMDCwpYBBsDAwsKWARcGCcLClgkAB8DCwpYLCMDAwsKWAAjABMLCls0BuAEKDsLClgQAC8DCwpYAAsANwsKWCQLAwMLClgMBCMDCwpYCDgzAwsI=
 ====catalogjs annotation end====*/

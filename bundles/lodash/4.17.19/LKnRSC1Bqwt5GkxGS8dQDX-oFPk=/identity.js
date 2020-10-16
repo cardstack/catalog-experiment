@@ -18,8 +18,8 @@ function identity(value) {
   return value;
 }
 
-const _default = (identity);
-export { _default as default };
+
+export { identity as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQIwJGTCMDCgqhpZGVudGl0eZuhbJDCAcCSAgPAwMDAkKhfZGVmYXVsdJuhbJGoaWRlbnRpdHnCBcCSBgfAwMDAkJmWAAABwMLDls0BKRsCBMLClgkIwMDCwpYECMDAwsKWAgEFCMLClgYBBsDCwpYACMADwsKWCQjAwMLClgEOB8DCwg==
+lZCBp2RlZmF1bHSUoWyoaWRlbnRpdHkEwJGTBMDAgahpZGVudGl0eZuhbJDCAcCSAgPAwMDAkJWWAAABwMLDls0BKRsCBMLClgkIwMDCwpYJCMDAwsKWAw4DwMLC
 ====catalogjs annotation end====*/

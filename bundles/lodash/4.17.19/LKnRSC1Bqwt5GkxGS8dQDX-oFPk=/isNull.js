@@ -19,8 +19,8 @@ function isNull(value) {
   return value === null;
 }
 
-const _default = (isNull);
-export { _default as default };
+
+export { isNull as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQIwJGTCMDCgqZpc051bGyboWyQwgHAkgIDwMDAwJCoX2RlZmF1bHSboWyRpmlzTnVsbMIFwJIGB8DAwMCQmZYAAAHAwsOWzQEvJAIEwsKWCQbAwMLClgQGwMDCwpYCAQUIwsKWBgEGwMLClgAIwAPCwpYJCMDAwsKWAQ4HwMLC
+lZCBp2RlZmF1bHSUoWymaXNOdWxsBMCRkwTAwIGmaXNOdWxsm6FskMIBwJICA8DAwMCQlZYAAAHAwsOWzQEvJAIEwsKWCQbAwMLClgkGwMDCwpYDDgPAwsI=
 ====catalogjs annotation end====*/

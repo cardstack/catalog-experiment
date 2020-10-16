@@ -27,8 +27,8 @@ function toUpper(value) {
   return toString(value).toUpperCase();
 }
 
-const _default = (toUpper);
-export { _default as default };
+
+export { toUpper as default };
 /*====catalogjs annotation start====
-lZGTwq0uL3RvU3RyaW5nLmpzAYGnZGVmYXVsdJShbKhfZGVmYXVsdAzAkZMMwMKDqHRvU3RyaW5nm6FpkMICwJIDBMAAwKdkZWZhdWx0kKd0b1VwcGVym6Fskah0b1N0cmluZ8IFwJIGB8DAwMCQqF9kZWZhdWx0m6Fskad0b1VwcGVywgnAkgoLwMDAwJCdlgAAAcDCw5YAGAIFwsKWCQADwMLClgsIwMDCwpYTCMDAwsKWzQHOGAYIwsKWCQfABMLClgQHwMDCwpYCAQkMwsKWBgEKwMLClgAIwAfCwpYJCMDAwsKWAQ4LwMLC
+lZGVwq0uL3RvU3RyaW5nLmpzAcLAgadkZWZhdWx0lKFsp3RvVXBwZXIIwJGTCMDAgqh0b1N0cmluZ5uhaZDCAsCSAwTAAMCnZGVmYXVsdJCndG9VcHBlcpuhbJGodG9TdHJpbmfCBcCSBgfAwMDAkJmWAAABwMLDlgAYAgXCwpYJAAPAwsKWCwjAwMLClhMIwMDCwpbNAc4YBgjCwpYJB8AEwsKWCQfAwMLClgMOB8DCwg==
 ====catalogjs annotation end====*/

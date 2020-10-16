@@ -19,8 +19,8 @@ function isUndefined(value) {
   return value === undefined;
 }
 
-const _default = (isUndefined);
-export { _default as default };
+
+export { isUndefined as default };
 /*====catalogjs annotation start====
-lZCBp2RlZmF1bHSUoWyoX2RlZmF1bHQIwJGTCMDCgqtpc1VuZGVmaW5lZJuhbJDCAcCSAgPAwMDAkKhfZGVmYXVsdJuhbJGraXNVbmRlZmluZWTCBcCSBgfAwMDAkJmWAAABwMLDls0BQykCBMLClgkLwMDCwpYEC8DAwsKWAgEFCMLClgYBBsDCwpYACMADwsKWCQjAwMLClgEOB8DCwg==
+lZCBp2RlZmF1bHSUoWyraXNVbmRlZmluZWQEwJGTBMDAgatpc1VuZGVmaW5lZJuhbJDCAcCSAgPAwMDAkJWWAAABwMLDls0BQykCBMLClgkLwMDCwpYJC8DAwsKWAw4DwMLC
 ====catalogjs annotation end====*/
