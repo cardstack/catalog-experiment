@@ -451,9 +451,8 @@ class State {
       this._assignedImportedNames
     );
 
-    let resultingModule = makeNonCyclic(module);
     this.assignmentLookup.set(assignedName, {
-      module: resultingModule,
+      module: makeNonCyclic(module),
       name: insideName,
     });
   }
@@ -493,9 +492,8 @@ class State {
       assignedName,
       this._assignedLocalNames
     );
-    let resultingModule = makeNonCyclic(module);
     this.assignmentLookup.set(assignedName, {
-      module: resultingModule,
+      module: makeNonCyclic(module),
       name: originalName,
     });
   }
@@ -724,13 +722,6 @@ class ModuleRewriter {
       )}"`;
       this.editor.replace(importDesc.specifierRegion, bundleSpecifier);
     }
-
-    // for (let [exportName, { module, desc }] of getExports(this.module)) {
-    //   if (module.url.href === this.module.url.href) {
-    //     continue;
-    //   }
-    //   debugger;
-    // }
 
     // a reexport of a default export from the entrypoint results in a binding
     // that we have not encountered from the consuming side, so providing an
