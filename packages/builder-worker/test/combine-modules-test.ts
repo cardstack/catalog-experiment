@@ -504,6 +504,75 @@ QUnit.module("combine modules", function (origHooks) {
     );
   });
 
+  test("can append to exports in a module within a bundle using export all", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import greeting, { hello, goodbye } from './b.js';
+        greeting(hello + goodbye);
+      `,
+      "lib.js": `
+        export const hello = 'hello';
+        export const goodbye = 'goodbye';
+      `,
+      "b.js": `
+        export * from './lib.js';
+        export default function(msg) { console.log(msg); }
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+      const hello = 'hello';
+      const goodbye = 'goodbye';
+      const greeting = (function(msg) { console.log(msg); });
+      greeting(hello + goodbye);
+      export {};
+      `
+    );
+  });
+
+  test("it can handle nested export all's", async function (assert) {
+    await assert.setupFiles({
+      "index.js": `
+        import greeting, { hello, goodbye, konnichiwa, sayonara } from './greetings.js';
+        greeting(hello + goodbye + konnichiwa + sayonara);
+      `,
+      "english.js": `
+        export const hello = 'hello';
+        export const goodbye = 'goodbye';
+        export * from "./japanese.js";
+      `,
+      "japanese.js": `
+        export const konnichiwa = 'konnichiwa';
+        export const sayonara = 'sayonara';
+      `,
+      "greetings.js": `
+        export * from './english.js';
+        export default function(msg) { console.log(msg); }
+      `,
+    });
+
+    let assignments = await makeBundleAssignments(assert.fs);
+    let combined = combineModules(url("dist/0.js"), assignments);
+
+    assert.codeEqual(
+      combined.code,
+      `
+      const konnichiwa = 'konnichiwa';
+      const sayonara = 'sayonara';
+      const hello = 'hello';
+      const goodbye = 'goodbye';
+      const greeting = (function(msg) { console.log(msg); });
+      greeting(hello + goodbye + konnichiwa + sayonara);
+      export {};
+      `
+    );
+  });
+
   test("it prevents collisions with bundle exported variable declarations", async function (assert) {
     await assert.setupFiles({
       "index.js": `
@@ -1326,8 +1395,7 @@ QUnit.module("combine modules", function (origHooks) {
     assert.codeEqual(
       combined.code,
       `
-      const json = { foo: 'bar' };
-      const obj = (json);
+      const obj = { foo: 'bar' };
       console.log(JSON.stringify(obj));
       export {};
       `

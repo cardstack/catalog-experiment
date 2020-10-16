@@ -93,6 +93,14 @@ export function isCyclicModuleResolution(
   return resolution.type === "cyclic";
 }
 
+export function makeNonCyclic(resolution: Resolution): ModuleResolution {
+  if (!isCyclicModuleResolution(resolution)) {
+    return resolution;
+  }
+  return [...resolution.cyclicGroup].find(
+    (m) => m.url.href === resolution.url.href
+  )!;
+}
 export class ModuleAnnotationNode implements BuilderNode {
   cacheKey: string;
   constructor(private fileNode: FileNode) {

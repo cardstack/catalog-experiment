@@ -403,8 +403,22 @@ export class RegionEditor {
     let exportRegions = [...this.desc.exportRegions];
     let defaultExport = this.desc.exports.get("default");
 
-    for (let { region, declaration, isDefaultExport } of exportRegions) {
-      if (defaultExport?.exportRegion === region && isDefaultExport) {
+    for (let {
+      region,
+      declaration,
+      defaultExport: defaultExportKind,
+    } of exportRegions) {
+      if (
+        defaultExport?.exportRegion === region &&
+        defaultExportKind === "identifier"
+      ) {
+        // in this case we are just default exporting an identifier, there is an
+        // optimization here we we can simply just remove the entire export
+        this.dispositions[region] = {
+          state: "removed",
+          region,
+        };
+      } else if (defaultExport?.exportRegion === region && defaultExportKind) {
         // the region we are considering is actually an unnamed default, so we
         // assign it
         if (!defaultNameSuggestion) {

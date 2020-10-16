@@ -27,13 +27,22 @@ import { CodeRegion, RegionPointer, RegionBuilder } from "./code-region";
 import { ImportAssignments } from "./combine-modules";
 import { warn } from "./logger";
 import intersection from "lodash/intersection";
+import {
+  ModuleResolution,
+  Resolution,
+  makeNonCyclic,
+} from "./nodes/resolution";
 
 export const NamespaceMarker = { isNamespace: true };
 export type NamespaceMarker = typeof NamespaceMarker;
-export function isNamespaceMarker(
-  value: string | NamespaceMarker
-): value is NamespaceMarker {
-  return typeof value !== "string";
+export function isNamespaceMarker(value: any): value is NamespaceMarker {
+  return typeof value === "object" && "isNamespace" in value;
+}
+export interface ExportAllMarker {
+  exportAllFrom: string;
+}
+export function isExportAllMarker(value: any): value is ExportAllMarker {
+  return typeof value === "object" && "exportAllFrom" in value;
 }
 
 export type FileDescription = ModuleDescription | CJSDescription;
@@ -48,12 +57,12 @@ export interface ModuleDescription extends Description {
   imports: ImportDescription[];
 
   // all the names we export, and where they come from
-  exports: Map<string, ExportDescription>;
+  exports: Map<string | ExportAllMarker, ExportDescription>;
 
   exportRegions: {
     region: RegionPointer;
     declaration: RegionPointer | undefined;
-    isDefaultExport: boolean;
+    defaultExport: true | "identifier" | undefined;
   }[];
 
   // all the names in module scope
@@ -77,19 +86,32 @@ export interface RequireDescription {
 }
 
 export type ExportDescription =
-  // comes from a local binding with this name. You can look it up in `names`.
-  | {
-      type: "local";
-      name: string;
-      exportRegion: RegionPointer;
-    }
-  // comes from another module, you can look up which one in `imports`.
-  | {
-      type: "reexport";
-      importIndex: number;
-      name: string | NamespaceMarker;
-      exportRegion: RegionPointer;
-    };
+  | LocalExportDescription
+  | ReexportExportDescription
+  | ExportAllExportDescription;
+
+// comes from a local binding with this name. You can look it up in `names`.
+export interface LocalExportDescription {
+  type: "local";
+  name: string;
+  exportRegion: RegionPointer;
+}
+
+// comes from another module, you can look up which one in `imports`.
+export interface ReexportExportDescription {
+  type: "reexport";
+  importIndex: number;
+  name: string | NamespaceMarker;
+  exportRegion: RegionPointer;
+}
+
+// this is `export * from 'foo';` which appends the exports of foo (excluding
+// the default export) to the current module
+export interface ExportAllExportDescription {
+  type: "export-all";
+  importIndex: number;
+  exportRegion: RegionPointer;
+}
 
 export interface NameDescription {
   // these are other names in the `names` that we depend on
@@ -128,6 +150,7 @@ export type ImportDescription =
   | {
       isDynamic: false;
       specifier: string;
+      isReexport: boolean;
       region: RegionPointer;
     }
   | {
@@ -140,6 +163,99 @@ export function isModuleDescription(
   desc: FileDescription
 ): desc is ModuleDescription {
   return !("requires" in desc);
+}
+
+export function getExportDesc(
+  module: Resolution,
+  exportName: string
+):
+  | {
+      desc: LocalExportDescription | ReexportExportDescription;
+      module: ModuleResolution;
+    }
+  | undefined;
+export function getExportDesc(
+  module: Resolution,
+  exportAllMarker: ExportAllMarker
+):
+  | Map<
+      string,
+      {
+        desc: LocalExportDescription | ReexportExportDescription;
+        module: ModuleResolution;
+      }
+    >
+  | undefined;
+export function getExportDesc(
+  module: Resolution,
+  exportKey: string | ExportAllMarker
+):
+  | {
+      desc: LocalExportDescription | ReexportExportDescription;
+      module: ModuleResolution;
+    }
+  | Map<
+      string,
+      {
+        desc: LocalExportDescription | ReexportExportDescription;
+        module: ModuleResolution;
+      }
+    >
+  | undefined {
+  module = makeNonCyclic(module);
+  let desc = module.desc.exports.get(exportKey);
+
+  if (desc?.type === "local" || desc?.type === "reexport") {
+    return { desc, module };
+  }
+  if (desc?.type === "export-all") {
+    let exportModule = module.resolvedImports[desc.importIndex];
+    return getExports(exportModule);
+  }
+  if (
+    !desc &&
+    !isExportAllMarker(exportKey) &&
+    [...module.desc.exports.values()].some((e) => e.type === "export-all")
+  ) {
+    let exportAllMarkers = [...module.desc.exports.keys()].filter((k) =>
+      isExportAllMarker(k)
+    ) as ExportAllMarker[];
+    for (let exportAllMarker of exportAllMarkers) {
+      let descriptions = getExportDesc(module, exportAllMarker)!;
+      let desc = descriptions.get(exportKey);
+      if (desc) {
+        return desc;
+      }
+    }
+  }
+  return;
+}
+
+export function getExports(
+  module: Resolution
+): Map<
+  string,
+  {
+    desc: LocalExportDescription | ReexportExportDescription;
+    module: ModuleResolution;
+  }
+> {
+  let result = new Map();
+  for (let exportKey of module.desc.exports.keys()) {
+    if (isExportAllMarker(exportKey)) {
+      let descriptions = new Map(
+        [...getExportDesc(module, exportKey)!].filter(
+          ([key]) => key !== "default" // export-all does not export the default export of the source module
+        )
+      );
+      0;
+      result = new Map([...result, ...descriptions]);
+    } else {
+      let desc = getExportDesc(module, exportKey)!;
+      result.set(exportKey, desc);
+    }
+  }
+  return result;
 }
 
 // @babel/traverse makes it very hard to talk about NodePath's generically,
@@ -478,6 +594,7 @@ export function describeFile(
       let importDesc = {
         specifier: path.node.source.value,
         isDynamic: false,
+        isReexport: false,
         region: builder.createCodeRegion(path as NodePath),
       } as ImportDescription;
       desc.imports.push(importDesc);
@@ -516,29 +633,55 @@ export function describeFile(
         importDesc.isDynamic = true;
       }
     },
+    ExportAllDeclaration(path) {
+      isES6Module = true;
+
+      let source = path.node.source.value;
+      let exportRegion = builder.createCodeRegion(path as NodePath);
+      let importIndex = ensureImportSpecifier(desc, source, exportRegion, true);
+      let exportRegionIndex = desc.exportRegions.length;
+
+      desc.exportRegions.push({
+        region: exportRegion,
+        defaultExport: undefined,
+        declaration: undefined,
+      });
+      let marker: ExportAllMarker = { exportAllFrom: source };
+      desc.exports.set(marker, {
+        type: "export-all",
+        importIndex,
+        exportRegion: exportRegionIndex,
+      });
+    },
     ExportDefaultDeclaration: {
       enter(path) {
         isES6Module = true;
-        let exportRegion = builder.createCodeRegion(path as NodePath);
-        desc.exportRegions.push({
-          region: exportRegion,
-          isDefaultExport: true,
-          declaration: builder.createCodeRegion(
-            path.get("declaration") as NodePath
-          ),
-        });
 
         // we're relying on the fact that default is a keyword so it can't be used
         // as a real local name
         let name = "default";
+        let isDefaultExportIdentifier = false;
 
         switch (path.node.declaration.type) {
+          case "Identifier":
+            name = path.node.declaration.name;
+            isDefaultExportIdentifier = true;
+            break;
           case "ClassDeclaration":
           case "FunctionDeclaration":
             if (isIdentifier(path.node.declaration.id)) {
               name = path.node.declaration.id.name;
             }
         }
+        let exportRegion = builder.createCodeRegion(path as NodePath);
+        desc.exportRegions.push({
+          region: exportRegion,
+          defaultExport: isDefaultExportIdentifier ? "identifier" : true,
+          declaration: builder.createCodeRegion(
+            path.get("declaration") as NodePath
+          ),
+        });
+
         desc.exports.set("default", {
           type: "local",
           name,
@@ -576,7 +719,7 @@ export function describeFile(
       }
       desc.exportRegions.push({
         region: exportRegion,
-        isDefaultExport: false,
+        defaultExport: undefined,
         declaration,
       });
 
@@ -585,7 +728,8 @@ export function describeFile(
         let importIndex = ensureImportSpecifier(
           desc,
           path.node.source!.value,
-          exportRegion
+          exportRegion,
+          true
         );
 
         for (let spec of path.node.specifiers) {
@@ -791,7 +935,8 @@ function setLValExportDesc(
 function ensureImportSpecifier(
   desc: ModuleDescription,
   specifier: string,
-  region: RegionPointer
+  region: RegionPointer,
+  isReexport: boolean
 ): number {
   let importDesc = desc.imports.find((i) => i.specifier === specifier);
   if (importDesc) {
@@ -801,6 +946,7 @@ function ensureImportSpecifier(
     desc.imports.push({
       specifier,
       isDynamic: false,
+      isReexport,
       region,
     });
     return importIndex;

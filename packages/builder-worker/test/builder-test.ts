@@ -450,6 +450,25 @@ QUnit.module("module builder", function (origHooks) {
         .matches(/export \{ _default as default \};/);
     });
 
+    test("bundle has default export", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          function getPuppies() { return ["Van Gogh", "Mango"]; }
+          export default getPuppies;
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").doesNotMatch(/import/);
+      await assert
+        .file("output/index.js")
+        .matches(/function getPuppies\(\) { return \["Van Gogh", "Mango"\]; }/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { getPuppies as default };/);
+    });
+
     test("bundle exports the entrypoint's default export and named exports", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["index.js"] }`,
@@ -500,6 +519,58 @@ QUnit.module("module builder", function (origHooks) {
         .matches(/export { getPuppies as default };/);
     });
 
+    test("bundle exports derive from entrypoint's use of 'export *'", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          export * from "./puppies.js";
+        `,
+        // note that 'export *' will skip over the default export
+        "puppies.js": `
+          export const vanGogh = "Van Gogh";
+          export const mango = "Mango";
+          export default function getPuppies() { return ["Van Gogh", "Mango"]; }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").doesNotMatch(/import/);
+      await assert.file("output/index.js").doesNotMatch(/getPuppies/);
+      await assert
+        .file("output/index.js")
+        .matches(/const vanGogh = "Van Gogh";[ \n]+const mango = "Mango";/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { vanGogh, mango };/);
+    });
+
+    test("bundle exports derive from entrypoint's use of 'export *' which include a export that in turn is a manually reexported binding", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          export * from "./lib.js";
+        `,
+        "lib.js": `
+          import { vanGogh, mango } from "./puppies.js";
+          export { vanGogh, mango };
+        `,
+        "puppies.js": `
+          export const vanGogh = "Van Gogh";
+          export const mango = "Mango";
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.js").doesNotMatch(/import/);
+      await assert.file("output/index.js").doesNotMatch(/getPuppies/);
+      await assert
+        .file("output/index.js")
+        .matches(/const vanGogh = "Van Gogh";[ \n]+const mango = "Mango";/);
+      await assert
+        .file("output/index.js")
+        .matches(/export { vanGogh, mango };/);
+    });
+
     test("bundle exports a reassigned reexported default export of the entrypoint", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["index.js"] }`,
@@ -507,8 +578,7 @@ QUnit.module("module builder", function (origHooks) {
           export { default as puppies } from "./puppies.js";
         `,
         "puppies.js": `
-          function getPuppies() { return ["Van Gogh", "Mango"]; }
-          export default getPuppies;
+          export default function() { return ["Van Gogh", "Mango"]; }
         `,
       });
       builder = makeBuilder(assert.fs);
@@ -516,10 +586,9 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file("output/index.js").doesNotMatch(/import/);
       await assert
         .file("output/index.js")
-        .matches(/function getPuppies\(\) { return \["Van Gogh", "Mango"\]; }/);
-      await assert
-        .file("output/index.js")
-        .matches(/const _default = \(getPuppies\);/);
+        .matches(
+          /const _default = \(function\(\) { return \["Van Gogh", "Mango"\]; }\);/
+        );
       await assert
         .file("output/index.js")
         .matches(/export { _default as puppies };/);
@@ -548,7 +617,30 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file("output/entries.js").matches(/export { foo };/);
     });
 
-    test("bundle consumes an reexport projected from another bundle's exports", async function (assert) {
+    test("bundle uses 'export *' to reexport another bundle's exports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["./entries.js", "./toPairs.js"] }`,
+        "entries.js": `
+          export * from './toPairs.js';
+          export const foo = "my own export";
+        `,
+        "toPairs.js": `
+          export function toPairs() { console.log("toPairs"); }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/entries.js").doesNotMatch(/import"/);
+      await assert
+        .file("output/entries.js")
+        .matches(/export \* from "\.\/toPairs.js";/);
+      await assert
+        .file("output/entries.js")
+        .matches(/const foo = "my own export";/);
+      await assert.file("output/entries.js").matches(/export { foo };/);
+    });
+
+    test("bundle consumes a reexport projected from another bundle's exports", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["./entries.js", "./toPairs.js"] }`,
         "entries.js": `
@@ -578,6 +670,60 @@ QUnit.module("module builder", function (origHooks) {
         .matches(/import { toPairs } from "\.\/toPairs\.js";/);
     });
 
+    test("bundle consumes a reexport projected from another bundle's use of 'export *'", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["./entries.js", "./toPairs.js"] }`,
+        "entries.js": `
+          import { toPairs } from "./toPairs.js";
+          toPairs();
+          export const foo = "my own export";
+        `,
+        "toPairs.js": `
+          export * from "./internal.js";
+        `,
+        "internal.js": `
+          export function toPairs() { console.log("toPairs"); }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/toPairs.js")
+        .matches(/function toPairs\(\) { console\.log\("toPairs"\); }/);
+      await assert.file("output/toPairs.js").matches(/export { toPairs };/);
+      await assert
+        .file("output/entries.js")
+        .matches(/import { toPairs } from "\.\/toPairs\.js";/);
+    });
+
+    test("module uses a namespace import to consume exports from an incorporated bundle whose entrypoints utilize export *", async function (assert) {
+      let bundleSrc = await buildBundle(assert, url("output/toPairs.js"), {
+        "entrypoints.json": `{ "js": ["toPairs.js"] }`,
+        "toPairs.js": `
+          export * from "./internal.js";
+        `,
+        "internal.js": `
+          export function toPairs() { console.log("toPairs"); }
+        `,
+      });
+
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["./entries.js"] }`,
+        "entries.js": `
+          import * as t from "./toPairs.js";
+          t.toPairs();
+        `,
+        "toPairs.js": bundleSrc,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/entries.js")
+        .matches(/function toPairs\(\) { console.log\("toPairs"\); }/);
+      await assert.file("output/entries.js").matches(/const t = { toPairs };/);
+      await assert.file("output/entries.js").matches(/t\.toPairs\(\);/);
+    });
+
     test("bundle consumes an explicit import/export projected from another bundle's exports", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["./entries.js", "./toPairs.js"] }`,
@@ -605,6 +751,29 @@ QUnit.module("module builder", function (origHooks) {
       await assert
         .file("output/entries.js")
         .matches(/import { toPairs } from "\.\/toPairs\.js";/);
+    });
+
+    test("bundle exports a namespace import", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["./index.js"] }`,
+        "index.js": `
+          import * as puppies from "./puppies.js";
+          export { puppies };
+        `,
+        "puppies.js": `
+          export const vanGogh = "Van Gogh";
+          export const mango = "Mango";
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert
+        .file("output/index.js")
+        .matches(/const vanGogh = "Van Gogh";[\n ]+ const mango = "Mango";/);
+      await assert
+        .file("output/index.js")
+        .matches(/const puppies = { vanGogh, mango };/);
+      await assert.file("output/index.js").matches(/export { puppies };/);
     });
 
     test("circular imports", async function (assert) {
@@ -1640,7 +1809,7 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file("output/index.js").matches(/console\.log\("hi"\);/);
       await assert
         .file("output/index.js")
-        .matches(/const a = \(implementation\);/);
+        .matches(/function a\(\) {[\n ]+ if \(!module\) {/);
       await assert
         .file("output/index.js")
         .matches(/const _default = \(function\(\) { a\(\); }\);/);
@@ -1667,8 +1836,7 @@ QUnit.module("module builder", function (origHooks) {
       await builder.build();
       await assert
         .file("output/index.js")
-        .matches(/const json = { "foo": "bar" };/);
-      await assert.file("output/index.js").matches(/const a = \(json\);/);
+        .matches(/const a = { "foo": "bar" };/);
       await assert
         .file("output/index.js")
         .matches(/const _default = \(function\(\) { return a\.foo; }\);/);

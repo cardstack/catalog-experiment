@@ -15,6 +15,8 @@ import {
   ExportDescription,
   LocalNameDescription,
   ImportedNameDescription,
+  isExportAllMarker,
+  ExportAllMarker,
 } from "./describe-file";
 import isEqual from "lodash/isEqual";
 import invert from "lodash/invert";
@@ -24,6 +26,7 @@ import { assertNever } from "@catalogjs/shared/util";
 const annotationStart = `\n/*====catalogjs annotation start====\n`;
 const annotationEnd = `\n====catalogjs annotation end====*/`;
 const annotationRegex = /\/\*====catalogjs annotation start====\n(.+)\n====catalogjs annotation end====\*\/\s*$/;
+const exportAllMarkerRegex = /^\{([^}]+)\}$/;
 
 const moduleDescLegend = [
   "imports", // array of import descriptions
@@ -46,16 +49,18 @@ const importDescLegend = [
   "isDynamic", // boolean
   "specifier", // string
   "region", // number | null
+  "isReexport", // boolean
+  "specifierRegion", // number | null
 ];
 
 const exportRegionDescLegend = [
   "region", // number
   "declaration", // number
-  "isDefaultExport", // boolean
+  "defaultExport", // true | "identifier" | undefined
 ];
 
 const exportDescLegend = [
-  "type", // "l" = "local" | "r" = "reexport"
+  "type", // "l" = "local" | "r" = "reexport" | "e" = "export-all"
   "name", // string | { n: true }
   "exportRegion", // number
   "importIndex", // number | null
@@ -116,15 +121,22 @@ function encodeModuleDescription(desc: ModuleDescription): string {
       case "exports":
         let exports: Pojo = {};
         for (let [key, val] of desc.exports) {
+          if (isExportAllMarker(key)) {
+            key = encodeExportAllMarker(key);
+          }
           exports[key] = encodeObj(val, exportDescLegend, {
-            type: { local: "l", reexport: "r" },
+            type: { local: "l", reexport: "r", "export-all": "e" },
           });
         }
         encoded.push(exports);
         break;
       case "exportRegions":
         encoded.push(
-          desc.exportRegions.map((r) => encodeObj(r, exportRegionDescLegend))
+          desc.exportRegions.map((r) =>
+            encodeObj(r, exportRegionDescLegend, {
+              defaultExport: { identifier: "i" },
+            })
+          )
         );
         break;
       case "names":
@@ -189,16 +201,18 @@ function decodeModuleDescription(encoded: string): ModuleDescription {
             );
           }
           exports.set(
-            key,
+            isEncodedExportAllMarker(key) ? decodeExportAllMarker(key)! : key,
             decodeArray(val, exportDescLegend, {
-              type: { local: "l", reexport: "r" },
+              type: { local: "l", reexport: "r", "export-all": "e" },
             }) as ExportDescription
           );
         }
         break;
       case "exportRegions":
         exportRegions = value.map((v: any[]) =>
-          decodeArray(v, exportRegionDescLegend)
+          decodeArray(v, exportRegionDescLegend, {
+            defaultExport: { identifier: "i" },
+          })
         );
         break;
       case "names":
@@ -254,6 +268,19 @@ function decodeModuleDescription(encoded: string): ModuleDescription {
 }
 
 const encodedNamespaceMarker = Object.freeze({ n: true });
+function encodeExportAllMarker(marker: ExportAllMarker) {
+  return `{${marker.exportAllFrom}}`;
+}
+function decodeExportAllMarker(encoded: string) {
+  let match = encoded.match(exportAllMarkerRegex);
+  if (match) {
+    return match[1];
+  }
+  return;
+}
+function isEncodedExportAllMarker(encoded: string) {
+  return Boolean(encoded.match(exportAllMarkerRegex));
+}
 
 interface Shorthand {
   [prop: string]: { [name: string]: string };

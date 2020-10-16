@@ -5,6 +5,8 @@ import {
   isModuleDescription,
   ModuleDescription,
   CJSDescription,
+  LocalExportDescription,
+  ReexportExportDescription,
 } from "../src/describe-file";
 import { RegionEditor } from "../src/code-region";
 import { parse } from "@babel/core";
@@ -257,14 +259,18 @@ QUnit.module("describe-file", function (hooks) {
     assert.ok(desc.exports.has("y"), "y in exportedNames");
     assert.ok(desc.exports.has("foo"), "foo is a reexport");
 
-    let exportDesc = desc.exports.get("foo")!;
+    let exportDesc = desc.exports.get("foo")! as
+      | LocalExportDescription
+      | ReexportExportDescription;
     assert.equal(exportDesc.type, "reexport");
     assert.equal(exportDesc.name, "foo", "foo is not named");
     if (exportDesc.type === "reexport") {
       assert.equal(exportDesc.importIndex, 0);
     }
 
-    exportDesc = desc.exports.get("y")!;
+    exportDesc = desc.exports.get("y")! as
+      | LocalExportDescription
+      | ReexportExportDescription;
     assert.equal(exportDesc.type, "reexport", "y is a reexport");
     assert.equal(exportDesc.name, "x");
     if (exportDesc.type === "reexport") {
@@ -279,7 +285,9 @@ QUnit.module("describe-file", function (hooks) {
     `);
     assert.ok(desc.exports.has("b"), "b in exportedNames");
     assert.ok(!desc.exports.has("a"), "a not in exportedNames");
-    let exportDesc = desc.exports.get("b")!;
+    let exportDesc = desc.exports.get("b")! as
+      | LocalExportDescription
+      | ReexportExportDescription;
     assert.equal(exportDesc.type, "local");
     assert.equal(exportDesc.name, "a", "we can see that b comes from a");
   });
@@ -311,7 +319,9 @@ QUnit.module("describe-file", function (hooks) {
     let { desc } = describeESModule(`
     export default function x() {}
   `);
-    let exportDesc = desc.exports.get("default")!;
+    let exportDesc = desc.exports.get("default")! as
+      | LocalExportDescription
+      | ReexportExportDescription;
     assert.equal(exportDesc.type, "local");
     assert.equal(exportDesc.name, "x");
     assert.equal(desc.names.get("x")?.type, "local");
@@ -321,7 +331,9 @@ QUnit.module("describe-file", function (hooks) {
     let { desc } = describeESModule(`
     export default class x {}
   `);
-    let exportDesc = desc.exports.get("default")!;
+    let exportDesc = desc.exports.get("default")! as
+      | LocalExportDescription
+      | ReexportExportDescription;
     assert.equal(exportDesc.type, "local");
     assert.equal(exportDesc.name, "x");
     assert.equal(desc.names.get("x")?.type, "local");
@@ -331,7 +343,9 @@ QUnit.module("describe-file", function (hooks) {
     let { desc } = describeESModule(`
     export default foo();
   `);
-    let exportDesc = desc.exports.get("default")!;
+    let exportDesc = desc.exports.get("default")! as
+      | LocalExportDescription
+      | ReexportExportDescription;
     assert.equal(exportDesc.type, "local");
     assert.equal(exportDesc.name, "default");
     assert.ok(desc.names.get("default")?.dependsOn.has("foo"));
@@ -438,7 +452,11 @@ QUnit.module("describe-file", function (hooks) {
       assert.ok(out.dependsOn.has("x"));
     }
     assert.ok(desc.exports.get("default")?.type === "local");
-    assert.ok(desc.exports.get("default")?.name === "Q");
+    assert.ok(
+      (desc.exports.get("default") as
+        | LocalExportDescription
+        | ReexportExportDescription)?.name === "Q"
+    );
   });
 
   skip("variables consumed in LVal", function (assert) {

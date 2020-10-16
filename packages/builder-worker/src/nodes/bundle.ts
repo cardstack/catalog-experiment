@@ -12,6 +12,7 @@ import {
   describeFile,
   ImportedNameDescription,
   isModuleDescription,
+  getExports,
 } from "../describe-file";
 import { EntrypointsJSONNode, Entrypoint, HTMLEntrypoint } from "./entrypoint";
 import { JSParseNode } from "./js";
@@ -168,7 +169,7 @@ export class Assigner {
       };
       this.assignmentMap.set(module.url.href, internalAssignment);
       if (entrypoint.isLibrary) {
-        for (let exportedName of module.desc.exports.keys()) {
+        for (let [exportedName] of getExports(module)) {
           ensureExposed(exportedName, internalAssignment.assignment);
         }
       } else {
@@ -253,7 +254,7 @@ export class Assigner {
       enclosingBundles,
     };
     this.assignmentMap.set(module.url.href, internalAssignment);
-    for (let exportedName of module.desc.exports.keys()) {
+    for (let [exportedName] of getExports(module)) {
       ensureExposed(exportedName, internalAssignment.assignment);
     }
     return internalAssignment;
