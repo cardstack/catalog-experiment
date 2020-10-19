@@ -354,12 +354,20 @@ class State {
   // different bundles. outer map is the href of the module. the inner map's key
   // is the original name of the binding in the module, and the value is it's
   // assigned name in the resulting bundle. This is necessary because we need to
-  // to when we are encountering a duplicate original binding, as these bindings
-  // need to have their duplicated declarations and side effects completely
-  // eliminated.
+  // know when we are encountering a duplicated original binding, as these
+  // duplicated bindings need to have their duplicated declarations and side
+  // effects completely eliminated. Without this special state, when we
+  // encounter one of these duplicates it would be impossible to tell the
+  // difference of a duplicated binding with a foreign origin from our own
+  // binding if we processed the consumer of the binding before we processed the
+  // source of the binding simply by looking at the assignedImportedNames.
 
-  // TODO I question the need for this state. let's try to remove it after the
-  // refactoring is done..
+  // TODO: When we get to the point where we are using semver to understand
+  // duplicated bindings, then we'll need to alter this structure to capture
+  // semver ranges instead of specific module URLs (which different versions
+  // would not share). Likely that will also impact how we set these in our
+  // assignedImportedNames as well, since the name assignments will cover a
+  // specific range of module versions.
   private _assignedNamesWithForeignOrigins: Map<
     string,
     Map<string | NamespaceMarker, string>
@@ -505,7 +513,6 @@ class State {
     return this._assignedLocalNames.get(moduleHref)?.get(originalName);
   }
 
-  // TODO Can we remove this?
   assignNameWithForeignOrigin(
     originModuleHref: string,
     originExportedName: string | NamespaceMarker,
@@ -519,9 +526,13 @@ class State {
     );
   }
 
-  // TODO Can we remove this?
-  get assignedNamesWithForeignOrigins() {
-    return this._assignedNamesWithForeignOrigins;
+  assignedNameWithForeignOrigin(
+    originModuleHref: string,
+    originExportedName: string
+  ) {
+    return this._assignedNamesWithForeignOrigins
+      .get(originModuleHref)
+      ?.get(originExportedName);
   }
 
   getAssignment(
@@ -619,12 +630,19 @@ class ModuleRewriter {
         if (exportName) {
           // check to see if the binding we are currently considering is
           // actually the original source of previously assigned bindings that
-          // derived from this binding via previous bundle builds (in other words:
-          // previously assigned bindings have an "original" property that points
-          // specifically to this module and binding)
-          let maybeAssignedName = this.sharedState.assignedNamesWithForeignOrigins
-            .get(module!.url.href)
-            ?.get(exportName);
+          // derived from this binding via previous bundle builds (in other
+          // words: previously assigned bindings have an "original" property
+          // that points specifically to this module and binding). Note that
+          // this is different than how we would treat a binding where we
+          // encountered the consumer first which triggered an assignment and
+          // were now encountering the source that the consumer is using within
+          // the same bundle. As in that case you would not want to remove the
+          // declaration and any side effects) For this reason we track these
+          // bindings with foreign origins in a special bucket.
+          let maybeAssignedName = this.sharedState.assignedNameWithForeignOrigin(
+            module!.url.href,
+            exportName
+          );
           if (maybeAssignedName) {
             isDupeBinding = true;
             assignedName = maybeAssignedName;
@@ -971,11 +989,10 @@ function getAssignedDependencies(
     } else {
       let original = desc.original;
       if (original) {
-        depName =
-          state.getAssignedImport(original.moduleHref, original.exportedName) ??
-          state.assignedNamesWithForeignOrigins
-            .get(original.moduleHref)!
-            .get(original.exportedName)!;
+        depName = state.getAssignedImport(
+          original.moduleHref,
+          original.exportedName
+        )!;
       } else {
         depName = state.getAssignedLocal(
           sourceModule.url.href,
@@ -1044,14 +1061,10 @@ function isConsumedBy(
           if (!isNamespaceMarker(exportDesc.name)) {
             let nameDesc = remoteModule.desc.names.get(exportDesc.name);
             if (nameDesc?.type === "local" && nameDesc.original) {
-              assignedName =
-                state.getAssignedImport(
-                  nameDesc.original.moduleHref,
-                  nameDesc.original.exportedName
-                ) ??
-                state.assignedNamesWithForeignOrigins
-                  .get(nameDesc.original.moduleHref)
-                  ?.get(nameDesc.original.exportedName);
+              assignedName = state.getAssignedImport(
+                nameDesc.original.moduleHref,
+                nameDesc.original.exportedName
+              );
             }
           }
         }
@@ -1228,9 +1241,10 @@ function assignedExports(
           ? sourceModule.desc.names.get(originalInsideName)
           : undefined;
         if (desc?.type === "local" && desc.original) {
-          insideName = state.assignedNamesWithForeignOrigins
-            .get(desc.original.moduleHref)
-            ?.get(desc.original.exportedName);
+          insideName = state.getAssignedImport(
+            desc.original.moduleHref,
+            desc.original.exportedName
+          );
         } else {
           insideName =
             !isNamespaceMarker(originalInsideName) && originalInsideName
@@ -1314,14 +1328,10 @@ function makeLocalNamespaces(
       } else {
         let nameDesc = namespaceItemModule.desc.names.get(namespaceItemName);
         if (nameDesc?.type === "local" && nameDesc.original) {
-          let assignedName =
-            state.getAssignedImport(
-              nameDesc.original.moduleHref,
-              nameDesc.original.exportedName
-            ) ??
-            state.assignedNamesWithForeignOrigins
-              .get(nameDesc.original.moduleHref)!
-              .get(nameDesc.original.exportedName)!;
+          let assignedName = state.getAssignedImport(
+            nameDesc.original.moduleHref,
+            nameDesc.original.exportedName
+          )!;
           declarators.push(
             exportedName === assignedName
               ? exportedName
