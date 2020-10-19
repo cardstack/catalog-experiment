@@ -51,6 +51,11 @@
           "$ref": "#/definitions/resolutions",
           "title": "Resolutions",
           "description": "If you wish to override the resolver and provide a specific resolution, then use the \"resolution\" property. This is an object whose keys are specifier strings that appear in the import statements you wish to resolve yourself. The values are the catalogjs URLs to modules you would like the specifier to resolve to. For instance, in order to add a resolution for the builtin node module \"assert\" to leverage the catalogjs assert polyfill you can specify:\n \"assert\": \"https://catalogjs.com/pkgs/@catalogjs/polyfills/assert.js\""
+        },
+        "macros": {
+          "$ref": "#/definitions/macros",
+          "title": "Macros",
+          "description": "If you wish to replace macros with specific values at build time, then use the \"macros\" property. This is an object whose keys are the macros that you wish to replace, and whose corresponding values are the macro replacements. Note that macro is the body of a regex, so make sure to escape any regex chars. Also if you are replacing the macro with a string literal, make sure to include quotes in the macro value:\n \"MY_VERSION\": \"'5.6.4'\""
         }
       },
       "additionalProperties": false
@@ -94,6 +99,13 @@
       "minItems": 1
     },
     "resolutions": {
+      "type": "object",
+      "minItems": 1,
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "macros": {
       "type": "object",
       "minItems": 1,
       "additionalProperties": {

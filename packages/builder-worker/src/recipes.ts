@@ -74,6 +74,17 @@ export interface Recipe {
   resolutions?: {
     [specifier: string]: string;
   };
+
+  // If you wish to replace macros with specific values at build time, then use
+  // the "macros" property. This is an object whose keys are the macros that you
+  // wish to replace, and whose corresponding values are the macro replacements.
+  // Note that macro is the body of a regex, so make sure to escape any regex
+  // chars. Also if you are replacing the macro with a string literal, make sure
+  // to include quotes in the macro value:
+  //   "MY_VERSION": "'5.6.4'"
+  macros?: {
+    [macro: string]: string;
+  };
 }
 
 let cache: Map<string, Recipe | undefined> = new Map();

@@ -16,6 +16,9 @@
         "url": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/url.js",
         "fs": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/fs-stub.js"
       },
+      "macros": {
+        "process\\.env\\.NODE_ENV": "'production'"
+      },
       "babelPlugins": [
         "@babel/plugin-transform-flow-strip-types",
         [

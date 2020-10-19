@@ -206,8 +206,9 @@ export class PackageSrcPrepareNode implements BuilderNode {
   async run(_: never, getRecipe: RecipeGetter): Promise<NextNode<void[]>> {
     let { name, version } = this.pkgJSON;
     let recipe = await getRecipe(name, version);
+    let { srcRepo, macros } = recipe ?? {};
     let srcPath: string;
-    if (recipe?.srcRepo) {
+    if (srcRepo) {
       srcPath = await clonePkg(this.pkgJSON, this.workingDir, recipe);
     } else {
       srcPath = this.pkgPath;
@@ -222,7 +223,13 @@ export class PackageSrcPrepareNode implements BuilderNode {
       ignore: `${srcPath}/${srcIgnoreGlob}`,
     });
     let contents = await Promise.all(
-      files.map((file) => readFile(file, "utf8"))
+      files.map(async (file) => {
+        let content = await readFile(file, "utf8");
+        for (let [macro, replacement] of Object.entries(macros ?? {})) {
+          content = content.replace(new RegExp(macro, "g"), replacement);
+        }
+        return content;
+      })
     );
     return {
       node: new AllNode(
