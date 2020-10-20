@@ -2140,4 +2140,97 @@ QUnit.module("combine modules", function (origHooks) {
       `
     );
   });
+
+  test("it can dedupe side effects combining bundles where the side effects each bundle originates from the same place", async function (assert) {
+    await assert.setupFiles({
+      "entrypointA.js": `
+        import { a } from './a.js';
+        let bar = 3;
+        console.log(a() + bar);
+      `,
+      "entrypointB.js": `
+        import { b } from './b.js';
+        let bar = 4;
+        console.log(b() + bar);
+      `,
+      "a.js": `
+        import { bar } from './lib.js';
+        export function a() { return bar; }
+        `,
+      "b.js": `
+        import { bar } from './lib.js';
+        export function b() { return bar; }
+        `,
+      "lib.js": `
+          export const bar = 2;
+          console.log("side effect");
+        `,
+    });
+
+    // make bundle A
+    let bundleAURL = url("dist/bundleA.js");
+    let assignmentsA = await makeBundleAssignments(assert.fs, {
+      bundleURL: bundleAURL,
+      containsEntrypoint: "entrypointA.js",
+    });
+    let { code: codeA, importAssignments: importAssignmentsA } = combineModules(
+      bundleAURL,
+      assignmentsA
+    );
+    let bundleA = await assert.fs.openFile(bundleAURL, true);
+    await bundleA.write(codeA);
+    await bundleA.close();
+
+    // make bundle B
+    let bundleBURL = url("dist/bundleB.js");
+    let assignmentsB = await makeBundleAssignments(assert.fs, {
+      bundleURL: bundleBURL,
+      containsEntrypoint: "entrypointB.js",
+    });
+    let { code: codeB, importAssignments: importAssignmentsB } = combineModules(
+      bundleBURL,
+      assignmentsB
+    );
+    let bundleB = await assert.fs.openFile(bundleBURL, true);
+    await bundleB.write(codeB);
+    await bundleB.close();
+
+    // make a combined bundle that includes bundle A and bundle B along with
+    // their respective import assignments
+    let combinedBundleURL = url("dist/combined.js");
+    let combinedAssignments: BundleAssignment[] = [
+      {
+        bundleURL: combinedBundleURL,
+        module: await makeModuleResolutions(assert.fs, bundleAURL, {
+          importAssignments: importAssignmentsA,
+        }),
+        exposedNames: new Map(),
+        entrypointModuleURL: url("entrypointA.js"),
+      },
+      {
+        bundleURL: combinedBundleURL,
+        module: await makeModuleResolutions(assert.fs, bundleBURL, {
+          importAssignments: importAssignmentsB,
+        }),
+        exposedNames: new Map(),
+        entrypointModuleURL: url("entrypointB.js"),
+      },
+    ];
+    let combined = combineModules(combinedBundleURL, combinedAssignments);
+    assert.codeEqual(
+      combined.code,
+      `
+      const bar0 = 2;
+      console.log("side effect");
+      function a() { return bar0; }
+      let bar = 3;
+      console.log(a() + bar);
+
+      function b() { return bar0; }
+      let bar1 = 4;
+      console.log(b() + bar1);
+      export {};
+      `
+    );
+  });
 });
