@@ -81,6 +81,8 @@ export class PreparePackageNode implements BuilderNode {
   }
 }
 
+// TODO we can get rid of this node by making a higher level mount before the
+// build starts and just assuming that directory is available
 class MakePackageWorkingAreaNode implements BuilderNode {
   cacheKey: string;
   constructor(

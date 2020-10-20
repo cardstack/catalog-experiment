@@ -5,7 +5,7 @@ import {
 } from "../../file-daemon-client/src/index";
 import { FileSystem } from "./filesystem";
 import { addEventListener } from "./event-bus";
-import { log, error } from "./logger";
+import { log, error, Logger } from "./logger";
 import { handleFile } from "./request-handlers/file-request-handler";
 import { handleClientRegister } from "./request-handlers/client-register-handler";
 import { handleLogLevel } from "./request-handlers/log-level-handler";
@@ -31,6 +31,8 @@ let buildManager: BuildManager;
 let activated: () => void;
 let activating: Promise<void>;
 
+Logger.echoInConsole(true);
+Logger.setLogLevel("debug");
 console.log(`service worker evaluated`);
 
 worker.addEventListener("install", () => {
@@ -94,6 +96,11 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
   }
 
   event.respondWith(
+    //TODO I think there might be a race condition on the outside of this
+    //evaluated async block while a new version of the service working is being
+    //installed that results in a 404. I think we need to also consider how the
+    //old service worker can detect a new service worker is being installed and
+    //block until the new service worker can take over.
     (async () => {
       try {
         await activating;
@@ -120,6 +127,11 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
       } catch (err) {
         error(`An unhandled error occurred`, err);
       }
+
+      // instead of returning a 404, we should return some kind of response to
+      // signal to the UI to display a "Loading..." message. And then the
+      // service worker can send a "ready" signal to the client when install and
+      // activation is complete that will trigger the client to reload the page.
       return new Response("Not Found", { status: 404 });
     })()
   );

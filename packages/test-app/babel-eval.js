@@ -1,5 +1,7 @@
-import { parseSync } from "https://local-disk/bundles/@babel/core/7.9.0/+lkupB9rVZmANvVnjl80s+kiEdg=/src/index.js";
+import { parseSync } from "https://local-disk/bundles/@babel/core/7.9.0/-4AVxbdXTL8hOqnRiz1-MV2a6QI=/src/index.js";
 import flatMap from "https://local-disk/bundles/lodash/4.17.19/LKnRSC1Bqwt5GkxGS8dQDX-oFPk=/flatMap.js";
+
+// TODO test a bundle built from CJS sources as well
 
 export function introspectESModule(code) {
   debugger;
