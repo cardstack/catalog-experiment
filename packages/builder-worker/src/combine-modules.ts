@@ -28,9 +28,16 @@ export type ImportAssignments = Map<
   { moduleHref: string; name: string | NamespaceMarker }
 >;
 
+// TODO this should return builder nodes to encapsulate the individual code
+// regions that we are combining
 export function combineModules(
   bundle: URL,
   assignments: BundleAssignment[]
+  // TODO let's stop exporting the importAssignments, since we will not be doing
+  // a "re-describe" with this approach instead we should export a
+  // ModuleDescription for the overall bundle that includes the "original"
+  // property populated with a region identifer (but ideally the consumed semver
+  // for the region)
 ): { code: string; importAssignments: ImportAssignments } {
   let start = Date.now();
   let state = new State(bundle);

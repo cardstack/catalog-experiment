@@ -152,6 +152,9 @@ export class ModuleDescriptionNode implements BuilderNode {
   }
 }
 
+// TODO we should add some logic such that we can tell if the module resolution
+// is different for rebuilds and return an unchanged result if we see that
+// module resolution is the same.
 export class ModuleResolutionNode implements BuilderNode<Resolution> {
   cacheKey: ModuleResolutionNode | string;
   constructor(

@@ -3,7 +3,12 @@ import { EntrypointsJSONNode, HTMLEntrypoint, Entrypoint } from "./entrypoint";
 import { WriteFileNode } from "./file";
 import uniqBy from "lodash/uniqBy";
 import flatten from "lodash/flatten";
-import { BundleAssignmentsNode, BundleNode, BundleAssignment } from "./bundle";
+import {
+  BundleAssignmentsNode,
+  BundleNode,
+  BundleAssignment,
+  TestingOptions,
+} from "./bundle";
 import { Resolver } from "../resolver";
 import { LockEntries } from "./lock-file";
 
@@ -16,6 +21,7 @@ export interface Options {
   // within the bundle.
   skipAnnotationForHtmlConsumedBundles: boolean; // defaults to true
   skipBundleAnnotation: boolean; // defaults to false. this will override the skipAnnotationForHtmlConsumedBundles setting
+  testing?: TestingOptions;
 }
 
 // This can leverage global bundle assignments (that spans all projects), or it
@@ -60,24 +66,27 @@ export class MakeProjectNode implements BuilderNode<LockEntries> {
         this.inputRoot,
         this.projectOutputRoot,
         this.resolver,
-        this.lockEntries
+        this.lockEntries,
+        this.optsWithDefaults.testing
       ),
     };
   }
 
   async run({
     entrypoints,
-    bundleAssignments,
+    bundleAssignments: { assignments },
   }: {
     entrypoints: Entrypoint[];
-    bundleAssignments: BundleAssignment[];
+    bundleAssignments: {
+      assignments: BundleAssignment[];
+    };
   }): Promise<NextNode<LockEntries>> {
     return {
       node: new FinishProjectNode(
         this.inputRoot,
         this.projectOutputRoot,
         entrypoints,
-        bundleAssignments,
+        assignments,
         this.resolver,
         this.lockEntries,
         this.optsWithDefaults
@@ -143,7 +152,8 @@ class FinishProjectNode implements BuilderNode<LockEntries> {
             this.lockEntries,
             this.options.skipBundleAnnotation ||
               (this.options.skipAnnotationForHtmlConsumedBundles &&
-                bundleHrefsConsumedByHtml.has(bundleURL.href))
+                bundleHrefsConsumedByHtml.has(bundleURL.href)),
+            this.options.testing
           ),
           bundleURL
         )

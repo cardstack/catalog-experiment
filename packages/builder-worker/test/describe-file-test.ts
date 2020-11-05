@@ -1,14 +1,20 @@
 import {
   describeFile as astDescribeFile,
   FileDescription,
-  NamespaceMarker,
   isModuleDescription,
   ModuleDescription,
   CJSDescription,
   LocalExportDescription,
   ReexportExportDescription,
+  declarationMap,
 } from "../src/describe-file";
-import { RegionEditor } from "../src/code-region";
+import {
+  DeclarationCodeRegion,
+  documentPointer,
+  NamespaceMarker,
+  notFoundPointer,
+  RegionEditor,
+} from "../src/code-region";
 import { parse } from "@babel/core";
 
 const { test, skip } = QUnit;
@@ -139,94 +145,6 @@ QUnit.module("describe-file", function (hooks) {
     assert.deepEqual(desc.esTranspiledExports, undefined);
   });
 
-  skip("CJS require() name description can refer to required binding when there is straightforward declaration", function (assert) {
-    let { desc } = describeCJSFile(`
-    const bleep = require('./bloop');
-    const foo = require('./bar');
-    `);
-    assert.ok("requires" in desc);
-    if ("requires" in desc) {
-      let nameDesc = desc.names.get("foo")!;
-      assert.ok(nameDesc);
-      assert.equal(nameDesc.type, "require");
-      if (nameDesc.type === "require") {
-        assert.equal(nameDesc.requireIndex, 1);
-        assert.deepEqual(nameDesc.name, NamespaceMarker);
-      }
-    }
-  });
-
-  skip("CJS require() name description can indicate the exported name for ObjectPattern LVal declaration", function (assert) {
-    let { desc } = describeCJSFile(`
-    const somethingElse = require('blah');
-    const { foo, bleep } = require('./bar');
-    `);
-    let nameDesc = desc.names.get("foo")!;
-    assert.equal(nameDesc.type, "require");
-    if (nameDesc.type === "require") {
-      assert.equal(nameDesc.name, "foo");
-      assert.equal(nameDesc.requireIndex, 1);
-    }
-
-    nameDesc = desc.names.get("bleep")!;
-    assert.equal(nameDesc.type, "require");
-    if (nameDesc.type === "require") {
-      assert.equal(nameDesc.name, "bleep");
-      assert.equal(nameDesc.requireIndex, 1);
-    }
-  });
-
-  skip("CJS require() name description can indicate the exported name for renamed ObjectPattern LVal declaration", function (assert) {
-    let { desc } = describeCJSFile(`
-    const { foo: bleep } = require('./bar');
-    `);
-    let nameDesc = desc.names.get("bleep")!;
-    assert.equal(nameDesc.type, "require");
-    if (nameDesc.type === "require") {
-      assert.equal(nameDesc.name, "foo");
-    }
-  });
-
-  skip("CJS require() name description can indicate the exported name for member expression declaration", function (assert) {
-    let { desc } = describeCJSFile(`
-    const foo = require('./bar').bleep;
-    `);
-    let nameDesc = desc.names.get("foo")!;
-    assert.equal(nameDesc.type, "require");
-    if (nameDesc.type === "require") {
-      assert.equal(nameDesc.name, "bleep");
-    }
-  });
-
-  skip("CJS require() name description wont indicate the exported name for more complex scenarios", function (assert) {
-    let { desc } = describeCJSFile(`
-    const { foo } = require('./bar').bleep;
-    `);
-    let nameDesc = desc.names.get("foo")!;
-    assert.equal(nameDesc.type, "require");
-    if (nameDesc.type === "require") {
-      assert.deepEqual(nameDesc.name, NamespaceMarker);
-    }
-
-    ({ desc } = describeCJSFile(`
-    const { foo } = require('./bar')();
-    `));
-    nameDesc = desc.names.get("foo")!;
-    assert.equal(nameDesc.type, "require");
-    if (nameDesc.type === "require") {
-      assert.deepEqual(nameDesc.name, NamespaceMarker);
-    }
-
-    ({ desc } = describeCJSFile(`
-    const { foo } = require('./bar')[bleep()];
-    `));
-    nameDesc = desc.names.get("foo")!;
-    assert.equal(nameDesc.type, "require");
-    if (nameDesc.type === "require") {
-      assert.deepEqual(nameDesc.name, NamespaceMarker);
-    }
-  });
-
   test("CJS analysis won't treat module binding named 'require' as the CJS 'require' keyword", function (assert) {
     let { desc } = describeCJSFile(`
     function require() {
@@ -241,6 +159,241 @@ QUnit.module("describe-file", function (hooks) {
     if ("requires" in desc) {
       assert.equal(desc.requires.length, 0);
     }
+  });
+
+  test("creates a code region for variable declaration", function (assert) {
+    let { desc, editor } = describeESModule(`
+      const a = 1;
+      function b() { console.log('hi'); }
+      class c { foo() { return "bar"; } }
+      export {};
+    `);
+    let pointer = desc.regions.findIndex(
+      (r) =>
+        r.type === "declaration" && r.bindingDescription.declaredName === "a"
+    );
+    let region = desc.regions[pointer];
+    assert.ok(region, "a code region was created for the declaration");
+    editor.replace(pointer, "lol = 'lol'");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      const lol = 'lol';
+      function b() { console.log('hi'); }
+      class c { foo() { return "bar"; } }
+      export {};
+      `
+    );
+  });
+
+  test("creates a code region for a function declaration", function (assert) {
+    let { desc, editor } = describeESModule(`
+      const a = 1;
+      function b() { console.log('hi'); }
+      class c { foo() { return "bar"; } }
+      export {};
+    `);
+    let pointer = desc.regions.findIndex(
+      (r) =>
+        r.type === "declaration" && r.bindingDescription.declaredName === "b"
+    );
+    let region = desc.regions[pointer];
+    assert.ok(region, "a code region was created for the declaration");
+    editor.replace(pointer, "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      const a = 1;
+      //CODE_REGION
+      class c { foo() { return "bar"; } }
+      export {};
+      `
+    );
+  });
+
+  test("creates a code region for a class declaration", function (assert) {
+    let { desc, editor } = describeESModule(`
+      const a = 1;
+      function b() { console.log('hi'); }
+      class c { foo() { return "bar"; } }
+      export {};
+    `);
+    let pointer = desc.regions.findIndex(
+      (r) =>
+        r.type === "declaration" && r.bindingDescription.declaredName === "c"
+    );
+    let region = desc.regions[pointer];
+    assert.ok(region, "a code region was created for the declaration");
+    editor.replace(pointer, "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      const a = 1;
+      function b() { console.log('hi'); }
+      //CODE_REGION
+      export {};
+      `
+    );
+  });
+
+  test("creates a code regions for bindings declared in an LVal", function (assert) {
+    let { desc, editor } = describeESModule(`
+      let { x, y: [z] } = foo();
+      export {};
+    `);
+
+    let pointer = desc.regions.findIndex(
+      (r) =>
+        r.type == "declaration" && r.bindingDescription.declaredName === "x"
+    );
+    let region = desc.regions[pointer];
+    assert.ok(region, "a code region was created for the declaration");
+    editor.replace(pointer, "a");
+
+    pointer = desc.regions.findIndex(
+      (r) =>
+        r.type == "declaration" && r.bindingDescription.declaredName === "z"
+    );
+    region = desc.regions[pointer];
+    assert.ok(region, "a code region was created for the declaration");
+    editor.replace(pointer, "b");
+
+    pointer = desc.regions.findIndex(
+      (r) =>
+        r.type == "declaration" && r.bindingDescription.declaredName === "y"
+    );
+    assert.equal(
+      pointer,
+      notFoundPointer,
+      "no declaration code region is created for left-hand part of object pattern"
+    );
+
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let { a, y: [b] } = foo();
+      export {};
+      `
+    );
+  });
+
+  test("creates a code region for module side effect", function (assert) {
+    let { desc, editor } = describeESModule(`
+      console.log("side effect");
+      export {};
+    `);
+
+    let sideEffects = desc.regions[documentPointer].dependsOn;
+    assert.equal(sideEffects.size, 1);
+    editor.replace([...sideEffects][0], "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      //CODE_REGION
+      export {};
+      `
+    );
+  });
+
+  test("contiguous module side effects are contained in the same code region", function (assert) {
+    let { desc, editor } = describeESModule(`
+      console.log("side effect 1");
+      console.log("side effect 2");
+      const foo = "bar";
+      console.log("side effect 3");
+      export {};
+    `);
+
+    let sideEffects = desc.regions[documentPointer].dependsOn;
+    assert.equal(sideEffects.size, 2);
+    editor.replace([...sideEffects][0], "//CODE_REGION_1");
+    editor.replace([...sideEffects][1], "//CODE_REGION_2");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      //CODE_REGION_1
+      const foo = "bar";
+      //CODE_REGION_2
+      export {};
+      `
+    );
+  });
+
+  test("a code region for a binding declaration depends on module side effects", function (assert) {
+    let { desc, editor } = describeESModule(`
+      console.log("side effect");
+      const foo = "bar";
+      export {};
+    `);
+    let [sideEffect] = [...desc.regions[documentPointer].dependsOn];
+    let { region } = declarationMap(desc).get("foo")!;
+    assert.ok(region.dependsOn.has(sideEffect));
+    editor.replace(sideEffect, "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      //CODE_REGION
+      const foo = "bar";
+      export {};
+      `
+    );
+  });
+
+  test("a code region depends on the code regions for bindings consumed within the region", function (assert) {
+    let { desc } = describeESModule(`
+      let a = 3;
+      function printA() {
+        console.log(a);
+      }
+      export {};
+    `);
+    let { pointer: a } = declarationMap(desc).get("a")!;
+    let { region } = declarationMap(desc).get("printA")!;
+    assert.deepEqual([...region.dependsOn], [a]);
+  });
+
+  test("a code region declaration contains its references", async function (assert) {
+    let { desc, editor } = describeESModule(`
+      let a = 3;
+      function printA() {
+        console.log(a);
+      }
+      export {};
+    `);
+    let { region } = declarationMap(desc).get("a")!;
+    assert.equal(region.bindingDescription.references.length, 2);
+    for (let reference of region.bindingDescription.references) {
+      editor.replace(reference, "b");
+    }
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let b = 3;
+      function printA() {
+        console.log(b);
+      }
+      export {};
+      `
+    );
+  });
+
+  test("the DocumentPointer code region depends on side effect regions that are within a declaration code region", async function (assert) {
+    let { desc, editor } = describeESModule(`
+      let a = initializeCache();
+      export {};
+    `);
+    assert.equal(desc.regions[documentPointer].dependsOn.size, 1);
+    let [sideEffect] = [...desc.regions[documentPointer].dependsOn];
+    let { region } = declarationMap(desc).get("a")!;
+    assert.equal(region.bindingDescription.sideEffects, sideEffect);
+    editor.replace(sideEffect, "walkTheDog()");
+    assert.codeEqual(
+      editor.serialize(),
+      `
+      let a = walkTheDog();
+      export {};
+      `
+    );
   });
 
   test("pure reexport examples", function (assert) {
@@ -306,11 +459,11 @@ QUnit.module("describe-file", function (hooks) {
       export default arrayMap;
     `);
     assert.ok(
-      desc.names.has("arrayMap"),
+      declarationMap(desc).has("arrayMap"),
       "module scoped binding in module description"
     );
     assert.notOk(
-      desc.names.has("array"),
+      declarationMap(desc).has("array"),
       "non-module scoped binding is not in module description"
     );
   });
@@ -324,7 +477,10 @@ QUnit.module("describe-file", function (hooks) {
       | ReexportExportDescription;
     assert.equal(exportDesc.type, "local");
     assert.equal(exportDesc.name, "x");
-    assert.equal(desc.names.get("x")?.type, "local");
+    assert.equal(
+      declarationMap(desc).get("x")?.region.bindingDescription.type,
+      "local"
+    );
   });
 
   test("default export class", function (assert) {
@@ -336,7 +492,10 @@ QUnit.module("describe-file", function (hooks) {
       | ReexportExportDescription;
     assert.equal(exportDesc.type, "local");
     assert.equal(exportDesc.name, "x");
-    assert.equal(desc.names.get("x")?.type, "local");
+    assert.equal(
+      declarationMap(desc).get("x")?.region.bindingDescription.type,
+      "local"
+    );
   });
 
   test("default export with no local name", function (assert) {
@@ -348,7 +507,8 @@ QUnit.module("describe-file", function (hooks) {
       | ReexportExportDescription;
     assert.equal(exportDesc.type, "local");
     assert.equal(exportDesc.name, "default");
-    assert.ok(desc.names.get("default")?.dependsOn.has("foo"));
+    let { region } = declarationMap(desc).get("default")!;
+    assert.equal(region.dependsOn.size, 0); // note that we don't depend on "foo" because it was not declared in the module scope
   });
 
   test("renaming local side of export", function (assert) {
@@ -370,36 +530,39 @@ QUnit.module("describe-file", function (hooks) {
     let { desc } = describeESModule(`
       import { x } from 'somewhere';
     `);
-    let out = desc.names.get("x");
-    assert.equal(out?.type, "import");
-    if (out?.type === "import") {
-      assert.equal(out.importIndex, 0);
-      assert.equal(out.name, "x");
+    let out = declarationMap(desc).get("x");
+    assert.equal(out?.region.bindingDescription.type, "import");
+    if (out?.region.bindingDescription.type === "import") {
+      assert.equal(out.region.bindingDescription.importIndex, 0);
+      assert.equal(out.region.bindingDescription.importedName, "x");
     }
+    assert.equal(desc.regions[documentPointer].dependsOn.size, 0);
   });
 
-  test("imported namespace are discovered", function (assert) {
+  test("imported namespace is discovered", function (assert) {
     let { desc } = describeESModule(`
       import * as x from 'somewhere';
     `);
-    let out = desc.names.get("x");
-    assert.equal(out?.type, "import");
-    if (out?.type === "import") {
-      assert.equal(out.importIndex, 0);
-      assert.equal(out.name, NamespaceMarker);
+    let out = declarationMap(desc).get("x");
+    assert.equal(out?.region.bindingDescription.type, "import");
+    if (out?.region.bindingDescription.type === "import") {
+      assert.equal(out.region.bindingDescription.importIndex, 0);
+      assert.equal(out.region.bindingDescription.importedName, NamespaceMarker);
     }
+    assert.equal(desc.regions[documentPointer].dependsOn.size, 0);
   });
 
   test("default imported names are discovered", function (assert) {
     let { desc } = describeESModule(`
       import x from 'somewhere';
     `);
-    let out = desc.names.get("x");
-    assert.equal(out?.type, "import");
-    if (out?.type === "import") {
-      assert.equal(out.importIndex, 0);
-      assert.equal(out.name, "default");
+    let out = declarationMap(desc).get("x");
+    assert.equal(out?.region.bindingDescription.type, "import");
+    if (out?.region.bindingDescription.type === "import") {
+      assert.equal(out.region.bindingDescription.importIndex, 0);
+      assert.equal(out.region.bindingDescription.importedName, "default");
     }
+    assert.equal(desc.regions[documentPointer].dependsOn.size, 0);
   });
 
   test("local names are discovered", function (assert) {
@@ -407,7 +570,10 @@ QUnit.module("describe-file", function (hooks) {
       function x() {}
       export {};
     `);
-    assert.equal(desc.names.get("x")?.type, "local");
+    assert.equal(
+      declarationMap(desc).get("x")?.region.bindingDescription.type,
+      "local"
+    );
   });
 
   test("local function is used by export", function (assert) {
@@ -417,10 +583,18 @@ QUnit.module("describe-file", function (hooks) {
         return x();
       }
     `);
-    let out = desc.names.get("y");
-    assert.equal(out?.type, "local");
-    if (out?.type === "local") {
-      assert.ok(out.dependsOn.has("x"));
+    let out = declarationMap(desc).get("y");
+    assert.equal(out?.region.bindingDescription.type, "local");
+    if (out?.region.bindingDescription.type === "local") {
+      assert.ok(
+        [...out.region.dependsOn]
+          .map(
+            (p) =>
+              (desc.regions[p] as DeclarationCodeRegion)?.bindingDescription
+                .declaredName
+          )
+          .includes("x")
+      );
     }
   });
 
@@ -430,10 +604,11 @@ QUnit.module("describe-file", function (hooks) {
       x();
       export {};
     `);
-    let out = desc.names.get("x");
-    assert.equal(out?.type, "local");
-    if (out?.type === "local") {
-      assert.equal(out.usedByModule, true);
+    let out = declarationMap(desc).get("x")!;
+    let { pointer } = out;
+    assert.equal(out.region.bindingDescription.type, "local");
+    if (out?.region.bindingDescription.type === "local") {
+      assert.equal(desc.regions[documentPointer].dependsOn.has(pointer), true);
     }
   });
 
@@ -446,10 +621,12 @@ QUnit.module("describe-file", function (hooks) {
         }
       }
     `);
-    let out = desc.names.get("Q");
-    assert.equal(out?.type, "local");
-    if (out?.type === "local") {
-      assert.ok(out.dependsOn.has("x"));
+    let out = declarationMap(desc).get("Q")!;
+    let x = declarationMap(desc).get("x")!;
+    let { pointer } = x;
+    assert.equal(out.region.bindingDescription.type, "local");
+    if (out.region.bindingDescription.type === "local") {
+      assert.ok(out.region.dependsOn.has(pointer));
     }
     assert.ok(desc.exports.get("default")?.type === "local");
     assert.ok(
@@ -465,12 +642,15 @@ QUnit.module("describe-file", function (hooks) {
       let { x = a, y = x } = bar();
       export {};
     `);
-    let out = desc.names.get("x")!;
-    assert.ok(out.dependsOn.has("a"));
+    let out = declarationMap(desc).get("x")!;
+    let { pointer: xPointer } = out;
+    let a = declarationMap(desc).get("a")!;
+    let { pointer: aPointer } = a;
+    assert.ok(out.region.dependsOn.has(aPointer));
 
-    out = desc.names.get("y")!;
-    assert.ok(out.dependsOn.has("x"));
-    assert.notOk(out.dependsOn.has("a"));
+    out = declarationMap(desc).get("y")!;
+    assert.ok(out.region.dependsOn.has(xPointer));
+    assert.notOk(out.region.dependsOn.has(aPointer));
   });
 
   test("renaming a function declaration", function (assert) {
@@ -521,7 +701,7 @@ QUnit.module("describe-file", function (hooks) {
       function x({ a }) {}
       export {};
     `);
-    assert.ok(!desc.names.has("a"));
+    assert.ok(!declarationMap(desc).has("a"));
   });
 
   test("function default arguments consume other bindings", function (assert) {
@@ -530,8 +710,10 @@ QUnit.module("describe-file", function (hooks) {
       function x(y=a) {}
       export {};
     `);
-    let out = desc.names.get("x");
-    assert.ok(out?.dependsOn.has("a"));
+    let out = declarationMap(desc).get("x")!;
+    let a = declarationMap(desc).get("a")!;
+    let { pointer } = a;
+    assert.ok(out.region.dependsOn.has(pointer));
   });
 
   test("code regions for an imported name can be used to replace it", function (assert) {

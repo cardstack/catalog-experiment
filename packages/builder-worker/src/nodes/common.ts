@@ -64,9 +64,15 @@ export class ConstantNode<T> implements BuilderNode<T, void> {
   private firstRun = true;
 
   constructor(private value: T) {
-    this.cacheKey = `constant:${
-      typeof this.value === "string" ? this.value : JSON.stringify(this.value)
-    }`;
+    let stringified = JSON.stringify(this.value, (_, v) => {
+      if (v instanceof Set) {
+        return `Set(${JSON.stringify([...v])}`;
+      } else if (v instanceof Map) {
+        return `Map(${JSON.stringify([...v])}`;
+      }
+      return v;
+    });
+    this.cacheKey = `constant:${stringified}`;
   }
   async deps() {}
   async run(): Promise<NodeOutput<T>> {

@@ -4,6 +4,7 @@ import {
   url,
   FileAssert,
 } from "./helpers/file-assertions";
+import "./helpers/code-equality-assertions";
 import { Builder, Rebuilder, explainAsDot } from "../src/builder";
 import { FileSystem } from "../src/filesystem";
 import { flushEvents, removeAllEventListeners } from "../src/event-bus";
@@ -11,6 +12,8 @@ import { Logger } from "../src/logger";
 import { recipesURL } from "../src/recipes";
 import { extractDescriptionFromSource } from "../src/description-encoder";
 import { Options } from "../src/nodes/project";
+import { FileDescriptor } from "../src/filesystem-drivers/filesystem-driver";
+import { declarationMap } from "../src/describe-file";
 
 Logger.setLogLevel("debug");
 Logger.echoInConsole(true);
@@ -18,7 +21,7 @@ Logger.echoInConsole(true);
 const outputOrigin = `http://output`;
 
 QUnit.module("module builder", function (origHooks) {
-  let { test } = installFileAssertions(origHooks);
+  let { test, skip } = installFileAssertions(origHooks);
   let builder: Builder<unknown> | undefined;
   let rebuilder: Rebuilder<unknown> | undefined;
 
@@ -33,6 +36,25 @@ QUnit.module("module builder", function (origHooks) {
       }
     }
     return etags;
+  }
+
+  async function bundleSource(
+    fs: FileSystem,
+    bundleURL: URL = url("output/index.js"),
+    options?: Partial<Options>
+  ) {
+    let builder = makeBuilder(fs, new URL("/output/", origin), options);
+    await builder.build();
+    let fd: FileDescriptor | undefined;
+    try {
+      fd = await fs.openFile(bundleURL);
+      let { source } = extractDescriptionFromSource(await fd.readText());
+      return source;
+    } finally {
+      if (fd) {
+        await fd.close();
+      }
+    }
   }
 
   function makeBuilder(
@@ -91,6 +113,1231 @@ QUnit.module("module builder", function (origHooks) {
     if (rebuilder) {
       await rebuilder.shutdown();
     }
+  });
+
+  QUnit.module("module combination", function () {
+    test("it can make a bundle by combining modules", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { a } from './a.js';
+          import { b } from './b.js';
+          console.log(a + b);
+        `,
+        "a.js": `export const a = 'a';`,
+        "b.js": `export const b = 'b';`,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        const a = 'a';
+        const b = 'b';
+        console.log(a + b);
+        export {};
+        `
+      );
+    });
+
+    test("it can combine modules that consume an exported LVal", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { a } from './a.js';
+          import { b } from './b.js';
+          console.log(a + b);
+        `,
+        "a.js": `export const [ { a } ] = foo();`,
+        "b.js": `export const b = 'b';`,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        const [ { a } ] = foo();
+        const b = 'b';
+        console.log(a + b);
+        export {};
+        `
+      );
+    });
+
+    test("internal imports share the same name in multiple modules", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { hello } from './lib.js';
+          import { b } from './b.js';
+          console.log(hello + b);
+        `,
+        "lib.js": `export const hello = 'hello';`,
+        "b.js": `
+          import { hello } from './lib.js';
+          export const b = hello + '!';`,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        const hello = 'hello';
+        const b = hello + '!';
+        console.log(hello + b);
+        export {};
+        `
+      );
+    });
+
+    test("internal imports with local renaming share the same name in multiple modules", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { hello } from './lib.js';
+          import { b } from './b.js';
+          console.log(hello + b);
+        `,
+        "lib.js": `export const hello = 'hello';`,
+        "b.js": `
+          import { hello as h } from './lib.js';
+          export const b = h + '!';`,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        const hello = 'hello';
+        const b = hello + '!';
+        console.log(hello + b);
+        export {};
+        `
+      );
+    });
+
+    test("it prevents collisions between module-scoped bindings", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import './a.js';
+          let shared = 1;
+          console.log(shared);
+        `,
+        "a.js": `
+          import './b.js';
+          let shared = 2;
+          console.log(shared);
+        `,
+        "b.js": `
+          let shared = 3;
+          console.log(shared);
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let shared1 = 3;
+        console.log(shared1);
+        let shared0 = 2;
+        console.log(shared0);
+        let shared = 1;
+        console.log(shared);
+        export {};
+        `
+      );
+    });
+
+    test("prevents collisions for renamed import", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { hello } from './lib.js';
+          import { a } from './a.js';
+          import { b } from './b.js';
+          console.log(hello + a + b);
+      `,
+        "lib.js": `export const hello = 'hello';`,
+        "a.js": `export const a = 'a';`,
+        "b.js": `
+          import { hello as a } from './lib.js';
+          export const b = a + '!';`,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        const hello = 'hello';
+        const a = 'a';
+        const b = hello + '!';
+        console.log(hello + a + b);
+        export {};
+      `
+      );
+    });
+
+    test("preserves bundle exports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { a } from './a.js';
+          export const b = 'b';
+          console.log(a + b);
+      `,
+        "a.js": `export const a = 'a';`,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `const a = 'a';
+         const b = 'b';
+         console.log(a + b);
+         export { b };
+        `
+      );
+    });
+
+    test("preserves bundle export variable declaration that use a different name on the outside of the bundle from the inside of the bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { a } from './a.js';
+          const b = 'b';
+          console.log(a + b);
+          export { b as lib_b };
+        `,
+        "a.js": `export const a = 'a';`,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        const a = 'a';
+        const b = 'b';
+        console.log(a + b);
+        export { b as lib_b };
+        `
+      );
+    });
+
+    test("preserves function export statements that use a different name on the outside of the bundle from the inside of the bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { a } from './a.js';
+          function b() { return 'b' }
+          console.log(a + b());
+          export { b as lib_b };
+        `,
+        "a.js": `export const a = 'a';`,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `const a = 'a';
+        function b() {
+          return 'b';
+        }
+        console.log(a + b());
+        export { b as lib_b };`
+      );
+    });
+
+    test("preserves class export statements that use a different name on the outside of the bundle from the inside of the bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { a } from './a.js';
+          class b { foo() { return 'bar'; } }
+          console.log(a + b.foo);
+          export { b as lib_b };
+        `,
+        "a.js": `export const a = 'a';`,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `const a = 'a';
+        class b {
+          foo() {
+            return 'bar';
+          }
+        }
+        console.log(a + b.foo);
+        export { b as lib_b };`
+      );
+    });
+
+    test("can append to exports in a module within a bundle using export all", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import greeting, { hello, goodbye } from './b.js';
+          greeting(hello + goodbye);
+        `,
+        "lib.js": `
+          export const hello = 'hello';
+          export const goodbye = 'goodbye';
+        `,
+        "b.js": `
+          export * from './lib.js';
+          export default function(msg) { console.log(msg); }
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        const hello = 'hello';
+        const goodbye = 'goodbye';
+        const greeting = (function(msg) { console.log(msg); });
+        greeting(hello + goodbye);
+        export {};
+        `
+      );
+    });
+
+    test("it can handle nested export all's", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import greeting, { hello, goodbye, konnichiwa, sayonara } from './greetings.js';
+          greeting(hello + goodbye + konnichiwa + sayonara);
+        `,
+        "english.js": `
+          export const hello = 'hello';
+          export const goodbye = 'goodbye';
+          export * from "./japanese.js";
+        `,
+        "japanese.js": `
+          export const konnichiwa = 'konnichiwa';
+          export const sayonara = 'sayonara';
+        `,
+        "greetings.js": `
+          export * from './english.js';
+          export default function(msg) { console.log(msg); }
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        const konnichiwa = 'konnichiwa';
+        const sayonara = 'sayonara';
+        const hello = 'hello';
+        const goodbye = 'goodbye';
+        const greeting = (function(msg) { console.log(msg); });
+        greeting(hello + goodbye + konnichiwa + sayonara);
+        export {};
+        `
+      );
+    });
+
+    test("it prevents collisions with bundle exported variable declarations", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import './a.js';
+          function a() { return 1; }
+          console.log(a());
+        `,
+        "a.js": `
+          export const a = 'a';
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs, undefined, {
+          testing: {
+            origin,
+            exports: {
+              a: {
+                file: "a.js",
+                name: "a",
+              },
+            },
+          },
+        }),
+        `
+        const a0 = 'a';
+        function a() {
+          return 1;
+        }
+        console.log(a());
+        export { a0 as a };`
+      );
+    });
+
+    test("it prevents collisions with multiple bundle exported named statements", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import './lib.js';
+          const a = 1;
+          const b = 2;
+          console.log(a + b);
+        `,
+        "lib.js": `
+          const a = 'a';
+          const b = 'b';
+          export { a, b };
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs, undefined, {
+          testing: {
+            origin,
+            exports: {
+              a: {
+                file: "lib.js",
+                name: "a",
+              },
+              b: {
+                file: "lib.js",
+                name: "b",
+              },
+            },
+          },
+        }),
+        `
+        const a0 = 'a';
+        const b0 = 'b';
+        const a = 1;
+        const b = 2;
+        console.log(a + b);
+        export { a0 as a, b0 as b };
+        `
+      );
+    });
+
+    test("it prevents collisions with multiple bundle exported variable declarations", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import './lib.js';
+          const a = 1;
+          const b = 2;
+          console.log(a + b);
+        `,
+        "lib.js": `
+          export const a = 'a', b = 'b';
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs, undefined, {
+          testing: {
+            origin,
+            exports: {
+              a: {
+                file: "lib.js",
+                name: "a",
+              },
+              b: {
+                file: "lib.js",
+                name: "b",
+              },
+            },
+          },
+        }),
+        `
+        const a0 = 'a', b0 = 'b';
+        const a = 1;
+        const b = 2;
+        console.log(a + b);
+        export { a0 as a, b0 as b };
+        `
+      );
+    });
+
+    test("it prevents collisions with bundle exported function declarations", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import './a.js';
+          const a = 'a';
+          console.log(a());
+        `,
+        "a.js": `
+          export function a() { return 1; }
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs, undefined, {
+          testing: {
+            origin,
+            exports: {
+              a: {
+                file: "a.js",
+                name: "a",
+              },
+            },
+          },
+        }),
+        `function a0() {
+          return 1;
+        }
+        const a = 'a';
+        console.log(a());
+        export { a0 as a };
+        `
+      );
+    });
+
+    test("it prevents collisions with bundle exported class declarations", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import './a.js';
+          const a = 'a';
+          console.log(a());
+        `,
+        "a.js": `
+          export class a {}
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs, undefined, {
+          testing: {
+            origin,
+            exports: {
+              a: {
+                file: "a.js",
+                name: "a",
+              },
+            },
+          },
+        }),
+        `
+        class a0 {}
+        const a = 'a';
+        console.log(a());
+        export { a0 as a };
+        `
+      );
+    });
+
+    test("it prevents collisions with bundle exports regardless of order", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          function a() { return 1; }
+          console.log(a());
+          import './a.js';
+        `,
+        "a.js": `
+          export const a = 'a';
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs, undefined, {
+          testing: {
+            origin,
+            exports: {
+              a: {
+                file: "a.js",
+                name: "a",
+              },
+            },
+          },
+        }),
+        `
+        const a0 = 'a';
+        function a() {
+          return 1;
+        }
+        console.log(a());
+        export { a0 as a };
+        `
+      );
+    });
+
+    test("prevents collisions with named bundle variable declaration export", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { a } from './a.js';
+          export const c = 'c';
+          console.log(a);
+        `,
+        "a.js": `
+          export const a = 'a';
+          const c = 'a different c';
+          console.log(c);
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs, undefined, {
+          testing: {
+            origin,
+            exports: {
+              c: {
+                file: "index.js",
+                name: "c",
+              },
+            },
+          },
+        }),
+        `
+        const a = 'a';
+        const c0 = 'a different c';
+        console.log(c0);
+        const c = 'c';
+        console.log(a);
+        export { c };
+        `
+      );
+    });
+
+    test("collapses reexports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { hello } from './b.js';
+          const hi = 'hi';
+          console.log(hi + hello);
+        `,
+        "lib.js": `export const hello = 'hello';`,
+        "b.js": `
+          export { hello } from './lib.js';
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        const hello = 'hello';
+        const hi = 'hi';
+        console.log(hi + hello);
+        export {};
+        `
+      );
+    });
+
+    test("prevents collisions with reexports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { b } from './b.js';
+          const hello = 'hi';
+          console.log(hello + b);
+        `,
+        "lib.js": `export const hello = 'hello';`,
+        "b.js": `
+          export { c as b } from './c.js';
+          const b = 1;
+          console.log(b);
+        `,
+        "c.js": `
+          export { hello as c } from './lib.js';
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        const b = 'hello';
+        const b0 = 1;
+        console.log(b0);
+        const hello = 'hi';
+        console.log(hello + b);
+        export {};
+        `
+      );
+    });
+
+    test("can collapse a reexport that projects a default export to a named export", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { hello } from './b.js';
+          const hi = 'hi';
+          console.log(hi + hello());
+        `,
+        "b.js": `
+          import hello from './lib.js';
+          export { hello };
+        `,
+        "lib.js": `export default function() { return 'hello'; }`,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        const hello = function() { return 'hello'; }
+        const hi = 'hi';
+        console.log(hi + hello());
+        export {};
+        `
+      );
+    });
+
+    test("distinguishes exported names from module-scoped names", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { a, b } from './b.js';
+          console.log(a + b);
+        `,
+        "b.js": `
+          export { a } from './a.js';
+          const a = 'internal';
+          export { a as b };
+        `,
+        "a.js": `
+          export const a = 1;
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        const a = 1;
+        const b = 'internal';
+        console.log(a + b);
+        export {};
+        `
+      );
+    });
+
+    test("can access namespace of module within bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import * as lib from './lib.js';
+          console.log(lib.hello + lib.goodbye);
+        `,
+        "lib.js": `
+          export const hello = 'hello';
+          export const goodbye = 'goodbye';
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        const hello = 'hello';
+        const goodbye = 'goodbye';
+        const lib = { hello, goodbye };
+        console.log(lib.hello + lib.goodbye);
+        export {};
+        `
+      );
+    });
+
+    test("can access nested namespace imports within a bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import * as lib from './lib.js';
+          console.log(lib.hello + lib.goodbye + lib.japanese.sayonara);
+        `,
+        "lib.js": `
+          import * as japanese from './deep.js';
+          export const hello = 'hello';
+          export const goodbye = 'goodbye';
+          export { japanese };
+        `,
+        "deep.js": `
+          export const konnichiwa = 'konnichiwa';
+          export const sayonara = 'sayonara';
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        const konnichiwa = 'konnichiwa';
+        const sayonara = 'sayonara';
+        const japanese = { konnichiwa, sayonara };
+        const hello = 'hello';
+        const goodbye = 'goodbye';
+        const lib = { hello, goodbye, japanese };
+        console.log(lib.hello + lib.goodbye + lib.japanese.sayonara );
+        export {};
+        `
+      );
+    });
+
+    test("can access namespace import that is comprised of reexported bindings", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import * as lib from './lib.js';
+          console.log(lib.hello() + lib.goodbye);
+        `,
+        "lib.js": `
+          export { default as hello } from "./hello.js";
+          export const goodbye = 'goodbye';
+        `,
+        "hello.js": `
+          export default function() { return 'hello'; }
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        const _default = (function() { return 'hello'; });
+        const goodbye = 'goodbye';
+        const lib = { hello: _default, goodbye };
+        console.log(lib.hello() + lib.goodbye);
+        export {};
+        `
+      );
+    });
+
+    test("can access namespace import that is comprised of manually reexported (explicit import and export statements) bindings", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import * as lib from './lib.js';
+          console.log(lib.hello() + lib.goodbye);
+        `,
+        "lib.js": `
+          import { default as hello } from "./hello.js";
+          export { hello };
+          export const goodbye = 'goodbye';
+        `,
+        "hello.js": `
+          export default function() { return 'hello'; }
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        const _default = (function() { return 'hello'; });
+        const goodbye = 'goodbye';
+        const lib = { hello: _default, goodbye };
+        console.log(lib.hello() + lib.goodbye);
+        export {};
+        `
+      );
+    });
+
+    test("can access namespace of module with renamed exports within bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import * as lib from './lib.js';
+          console.log(lib.konnichiwa + lib.sayonara);
+        `,
+        "lib.js": `
+          const hello = 'hello';
+          const goodbye = 'goodbye';
+          export { hello as konnichiwa, goodbye as sayonara };
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        const hello = 'hello';
+        const goodbye = 'goodbye';
+        const lib = { konnichiwa: hello, sayonara: goodbye };
+        console.log(lib.konnichiwa + lib.sayonara);
+        export {};
+        `
+      );
+    });
+
+    test("can handle collisions with properties of namespaced imports within a bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import * as lib from './lib.js';
+          const hello = 'hi';
+          console.log(lib.konnichiwa + lib.sayonara + hello);
+        `,
+        "lib.js": `
+          const hello = 'hello';
+          const goodbye = 'goodbye';
+          export { hello as konnichiwa, goodbye as sayonara };
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        const hello0 = 'hello';
+        const goodbye = 'goodbye';
+        const lib = { konnichiwa: hello0, sayonara: goodbye };
+        const hello = 'hi';
+        console.log(lib.konnichiwa + lib.sayonara + hello);
+        export {};
+        `
+      );
+    });
+
+    test("can prune an unused namespace import within bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import * as lib from './lib.js';
+          import { goodbye } from './lib.js';
+          console.log(goodbye);
+        `,
+        "lib.js": `
+          export const hello = 'hello';
+          export const goodbye = 'goodbye';
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        const goodbye = 'goodbye';
+        console.log(goodbye);
+        export {};
+        `
+      );
+    });
+
+    test("can handle dupe namespace imports within a bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import a from "./a.js";
+          import b from "./b.js";
+          a();
+          b();
+        `,
+        "a.js": `
+          import * as lib from './lib.js';
+          export default function () {
+            console.log(lib.hello);
+          }
+        `,
+        "b.js": `
+          import * as lib from './lib.js';
+          export default function () {
+            console.log(lib.goodbye);
+          }
+        `,
+        "lib.js": `
+          export const hello = 'hello';
+          export const goodbye = 'goodbye';
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        const hello = 'hello';
+        const goodbye = 'goodbye';
+        const lib = { hello, goodbye };
+        const a = (function() { console.log(lib.hello); });
+        const b = (function() { console.log(lib.goodbye); });
+        a();
+        b();
+        export {};
+        `
+      );
+    });
+
+    test("reexport a namespace import within a bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { greetings } from './a.js';
+          console.log(greetings.konnichiwa + greetings.sayonara);
+        `,
+        "a.js": `
+          import * as lib from './lib.js';
+          export { lib as greetings };
+        `,
+        "lib.js": `
+          const hello = 'hello';
+          const goodbye = 'goodbye';
+          export { hello as konnichiwa, goodbye as sayonara };
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        const hello = 'hello';
+        const goodbye = 'goodbye';
+        const greetings = { konnichiwa: hello, sayonara: goodbye };
+        console.log(greetings.konnichiwa + greetings.sayonara);
+        export {};
+        `
+      );
+    });
+
+    test("can handle collisions in exported expressions", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import prop from './lib.js';
+          const a = 'a';
+          const b = 'b';
+          console.log(prop.propA + a + b);
+        `,
+        "lib.js": `
+          import { a as prop, b } from "./a.js";
+          export default {
+            [prop]: b + 1
+          };
+        `,
+        "a.js": `
+          export const a = 'propA';
+          export const b = 1;
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        const prop0 = 'propA';
+        const b0 = 1;
+        const prop = { [prop0]: b0 + 1 };
+        const a = 'a';
+        const b = 'b';
+        console.log(prop.propA + a + b);
+        export {};
+        `
+      );
+    });
+
+    test("can handle default exported function", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import a from './a.js';
+          import b from './b.js';
+          a();
+          b();
+        `,
+        "a.js": `
+          export default function A() {
+            console.log('a');
+          }
+        `,
+        "b.js": `
+          export default function() {
+            console.log('b');
+          }
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        function a() {
+          console.log('a');
+        }
+        const b = function () {
+          console.log('b');
+        }
+        a();
+        b();
+        export {};
+        `
+      );
+    });
+
+    test("can handle default export in an expression context", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import foo from './a.js';
+          foo('bar');
+        `,
+        "a.js": `
+          export default (function a(blah) { console.log(blah); });
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+          const foo = (function a(blah) { console.log(blah); });
+          foo('bar');
+          export {};
+        `
+      );
+    });
+
+    test("can handle default exported class", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import A from './a.js';
+          import B from './b.js';
+          let a = new A();
+          let b = new B();
+          a.display();
+          b.display();
+        `,
+        "a.js": `
+          export default class ClassA {
+            display() { console.log('a'); }
+          }
+        `,
+        "b.js": `
+          export default class {
+            display() { console.log('b'); }
+          }
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        class A {
+          display() { console.log('a'); }
+        }
+        const B = class {
+          display() { console.log('b'); }
+        }
+        let a = new A();
+        let b = new B();
+        a.display();
+        b.display();
+        export {};
+        `
+      );
+    });
+
+    test("can handle default exported object", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import obj from './a.js';
+          console.log(JSON.stringify(obj));
+        `,
+        "a.js": `const json = { foo: 'bar' };
+          const { foo } = json;
+          export default json;
+          export { foo };
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        const obj = { foo: 'bar' };
+        console.log(JSON.stringify(obj));
+        export {};
+        `
+      );
+    });
+
+    test("can handle both default and named imports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import A, { a as b } from './lib.js';
+          let a = new A();
+          a.display();
+          console.log(b);
+        `,
+        "lib.js": `
+          import { b } from './b.js';
+          export default class ClassA {
+            display() { console.log(b); }
+          }
+          export const a = 'a';
+        `,
+        "b.js": `
+          export const b = 'b';
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        const b0 = 'b';
+        class A {
+          display() { console.log(b0); }
+        }
+        const b = 'a';
+        let a = new A();
+        a.display();
+        console.log(b);
+        export {};
+        `
+      );
+    });
+
+    test("preserves bundle imports from other modules", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js", "a.js"] }`,
+        "index.js": `
+          import { a } from './a.js';
+          const b = 'b';
+          console.log(a + b);
+        `,
+        "a.js": `
+          export const a = 1;
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `import { a } from "./a.js";
+        const b = 'b';
+        console.log(a + b);`
+      );
+    });
+
+    test("resolves collisions when importing from another bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js", "b.js"] }`,
+        "index.js": `
+          import { a } from './a.js';
+          import { b } from './b.js';
+          const c = 'c';
+          console.log(a + b + c);
+        `,
+        "a.js": `
+          function b() {
+            return 'b';
+          }
+          export const a = b();
+        `,
+        "b.js": `
+          export const b = 'b';
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `import { b } from "./b.js";
+        function b0() {
+          return 'b';
+        }
+        const a = b0();
+        const c = 'c';
+        console.log(a + b + c);`
+      );
+    });
+
+    test("preserves side effect import if module with side effect is assigned to different bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js", "a.js"] }`,
+        "index.js": `
+          import './a.js';
+          const b = 'b';
+          console.log(b);
+        `,
+        "a.js": `
+          console.log('side effect');
+          export {};
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `import './a.js';
+        const b = 'b';
+        console.log(b);`
+      );
+    });
   });
 
   QUnit.module("single-shot build", function () {
@@ -1190,14 +2437,16 @@ QUnit.module("module builder", function (origHooks) {
         await assert.fs.openFile(url("output/index.js"))
       ).readText();
       let { desc } = extractDescriptionFromSource(bundleSrc);
-      let nameDesc = desc!.names.get("puppies")!;
-      assert.equal(nameDesc.type, "local");
-      if (nameDesc.type === "local") {
+      let {
+        region: { bindingDescription },
+      } = declarationMap(desc!).get("puppies")!;
+      assert.equal(bindingDescription.type, "local");
+      if (bindingDescription.type === "local") {
         assert.equal(
-          nameDesc.original?.moduleHref,
+          bindingDescription.original?.moduleHref,
           `${puppiesPkgHref}/index.js`
         );
-        assert.equal(nameDesc.original?.exportedName, "puppies");
+        assert.equal(bindingDescription.original?.exportedName, "puppies");
       }
     });
 
@@ -1242,14 +2491,16 @@ QUnit.module("module builder", function (origHooks) {
         await assert.fs.openFile(url("output/index.js"))
       ).readText();
       let { desc } = extractDescriptionFromSource(nextBuildSrc);
-      let nameDesc = desc!.names.get("puppies")!;
-      assert.equal(nameDesc.type, "local");
-      if (nameDesc.type === "local") {
+      let {
+        region: { bindingDescription },
+      } = declarationMap(desc!).get("puppies")!;
+      assert.equal(bindingDescription.type, "local");
+      if (bindingDescription.type === "local") {
         assert.equal(
-          nameDesc.original?.moduleHref,
+          bindingDescription.original?.moduleHref,
           `${puppiesPkgHref}/index.js`
         );
-        assert.equal(nameDesc.original?.exportedName, "puppies");
+        assert.equal(bindingDescription.original?.exportedName, "puppies");
       }
     });
 
