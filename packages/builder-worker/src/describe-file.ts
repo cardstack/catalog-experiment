@@ -297,10 +297,14 @@ export function describeFile(
   let cjsExportNames: string[] = [];
   let isTranspiledFromES = false;
   let dependsOn = new WeakMap<CodeRegion, Set<string>>();
-  let moduleSideEffects: NodePath[][] = [];
+  let moduleSideEffects: {
+    regionFromPaths: NodePath[];
+    dependsOn: NodePath[];
+  }[] = [];
   let currentModuleScopedDeclaration:
     | {
         path: DuckPath;
+        region: RegionPointer | undefined;
         defines: {
           declaration: NodePath;
           name: string;
@@ -308,10 +312,11 @@ export function describeFile(
           // it's the only one that has no identifier of its own
           identifier?: NodePath<Identifier>;
           sideEffects: NodePath | false;
+          lvalStack: DuckPath[];
         }[];
         consumes: Set<string>;
         dependsOnRegion: Set<RegionPointer>;
-        withinLVal: DuckPath | false;
+        lvalStack: DuckPath[];
       }
     | undefined;
 
@@ -322,8 +327,9 @@ export function describeFile(
       | NodePath<VariableDeclarator>
   ) {
     let hasIdentifier = isIdentifier(path.node.id);
+    let declaratorRegion: RegionPointer | undefined;
     if (isModuleScopedDeclaration(path as NodePath)) {
-      builder.createCodeRegion(path as NodePath);
+      declaratorRegion = builder.createCodeRegion(path as NodePath);
     }
 
     if (
@@ -336,12 +342,13 @@ export function describeFile(
       }
       currentModuleScopedDeclaration = {
         path,
+        region: declaratorRegion,
         defines: [],
         consumes: new Set(),
         dependsOnRegion: new Set(
           declarationRegion != null ? [declarationRegion] : []
         ),
-        withinLVal: false,
+        lvalStack: [],
       };
       if (hasIdentifier) {
         let identifier = path.get("id") as NodePath<Identifier>;
@@ -350,6 +357,7 @@ export function describeFile(
           declaration: path as NodePath,
           identifier,
           sideEffects: sideEffectsForIdentifier(identifier),
+          lvalStack: [],
         });
       }
     }
@@ -363,6 +371,7 @@ export function describeFile(
       defines,
       consumes,
       dependsOnRegion,
+      region: declaratorRegion,
     } = currentModuleScopedDeclaration!;
     currentModuleScopedDeclaration = undefined;
     for (let {
@@ -370,11 +379,15 @@ export function describeFile(
       declaration,
       identifier,
       sideEffects: sideEffectsRegion,
+      lvalStack,
     } of defines) {
+      if (!path.scope.getBinding(name) && identifier) {
+        continue;
+      }
       let references: RegionPointer[];
       if (identifier) {
         references = [
-          builder.createCodeRegionForReference(identifier as NodePath),
+          builder.createCodeRegion(identifier as NodePath),
           ...path.scope
             .getBinding(name)!
             // we filter because babel gives you some things like
@@ -390,11 +403,26 @@ export function describeFile(
 
       let sideEffects: RegionPointer | undefined;
       if (sideEffectsRegion) {
-        sideEffects = builder.createCodeRegion(
-          sideEffectsRegion,
-          undefined
-          // dependsOnRegion
-        );
+        sideEffects = builder.createCodeRegion(sideEffectsRegion, undefined);
+      }
+      let currentDependsOn = [...dependsOnRegion][0]; // this is the declaration region
+      let regionDeps: Set<number>;
+      let withinLval = lvalStack.length > 0;
+      if (currentDependsOn != null) {
+        if (withinLval && declaratorRegion != null) {
+          desc.regions[declaratorRegion].dependsOn.add(currentDependsOn);
+          currentDependsOn = declaratorRegion;
+        }
+        while (lvalStack.length > 0) {
+          currentDependsOn = builder.createCodeRegion(
+            lvalStack.pop()! as NodePath,
+            "general",
+            new Set([currentDependsOn])
+          );
+        }
+        regionDeps = new Set([currentDependsOn]);
+      } else {
+        regionDeps = new Set();
       }
       let declarationPointer = builder.createCodeRegion(
         declaration,
@@ -404,8 +432,16 @@ export function describeFile(
           sideEffects,
           declaredName: name,
         },
-        dependsOnRegion
+        regionDeps
       );
+      if (sideEffects && !withinLval) {
+        desc.regions[sideEffects].dependsOn.add(declarationPointer);
+      }
+      if (desc.regions[declarationPointer].firstChild != null) {
+        desc.regions[declarationPointer].dependsOn.add(
+          desc.regions[declarationPointer].firstChild!
+        );
+      }
       dependsOn.set(builder.regions[declarationPointer], consumes);
     }
   }
@@ -434,7 +470,7 @@ export function describeFile(
       case "ObjectProperty":
       case "ArrayPattern":
       case "RestElement":
-        if (currentModuleScopedDeclaration?.withinLVal) {
+        if (currentModuleScopedDeclaration?.lvalStack) {
           let declaration = currentModuleScopedDeclaration.path as NodePath;
           if (
             declaration &&
@@ -451,29 +487,42 @@ export function describeFile(
     }
   }
 
-  function addModuleSideEffect(path: NodePath) {
-    if (path.parent.type !== "Program") {
+  function addModuleSideEffect(
+    path: NodePath,
+    programChildPath: NodePath = path
+  ) {
+    if (programChildPath.parent.type !== "Program") {
       return;
     }
-    let sideEffectIndex = path.parent.body.findIndex(
-      (statement) => statement === path.node
+    let sideEffectIndex = programChildPath.parent.body.findIndex(
+      (statement) => statement === programChildPath.node
     );
-    let [lastSideEffects] = moduleSideEffects.slice(-1);
-    if (lastSideEffects && lastSideEffects.length > 0) {
-      let [lastSideEffect] = lastSideEffects;
-      let lastSideEffectIndex = path.parent.body.findIndex(
-        (statement) => statement === lastSideEffect.node
-      );
-      // merge contiguous side effects
-      if (
-        lastSideEffectIndex + 1 === sideEffectIndex &&
-        lastSideEffect.type === path.type
-      ) {
-        lastSideEffects.push(path as NodePath);
-        return;
+    let [lastSideEffectGroup] = moduleSideEffects.slice(-1);
+    if (lastSideEffectGroup && programChildPath.type !== "ImportDeclaration") {
+      let { regionFromPaths: lastSideEffects, dependsOn } = lastSideEffectGroup;
+      if (lastSideEffects && lastSideEffects.length > 0) {
+        let [lastSideEffect] = lastSideEffects;
+        let lastSideEffectIndex = programChildPath.parent.body.findIndex(
+          (statement) => statement === lastSideEffect.node
+        );
+        // merge contiguous side effects
+        if (
+          lastSideEffectIndex + 1 === sideEffectIndex &&
+          lastSideEffect.type === programChildPath.type
+        ) {
+          lastSideEffects.push(programChildPath as NodePath);
+          if (path !== programChildPath) {
+            dependsOn.push(path);
+          }
+          return;
+        }
       }
     }
-    moduleSideEffects.push([path as NodePath]);
+
+    moduleSideEffects.push({
+      regionFromPaths: [programChildPath as NodePath],
+      dependsOn: path !== programChildPath ? [path] : [],
+    });
   }
 
   const handlePossibleLVal = {
@@ -481,20 +530,21 @@ export function describeFile(
       if (
         (path.parentPath === currentModuleScopedDeclaration?.path &&
           currentModuleScopedDeclaration?.path.node.id === path.node) ||
-        currentModuleScopedDeclaration?.withinLVal === path.parentPath
+        currentModuleScopedDeclaration?.lvalStack[0] === path.parentPath
       ) {
-        builder.createCodeRegion(path as NodePath);
+        // builder.createCodeRegion(path as NodePath);
+        currentModuleScopedDeclaration.lvalStack.unshift(path);
       }
-      if (
-        path.parentPath === currentModuleScopedDeclaration?.path &&
-        currentModuleScopedDeclaration?.path.node.id === path.node
-      ) {
-        currentModuleScopedDeclaration.withinLVal = path;
-      }
+      // if (
+      //   path.parentPath === currentModuleScopedDeclaration?.path &&
+      //   currentModuleScopedDeclaration?.path.node.id === path.node
+      // ) {
+      //   currentModuleScopedDeclaration.lvalStack.unshift(path);
+      // }
     },
     exit(path: DuckPath) {
-      if (currentModuleScopedDeclaration?.withinLVal === path) {
-        currentModuleScopedDeclaration.withinLVal = false;
+      if (currentModuleScopedDeclaration?.lvalStack[0] === path) {
+        currentModuleScopedDeclaration.lvalStack.shift();
       }
     },
   };
@@ -511,6 +561,12 @@ export function describeFile(
           regions: builder.regions,
           esTranspiledExports: undefined,
         };
+        for (let statement of path.get("body")) {
+          // we create a code region for each statement in the body so that
+          // reference code regions whose parents depend on them, will never be
+          // a dependency of the document region--that's for side effects only
+          builder.createCodeRegion(statement as NodePath);
+        }
       },
       exit() {
         for (let name of consumedByModule) {
@@ -533,11 +589,11 @@ export function describeFile(
       enter: enterDeclaration,
       exit: exitDeclaration,
     },
-    VariableDeclaration(path) {
-      if (isModuleScopedDeclaration(path as NodePath)) {
-        builder.createCodeRegion(path as NodePath);
-      }
-    },
+    // VariableDeclaration(path) {
+    //   if (isModuleScopedDeclaration(path as NodePath)) {
+    //     builder.createCodeRegion(path as NodePath);
+    //   }
+    // },
     VariableDeclarator: {
       enter: enterDeclaration,
       exit: exitDeclaration,
@@ -549,13 +605,13 @@ export function describeFile(
     // ObjectProperty is not an LVal, so we don't want to use
     // handlePossibleLVal, but we are interested in making a code region for it,
     // since it composes an LVal
-    ObjectProperty(path) {
-      if (currentModuleScopedDeclaration?.withinLVal === path.parentPath) {
-        builder.createCodeRegion(path as NodePath);
-      }
-    },
+    ObjectProperty: handlePossibleLVal,
+    // if (currentModuleScopedDeclaration?.lvalStack === path.parentPath) {
+    //   builder.createCodeRegion(path as NodePath);
+    // }
+    // },
     Identifier(path) {
-      if (currentModuleScopedDeclaration?.withinLVal) {
+      if (currentModuleScopedDeclaration?.lvalStack) {
         let declaration = declarationForIdentifier(path);
         let sideEffects = sideEffectsForIdentifier(path);
         if (declaration) {
@@ -564,6 +620,7 @@ export function describeFile(
             declaration,
             identifier: path,
             sideEffects,
+            lvalStack: [...currentModuleScopedDeclaration.lvalStack],
           });
         }
       }
@@ -698,7 +755,8 @@ export function describeFile(
       ) {
         return;
       }
-      addModuleSideEffect(path as NodePath);
+
+      addModuleSideEffect(path.get("expression") as NodePath, path as NodePath);
     },
     ExportAllDeclaration(path) {
       isES6Module = true;
@@ -762,16 +820,18 @@ export function describeFile(
 
         currentModuleScopedDeclaration = {
           path,
+          region: exportRegion,
           defines: [
             {
               name: "default",
               declaration: path.get("declaration") as NodePath,
               sideEffects: false,
+              lvalStack: [],
             },
           ],
           consumes: new Set(),
           dependsOnRegion: new Set(),
-          withinLVal: false,
+          lvalStack: [],
         };
       },
       exit: exitDeclaration,
@@ -909,8 +969,11 @@ export function describeFile(
   resolveDependsOnReferences(dependsOn, desc!, declarations);
   discoverReferencesConsumedBySideEffects(desc!, declarations);
 
-  let sideEffectPointers = moduleSideEffects.map((paths) =>
-    builder.createCodeRegion(paths)
+  let sideEffectPointers = moduleSideEffects.map(
+    ({ regionFromPaths: paths, dependsOn: dependsOnPaths }) => {
+      let dependsOn = dependsOnPaths.map((p) => builder.createCodeRegion(p));
+      return builder.createCodeRegion(paths, "general", new Set(dependsOn));
+    }
   );
   for (let { region } of declarations.values()) {
     region.dependsOn = new Set([...region.dependsOn, ...sideEffectPointers]);

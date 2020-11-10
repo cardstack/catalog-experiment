@@ -14,14 +14,12 @@ import {
   RegionPointer,
   DeclarationCodeRegion,
   CodeRegion,
-  isImportCodeRegion,
 } from "../code-region";
 import { BundleAssignment, BundleAssignmentsNode } from "./bundle";
 import stringify from "json-stable-stringify";
 import { MD5 as md5, enc } from "crypto-js";
 import { setMapping } from "../utils";
 import { maybeRelativeURL } from "../path";
-import { result } from "lodash";
 
 export class CombineModulesNode implements BuilderNode {
   cacheKey: CombineModulesNode;
@@ -68,7 +66,6 @@ export class CombineModulesNode implements BuilderNode {
         new RegionEditor(
           module.source,
           module.desc,
-          () => `TODO add unusedNameLike handler that uses head state`,
           this.declarationCache.get(module.url.href)
         )
       );
@@ -223,14 +220,7 @@ function discoverIncludedRegions(
       );
     } else {
       let consumingModule = makeNonCyclic(source.consumingModule);
-      let importedPointer =
-        source.importedPointer ??
-        pointerForImport(
-          source.importedAs,
-          source.importedFromModule,
-          consumingModule,
-          declarationCache
-        );
+      let { importedPointer } = source;
       if (importedPointer == null) {
         throw new Error(
           `bug: could not determine code region pointer for import of ${JSON.stringify(
@@ -280,25 +270,6 @@ function discoverIncludedRegions(
   }
 }
 
-// TODO this should probably move into resolveDeclaration()...
-function pointerForImport(
-  importedAs: string | NamespaceMarker,
-  importedFromModule: Resolution,
-  consumingModule: ModuleResolution,
-  declarationCache: DeclarationCache
-): RegionPointer | undefined {
-  let declarations = getDeclarations(consumingModule, declarationCache);
-  let { pointer } =
-    [...declarations.values()].find(
-      ({ region: { bindingDescription: desc } }) =>
-        desc.type === "import" &&
-        desc.importedName === importedAs &&
-        consumingModule.resolvedImports[desc.importIndex].url.href ===
-          importedFromModule.url.href
-    ) ?? {};
-  return pointer;
-}
-
 function discoverIncludedRegionsForNamespace(
   bundle: URL,
   module: Resolution,
@@ -329,15 +300,8 @@ function discoverIncludedRegionsForNamespace(
       // signal to the Append nodes to manufacture a namespace object for this
       // import--ultimately, though, we will not include this region.
       let consumingModule = makeNonCyclic(source.consumingModule);
-      let pointer =
-        source.importedPointer ??
-        pointerForImport(
-          source.importedAs,
-          source.importedFromModule,
-          consumingModule,
-          declarationCache
-        );
-      if (pointer == null) {
+      let { importedPointer } = source;
+      if (importedPointer == null) {
         throw new Error(
           `bug: could not determine code region pointer for import of ${JSON.stringify(
             source.importedAs
@@ -347,7 +311,7 @@ function discoverIncludedRegionsForNamespace(
         );
       }
       if (isNamespaceMarker(source.importedAs)) {
-        editors.get(module.url.href)!.keepRegion(pointer);
+        editors.get(module.url.href)!.keepRegion(importedPointer);
         discoverIncludedRegionsForNamespace(
           bundle,
           source.importedFromModule,
@@ -359,7 +323,9 @@ function discoverIncludedRegionsForNamespace(
         // we mark the external bundle import region as something we want to keep
         // as a signal to the Append nodes that this import is consumed and to
         // include this region in the resulting bundle.
-        editors.get(source.consumingModule.url.href)!.keepRegion(pointer);
+        editors
+          .get(source.consumingModule.url.href)!
+          .keepRegion(importedPointer);
       }
     }
   }
@@ -609,8 +575,6 @@ class ModuleRewriter {
               localName
             );
           } else {
-            // TODO deal with module from external bundle
-            // throw new Error("unimplemented");
             assignedName = this.maybeAssignImportName(
               source.importedFromModule.url.href,
               source.importedAs,
@@ -673,7 +637,7 @@ class ModuleRewriter {
 
       // This is the region that we were using as a signal that this namespace
       // should be in the bundle, now let's actually remove it.
-      this.editor.removeRegion(pointer);
+      this.editor.removeRegionAndItsChildren(pointer);
 
       let namespaceDeclaration: string[] = [];
       let assignedName = this.state.assignedImportedNames
@@ -930,7 +894,7 @@ function assignedImports(
         // This is the region that we were using as a signal that this import
         // should be in the bundle, now let's actually remove it (because we are
         // going to refashion it).
-        editor.removeRegion(pointer);
+        editor.removeRegionAndItsChildren(pointer);
         continue;
       }
 
@@ -962,7 +926,7 @@ function assignedImports(
       // This is the region that we were using as a signal that this import
       // should be in the bundle, now let's actually remove it (because we are
       // going to refashion it).
-      editor.removeRegion(pointer);
+      editor.removeRegionAndItsChildren(pointer);
 
       let assignment = assignments.find(
         (a) => a.module.url.href === importedFromModule.url.href
@@ -1039,18 +1003,25 @@ function resolveDeclaration(
   importedFromModule: Resolution,
   consumingModule: Resolution,
   ownAssignments: BundleAssignment[],
-  cache: DeclarationCache,
-  importedRegion?: DeclarationCodeRegion,
-  importedPointer?: RegionPointer
+  cache: DeclarationCache
 ): ResolvedResult | UnresolvedResult {
   if (isNamespaceMarker(importedName)) {
+    let importedPointer = pointerForImport(
+      importedName,
+      importedFromModule,
+      makeNonCyclic(consumingModule),
+      cache
+    );
     return {
       type: "unresolved",
       importedAs: importedName,
       importedFromModule: importedFromModule,
       consumingModule,
-      importedRegion,
       importedPointer,
+      importedRegion:
+        importedPointer != null
+          ? consumingModule.desc.regions[importedPointer]
+          : undefined,
     };
   }
   if (
@@ -1058,13 +1029,22 @@ function resolveDeclaration(
       (a) => a.module.url.href === importedFromModule.url.href
     )
   ) {
+    let importedPointer = pointerForImport(
+      importedName,
+      importedFromModule,
+      makeNonCyclic(consumingModule),
+      cache
+    );
     return {
       type: "unresolved",
       importedAs: importedName,
       importedFromModule: importedFromModule,
       consumingModule,
-      importedRegion,
       importedPointer,
+      importedRegion:
+        importedPointer != null
+          ? consumingModule.desc.regions[importedPointer]
+          : undefined,
     };
   }
 
@@ -1091,7 +1071,7 @@ function resolveDeclaration(
         cache
       );
     } else {
-      let { pointer, region } = declarations.get(exportDesc.name)!;
+      let { region } = declarations.get(exportDesc.name)!;
       let { bindingDescription: localDesc } = region;
       if (localDesc.type === "local") {
         throw new Error(
@@ -1103,9 +1083,7 @@ function resolveDeclaration(
         sourceModule!.resolvedImports[localDesc.importIndex],
         sourceModule,
         ownAssignments,
-        cache,
-        region,
-        pointer
+        cache
       );
     }
   }
@@ -1123,4 +1101,22 @@ function resolveDeclaration(
     region: declarationRegion.region,
     pointer: declarationRegion.pointer,
   };
+}
+
+function pointerForImport(
+  importedAs: string | NamespaceMarker,
+  importedFromModule: Resolution,
+  consumingModule: ModuleResolution,
+  declarationCache: DeclarationCache
+): RegionPointer | undefined {
+  let declarations = getDeclarations(consumingModule, declarationCache);
+  let { pointer } =
+    [...declarations.values()].find(
+      ({ region: { bindingDescription: desc } }) =>
+        desc.type === "import" &&
+        desc.importedName === importedAs &&
+        consumingModule.resolvedImports[desc.importIndex].url.href ===
+          importedFromModule.url.href
+    ) ?? {};
+  return pointer;
 }

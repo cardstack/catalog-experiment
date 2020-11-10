@@ -21,6 +21,12 @@ const { test, skip } = QUnit;
 
 let unusedNameNonce = 0;
 
+function keepAll(desc: FileDescription, editor: RegionEditor) {
+  for (let i = 0; i < desc.regions.length; i++) {
+    editor.keepRegion(i);
+  }
+}
+
 function describeFile(
   js: string
 ): { desc: FileDescription; editor: RegionEditor } {
@@ -32,7 +38,7 @@ function describeFile(
   let desc = astDescribeFile(parsed);
   return {
     desc,
-    editor: new RegionEditor(js, desc, () => `unused${unusedNameNonce++}`),
+    editor: new RegionEditor(js, desc),
   };
 }
 
@@ -78,6 +84,7 @@ QUnit.module("describe-file", function (hooks) {
     let { desc, editor } = describeCJSFile(`
     const foo = require('./bar');
     `);
+    keepAll(desc, editor);
     assert.ok("requires" in desc);
     if ("requires" in desc) {
       let [req] = desc.requires;
@@ -95,6 +102,7 @@ QUnit.module("describe-file", function (hooks) {
     let { desc, editor } = describeCJSFile(`
     const foo = require('./bar');
     `);
+    keepAll(desc, editor);
     assert.ok("requires" in desc);
     if ("requires" in desc) {
       let [req] = desc.requires;
@@ -168,6 +176,7 @@ QUnit.module("describe-file", function (hooks) {
       class c { foo() { return "bar"; } }
       export {};
     `);
+    keepAll(desc, editor);
     let pointer = desc.regions.findIndex(
       (r) =>
         r.type === "declaration" && r.bindingDescription.declaredName === "a"
@@ -193,6 +202,7 @@ QUnit.module("describe-file", function (hooks) {
       class c { foo() { return "bar"; } }
       export {};
     `);
+    keepAll(desc, editor);
     let pointer = desc.regions.findIndex(
       (r) =>
         r.type === "declaration" && r.bindingDescription.declaredName === "b"
@@ -218,6 +228,7 @@ QUnit.module("describe-file", function (hooks) {
       class c { foo() { return "bar"; } }
       export {};
     `);
+    keepAll(desc, editor);
     let pointer = desc.regions.findIndex(
       (r) =>
         r.type === "declaration" && r.bindingDescription.declaredName === "c"
@@ -241,6 +252,7 @@ QUnit.module("describe-file", function (hooks) {
       let { x, y: [z] } = foo();
       export {};
     `);
+    keepAll(desc, editor);
 
     let pointer = desc.regions.findIndex(
       (r) =>
@@ -282,6 +294,7 @@ QUnit.module("describe-file", function (hooks) {
       console.log("side effect");
       export {};
     `);
+    keepAll(desc, editor);
 
     let sideEffects = desc.regions[documentPointer].dependsOn;
     assert.equal(sideEffects.size, 1);
@@ -303,6 +316,7 @@ QUnit.module("describe-file", function (hooks) {
       console.log("side effect 3");
       export {};
     `);
+    keepAll(desc, editor);
 
     let sideEffects = desc.regions[documentPointer].dependsOn;
     assert.equal(sideEffects.size, 2);
@@ -325,6 +339,7 @@ QUnit.module("describe-file", function (hooks) {
       const foo = "bar";
       export {};
     `);
+    keepAll(desc, editor);
     let [sideEffect] = [...desc.regions[documentPointer].dependsOn];
     let { region } = declarationMap(desc).get("foo")!;
     assert.ok(region.dependsOn.has(sideEffect));
@@ -360,6 +375,7 @@ QUnit.module("describe-file", function (hooks) {
       }
       export {};
     `);
+    keepAll(desc, editor);
     let { region } = declarationMap(desc).get("a")!;
     assert.equal(region.bindingDescription.references.length, 2);
     for (let reference of region.bindingDescription.references) {
@@ -382,6 +398,7 @@ QUnit.module("describe-file", function (hooks) {
       let a = initializeCache();
       export {};
     `);
+    keepAll(desc, editor);
     assert.equal(desc.regions[documentPointer].dependsOn.size, 1);
     let [sideEffect] = [...desc.regions[documentPointer].dependsOn];
     let { region } = declarationMap(desc).get("a")!;
@@ -512,10 +529,11 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("renaming local side of export", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       function x() {}
       export { x };
     `);
+    keepAll(desc, editor);
     editor.rename("x", "y");
     assert.codeEqual(
       editor.serialize(),
@@ -654,42 +672,19 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("renaming a function declaration", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       console.log(1);
       function x() {}
       x();
       export {};
     `);
+    keepAll(desc, editor);
     editor.rename("x", "y");
     assert.codeEqual(
       editor.serialize(),
       `
       console.log(1);
       function y() {}
-      y();
-      export {};
-    `
-    );
-  });
-
-  test("removing a function declaration", function (assert) {
-    let { editor } = describeESModule(`
-      console.log(1);
-      function a() {}
-      function x() {}
-      function y() {}
-      a();
-      y();
-      export {};
-    `);
-    editor.removeDeclaration("x");
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      console.log(1);
-      function a() {}
-      function y() {}
-      a();
       y();
       export {};
     `
@@ -717,13 +712,14 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("code regions for an imported name can be used to replace it", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       import { a, b as c, d as d } from "lib";
       export default function(a) {
         console.log(a);
       }
       console.log(a, c, d);
     `);
+    keepAll(desc, editor);
     editor.rename("a", "alpha");
     editor.rename("c", "charlie");
     editor.rename("d", "delta");
@@ -740,13 +736,14 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("code regions for a local variable can be used to replace it", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       const a = 1;
       export default function(a) {
         console.log(a);
       }
       console.log(a);
     `);
+    keepAll(desc, editor);
     editor.rename("a", "alpha");
     assert.codeEqual(
       editor.serialize(),
@@ -761,11 +758,12 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("code regions for a variable declared within an object pattern can be used to replace it", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       const { a, b: c } = foo();
       console.log(a, c);
       export {};
     `);
+    keepAll(desc, editor);
     editor.rename("a", "alpha");
     editor.rename("c", "charlie");
     assert.codeEqual(
@@ -779,11 +777,12 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("code regions for a variable assign via an LVal AssignmentPattern can be used to replace it", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       const { a, b = a } = foo();
       console.log(a, b);
       export {};
     `);
+    keepAll(desc, editor);
     editor.rename("a", "alpha");
     editor.rename("b", "bravo");
     assert.codeEqual(
@@ -797,11 +796,12 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("code regions for a variable assign via an LVal AssignmentPattern with shorthand can be used to replace it", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       const { a, b: bravo = a } = foo();
       console.log(a, bravo);
       export {};
     `);
+    keepAll(desc, editor);
     editor.rename("bravo", "b");
     assert.codeEqual(
       editor.serialize(),
@@ -814,12 +814,13 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("code regions for a MemberExpression can be used to replace it", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       const bar = makeBar();
       const { a, b = bar.blah } = foo();
       console.log(a, bar.blurb);
       export {};
     `);
+    keepAll(desc, editor);
     editor.rename("bar", "bleep");
     assert.codeEqual(
       editor.serialize(),
@@ -833,11 +834,12 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("code regions for nested ObjectPattern can be used to replace it", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let [{ x }, { y }] = bar();
       console.log(y);
       export {};
     `);
+    keepAll(desc, editor);
     editor.rename("y", "yas");
     assert.codeEqual(
       editor.serialize(),
@@ -850,11 +852,12 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("removing leading variable declaration from a list", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let a = 1, b = 2;
       console.log(b);
       export {};
     `);
+    keepAll(desc, editor);
     editor.removeDeclaration("a");
     assert.codeEqual(
       editor.serialize(),
@@ -867,10 +870,11 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("removing trailing variable declaration from a list", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let a = 1, b = 2;
       export {};
     `);
+    keepAll(desc, editor);
     editor.removeDeclaration("b");
     assert.codeEqual(
       editor.serialize(),
@@ -882,10 +886,11 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("removing adjacent variable declarations from a list", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let a = 1, b = 2, c = 3, d = 4;
       export {};
     `);
+    keepAll(desc, editor);
     editor.removeDeclaration("b");
     editor.removeDeclaration("c");
     assert.codeEqual(
@@ -898,10 +903,11 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("removing first 2 adjacent variable declarations from a list", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let a = 1, b = 2, c = 3, d = 4;
       export {};
     `);
+    keepAll(desc, editor);
     editor.removeDeclaration("a");
     editor.removeDeclaration("b");
     assert.codeEqual(
@@ -914,10 +920,11 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("removing a declaration from a list that includes a mix of LVal and non-LVal declarations", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let { a } = foo, b = 2, { c } = blah, d = 4;
       export {};
     `);
+    keepAll(desc, editor);
     editor.removeDeclaration("b");
     editor.removeDeclaration("c");
     assert.codeEqual(
@@ -930,11 +937,12 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("removing all variable declarations", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let a = 1;
       console.log(2);
       export {};
     `);
+    keepAll(desc, editor);
     editor.removeDeclaration("a");
     assert.codeEqual(
       editor.serialize(),
@@ -946,11 +954,12 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("removing all variable declarations in an LVal", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let [ ...{ ...a } ] = foo;
       console.log(2);
       export {};
     `);
+    keepAll(desc, editor);
     editor.removeDeclaration("a");
     assert.codeEqual(
       editor.serialize(),
@@ -962,11 +971,12 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("removing a renamed variable declaration in an ObjectPattern LVal", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let { x, y: a } = foo;
       console.log(2);
       export {};
     `);
+    keepAll(desc, editor);
     editor.removeDeclaration("a");
     assert.codeEqual(
       editor.serialize(),
@@ -979,11 +989,12 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("removing a variable declaration in a nested ObjectPattern LVal", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let { x, y: { a } } = foo;
       console.log(2);
       export {};
     `);
+    keepAll(desc, editor);
     editor.removeDeclaration("a");
     assert.codeEqual(
       editor.serialize(),
@@ -996,11 +1007,12 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("removing a variable declaration in an ArrayPattern LVal", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let [ x, y, z ] = foo;
       console.log(2);
       export {};
     `);
+    keepAll(desc, editor);
     editor.removeDeclaration("x");
     editor.removeDeclaration("y");
     assert.codeEqual(
@@ -1014,11 +1026,12 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("removing a variable declaration in a nested ArrayPattern LVal", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let [ x, [ a ] ] = foo;
       console.log(2);
       export {};
     `);
+    keepAll(desc, editor);
     editor.removeDeclaration("a");
     assert.codeEqual(
       editor.serialize(),
@@ -1031,11 +1044,12 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("removing a variable declaration in a RestElement LVal", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let [ x, ...y ] = foo;
       console.log(2);
       export {};
     `);
+    keepAll(desc, editor);
     editor.removeDeclaration("y");
     assert.codeEqual(
       editor.serialize(),
@@ -1048,11 +1062,12 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("removing a variable declaration in a nested RestElement LVal", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let [ x, ...[ ...y ]] = foo;
       console.log(2);
       export {};
-    `);
+      `);
+    keepAll(desc, editor);
     editor.removeDeclaration("y");
     assert.codeEqual(
       editor.serialize(),
@@ -1065,11 +1080,12 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("removing a variable declaration in an AssignmentPattern LVal", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let { x, y = 1 } = foo;
       console.log(2);
       export {};
     `);
+    keepAll(desc, editor);
     editor.removeDeclaration("y");
     assert.codeEqual(
       editor.serialize(),
@@ -1082,11 +1098,12 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("removing a variable declaration in a nested AssignmentPattern LVal", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let { x, b: [ y = 1 ] } = foo;
       console.log(2);
       export {};
     `);
+    keepAll(desc, editor);
     editor.removeDeclaration("y");
     assert.codeEqual(
       editor.serialize(),
@@ -1099,10 +1116,11 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("preserves side-effectful right-hand side when there is only one side effect at the beginning of the list", async function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let a = initCache(), b = true, c = 1, d = 'd', e = null, f = undefined, g = function() {}, h = class foo {};
       export {};
     `);
+    keepAll(desc, editor);
 
     editor.removeDeclaration("a");
     editor.removeDeclaration("b");
@@ -1123,10 +1141,11 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("preserves side-effectful right-hand side when there is only one side effect at the end of the list", async function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let b = true, c = 1, d = 'd', e = null, f = undefined, g = function() {}, h = class foo {}, a = initCache();
       export {};
-    `);
+      `);
+    keepAll(desc, editor);
 
     editor.removeDeclaration("a");
     editor.removeDeclaration("b");
@@ -1147,10 +1166,11 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("preserves side-effectful right-hand side when there is only one side effect in the middle of the list", async function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let b = true, c = 1, d = 'd', e = null, a = initCache(), f = undefined, g = function() {}, h = class foo {};
       export {};
     `);
+    keepAll(desc, editor);
 
     editor.removeDeclaration("a");
     editor.removeDeclaration("b");
@@ -1171,10 +1191,11 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("preserves side-effectful right-hand side when there are multiple effects in the list", async function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let a = initACache(), b = true, c = 1, d = 'd', e = initECache(), f = undefined, g = function() {}, h = class foo {};
       export {};
     `);
+    keepAll(desc, editor);
 
     editor.removeDeclaration("a");
     editor.removeDeclaration("b");
@@ -1195,10 +1216,11 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("preserves side-effectful right-hand side when it is the only declarator in a declaration", async function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let a = initCache();
       export {};
     `);
+    keepAll(desc, editor);
 
     editor.removeDeclaration("a");
 
@@ -1212,10 +1234,11 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("preserves side-effectful right-hand side for ObjectPatten LVal", async function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let { x } = initCache();
       export {};
     `);
+    keepAll(desc, editor);
 
     editor.removeDeclaration("x");
 
@@ -1229,10 +1252,11 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("preserves side-effectful right-hand side for ArrayPatten LVal", async function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let [ x ] = initCache();
       export {};
     `);
+    keepAll(desc, editor);
 
     editor.removeDeclaration("x");
 
@@ -1246,10 +1270,11 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("preserves side-effectful right-hand side for RestElement LVal", async function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let { a: [ ...x ] } = initCache();
       export {};
     `);
+    keepAll(desc, editor);
 
     editor.removeDeclaration("x");
 
@@ -1263,10 +1288,11 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("preserves side-effectful right-hand side for multiple LVal identifiers", async function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let { x, y } = initCache();
       export {};
     `);
+    keepAll(desc, editor);
 
     editor.removeDeclaration("x");
     editor.removeDeclaration("y");
@@ -1281,10 +1307,11 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("preserves side-effectful initializer in LVal", async function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let { x = initCache() } = foo;
       export {};
     `);
+    keepAll(desc, editor);
 
     editor.removeDeclaration("x");
 
@@ -1298,10 +1325,11 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("preserves side-effectful initializer in list that includes side-effectful LVal", async function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let { x = initCache() } = foo, y = 1, z = initZCache();
       export {};
     `);
+    keepAll(desc, editor);
 
     editor.removeDeclaration("x");
     editor.removeDeclaration("y");
@@ -1317,7 +1345,8 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("rename an exported const", async function (assert) {
-    let { editor } = describeESModule(`export const a = 'a';`);
+    let { desc, editor } = describeESModule(`export const a = 'a';`);
+    keepAll(desc, editor);
     editor.rename("a", "a0");
     assert.codeEqual(editor.serialize(), `export const a0 = 'a';`);
   });

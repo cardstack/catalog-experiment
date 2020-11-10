@@ -37,8 +37,7 @@ QUnit.module("module builder", function (origHooks) {
     }
     return etags;
   }
-
-  async function bundleSource(
+  async function bundle(
     fs: FileSystem,
     bundleURL: URL = url("output/index.js"),
     options?: Partial<Options>
@@ -48,13 +47,30 @@ QUnit.module("module builder", function (origHooks) {
     let fd: FileDescriptor | undefined;
     try {
       fd = await fs.openFile(bundleURL);
-      let { source } = extractDescriptionFromSource(await fd.readText());
-      return source;
+      return extractDescriptionFromSource(await fd.readText());
     } finally {
       if (fd) {
         await fd.close();
       }
     }
+  }
+
+  async function bundleSource(
+    fs: FileSystem,
+    bundleURL: URL = url("output/index.js"),
+    options?: Partial<Options>
+  ) {
+    let { source } = await bundle(fs, bundleURL, options);
+    return source;
+  }
+
+  async function bundleDescription(
+    fs: FileSystem,
+    bundleURL: URL = url("output/index.js"),
+    options?: Partial<Options>
+  ) {
+    let { desc } = await bundle(fs, bundleURL, options);
+    return desc;
   }
 
   function makeBuilder(
@@ -147,7 +163,7 @@ QUnit.module("module builder", function (origHooks) {
           import { b } from './b.js';
           console.log(a + b);
         `,
-        "a.js": `export const [ { a } ] = foo();`,
+        "a.js": `export const [ { a, c } ] = foo();`,
         "b.js": `export const b = 'b';`,
       });
 
@@ -1333,11 +1349,475 @@ QUnit.module("module builder", function (origHooks) {
 
       assert.codeEqual(
         await bundleSource(assert.fs),
-        `import './a.js';
+        `import "./a.js";
         const b = 'b';
         console.log(b);`
       );
     });
+
+    test("preserves side effect import if module is imported both for side effect only and imported for an unconsumed binding", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js", "a.js"] }`,
+        "index.js": `
+          import './a.js';
+          import './b.js';
+          const b = 'b';
+          console.log(b);
+        `,
+        "a.js": `
+          console.log('side effect');
+          export const a = "A";
+        `,
+        "b.js": `
+          import { a } from './a.js';
+          console.log('hi');
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `import "./a.js";
+        console.log('hi');
+        const b = 'b';
+        console.log(b);`
+      );
+    });
+
+    test("strips a side-effect only import if the module is also imported for a consumed binding (the side effect comes along in the named import)", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js", "a.js"] }`,
+        "index.js": `
+          import './a.js';
+          import './b.js';
+          const b = 'b';
+          console.log(b);
+        `,
+        "a.js": `
+          console.log('side effect');
+          export const a = "A";
+        `,
+        "b.js": `
+          import { a } from './a.js';
+          console.log(a);
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `import { a } from "./a.js";
+        console.log(a);
+        const b = 'b';
+        console.log(b);`
+      );
+    });
+
+    test("strips unused exported function", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { a } from './lib.js';
+          console.log(a());
+        `,
+        "lib.js": `
+          export function a() { return 1; }
+          export function b() { return 2; }
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        function a() { return 1; }
+        console.log(a());
+        export {};
+        `
+      );
+    });
+
+    test("strips unconsumed import", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { a, b } from './lib.js';
+          console.log(a());
+        `,
+        "lib.js": `
+          export function a() { return 1; }
+          export function b() { return 2; }
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        function a() { return 1; }
+        console.log(a());
+        export {};
+        `
+      );
+    });
+
+    test("strips unconsumed default import", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import b, { a } from './lib.js';
+          console.log(a());
+        `,
+        "lib.js": `
+          export function a() { return 1; }
+          export default function () { return 2; }
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        function a() { return 1; }
+        console.log(a());
+        export {};
+        `
+      );
+    });
+
+    test("a function that's consumed by the bundle itself is not stripped", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { a } from './lib.js';
+          console.log(a());
+        `,
+        "lib.js": `
+          export function a() { return 1; }
+          export function b() { return 2; }
+          b();
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        function a() { return 1; }
+        function b() { return 2; }
+        b();
+        console.log(a());
+        export {};
+        `
+      );
+    });
+
+    test("strips function used only in removed function's body", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { a } from './lib.js';
+          console.log(a());
+        `,
+        "lib.js": `
+          export function a() { return 1; }
+          function helper() {
+            return 2;
+          }
+          export function b(options) { return helper(); }
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        function a() { return 1; }
+        console.log(a());
+        export {};
+        `
+      );
+    });
+
+    test("strips imported function used only in removed function's body", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { a } from './lib.js';
+          console.log(a());
+        `,
+        "lib.js": `
+          import { helper } from './two.js';
+          export function a() { return 1; }
+          export function b() { return helper(); }
+        `,
+        "two.js": `
+          export function helper() {
+            return 2;
+          }
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        function a() { return 1; }
+        console.log(a());
+        export {};
+        `
+      );
+    });
+
+    test("strips out unconsumed binding that is imported from another bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js", "a.js"] }`,
+        "index.js": `
+          import { b } from './lib.js';
+          console.log(b());
+        `,
+        "a.js": `
+          export const a = 1;
+        `,
+        "lib.js": `
+          import { a } from './a.js';
+          export function c() { return a; }
+          export function b() { return 1; }
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `function b() { return 1; }
+        console.log(b());
+        export {};
+        `
+      );
+    });
+
+    test("strips unconsumed variable", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { a } from './lib.js';
+          console.log(a());
+        `,
+        "lib.js": `
+          export function a() { return 1; }
+          let cache;
+          function helper() {
+            if (cache) { return cache; }
+            return cache = 1;
+          }
+          export function b(options) { return helper(); }
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        function a() { return 1; }
+        console.log(a());
+        export {};
+        `
+      );
+    });
+
+    test("strips unconsumed variable in a variable declaration that has more than 1 variable", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { a } from './lib.js';
+          console.log(a());
+        `,
+        "lib.js": `
+          let cache, aValue;
+          export function a() { return aValue; }
+          function helper() {
+            if (cache) { return cache; }
+            return cache = 1;
+          }
+          export function b(options) { return helper(); }
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let aValue;
+        function a() { return aValue; }
+        console.log(a());
+        export {};
+        `
+      );
+    });
+
+    test("strips unconsumed variable that was renamed because of a collision", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { a } from './lib.js';
+          const foo = 'bleep';
+          console.log(a() + foo);
+        `,
+        "lib.js": `
+          export function a() { return 1; }
+          let cache;
+          function helper() {
+            if (cache) { return cache; }
+            return cache = 1;
+          }
+          const foo = 'bar';
+          export function b(options) { return helper(); }
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        function a() { return 1; }
+        const foo = 'bleep';
+        console.log(a() + foo);
+        export {};
+        `
+      );
+    });
+
+    test("preserves side-effectful right-hand side when tree shaking unconsumed bindings", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { i } from './lib.js';
+          console.log(i());
+        `,
+        "lib.js": `
+          export function i() { return 1; }
+          let a = initCache(), b = true, c = 1, d = 'd', e = null, f = undefined, g = function() {}, h = class foo {};
+          function helper() {
+            return [a , b, c, d, e, f, g, h];
+          }
+          export function j(options) { return helper(); }
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        function i() { return 1; }
+        let a = initCache();
+        console.log(i());
+        export {};
+        `
+      );
+    });
+
+    test("Preserves a side effect in an expression context when the callee is a function expression", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { i } from './lib.js';
+          console.log(i());
+        `,
+        "lib.js": `
+          export function i() { return 1; }
+          function getNative(a, b) { return a[b]; }
+          var defineProperty = function () {
+            try {
+              var func = getNative(Object, 'defineProperty');
+              func({}, '', {});
+              return func;
+            } catch (e) {}
+          }();
+          export { defineProperty };
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        function i() { return 1; }
+        function getNative(a, b) { return a[b]; }
+        var defineProperty = function () {
+          try {
+            var func = getNative(Object, 'defineProperty');
+            func({}, '', {});
+            return func;
+          } catch (e) {}
+        }();
+        console.log(i());
+        export {};
+        `
+      );
+    });
+
+    test("Preserves bindings that are consumed by a preserved side effect that would otherwise be pruned", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { i } from './lib.js';
+          console.log(i());
+        `,
+        "lib.js": `
+          export function i() { return 1; }
+          class Cache {
+            constructor(opts) {
+              window.__cache = { bar: opts};
+            }
+          }
+          let b = 'foo';
+          let a = new Cache(b);
+          function getCache() {
+            return a;
+          }
+          export function j(options) { return getCache(); }
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        function i() { return 1; }
+        class Cache {
+          constructor(opts) {
+            window.__cache = { bar: opts};
+          }
+        }
+        let b = 'foo';
+        let a = new Cache(b);
+        console.log(i());
+        export {};
+        `
+      );
+    });
+
+    /*
+    test("module descriptions include original import info for local bindings that originally came from an import", async function (assert) {
+      await assert.setupFiles({
+        "index.js": `
+        import { foo } from './foo.js';
+        let bar = 3;
+        console.log(foo() + bar);
+      `,
+        "foo.js": `
+        import { bar } from './lib.js';
+        export function foo() { return bar; }
+        `,
+        "lib.js": `
+          export const bar = 2;
+        `,
+      });
+
+      let assignments = await makeBundleAssignments(assert.fs);
+      let { code, importAssignments } = combineModules(
+        url("dist/0.js"),
+        assignments
+      );
+      let parsed = parse(code);
+      if (parsed?.type !== "File") {
+        throw new Error(`unexpected babel output`);
+      }
+      let bundleDescription = describeFile(parsed, { importAssignments });
+      let nameDesc = bundleDescription.names.get(
+        "bar0"
+      ) as LocalNameDescription;
+      assert.deepEqual(nameDesc.original, {
+        moduleHref: url("lib.js").href,
+        exportedName: "bar",
+      });
+    });
+    */
   });
 
   QUnit.module("single-shot build", function () {

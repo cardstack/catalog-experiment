@@ -556,11 +556,7 @@ class ModuleRewriter {
     private sharedState: State,
     private assignments: BundleAssignment[]
   ) {
-    this.editor = new RegionEditor(
-      module.source,
-      module.desc,
-      this.unusedNameLike.bind(this)
-    );
+    this.editor = new RegionEditor(module.source, module.desc);
     let start = Date.now();
     this.rewriteScope();
     let time = Date.now() - start;
