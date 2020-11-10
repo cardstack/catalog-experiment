@@ -1782,6 +1782,535 @@ QUnit.module("module builder", function (origHooks) {
       );
     });
 
+    skip("removes unconsumed leading variable declarator from a declaration", function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let a = 1, b = 2;
+        console.log(b);
+        export {};
+      `);
+      keepAll(desc, editor);
+      editor.removeDeclaration("a");
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        let b = 2;
+        console.log(b);
+        export {};
+      `
+      );
+      */
+    });
+    skip("removes unconsumed trailing variable declarator from a declaration", function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let a = 1, b = 2;
+        export {};
+      `);
+      keepAll(desc, editor);
+      editor.removeDeclaration("b");
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        let a = 1;
+        export {};
+      `
+      );
+      */
+    });
+    skip("removes unconsumed adjacent variable declarators from a declaration", function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let a = 1, b = 2, c = 3, d = 4;
+        export {};
+      `);
+      keepAll(desc, editor);
+      editor.removeDeclaration("b");
+      editor.removeDeclaration("c");
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        let a = 1, d = 4;
+        export {};
+      `
+      );
+      */
+    });
+    skip("removes unconsumed first 2 variable declarators from a declaration", function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let a = 1, b = 2, c = 3, d = 4;
+        export {};
+      `);
+      keepAll(desc, editor);
+      editor.removeDeclaration("a");
+      editor.removeDeclaration("b");
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        let c = 3, d = 4;
+        export {};
+      `
+      );
+      */
+    });
+    skip("removes unconsumed declarator from a list that includes a mix of LVal and non-LVal declarators", function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let { a } = foo, b = 2, { c } = blah, d = 4;
+        export {};
+      `);
+      keepAll(desc, editor);
+      editor.removeDeclaration("b");
+      editor.removeDeclaration("c");
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        let { a } = foo, d = 4;
+        export {};
+        `
+      );
+      */
+    });
+    skip("removes all unconsumed declarators from a declaration and the declaration itself", function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let a = 1;
+        console.log(2);
+        export {};
+      `);
+      keepAll(desc, editor);
+      editor.removeDeclaration("a");
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        console.log(2);
+        export {};
+      `
+      );
+      */
+    });
+    skip("removes all unconsumed declarators in an LVal", function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let [ ...{ ...a } ] = foo;
+        console.log(2);
+        export {};
+      `);
+      keepAll(desc, editor);
+      editor.removeDeclaration("a");
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        console.log(2);
+        export {};
+      `
+      );
+      */
+    });
+    skip("removes unconsumed renamed declarators in an ObjectPattern LVal", function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let { x, y: a } = foo;
+        console.log(2);
+        export {};
+      `);
+      keepAll(desc, editor);
+      editor.removeDeclaration("a");
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        let { x } = foo;
+        console.log(2);
+        export {};
+      `
+      );
+      */
+    });
+    skip("removes unconsumed declarator in a nested ObjectPattern LVal", function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let { x, y: { a } } = foo;
+        console.log(2);
+        export {};
+      `);
+      keepAll(desc, editor);
+      editor.removeDeclaration("a");
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        let { x } = foo;
+        console.log(2);
+        export {};
+      `
+      );
+      */
+    });
+    skip("removes unconsumed declarator in an ArrayPattern LVal", function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let [ x, y, z ] = foo;
+        console.log(2);
+        export {};
+      `);
+      keepAll(desc, editor);
+      editor.removeDeclaration("x");
+      editor.removeDeclaration("y");
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        let [ , , z ] = foo;
+        console.log(2);
+        export {};
+      `
+      );
+      */
+    });
+    skip("removes unconsumed declarator in a nested ArrayPattern LVal", function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let [ x, [ a ] ] = foo;
+        console.log(2);
+        export {};
+      `);
+      keepAll(desc, editor);
+      editor.removeDeclaration("a");
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        let [ x ] = foo;
+        console.log(2);
+        export {};
+      `
+      );
+      */
+    });
+    skip("removes unconsumed declarator in a RestElement LVal", function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let [ x, ...y ] = foo;
+        console.log(2);
+        export {};
+      `);
+      keepAll(desc, editor);
+      editor.removeDeclaration("y");
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        let [ x ] = foo;
+        console.log(2);
+        export {};
+      `
+      );
+      */
+    });
+    skip("removes unconsumed declarator in a nested RestElement LVal", function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let [ x, ...[ ...y ]] = foo;
+        console.log(2);
+        export {};
+        `);
+      keepAll(desc, editor);
+      editor.removeDeclaration("y");
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        let [ x ] = foo;
+        console.log(2);
+        export {};
+      `
+      );
+      */
+    });
+    skip("removes unconsumed declarator in an AssignmentPattern LVal", function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let { x, y = 1 } = foo;
+        console.log(2);
+        export {};
+      `);
+      keepAll(desc, editor);
+      editor.removeDeclaration("y");
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        let { x } = foo;
+        console.log(2);
+        export {};
+      `
+      );
+      */
+    });
+    skip("removes unconsumed declarator in a nested AssignmentPattern LVal", function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let { x, b: [ y = 1 ] } = foo;
+        console.log(2);
+        export {};
+      `);
+      keepAll(desc, editor);
+      editor.removeDeclaration("y");
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        let { x } = foo;
+        console.log(2);
+        export {};
+      `
+      );
+      */
+    });
+    skip("preserves side-effectful right-hand side when there is only one side effect at the beginning of the list", async function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let a = initCache(), b = true, c = 1, d = 'd', e = null, f = undefined, g = function() {}, h = class foo {};
+        export {};
+      `);
+      keepAll(desc, editor);
+
+      editor.removeDeclaration("a");
+      editor.removeDeclaration("b");
+      editor.removeDeclaration("c");
+      editor.removeDeclaration("d");
+      editor.removeDeclaration("e");
+      editor.removeDeclaration("f");
+      editor.removeDeclaration("g");
+      editor.removeDeclaration("h");
+
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        initCache();
+        export {};
+        `
+      );
+      */
+    });
+    skip("preserves side-effectful right-hand side when there is only one side effect at the end of the list", async function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let b = true, c = 1, d = 'd', e = null, f = undefined, g = function() {}, h = class foo {}, a = initCache();
+        export {};
+        `);
+      keepAll(desc, editor);
+
+      editor.removeDeclaration("a");
+      editor.removeDeclaration("b");
+      editor.removeDeclaration("c");
+      editor.removeDeclaration("d");
+      editor.removeDeclaration("e");
+      editor.removeDeclaration("f");
+      editor.removeDeclaration("g");
+      editor.removeDeclaration("h");
+
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        initCache();
+        export {};
+        `
+      );
+      */
+    });
+
+    skip("preserves side-effectful right-hand side when there is only one side effect in the middle of the list", async function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let b = true, c = 1, d = 'd', e = null, a = initCache(), f = undefined, g = function() {}, h = class foo {};
+        export {};
+      `);
+      keepAll(desc, editor);
+
+      editor.removeDeclaration("a");
+      editor.removeDeclaration("b");
+      editor.removeDeclaration("c");
+      editor.removeDeclaration("d");
+      editor.removeDeclaration("e");
+      editor.removeDeclaration("f");
+      editor.removeDeclaration("g");
+      editor.removeDeclaration("h");
+
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        initCache();
+        export {};
+        `
+      );
+      */
+    });
+
+    skip("preserves side-effectful right-hand side when there are multiple effects in the list", async function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let a = initACache(), b = true, c = 1, d = 'd', e = initECache(), f = undefined, g = function() {}, h = class foo {};
+        export {};
+      `);
+      keepAll(desc, editor);
+
+      editor.removeDeclaration("a");
+      editor.removeDeclaration("b");
+      editor.removeDeclaration("c");
+      editor.removeDeclaration("d");
+      editor.removeDeclaration("e");
+      editor.removeDeclaration("f");
+      editor.removeDeclaration("g");
+      editor.removeDeclaration("h");
+
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        let unused0 = initACache(), unused1 = initECache();
+        export {};
+        `
+      );
+      */
+    });
+
+    skip("preserves side-effectful right-hand side when it is the only declarator in a declaration", async function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let a = initCache();
+        export {};
+      `);
+      keepAll(desc, editor);
+
+      editor.removeDeclaration("a");
+
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        initCache();
+        export {};
+        `
+      );
+      */
+    });
+
+    skip("preserves side-effectful right-hand side for ObjectPatten LVal", async function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let { x } = initCache();
+        export {};
+      `);
+      keepAll(desc, editor);
+
+      editor.removeDeclaration("x");
+
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        let { x: unused0 } = initCache();
+        export {};
+        `
+      );
+      */
+    });
+
+    skip("preserves side-effectful right-hand side for ArrayPatten LVal", async function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let [ x ] = initCache();
+        export {};
+      `);
+      keepAll(desc, editor);
+
+      editor.removeDeclaration("x");
+
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        let [ unused0 ] = initCache();
+        export {};
+        `
+      );
+      */
+    });
+
+    skip("preserves side-effectful right-hand side for RestElement LVal", async function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let { a: [ ...x ] } = initCache();
+        export {};
+      `);
+      keepAll(desc, editor);
+
+      editor.removeDeclaration("x");
+
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        let { a: [ ...unused0 ] }= initCache();
+        export {};
+        `
+      );
+      */
+    });
+
+    skip("preserves side-effectful right-hand side for multiple LVal identifiers", async function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let { x, y } = initCache();
+        export {};
+      `);
+      keepAll(desc, editor);
+
+      editor.removeDeclaration("x");
+      editor.removeDeclaration("y");
+
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        let { x: unused0, y: unused1 } = initCache();
+        export {};
+        `
+      );
+      */
+    });
+
+    skip("preserves side-effectful initializer in LVal", async function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let { x = initCache() } = foo;
+        export {};
+      `);
+      keepAll(desc, editor);
+
+      editor.removeDeclaration("x");
+
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        let { x: unused0 = initCache() } = foo;
+        export {};
+        `
+      );
+      */
+    });
+
+    skip("preserves side-effectful initializer in list that includes side-effectful LVal", async function () {
+      /*
+      let { desc, editor } = describeESModule(`
+        let { x = initCache() } = foo, y = 1, z = initZCache();
+        export {};
+      `);
+      keepAll(desc, editor);
+
+      editor.removeDeclaration("x");
+      editor.removeDeclaration("y");
+      editor.removeDeclaration("z");
+
+      assert.codeEqual(
+        editor.serialize(),
+        `
+        let { x: unused0 = initCache() } = foo, unused1 = initZCache();
+        export {};
+        `
+      );
+      */
+    });
+
     /*
     test("module descriptions include original import info for local bindings that originally came from an import", async function (assert) {
       await assert.setupFiles({

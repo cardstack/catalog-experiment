@@ -447,7 +447,12 @@ export class RegionBuilder {
         otherType === "AssignmentPattern"
       ) {
         return "around";
+      } else if (newType === "ExpressionStatement") {
+        return "around";
+      } else if (otherType === "ExpressionStatement") {
+        return "within";
       }
+
       throw new Error(
         `don't know how to break ties between ${newType} and ${otherType}`
       );
