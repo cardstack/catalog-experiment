@@ -6,10 +6,8 @@ import {
   CJSDescription,
   LocalExportDescription,
   ReexportExportDescription,
-  declarationMap,
 } from "../src/describe-file";
 import {
-  DeclarationCodeRegion,
   documentPointer,
   NamespaceMarker,
   notFoundPointer,
@@ -17,7 +15,7 @@ import {
 } from "../src/code-region";
 import { parse } from "@babel/core";
 
-const { test, skip } = QUnit;
+const { test } = QUnit;
 
 function keepAll(desc: FileDescription, editor: RegionEditor) {
   for (let i = 0; i < desc.regions.length; i++) {
@@ -172,8 +170,7 @@ QUnit.module("describe-file", function () {
     `);
     keepAll(desc, editor);
     let pointer = desc.regions.findIndex(
-      (r) =>
-        r.type === "declaration" && r.bindingDescription.declaredName === "a"
+      (r) => r.type === "declaration" && r.declaration.declaredName === "a"
     );
     let region = desc.regions[pointer];
     assert.ok(region, "a code region was created for the declaration");
@@ -198,8 +195,7 @@ QUnit.module("describe-file", function () {
     `);
     keepAll(desc, editor);
     let pointer = desc.regions.findIndex(
-      (r) =>
-        r.type === "declaration" && r.bindingDescription.declaredName === "b"
+      (r) => r.type === "declaration" && r.declaration.declaredName === "b"
     );
     let region = desc.regions[pointer];
     assert.ok(region, "a code region was created for the declaration");
@@ -224,8 +220,7 @@ QUnit.module("describe-file", function () {
     `);
     keepAll(desc, editor);
     let pointer = desc.regions.findIndex(
-      (r) =>
-        r.type === "declaration" && r.bindingDescription.declaredName === "c"
+      (r) => r.type === "declaration" && r.declaration.declaredName === "c"
     );
     let region = desc.regions[pointer];
     assert.ok(region, "a code region was created for the declaration");
@@ -249,24 +244,21 @@ QUnit.module("describe-file", function () {
     keepAll(desc, editor);
 
     let pointer = desc.regions.findIndex(
-      (r) =>
-        r.type == "declaration" && r.bindingDescription.declaredName === "x"
+      (r) => r.type == "declaration" && r.declaration.declaredName === "x"
     );
     let region = desc.regions[pointer];
     assert.ok(region, "a code region was created for the declaration");
     editor.replace(pointer, "a");
 
     pointer = desc.regions.findIndex(
-      (r) =>
-        r.type == "declaration" && r.bindingDescription.declaredName === "z"
+      (r) => r.type == "declaration" && r.declaration.declaredName === "z"
     );
     region = desc.regions[pointer];
     assert.ok(region, "a code region was created for the declaration");
     editor.replace(pointer, "b");
 
     pointer = desc.regions.findIndex(
-      (r) =>
-        r.type == "declaration" && r.bindingDescription.declaredName === "y"
+      (r) => r.type == "declaration" && r.declaration.declaredName === "y"
     );
     assert.equal(
       pointer,
@@ -290,15 +282,16 @@ QUnit.module("describe-file", function () {
     `);
     keepAll(desc, editor);
 
-    let sideEffects = desc.regions[documentPointer].dependsOn;
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
     assert.equal(sideEffects.size, 1);
     editor.replace([...sideEffects][0], "//CODE_REGION");
     assert.codeEqual(
       editor.serialize(),
       `
-      //CODE_REGION
-      export {};
-      `
+        //CODE_REGION
+        export {};
+        `
     );
   });
 
@@ -312,18 +305,19 @@ QUnit.module("describe-file", function () {
     `);
     keepAll(desc, editor);
 
-    let sideEffects = desc.regions[documentPointer].dependsOn;
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
     assert.equal(sideEffects.size, 2);
     editor.replace([...sideEffects][0], "//CODE_REGION_1");
     editor.replace([...sideEffects][1], "//CODE_REGION_2");
     assert.codeEqual(
       editor.serialize(),
       `
-      //CODE_REGION_1
-      const foo = "bar";
-      //CODE_REGION_2
-      export {};
-      `
+        //CODE_REGION_1
+        const foo = "bar";
+        //CODE_REGION_2
+        export {};
+        `
     );
   });
 
@@ -334,17 +328,19 @@ QUnit.module("describe-file", function () {
       export {};
     `);
     keepAll(desc, editor);
-    let [sideEffect] = [...desc.regions[documentPointer].dependsOn];
-    let { region } = declarationMap(desc).get("foo")!;
+    let document = desc.regions[documentPointer];
+    let [sideEffect] = [...document.dependsOn];
+    let { pointer } = desc.declarations.get("foo")!;
+    let region = desc.regions[pointer];
     assert.ok(region.dependsOn.has(sideEffect));
     editor.replace(sideEffect, "//CODE_REGION");
     assert.codeEqual(
       editor.serialize(),
       `
-      //CODE_REGION
-      const foo = "bar";
-      export {};
-      `
+          //CODE_REGION
+          const foo = "bar";
+          export {};
+          `
     );
   });
 
@@ -356,9 +352,10 @@ QUnit.module("describe-file", function () {
       }
       export {};
     `);
-    let { pointer: a } = declarationMap(desc).get("a")!;
-    let { region } = declarationMap(desc).get("printA")!;
-    assert.deepEqual([...region.dependsOn], [a]);
+    let { pointer: a } = desc.declarations.get("a")!;
+    let { pointer } = desc.declarations.get("printA")!;
+    let region = desc.regions[pointer];
+    assert.ok([...region.dependsOn].includes(a));
   });
 
   test("a code region declaration contains its references", async function (assert) {
@@ -370,9 +367,9 @@ QUnit.module("describe-file", function () {
       export {};
     `);
     keepAll(desc, editor);
-    let { region } = declarationMap(desc).get("a")!;
-    assert.equal(region.bindingDescription.references.length, 2);
-    for (let reference of region.bindingDescription.references) {
+    let { declaration } = desc.declarations.get("a")!;
+    assert.equal(declaration.references.length, 2);
+    for (let reference of declaration.references) {
       editor.replace(reference, "b");
     }
     assert.codeEqual(
@@ -393,17 +390,18 @@ QUnit.module("describe-file", function () {
       export {};
     `);
     keepAll(desc, editor);
-    assert.equal(desc.regions[documentPointer].dependsOn.size, 1);
-    let [sideEffect] = [...desc.regions[documentPointer].dependsOn];
-    let { region } = declarationMap(desc).get("a")!;
-    assert.equal(region.bindingDescription.sideEffects, sideEffect);
+    let document = desc.regions[documentPointer];
+    assert.equal(document.dependsOn.size, 1);
+    let [sideEffect] = [...document.dependsOn];
+    let { declaration } = desc.declarations.get("a")!;
+    assert.equal(declaration.sideEffects, sideEffect);
     editor.replace(sideEffect, "walkTheDog()");
     assert.codeEqual(
       editor.serialize(),
       `
-      let a = walkTheDog();
-      export {};
-      `
+        let a = walkTheDog();
+        export {};
+        `
     );
   });
 
@@ -470,11 +468,11 @@ QUnit.module("describe-file", function () {
       export default arrayMap;
     `);
     assert.ok(
-      declarationMap(desc).has("arrayMap"),
+      desc.declarations.has("arrayMap"),
       "module scoped binding in module description"
     );
     assert.notOk(
-      declarationMap(desc).has("array"),
+      desc.declarations.has("array"),
       "non-module scoped binding is not in module description"
     );
   });
@@ -488,10 +486,7 @@ QUnit.module("describe-file", function () {
       | ReexportExportDescription;
     assert.equal(exportDesc.type, "local");
     assert.equal(exportDesc.name, "x");
-    assert.equal(
-      declarationMap(desc).get("x")?.region.bindingDescription.type,
-      "local"
-    );
+    assert.equal(desc.declarations.get("x")?.declaration.type, "local");
   });
 
   test("default export class", function (assert) {
@@ -503,10 +498,7 @@ QUnit.module("describe-file", function () {
       | ReexportExportDescription;
     assert.equal(exportDesc.type, "local");
     assert.equal(exportDesc.name, "x");
-    assert.equal(
-      declarationMap(desc).get("x")?.region.bindingDescription.type,
-      "local"
-    );
+    assert.equal(desc.declarations.get("x")?.declaration.type, "local");
   });
 
   test("default export with no local name", function (assert) {
@@ -518,7 +510,8 @@ QUnit.module("describe-file", function () {
       | ReexportExportDescription;
     assert.equal(exportDesc.type, "local");
     assert.equal(exportDesc.name, "default");
-    let { region } = declarationMap(desc).get("default")!;
+    let { pointer } = desc.declarations.get("default")!;
+    let region = desc.regions[pointer];
     assert.equal(region.dependsOn.size, 0); // note that we don't depend on "foo" because it was not declared in the module scope
   });
 
@@ -542,39 +535,42 @@ QUnit.module("describe-file", function () {
     let { desc } = describeESModule(`
       import { x } from 'somewhere';
     `);
-    let out = declarationMap(desc).get("x");
-    assert.equal(out?.region.bindingDescription.type, "import");
-    if (out?.region.bindingDescription.type === "import") {
-      assert.equal(out.region.bindingDescription.importIndex, 0);
-      assert.equal(out.region.bindingDescription.importedName, "x");
+    let out = desc.declarations.get("x");
+    assert.equal(out?.declaration.type, "import");
+    if (out?.declaration.type === "import") {
+      assert.equal(out.declaration.importIndex, 0);
+      assert.equal(out.declaration.importedName, "x");
     }
-    assert.equal(desc.regions[documentPointer].dependsOn.size, 0);
+    let document = desc.regions[documentPointer];
+    assert.equal(document.dependsOn.size, 0);
   });
 
   test("imported namespace is discovered", function (assert) {
     let { desc } = describeESModule(`
       import * as x from 'somewhere';
     `);
-    let out = declarationMap(desc).get("x");
-    assert.equal(out?.region.bindingDescription.type, "import");
-    if (out?.region.bindingDescription.type === "import") {
-      assert.equal(out.region.bindingDescription.importIndex, 0);
-      assert.equal(out.region.bindingDescription.importedName, NamespaceMarker);
+    let out = desc.declarations.get("x");
+    assert.equal(out?.declaration.type, "import");
+    if (out?.declaration.type === "import") {
+      assert.equal(out.declaration.importIndex, 0);
+      assert.equal(out.declaration.importedName, NamespaceMarker);
     }
-    assert.equal(desc.regions[documentPointer].dependsOn.size, 0);
+    let document = desc.regions[documentPointer];
+    assert.equal(document.dependsOn.size, 0);
   });
 
   test("default imported names are discovered", function (assert) {
     let { desc } = describeESModule(`
       import x from 'somewhere';
     `);
-    let out = declarationMap(desc).get("x");
-    assert.equal(out?.region.bindingDescription.type, "import");
-    if (out?.region.bindingDescription.type === "import") {
-      assert.equal(out.region.bindingDescription.importIndex, 0);
-      assert.equal(out.region.bindingDescription.importedName, "default");
+    let out = desc.declarations.get("x");
+    assert.equal(out?.declaration.type, "import");
+    if (out?.declaration.type === "import") {
+      assert.equal(out.declaration.importIndex, 0);
+      assert.equal(out.declaration.importedName, "default");
     }
-    assert.equal(desc.regions[documentPointer].dependsOn.size, 0);
+    let document = desc.regions[documentPointer];
+    assert.equal(document.dependsOn.size, 0);
   });
 
   test("local names are discovered", function (assert) {
@@ -582,10 +578,7 @@ QUnit.module("describe-file", function () {
       function x() {}
       export {};
     `);
-    assert.equal(
-      declarationMap(desc).get("x")?.region.bindingDescription.type,
-      "local"
-    );
+    assert.equal(desc.declarations.get("x")?.declaration.type, "local");
   });
 
   test("local function is used by export", function (assert) {
@@ -595,19 +588,11 @@ QUnit.module("describe-file", function () {
         return x();
       }
     `);
-    let out = declarationMap(desc).get("y");
-    assert.equal(out?.region.bindingDescription.type, "local");
-    if (out?.region.bindingDescription.type === "local") {
-      assert.ok(
-        [...out.region.dependsOn]
-          .map(
-            (p) =>
-              (desc.regions[p] as DeclarationCodeRegion)?.bindingDescription
-                .declaredName
-          )
-          .includes("x")
-      );
-    }
+    let out = desc.declarations.get("y");
+    let region = desc.regions[out!.pointer];
+    let { pointer: xPointer } = desc.declarations.get("x")!;
+    assert.equal(out?.declaration.type, "local");
+    assert.ok(region.dependsOn.has(xPointer));
   });
 
   test("local function is used by module", function (assert) {
@@ -616,11 +601,12 @@ QUnit.module("describe-file", function () {
       x();
       export {};
     `);
-    let out = declarationMap(desc).get("x")!;
+    let document = desc.regions[documentPointer];
+    let out = desc.declarations.get("x")!;
     let { pointer } = out;
-    assert.equal(out.region.bindingDescription.type, "local");
-    if (out?.region.bindingDescription.type === "local") {
-      assert.equal(desc.regions[documentPointer].dependsOn.has(pointer), true);
+    assert.equal(out.declaration.type, "local");
+    if (out?.declaration.type === "local") {
+      assert.equal(document.dependsOn.has(pointer), true);
     }
   });
 
@@ -633,12 +619,13 @@ QUnit.module("describe-file", function () {
         }
       }
     `);
-    let out = declarationMap(desc).get("Q")!;
-    let x = declarationMap(desc).get("x")!;
-    let { pointer } = x;
-    assert.equal(out.region.bindingDescription.type, "local");
-    if (out.region.bindingDescription.type === "local") {
-      assert.ok(out.region.dependsOn.has(pointer));
+    let out = desc.declarations.get("Q")!;
+    let x = desc.declarations.get("x")!;
+    let { pointer: xPointer } = x;
+    let region = desc.regions[out.pointer];
+    assert.equal(out.declaration.type, "local");
+    if (out.declaration.type === "local") {
+      assert.ok(region.dependsOn.has(xPointer));
     }
     assert.ok(desc.exports.get("default")?.type === "local");
     assert.ok(
@@ -648,21 +635,21 @@ QUnit.module("describe-file", function () {
     );
   });
 
-  skip("variables consumed in LVal", function (assert) {
+  test("variables consumed in LVal", function (assert) {
     let { desc } = describeESModule(`
       let a = foo();
       let { x = a, y = x } = bar();
       export {};
     `);
-    let out = declarationMap(desc).get("x")!;
+    let out = desc.declarations.get("x")!;
     let { pointer: xPointer } = out;
-    let a = declarationMap(desc).get("a")!;
+    let a = desc.declarations.get("a")!;
     let { pointer: aPointer } = a;
-    assert.ok(out.region.dependsOn.has(aPointer));
-
-    out = declarationMap(desc).get("y")!;
-    assert.ok(out.region.dependsOn.has(xPointer));
-    assert.notOk(out.region.dependsOn.has(aPointer));
+    let xRegion = desc.regions[out.pointer];
+    assert.ok(xRegion.dependsOn.has(aPointer));
+    out = desc.declarations.get("y")!;
+    let yRegion = desc.regions[out.pointer];
+    assert.ok(yRegion.dependsOn.has(xPointer));
   });
 
   test("renaming a function declaration", function (assert) {
@@ -690,7 +677,7 @@ QUnit.module("describe-file", function () {
       function x({ a }) {}
       export {};
     `);
-    assert.ok(!declarationMap(desc).has("a"));
+    assert.ok(desc.declarations.has("a"));
   });
 
   test("function default arguments consume other bindings", function (assert) {
@@ -699,10 +686,11 @@ QUnit.module("describe-file", function () {
       function x(y=a) {}
       export {};
     `);
-    let out = declarationMap(desc).get("x")!;
-    let a = declarationMap(desc).get("a")!;
+    let out = desc.declarations.get("x")!;
+    let region = desc.regions[out.pointer];
+    let a = desc.declarations.get("a")!;
     let { pointer } = a;
-    assert.ok(out.region.dependsOn.has(pointer));
+    assert.ok(region.dependsOn.has(pointer));
   });
 
   test("code regions for an imported name can be used to replace it", function (assert) {

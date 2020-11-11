@@ -13,7 +13,6 @@ import { recipesURL } from "../src/recipes";
 import { extractDescriptionFromSource } from "../src/description-encoder";
 import { Options } from "../src/nodes/project";
 import { FileDescriptor } from "../src/filesystem-drivers/filesystem-driver";
-import { declarationMap } from "../src/describe-file";
 
 Logger.setLogLevel("debug");
 Logger.echoInConsole(true);
@@ -1226,7 +1225,8 @@ QUnit.module("module builder", function (origHooks) {
           import obj from './a.js';
           console.log(JSON.stringify(obj));
         `,
-        "a.js": `const json = { foo: 'bar' };
+        "a.js": `
+          const json = { foo: 'bar' };
           const { foo } = json;
           export default json;
           export { foo };
@@ -3447,7 +3447,7 @@ QUnit.module("module builder", function (origHooks) {
       ).readText();
       let { desc } = extractDescriptionFromSource(bundleSrc);
       let {
-        region: { bindingDescription },
+        region: { declaration: bindingDescription },
       } = declarationMap(desc!).get("puppies")!;
       assert.equal(bindingDescription.type, "local");
       if (bindingDescription.type === "local") {
@@ -3501,7 +3501,7 @@ QUnit.module("module builder", function (origHooks) {
       ).readText();
       let { desc } = extractDescriptionFromSource(nextBuildSrc);
       let {
-        region: { bindingDescription },
+        region: { declaration: bindingDescription },
       } = declarationMap(desc!).get("puppies")!;
       assert.equal(bindingDescription.type, "local");
       if (bindingDescription.type === "local") {

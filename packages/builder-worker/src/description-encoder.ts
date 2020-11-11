@@ -10,23 +10,34 @@ import {
 } from "base64-arraybuffer";
 import {
   ModuleDescription,
-  NamespaceMarker,
   ImportDescription,
   ExportDescription,
-  LocalNameDescription,
-  ImportedNameDescription,
   isExportAllMarker,
   ExportAllMarker,
+  declarationsMap,
 } from "./describe-file";
 import isEqual from "lodash/isEqual";
 import invert from "lodash/invert";
-import { CodeRegion } from "./code-region";
+import {
+  DeclarationCodeRegion,
+  GeneralCodeRegion,
+  ImportCodeRegion,
+  NamespaceMarker,
+  ReferenceCodeRegion,
+} from "./code-region";
 import { assertNever } from "@catalogjs/shared/util";
 
 const annotationStart = `\n/*====catalogjs annotation start====\n`;
 const annotationEnd = `\n====catalogjs annotation end====*/`;
 const annotationRegex = /\/\*====catalogjs annotation start====\n(.+)\n====catalogjs annotation end====\*\/\s*$/;
 const exportAllMarkerRegex = /^\{([^}]+)\}$/;
+
+const regionTypeShorthand = {
+  general: "g",
+  reference: "r",
+  import: "i",
+  declaration: "d",
+};
 
 const moduleDescLegend = [
   "imports", // array of import descriptions
@@ -36,13 +47,38 @@ const moduleDescLegend = [
   "regions", // array of code regions
 ];
 
-const codeRegionLegend = [
+const baseCodeRegionLegend = [
+  "type", // "r" = "reference", "g" = "general", "i" = "import", "d" = "declaration"
   "start", // number
   "end", // number
   "firstChild", // number | null
   "nextSibling", // number | null
   "shorthand", // "i" = "import" | "e" = "export" | "o" = "object" | false
+  "dependsOn", // Set<number>
+];
+
+const generalCodeRegionLegend = [
+  ...baseCodeRegionLegend,
   "preserveGaps", // boolean
+];
+
+const declarationCodeRegionLegend = [...generalCodeRegionLegend, "declaration"];
+
+const importCodeRegionLegend = [
+  ...generalCodeRegionLegend,
+  "importIndex", // number
+];
+
+const referenceCodeRegionLegend = [...baseCodeRegionLegend];
+
+const declarationLegend = [
+  "type", // "l" = local, "i" = import
+  "declaredName", // string,
+  "references", // [number]
+  "sideEffects", // number | null
+  "original", // [moduleHref: string, exportedName: string ] | null
+  "importIndex", // number | null
+  "importedName", // string | { n: true }
 ];
 
 const importDescLegend = [
@@ -64,20 +100,6 @@ const exportDescLegend = [
   "name", // string | { n: true }
   "exportRegion", // number
   "importIndex", // number | null
-];
-
-const nameDescLegend = [
-  "type", // "l" = local, "i" = import, "r" = require
-  "dependsOn", // string[]
-  "usedByModule", // boolean
-  "declaration", // number
-  "declarationSideEffects", // number | null
-  "references", // number[]
-  "original", // [moduleHref: string, exportedName: string | { n:true} ]
-  "importIndex", // number
-  "requireIndex", // number
-  "name", // string | { n: true }
-  "bindingsConsumedByDeclarationSideEffects", // string[]
 ];
 
 interface Pojo {
@@ -139,31 +161,49 @@ function encodeModuleDescription(desc: ModuleDescription): string {
           )
         );
         break;
-      case "names":
-        let names: Pojo = {};
-        for (let [key, val] of desc.names) {
-          names[key] = encodeObj(
-            val,
-            nameDescLegend,
-            {
-              type: { local: "l", import: "i" },
-            },
-            {
-              original: {
-                legend: ["moduleHref", "exportedName"],
-              },
-            }
-          );
-        }
-        encoded.push(names);
-        break;
       case "regions":
         encoded.push(
-          desc.regions.map((r) =>
-            encodeObj(r, codeRegionLegend, {
-              shorthand: { import: "i", export: "e", object: "o" },
-            })
-          )
+          desc.regions.map((r) => {
+            switch (r.type) {
+              case "general":
+                return encodeObj(r, generalCodeRegionLegend, {
+                  type: { ...regionTypeShorthand },
+                  shorthand: { import: "i", export: "e", object: "o" },
+                });
+              case "reference":
+                return encodeObj(r, referenceCodeRegionLegend, {
+                  type: { ...regionTypeShorthand },
+                  shorthand: { import: "i", export: "e", object: "o" },
+                });
+              case "import":
+                return encodeObj(r, importCodeRegionLegend, {
+                  type: { ...regionTypeShorthand },
+                  shorthand: { import: "i", export: "e", object: "o" },
+                });
+              case "declaration":
+                return encodeObj(
+                  r,
+                  declarationCodeRegionLegend,
+                  {
+                    type: { ...regionTypeShorthand },
+                    shorthand: { import: "i", export: "e", object: "o" },
+                  },
+                  {
+                    declaration: {
+                      legend: declarationLegend,
+                      shorthand: { type: { import: "i", local: "l" } },
+                      encodeProps: {
+                        original: {
+                          legend: ["moduleHref", "exportedName"],
+                        },
+                      },
+                    },
+                  }
+                );
+              default:
+                assertNever(r);
+            }
+          })
         );
         break;
       default:
@@ -182,7 +222,6 @@ function decodeModuleDescription(encoded: string): ModuleDescription {
   let imports: ModuleDescription["imports"] = [];
   let exports: ModuleDescription["exports"] = new Map();
   let exportRegions: ModuleDescription["exportRegions"] = [];
-  let names: ModuleDescription["names"] = new Map();
   let regions: ModuleDescription["regions"] = [];
 
   for (let [index, prop] of moduleDescLegend.entries()) {
@@ -215,45 +254,71 @@ function decodeModuleDescription(encoded: string): ModuleDescription {
           })
         );
         break;
-      case "names":
-        for (let [key, val] of Object.entries(value)) {
-          if (!Array.isArray(val)) {
-            throw new Error(
-              `bug: expecting object value to be an array but it wasn't`
-            );
-          }
-          names.set(
-            key,
-            decodeArray(
-              val,
-              nameDescLegend,
-              {
-                type: { local: "l", import: "i" },
-              },
-              {
-                dependsOn: "Set",
-                bindingsConsumedByDeclarationSideEffects: "Set",
-              },
-              {
-                original: {
-                  legend: ["moduleHref", "exportedName"],
-                },
-              }
-            ) as LocalNameDescription | ImportedNameDescription
-          );
-        }
-        break;
       case "regions":
-        regions = value.map(
-          (v: any[]) =>
-            decodeArray(v, codeRegionLegend, {
-              shorthand: { import: "i", export: "e", object: "o" },
-            }) as CodeRegion
-        );
+        regions = value.map((v: any[]) => {
+          let type = decodeRegionType(v[0]);
+          switch (type) {
+            case "general":
+              return decodeArray(
+                v,
+                generalCodeRegionLegend,
+                {
+                  type: { ...regionTypeShorthand },
+                  shorthand: { import: "i", export: "e", object: "o" },
+                },
+                { dependsOn: "Set" }
+              ) as GeneralCodeRegion;
+            case "reference":
+              return decodeArray(
+                v,
+                referenceCodeRegionLegend,
+                {
+                  type: { ...regionTypeShorthand },
+                  shorthand: { import: "i", export: "e", object: "o" },
+                },
+                { dependsOn: "Set" }
+              ) as ReferenceCodeRegion;
+            case "import":
+              return decodeArray(
+                v,
+                importCodeRegionLegend,
+                {
+                  type: { ...regionTypeShorthand },
+                  shorthand: { import: "i", export: "e", object: "o" },
+                },
+                { dependsOn: "Set" }
+              ) as ImportCodeRegion;
+            case "declaration":
+              return decodeArray(
+                v,
+                declarationCodeRegionLegend,
+                {
+                  type: { ...regionTypeShorthand },
+                  shorthand: { import: "i", export: "e", object: "o" },
+                },
+                { dependsOn: "Set" },
+                {
+                  declaration: {
+                    legend: declarationLegend,
+                    shorthand: { type: { import: "i", local: "l" } },
+                    decodeProps: {
+                      original: {
+                        legend: ["moduleHref", "exportedName"],
+                      },
+                    },
+                  },
+                }
+              ) as DeclarationCodeRegion;
+            default:
+              throw new Error(
+                `bug: don't know how to decode region type '${type}'`
+              );
+          }
+        });
         break;
       default:
         throw new Error(
-          `bug: don't know how to encode ModuleDescription property '${prop}'`
+          `bug: don't know how to decode ModuleDescription property '${prop}'`
         );
     }
   }
@@ -262,9 +327,20 @@ function decodeModuleDescription(encoded: string): ModuleDescription {
     imports,
     exports,
     exportRegions,
-    names,
+    declarations: declarationsMap(regions),
     regions,
   };
+}
+
+function decodeRegionType(e: string) {
+  let [type] =
+    Object.entries(regionTypeShorthand)
+      .find(([, value]) => value === e)
+      ?.map(([key]) => key) ?? [];
+  if (!type) {
+    throw new Error(`cannot decode region type ${e}`);
+  }
+  return type;
 }
 
 const encodedNamespaceMarker = Object.freeze({ n: true });

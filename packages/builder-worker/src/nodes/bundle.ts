@@ -5,12 +5,11 @@ import {
   isCyclicModuleResolution,
   Resolution,
 } from "./resolution";
+import { getExports } from "../describe-file";
 import {
-  getExports,
-  DeclarationCache,
-  getDeclarations,
-} from "../describe-file";
-import { ImportedBindingDescription, NamespaceMarker } from "../code-region";
+  ImportedDeclarationDescription,
+  NamespaceMarker,
+} from "../code-region";
 import { EntrypointsJSONNode, Entrypoint, HTMLEntrypoint } from "./entrypoint";
 import { makeURLEndInDir } from "../path";
 import { Resolver } from "../resolver";
@@ -182,8 +181,6 @@ export class Assigner {
       })
     );
 
-    // TODO need to share this cache amongst the functions in this module...
-    let cache: DeclarationCache = new Map();
     let entrypoint = this.entrypoints.get(module.url.href);
     if (entrypoint) {
       // base case: we are an entrypoint
@@ -203,18 +200,19 @@ export class Assigner {
         }
       } else {
         for (let consumer of consumers) {
-          let declarations = getDeclarations(consumer.module, cache);
+          let { declarations } = consumer.module.desc;
           let myIndex = consumer.module.resolvedImports.findIndex(
             (m) => m.url.href === module.url.href
           );
           for (let importDeclaration of [...declarations.values()]
             .filter(
-              ({ region: { bindingDescription: desc } }) =>
-                desc.type === "import" && desc.importIndex === myIndex
+              ({ declaration }) =>
+                declaration.type === "import" &&
+                declaration.importIndex === myIndex
             )
             .map(
-              ({ region }) => region.bindingDescription
-            ) as ImportedBindingDescription[]) {
+              ({ declaration }) => declaration
+            ) as ImportedDeclarationDescription[]) {
             let [exportedName] =
               [...getExports(consumer.module).entries()].find(
                 ([, { desc: exportDesc }]) =>
@@ -267,17 +265,12 @@ export class Assigner {
           (c) =>
             c.internalAssignment.assignment.bundleURL.href !== bundleURL.href
         )) {
-          let declarations = getDeclarations(externalConsumer.module, cache);
-          for (let [
-            name,
-            {
-              region: { bindingDescription: desc },
-            },
-          ] of declarations.entries()) {
+          let { declarations } = externalConsumer.module.desc;
+          for (let [name, { declaration }] of declarations.entries()) {
             if (
-              desc.type !== "import" ||
-              externalConsumer.module.resolvedImports[desc.importIndex].url
-                .href !== module.url.href
+              declaration.type !== "import" ||
+              externalConsumer.module.resolvedImports[declaration.importIndex]
+                .url.href !== module.url.href
             ) {
               continue;
             }

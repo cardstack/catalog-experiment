@@ -1,11 +1,6 @@
 import { BuilderNode, Value, NextNode, NodeOutput } from "./common";
 import { makeNonCyclic, ModuleResolution, Resolution } from "./resolution";
-import {
-  getExports,
-  DeclarationCache,
-  getDeclarations,
-  getExportDesc,
-} from "../describe-file";
+import { getExports, getExportDesc } from "../describe-file";
 import {
   documentPointer,
   isNamespaceMarker,
@@ -23,9 +18,6 @@ import { maybeRelativeURL } from "../path";
 
 export class CombineModulesNode implements BuilderNode {
   cacheKey: CombineModulesNode;
-  // TODO refactor the module description so that we don't need to pass around
-  // this declaration cache...
-  private declarationCache: DeclarationCache = new Map();
   constructor(
     private bundle: URL,
     private bundleAssignmentsNode: BundleAssignmentsNode
@@ -52,22 +44,14 @@ export class CombineModulesNode implements BuilderNode {
         assignments.find((a) => a.module.url.href === module.url.href)
           ?.bundleURL.href === this.bundle.href
     );
-    let exposed = exposedRegions(
-      this.bundle,
-      assignments,
-      this.declarationCache
-    );
+    let exposed = exposedRegions(this.bundle, assignments);
 
     let editors: Map<string, RegionEditor> = new Map();
     let headState = new HeadState(moduleResolutions);
     for (let module of moduleResolutions) {
       editors.set(
         module.url.href,
-        new RegionEditor(
-          module.source,
-          module.desc,
-          this.declarationCache.get(module.url.href)
-        )
+        new RegionEditor(module.source, module.desc)
       );
     }
     let ownAssignments = assignments.filter(
@@ -79,8 +63,7 @@ export class CombineModulesNode implements BuilderNode {
         module,
         pointer,
         editors,
-        ownAssignments,
-        this.declarationCache
+        ownAssignments
       );
     }
 
@@ -98,8 +81,7 @@ export class CombineModulesNode implements BuilderNode {
         firstModule,
         this.bundle,
         editors,
-        assignments,
-        this.declarationCache
+        assignments
       ),
     };
   }
@@ -189,15 +171,11 @@ function discoverIncludedRegions(
   module: Resolution,
   pointer: RegionPointer,
   editors: Map<string, RegionEditor>,
-  ownAssignments: BundleAssignment[],
-  declarationCache: DeclarationCache
+  ownAssignments: BundleAssignment[]
 ) {
   let region = module.desc.regions[pointer];
-  if (
-    region.type === "declaration" &&
-    region.bindingDescription.type === "import"
-  ) {
-    let localDesc = region.bindingDescription;
+  if (region.type === "declaration" && region.declaration.type === "import") {
+    let localDesc = region.declaration;
     let importedModule = makeNonCyclic(module).resolvedImports[
       localDesc.importIndex
     ];
@@ -206,8 +184,7 @@ function discoverIncludedRegions(
       importedName,
       importedModule,
       module,
-      ownAssignments,
-      declarationCache
+      ownAssignments
     );
     if (source.type === "resolved") {
       discoverIncludedRegions(
@@ -215,8 +192,7 @@ function discoverIncludedRegions(
         source.module,
         source.pointer,
         editors,
-        ownAssignments,
-        declarationCache
+        ownAssignments
       );
     } else {
       let consumingModule = makeNonCyclic(source.consumingModule);
@@ -241,8 +217,7 @@ function discoverIncludedRegions(
           bundle,
           source.importedFromModule,
           editors,
-          ownAssignments,
-          declarationCache
+          ownAssignments
         );
         return; // don't include the dependsOn in this signal
       } else {
@@ -264,8 +239,7 @@ function discoverIncludedRegions(
       module,
       depPointer,
       editors,
-      ownAssignments,
-      declarationCache
+      ownAssignments
     );
   }
 }
@@ -274,8 +248,7 @@ function discoverIncludedRegionsForNamespace(
   bundle: URL,
   module: Resolution,
   editors: Map<string, RegionEditor>,
-  ownAssignments: BundleAssignment[],
-  declarationCache: DeclarationCache
+  ownAssignments: BundleAssignment[]
 ) {
   let exports = getExports(module);
   for (let [exportName, { module: sourceModule }] of exports.entries()) {
@@ -283,8 +256,7 @@ function discoverIncludedRegionsForNamespace(
       exportName,
       sourceModule,
       module,
-      ownAssignments,
-      declarationCache
+      ownAssignments
     );
     if (source.type === "resolved") {
       discoverIncludedRegions(
@@ -292,8 +264,7 @@ function discoverIncludedRegionsForNamespace(
         source.module,
         source.pointer,
         editors,
-        ownAssignments,
-        declarationCache
+        ownAssignments
       );
     } else {
       // we mark the namespace import region as something we want to keep as a
@@ -316,8 +287,7 @@ function discoverIncludedRegionsForNamespace(
           bundle,
           source.importedFromModule,
           editors,
-          ownAssignments,
-          declarationCache
+          ownAssignments
         );
       } else {
         // we mark the external bundle import region as something we want to keep
@@ -340,7 +310,6 @@ class AppendModuleNode implements BuilderNode {
     private bundle: URL,
     private editors: Map<string, RegionEditor>,
     private bundleAssignments: BundleAssignment[],
-    private declarationCache: DeclarationCache,
     private rewriters: ModuleRewriter[] = []
   ) {
     this.cacheKey = `append-module-node:${this.bundle.href}:${
@@ -357,8 +326,7 @@ class AppendModuleNode implements BuilderNode {
       this.module,
       this.state,
       this.bundleAssignments,
-      this.editor,
-      this.declarationCache
+      this.editor
     );
     let rewriters = [rewriter, ...this.rewriters];
     let nextModule = this.state.nextModule();
@@ -370,7 +338,6 @@ class AppendModuleNode implements BuilderNode {
           this.bundle,
           this.editors,
           this.bundleAssignments,
-          this.declarationCache,
           rewriters
         ),
       };
@@ -381,7 +348,6 @@ class AppendModuleNode implements BuilderNode {
           this.bundle,
           this.editors,
           this.bundleAssignments,
-          this.declarationCache,
           rewriters
         ),
       };
@@ -396,7 +362,6 @@ class AppendImportsAndExportsNode implements BuilderNode {
     private bundle: URL,
     private editors: Map<string, RegionEditor>,
     private bundleAssignments: BundleAssignment[],
-    private declarationCache: DeclarationCache,
     private rewriters: ModuleRewriter[]
   ) {
     this.cacheKey = `append-imports-exports-node:${
@@ -413,8 +378,7 @@ class AppendImportsAndExportsNode implements BuilderNode {
       this.bundle,
       this.bundleAssignments,
       this.state,
-      this.editors,
-      this.declarationCache
+      this.editors
     );
     for (let [bundleHref, mapping] of imports.entries()) {
       let importDeclaration: string[] = [];
@@ -460,8 +424,7 @@ class AppendImportsAndExportsNode implements BuilderNode {
     let { exports, reexports, exportAlls } = assignedExports(
       this.bundle,
       this.bundleAssignments,
-      this.state,
-      this.declarationCache
+      this.state
     );
     let exportDeclarations: string[] = [];
     if (exports.size > 0) {
@@ -527,8 +490,7 @@ class ModuleRewriter {
     private module: ModuleResolution,
     private state: HeadState,
     bundleAssignments: BundleAssignment[],
-    private editor: RegionEditor,
-    private declarationCache: DeclarationCache
+    private editor: RegionEditor
   ) {
     this.ownAssignments = bundleAssignments.filter(
       (a) => a.bundleURL.href === this.bundle.href
@@ -542,13 +504,11 @@ class ModuleRewriter {
   }
 
   rewriteScope(): void {
-    let declarations = getDeclarations(this.module, this.declarationCache);
+    let { declarations } = this.module.desc;
     if (declarations) {
       for (let [
         localName,
-        {
-          region: { bindingDescription: localDesc },
-        },
+        { declaration: localDesc },
       ] of declarations.entries()) {
         let assignedName: string | undefined;
         if (localDesc.type === "import") {
@@ -559,8 +519,7 @@ class ModuleRewriter {
             localDesc.importedName,
             importedModule,
             this.module,
-            this.ownAssignments,
-            this.declarationCache
+            this.ownAssignments
           );
           if (source.type === "resolved") {
             assignedName = this.maybeAssignImportName(
@@ -609,18 +568,17 @@ class ModuleRewriter {
       let region = this.module.desc.regions[pointer];
       if (
         region.type !== "declaration" ||
-        region.bindingDescription.type !== "import"
+        region.declaration.type !== "import"
       ) {
         continue;
       }
-      let { bindingDescription: desc } = region;
+      let { declaration: desc } = region;
       let importedModule = this.module.resolvedImports[desc.importIndex];
       let source = resolveDeclaration(
         desc.importedName,
         importedModule,
         this.module,
-        this.ownAssignments,
-        this.declarationCache
+        this.ownAssignments
       );
 
       if (source.type === "resolved") {
@@ -661,8 +619,7 @@ class ModuleRewriter {
           exportedName,
           sourceModule,
           sourceModule,
-          this.ownAssignments,
-          this.declarationCache
+          this.ownAssignments
         );
         if (namespaceItemSource.type === "resolved") {
           // the module whose binding we are including in this manufactured
@@ -724,7 +681,7 @@ class ModuleRewriter {
   private unusedNameLike(name: string): string {
     let candidate = name;
     let counter = 0;
-    let declarations = getDeclarations(this.module, this.declarationCache);
+    let { declarations } = this.module.desc;
     while (
       (candidate !== name && declarations.has(candidate)) ||
       this.state.usedNames.has(candidate)
@@ -759,8 +716,7 @@ export interface ExposedRegionInfo {
 
 function exposedRegions(
   bundle: URL,
-  bundleAssignments: BundleAssignment[],
-  declarationCache: DeclarationCache
+  bundleAssignments: BundleAssignment[]
 ): ExposedRegionInfo[] {
   let results: ExposedRegionInfo[] = [];
   let ownAssignments = bundleAssignments.filter(
@@ -768,7 +724,8 @@ function exposedRegions(
   );
   for (let assignment of ownAssignments) {
     let { module }: { module: Resolution } = assignment;
-    let moduleDependencies = module.desc.regions[documentPointer].dependsOn;
+    let document = module.desc.regions[documentPointer];
+    let moduleDependencies = document.dependsOn;
     if (moduleDependencies.size > 0) {
       for (let moduleDependency of moduleDependencies) {
         results.push({
@@ -780,13 +737,7 @@ function exposedRegions(
     }
 
     for (let [original, exposed] of assignment.exposedNames) {
-      let source = resolveDeclaration(
-        original,
-        module,
-        module,
-        ownAssignments,
-        declarationCache
-      );
+      let source = resolveDeclaration(original, module, module, ownAssignments);
       if (source.type === "resolved") {
         results.push({
           module: source.module,
@@ -805,8 +756,7 @@ function exposedRegions(
 function assignedExports(
   bundle: URL,
   assignments: BundleAssignment[],
-  state: HeadState,
-  cache: DeclarationCache
+  state: HeadState
 ): {
   exports: Map<string, string>; // outside name -> inside name
   reexports: Map<string, Map<string, string>>; // bundle href -> [outside name => inside name]
@@ -821,13 +771,7 @@ function assignedExports(
   for (let assignment of ownAssignments) {
     let { module } = assignment;
     for (let [original, exposedAs] of assignment.exposedNames.entries()) {
-      let source = resolveDeclaration(
-        original,
-        module,
-        module,
-        ownAssignments,
-        cache
-      );
+      let source = resolveDeclaration(original, module, module, ownAssignments);
       if (source.type === "resolved") {
         let assignedName = state.nameAssignments
           .get(source.module.url.href)
@@ -851,8 +795,7 @@ function assignedImports(
   bundle: URL,
   assignments: BundleAssignment[],
   state: HeadState,
-  editors: Map<string, RegionEditor>,
-  cache: DeclarationCache
+  editors: Map<string, RegionEditor>
 ): Map<string, Map<string | NamespaceMarker, string> | null> {
   // bundleHref => <exposedName => local name> if the inner map is null then
   // this is a side effect only import
@@ -898,7 +841,7 @@ function assignedImports(
         continue;
       }
 
-      let { bindingDescription: desc } = region;
+      let { declaration: desc } = region;
       if (desc.type === "local") {
         continue;
       }
@@ -908,8 +851,7 @@ function assignedImports(
         desc.importedName,
         importedModule,
         module,
-        ownAssignments,
-        cache
+        ownAssignments
       );
       if (source.type === "resolved") {
         continue;
@@ -1002,15 +944,13 @@ function resolveDeclaration(
   importedName: string | NamespaceMarker,
   importedFromModule: Resolution,
   consumingModule: Resolution,
-  ownAssignments: BundleAssignment[],
-  cache: DeclarationCache
+  ownAssignments: BundleAssignment[]
 ): ResolvedResult | UnresolvedResult {
   if (isNamespaceMarker(importedName)) {
     let importedPointer = pointerForImport(
       importedName,
       importedFromModule,
-      makeNonCyclic(consumingModule),
-      cache
+      makeNonCyclic(consumingModule)
     );
     return {
       type: "unresolved",
@@ -1032,8 +972,7 @@ function resolveDeclaration(
     let importedPointer = pointerForImport(
       importedName,
       importedFromModule,
-      makeNonCyclic(consumingModule),
-      cache
+      makeNonCyclic(consumingModule)
     );
     return {
       type: "unresolved",
@@ -1055,42 +994,44 @@ function resolveDeclaration(
       `The module ${importedFromModule.url.href} has no export '${importedName}`
     );
   }
-  let declarations = getDeclarations(sourceModule, cache);
+  let { declarations } = sourceModule.desc;
   if (
     exportDesc?.type === "reexport" ||
     (exportDesc?.type === "local" &&
-      declarations.get(exportDesc.name)?.region.bindingDescription.type ===
-        "import")
+      declarations.get(exportDesc.name)?.declaration.type === "import")
   ) {
     if (exportDesc.type === "reexport") {
       return resolveDeclaration(
         exportDesc.name,
         sourceModule!.resolvedImports[exportDesc.importIndex],
         sourceModule,
-        ownAssignments,
-        cache
+        ownAssignments
       );
     } else {
-      let { region } = declarations.get(exportDesc.name)!;
-      let { bindingDescription: localDesc } = region;
-      if (localDesc.type === "local") {
+      let { declaration } = declarations.get(exportDesc.name)!;
+      if (declaration.type === "local") {
         throw new Error(
           `bug: should never get here, the only declaration descriptions left are imports that are manually exported`
         );
       }
       return resolveDeclaration(
-        localDesc.importedName,
-        sourceModule!.resolvedImports[localDesc.importIndex],
+        declaration.importedName,
+        sourceModule!.resolvedImports[declaration.importIndex],
         sourceModule,
-        ownAssignments,
-        cache
+        ownAssignments
       );
     }
   }
-  let declarationRegion = declarations.get(exportDesc.name);
-  if (!declarationRegion) {
+  let { pointer, declaration } = declarations.get(exportDesc.name) ?? {};
+  if (!declaration || pointer == null) {
     throw new Error(
       `The module ${sourceModule.url.href} exports '${importedName}' but there is no declaration region for the declaration of this export '${exportDesc.name}'`
+    );
+  }
+  let region = sourceModule.desc.regions[pointer];
+  if (region.type !== "declaration") {
+    throw new Error(
+      `bug: the resolved declaration for '${importedName}' from ${importedFromModule} in ${consumingModule} resulted in a non-declaration type code region: ${region.type}`
     );
   }
   return {
@@ -1098,24 +1039,23 @@ function resolveDeclaration(
     module: sourceModule,
     importedAs: importedName,
     declaredName: exportDesc.name,
-    region: declarationRegion.region,
-    pointer: declarationRegion.pointer,
+    region,
+    pointer,
   };
 }
 
 function pointerForImport(
   importedAs: string | NamespaceMarker,
   importedFromModule: Resolution,
-  consumingModule: ModuleResolution,
-  declarationCache: DeclarationCache
+  consumingModule: ModuleResolution
 ): RegionPointer | undefined {
-  let declarations = getDeclarations(consumingModule, declarationCache);
+  let { declarations } = consumingModule.desc;
   let { pointer } =
     [...declarations.values()].find(
-      ({ region: { bindingDescription: desc } }) =>
-        desc.type === "import" &&
-        desc.importedName === importedAs &&
-        consumingModule.resolvedImports[desc.importIndex].url.href ===
+      ({ declaration }) =>
+        declaration.type === "import" &&
+        declaration.importedName === importedAs &&
+        consumingModule.resolvedImports[declaration.importIndex].url.href ===
           importedFromModule.url.href
     ) ?? {};
   return pointer;

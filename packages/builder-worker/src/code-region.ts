@@ -6,7 +6,7 @@
 import { NodePath } from "@babel/traverse";
 import { Program } from "@babel/types";
 import { assertNever } from "@catalogjs/shared/util";
-import { declarationMap, FileDescription } from "./describe-file";
+import { FileDescription, isModuleDescription } from "./describe-file";
 
 export type RegionPointer = number;
 export const NamespaceMarker = { isNamespace: true };
@@ -21,10 +21,7 @@ const lvalTypes = ["ObjectProperty", "ArrayPattern", "RestElement"];
 
 // the parts of a CodeRegion that we can determine independent of its location,
 // based only on its own NodePath.
-type PathFacts = Pick<
-  GeneralCodeRegion,
-  "shorthand" | "preserveGaps" | "removeWhenNoSiblings"
->;
+type PathFacts = Pick<GeneralCodeRegion, "shorthand" | "preserveGaps">;
 
 interface NewRegion {
   type: CodeRegion["type"];
@@ -32,10 +29,7 @@ interface NewRegion {
   absoluteEnd: number;
   index: number;
   dependsOn: Set<RegionPointer>;
-  bindingDescription:
-    | LocalBindingDescription
-    | ImportedBindingDescription
-    | undefined;
+  declaration: DeclarationDescription | undefined;
   importIndex: number | undefined;
   pathFacts: PathFacts;
 }
@@ -68,7 +62,6 @@ export class RegionBuilder {
       dependsOn: new Set(),
       shorthand: false,
       preserveGaps: true,
-      removeWhenNoSiblings: false,
     });
   }
 
@@ -78,12 +71,6 @@ export class RegionBuilder {
   createCodeRegionForReference(path: NodePath): RegionPointer {
     return this.createCodeRegion(path, "reference");
   }
-  // createCodeRegionForDeclaration(
-  //   path: NodePath,
-  //   dependsOnRegion?: Set<RegionPointer>
-  // ): RegionPointer {
-  //   return this.createCodeRegion(path, "declaration", dependsOnRegion);
-  // }
 
   createCodeRegion(
     adjacentPaths: NodePath[],
@@ -102,14 +89,13 @@ export class RegionBuilder {
   ): RegionPointer;
   createCodeRegion(
     path: NodePath,
-    bindingDescription?: LocalBindingDescription | ImportedBindingDescription,
+    declaration?: DeclarationDescription,
     dependsOnRegion?: Set<RegionPointer>
   ): RegionPointer;
   createCodeRegion(
     pathOrPaths: NodePath | NodePath[],
-    bindingDescriptionOrImportIndexOrType?:
-      | LocalBindingDescription
-      | ImportedBindingDescription
+    declarationOrImportIndexOrType?:
+      | DeclarationDescription
       | number
       | CodeRegion["type"],
     dependsOnRegion?: Set<RegionPointer>
@@ -134,12 +120,12 @@ export class RegionBuilder {
 
     // TODO add support for simpler reference regions...
     let type: CodeRegion["type"];
-    if (typeof bindingDescriptionOrImportIndexOrType === "object") {
+    if (typeof declarationOrImportIndexOrType === "object") {
       type = "declaration";
-    } else if (typeof bindingDescriptionOrImportIndexOrType === "number") {
+    } else if (typeof declarationOrImportIndexOrType === "number") {
       type = "import";
-    } else if (typeof bindingDescriptionOrImportIndexOrType === "string") {
-      type = bindingDescriptionOrImportIndexOrType;
+    } else if (typeof declarationOrImportIndexOrType === "string") {
+      type = declarationOrImportIndexOrType;
     } else {
       type = "general";
     }
@@ -155,13 +141,13 @@ export class RegionBuilder {
       // then reconcile the dependsOn only after all the code regions for the
       // file have been created.
       dependsOn: dependsOnRegion ?? new Set(),
-      bindingDescription:
-        typeof bindingDescriptionOrImportIndexOrType === "object"
-          ? bindingDescriptionOrImportIndexOrType
+      declaration:
+        typeof declarationOrImportIndexOrType === "object"
+          ? declarationOrImportIndexOrType
           : undefined,
       importIndex:
-        typeof bindingDescriptionOrImportIndexOrType === "number"
-          ? bindingDescriptionOrImportIndexOrType
+        typeof declarationOrImportIndexOrType === "number"
+          ? declarationOrImportIndexOrType
           : undefined,
       pathFacts: {
         shorthand: Array.isArray(pathOrPaths)
@@ -170,9 +156,6 @@ export class RegionBuilder {
         preserveGaps: Array.isArray(pathOrPaths)
           ? true
           : pathOrPaths.type === "ArrayPattern",
-        removeWhenNoSiblings: Array.isArray(pathOrPaths)
-          ? false
-          : dependsOnSiblingPresence(pathOrPaths),
       },
     };
     this.absoluteRanges.set(newRegion.index, {
@@ -242,8 +225,7 @@ export class RegionBuilder {
             )
           );
           if (isDeclarationCodeRegion(child)) {
-            child.bindingDescription =
-              newRegion.bindingDescription ?? child.bindingDescription;
+            child.declaration = newRegion.declaration ?? child.declaration;
           }
           if (isImportCodeRegion(child)) {
             child.importIndex = newRegion.importIndex ?? child.importIndex;
@@ -289,7 +271,7 @@ export class RegionBuilder {
   ) {
     let basis = this.linkToNewRegion(targetParent, targetPrevious, newRegion);
     this.adjustStartRelativeTo(target, newRegion.absoluteEnd);
-    let { bindingDescription, dependsOn, type, importIndex } = newRegion;
+    let { declaration, dependsOn, type, importIndex } = newRegion;
     let data = {
       type,
       start: newRegion.absoluteStart - basis,
@@ -297,7 +279,7 @@ export class RegionBuilder {
       firstChild: undefined,
       nextSibling: target,
       dependsOn,
-      bindingDescription,
+      declaration,
       importIndex,
       ...newRegion.pathFacts,
     };
@@ -327,7 +309,7 @@ export class RegionBuilder {
     while (cursor != null) {
       if (
         this.regions[cursor].type === "reference" &&
-        newRegion.bindingDescription?.type !== "import"
+        newRegion.declaration?.type !== "import"
       ) {
         referenceRegions.push(cursor);
         this.regions[targetParent].dependsOn.delete(cursor);
@@ -353,7 +335,7 @@ export class RegionBuilder {
 
     // at this point, cursor is the last region that we surround
     this.getRegion(cursor).nextSibling = undefined;
-    let { bindingDescription, dependsOn, type, importIndex } = newRegion;
+    let { declaration, dependsOn, type, importIndex } = newRegion;
     let data = {
       type,
       start: newRegion.absoluteStart - basis,
@@ -361,7 +343,7 @@ export class RegionBuilder {
       firstChild: target,
       nextSibling,
       dependsOn: new Set([...dependsOn, ...referenceRegions]),
-      bindingDescription,
+      declaration,
       importIndex,
       ...newRegion.pathFacts,
     };
@@ -377,7 +359,7 @@ export class RegionBuilder {
     newRegion: NewRegion
   ) {
     let basis = this.linkToNewRegion(targetParent, target, newRegion);
-    let { bindingDescription, dependsOn, type, importIndex } = newRegion;
+    let { declaration, dependsOn, type, importIndex } = newRegion;
     let data = {
       type,
       start: newRegion.absoluteStart - basis,
@@ -385,7 +367,7 @@ export class RegionBuilder {
       firstChild: undefined,
       nextSibling: undefined,
       dependsOn,
-      bindingDescription,
+      declaration,
       importIndex,
       ...newRegion.pathFacts,
     };
@@ -476,20 +458,26 @@ export class RegionBuilder {
   }
 }
 
-export interface BindingDescription {
+export type DeclarationDescription =
+  | LocalDeclarationDescription
+  | ImportedDeclarationDescription;
+export interface BaseDeclarationDescription {
   declaredName: string;
   references: RegionPointer[];
   sideEffects: RegionPointer | undefined;
 }
 
-export interface LocalBindingDescription extends BindingDescription {
+export interface LocalDeclarationDescription
+  extends BaseDeclarationDescription {
   type: "local";
   original?: {
-    regionHref: string; // TODO replace with consumption semver
+    moduleHref: string; // TODO replace with consumption semver
+    exportedName: string;
   };
 }
 
-export interface ImportedBindingDescription extends BindingDescription {
+export interface ImportedDeclarationDescription
+  extends BaseDeclarationDescription {
   type: "import";
   importIndex: number;
   importedName: string | NamespaceMarker;
@@ -521,12 +509,6 @@ export interface BaseCodeRegion {
   firstChild: RegionPointer | undefined;
   nextSibling: RegionPointer | undefined;
 
-  dependsOn: Set<RegionPointer>;
-}
-
-export interface GeneralCodeRegion extends BaseCodeRegion {
-  type: "general";
-
   // when we want to rewrite regions containing identifiers, we need to be aware
   // if they represent object or import shorthand syntax, so that we can
   // rewrite:
@@ -538,16 +520,12 @@ export interface GeneralCodeRegion extends BaseCodeRegion {
   //    let { x: x0 } = foo();
   //
   shorthand: "import" | "export" | "object" | false;
-  preserveGaps: boolean;
+  dependsOn: Set<RegionPointer>;
+}
 
-  // TODO this seems like just another type of dependsOn. let's evaluate if this
-  // is still necessary and if so, let's remove this and replace with dependsOn
-  // of the sibling regions. Also, I think that the need for this might actually
-  // have disappeared--the need for this resulted in a side effect of creating
-  // an additional code region to aid in retaining side effects when pruning
-  // declarations. we're taking a different approach, so we might not need this
-  // anymore..
-  removeWhenNoSiblings: boolean;
+export interface GeneralCodeRegion extends BaseCodeRegion {
+  type: "general";
+  preserveGaps: boolean;
 }
 
 export function isGeneralCodeRegion(region: any): region is GeneralCodeRegion {
@@ -558,7 +536,7 @@ export function isGeneralCodeRegion(region: any): region is GeneralCodeRegion {
 
 export interface DeclarationCodeRegion extends Omit<GeneralCodeRegion, "type"> {
   type: "declaration";
-  bindingDescription: LocalBindingDescription | ImportedBindingDescription;
+  declaration: DeclarationDescription;
 }
 export function isDeclarationCodeRegion(
   region: any
@@ -627,14 +605,7 @@ export class RegionEditor {
   private cursor = 0;
   private output: string[] = [];
 
-  constructor(
-    private src: string,
-    private desc: FileDescription,
-    private declarations: Map<
-      string | NamespaceMarker,
-      { region: DeclarationCodeRegion; pointer: RegionPointer }
-    > = declarationMap(desc)
-  ) {
+  constructor(private src: string, private desc: FileDescription) {
     // Regions are assumed to be removed unless .keepRegion() is explicitly
     // called for a region.
     this.dispositions = [...desc.regions.entries()].map(([index]) => ({
@@ -712,9 +683,11 @@ export class RegionEditor {
   // Note that "keepRegion()" must be called first on a region before we'll
   // honor a rename on that region
   rename(oldName: string, newName: string) {
-    let { pointer, region: declarationRegion } =
-      this.declarations.get(oldName) ?? {};
-    if (!declarationRegion || pointer == null) {
+    if (!isModuleDescription(this.desc)) {
+      throw new Error(`cannot call 'rename()' on CJS file`);
+    }
+    let { pointer, declaration } = this.desc.declarations.get(oldName) ?? {};
+    if (pointer == null || !declaration) {
       throw new Error(`tried to rename unknown name ${oldName}`);
     }
     if (
@@ -724,7 +697,7 @@ export class RegionEditor {
       this.keepRegionAndItsChildren(pointer);
       this.wrap(pointer, `const ${newName} = (`, ");");
     } else {
-      for (let pointer of declarationRegion.bindingDescription!.references) {
+      for (let pointer of declaration.references) {
         this.replace(pointer, newName);
       }
     }
@@ -860,7 +833,7 @@ export class RegionEditor {
   }
 
   private handleReplace(region: CodeRegion, replacement: string) {
-    if (region.type === "reference" || !region.shorthand) {
+    if (!region.shorthand) {
       this.output.push(replacement);
       return;
     }
@@ -940,17 +913,4 @@ function shorthandMode(path: NodePath): PathFacts["shorthand"] {
   }
 
   return false;
-}
-
-// this is looking for regions that can only exist when their siblings exist.
-// specifically the right hand side of an LVal, like:
-//   let { bar } = foo;
-// in this case "{ bar }" the ObjectPattern and "foo" the Identifier are siblings
-// within the VariableDeclarator parent. The Identifier "foo" cannot exist
-// without the ObjectPatten "{ bar }", and if "{ bar }" is removed, then we
-// must remove "foo".
-function dependsOnSiblingPresence(path: NodePath) {
-  return (
-    path.parent.type === "VariableDeclarator" && path.parent.init === path.node
-  );
 }
