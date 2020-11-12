@@ -5,19 +5,24 @@ import {
   FileAssert,
 } from "./helpers/file-assertions";
 import "./helpers/code-equality-assertions";
+import {
+  bundleSource,
+  bundleDescription,
+  makeBuilder,
+  makeRebuilder,
+  outputOrigin,
+} from "./helpers/bundle";
 import { Builder, Rebuilder, explainAsDot } from "../src/builder";
 import { FileSystem } from "../src/filesystem";
 import { flushEvents, removeAllEventListeners } from "../src/event-bus";
 import { Logger } from "../src/logger";
 import { recipesURL } from "../src/recipes";
 import { extractDescriptionFromSource } from "../src/description-encoder";
-import { Options } from "../src/nodes/project";
-import { FileDescriptor } from "../src/filesystem-drivers/filesystem-driver";
+import { RegionEditor } from "../src/code-region";
+import { LocalExportDescription } from "../src/describe-file";
 
 Logger.setLogLevel("debug");
 Logger.echoInConsole(true);
-
-const outputOrigin = `http://output`;
 
 QUnit.module("module builder", function (origHooks) {
   let { test, skip } = installFileAssertions(origHooks);
@@ -36,66 +41,8 @@ QUnit.module("module builder", function (origHooks) {
     }
     return etags;
   }
-  async function bundle(
-    fs: FileSystem,
-    bundleURL: URL = url("output/index.js"),
-    options?: Partial<Options>
-  ) {
-    let builder = makeBuilder(fs, new URL("/output/", origin), options);
-    await builder.build();
-    let fd: FileDescriptor | undefined;
-    try {
-      fd = await fs.openFile(bundleURL);
-      return extractDescriptionFromSource(await fd.readText());
-    } finally {
-      if (fd) {
-        await fd.close();
-      }
-    }
-  }
 
-  async function bundleSource(
-    fs: FileSystem,
-    bundleURL: URL = url("output/index.js"),
-    options?: Partial<Options>
-  ) {
-    let { source } = await bundle(fs, bundleURL, options);
-    return source;
-  }
-
-  async function bundleDescription(
-    fs: FileSystem,
-    bundleURL: URL = url("output/index.js"),
-    options?: Partial<Options>
-  ) {
-    let { desc } = await bundle(fs, bundleURL, options);
-    return desc;
-  }
-
-  function makeBuilder(
-    fs: FileSystem,
-    outputURL = new URL("/output/", origin),
-    options?: Partial<Options>
-  ) {
-    return Builder.forProjects(
-      fs,
-      [[new URL(origin), outputURL]],
-      recipesURL,
-      options
-    );
-  }
-
-  function makeRebuilder(
-    fs: FileSystem,
-    outputURL = new URL("/output/", outputOrigin)
-  ) {
-    return Rebuilder.forProjects(
-      fs,
-      [[new URL(origin), outputURL]],
-      recipesURL
-    );
-  }
-
+  // TODO use the bundleSource() function instead
   async function buildBundle(
     assert: FileAssert,
     bundleURL: URL,
@@ -1778,6 +1725,54 @@ QUnit.module("module builder", function (origHooks) {
         let a = new Cache(b);
         console.log(i());
         export {};
+        `
+      );
+    });
+
+    test("bundle contains module description", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { a } from './a.js';
+          import { b } from './b.js';
+          console.log(a + b);
+          export { a as A, b };
+        `,
+        "a.js": `export const a = 'a';`,
+        "b.js": `export const b = 'b';`,
+      });
+
+      /* resulting bundle:
+        const a = 'a';
+        const b = 'b';
+        console.log(a + b);
+        export { a as A, b };
+        */
+      let desc = await bundleDescription(assert.fs)!;
+      assert.equal(desc.declarations.size, 2);
+      let a = desc.declarations.get("a")!;
+      assert.equal(a.declaration.declaredName, "a");
+      assert.equal(a.declaration.type, "local");
+      let b = desc.declarations.get("b")!;
+      assert.equal(b.declaration.declaredName, "b");
+      assert.equal(b.declaration.type, "local");
+      // TODO assert that the "declaration.original" property is populated
+
+      assert.equal(desc.exports.get("A")?.type, "local");
+      assert.equal((desc.exports.get("A") as LocalExportDescription).name, "a");
+      assert.equal(desc.exports.get("b")?.type, "local");
+      assert.equal((desc.exports.get("b") as LocalExportDescription).name, "b");
+
+      let editor = new RegionEditor(await bundleSource(assert.fs), desc);
+      editor.rename("a", "renamedA");
+      editor.rename("b", "renamedB");
+      assert.codeEqual(
+        editor.serialize().code,
+        `
+        const renamedA = 'a';
+        const renamedB = 'b';
+        console.log(renamedA + renamedB);
+        export { renamedA as A, renamedB as b };
         `
       );
     });

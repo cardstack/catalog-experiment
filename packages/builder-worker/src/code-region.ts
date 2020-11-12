@@ -7,6 +7,7 @@ import { NodePath } from "@babel/traverse";
 import { Program } from "@babel/types";
 import { assertNever } from "@catalogjs/shared/util";
 import { FileDescription, isModuleDescription } from "./describe-file";
+import cloneDeep from "lodash/cloneDeep";
 
 export type RegionPointer = number;
 export const NamespaceMarker = { isNamespace: true };
@@ -65,9 +66,6 @@ export class RegionBuilder {
     });
   }
 
-  // TODO consider making this some degenerate form of a CodeRegion, stripped to
-  // the bare minimum of props (no deps, no binding description, no path facts,
-  // etc.)
   createCodeRegionForReference(path: NodePath): RegionPointer {
     return this.createCodeRegion(path, "reference");
   }
@@ -218,12 +216,24 @@ export class RegionBuilder {
           return;
         case "same":
           let child = this.getRegion(childPointer);
-          child.type = child.type === "general" ? newRegion.type : child.type; // only promote the region to a more specific type--don't downgrade it
+          let originalChildType = child.type;
+          child.type =
+            newRegion.type === "declaration"
+              ? "declaration"
+              : child.type === "general"
+              ? newRegion.type
+              : child.type; // only promote the region to a more specific type--don't downgrade it, and declaration type always wins.
           child.dependsOn = new Set(
             [...child.dependsOn, ...newRegion.dependsOn].filter(
               (p) => p !== childPointer
             )
           );
+          if (
+            originalChildType === "reference" &&
+            child.type !== originalChildType
+          ) {
+            this.getRegion(parentPointer).dependsOn.delete(childPointer);
+          }
           if (isDeclarationCodeRegion(child)) {
             child.declaration = newRegion.declaration ?? child.declaration;
           }
@@ -561,6 +571,7 @@ export function isImportCodeRegion(region: any): region is ImportCodeRegion {
 
 export interface ReferenceCodeRegion extends BaseCodeRegion {
   type: "reference";
+  declarationRegion: RegionPointer;
 }
 export function isReferenceCodeRegion(
   region: any
@@ -593,17 +604,21 @@ type Disposition =
       replacement: string;
     }
   | {
-      state: "wrap";
+      state: "promote";
       region: RegionPointer;
-      beginning: string;
-      end: string;
+      name: string;
     };
 
 export class RegionEditor {
   private dispositions: Disposition[];
 
+  private pendingGap = 0;
   private cursor = 0;
-  private output: string[] = [];
+  private outputCode: string[] = [];
+  private outputRegions: {
+    region: CodeRegion;
+    originalPointer: RegionPointer | undefined;
+  }[] = [];
 
   constructor(private src: string, private desc: FileDescription) {
     // Regions are assumed to be removed unless .keepRegion() is explicitly
@@ -668,14 +683,13 @@ export class RegionEditor {
     }
   }
 
-  wrap(pointer: RegionPointer, beginning: string, end: string) {
+  promoteToDeclaration(pointer: RegionPointer, name: string) {
     if (this.dispositions[pointer].state === "removed") {
       return;
     }
     this.dispositions[pointer] = {
-      state: "wrap",
-      beginning,
-      end,
+      state: "promote",
+      name,
       region: pointer,
     };
   }
@@ -695,7 +709,7 @@ export class RegionEditor {
       this.dispositions[pointer].state !== "removed"
     ) {
       this.keepRegionAndItsChildren(pointer);
-      this.wrap(pointer, `const ${newName} = (`, ");");
+      this.promoteToDeclaration(pointer, newName);
     } else {
       for (let pointer of declaration.references) {
         this.replace(pointer, newName);
@@ -705,31 +719,43 @@ export class RegionEditor {
 
   // Note that "keepRegion()" must be called first on a region before we'll
   // honor a replace on that region
-  replace(region: RegionPointer, replacement: string): void {
-    if (this.dispositions[region].state !== "removed") {
-      this.dispositions[region] = {
+  replace(pointer: RegionPointer, replacement: string): void {
+    if (this.dispositions[pointer].state !== "removed") {
+      this.dispositions[pointer] = {
         state: "replaced",
         replacement,
-        region,
+        region: pointer,
       };
     }
   }
 
-  serialize(): string {
+  serialize(): { code: string; regions: CodeRegion[] } {
     if (this.desc.regions.length === 0) {
-      return this.src;
+      return { code: this.src, regions: [] };
     }
 
     this.cursor = 0;
-    this.output = [];
+    this.pendingGap = 0;
+    this.outputCode = [];
+    this.outputRegions = [];
     this.innerSerialize(documentPointer);
 
-    return this.output.join("");
+    return {
+      code: this.outputCode.join(""),
+      regions: remapRegions(this.outputRegions),
+    };
   }
 
   private innerSerialize(regionPointer: RegionPointer): Disposition {
     let region = this.desc.regions[regionPointer];
+    let outputRegion = cloneDeep(region);
     let disposition = this.dispositions[regionPointer];
+    if (regionPointer === documentPointer) {
+      this.outputRegions.push({
+        originalPointer: documentPointer,
+        region: outputRegion,
+      });
+    }
     switch (disposition.state) {
       case "removed":
         if (region.firstChild != null) {
@@ -737,30 +763,52 @@ export class RegionEditor {
             let childRegion = this.desc.regions[r];
             // we need to manufacture a reasonable gap here, as we are skipping
             // over parent regions that we are intentionally not emitting
-            if (this.output.slice(-1)[0] !== " ") {
-              this.output.push(" ");
+            let addedGap = false;
+            if (this.outputCode.slice(-1)[0] !== " ") {
+              addedGap = true;
+              this.outputCode.push(" ");
             }
             this.cursor += childRegion.start;
+            if (this.pendingGap) {
+              childRegion.start += this.pendingGap;
+              this.pendingGap = 0;
+            }
             this.innerSerialize(r);
+            let { region: childOutputRegion } =
+              this.outputRegions.find((o) => o.originalPointer === r) ?? {};
+            if (addedGap && childOutputRegion) {
+              childOutputRegion.start++;
+            }
           });
         }
         this.cursor += region.end;
         return disposition;
       case "replaced":
-        this.handleReplace(region, disposition.replacement);
+        this.handleReplace(
+          region,
+          disposition.replacement,
+          regionPointer,
+          outputRegion
+        );
         this.skip(regionPointer);
         return disposition;
-      case "wrap":
-        this.output.push(disposition.beginning);
+      case "promote":
+        let beginning = `const ${disposition.name} = (`;
+        let end = `);`;
+        this.outputCode.push(beginning);
         let childDispositions: Disposition[] = [];
         if (region.firstChild != null) {
           this.forAllSiblings(region.firstChild, (r) => {
             let childRegion = this.desc.regions[r];
-            let gapIndex = this.output.length;
-            this.output.push(
+            let gapIndex = this.outputCode.length;
+            this.outputCode.push(
               this.src.slice(this.cursor, this.cursor + childRegion.start)
             );
             this.cursor += childRegion.start;
+            if (this.pendingGap) {
+              childRegion.start += this.pendingGap;
+              this.pendingGap = 0;
+            }
             let disposition = this.innerSerialize(r);
             this.maybeRemovePrecedingGap(
               region,
@@ -771,21 +819,120 @@ export class RegionEditor {
             childDispositions.push(disposition);
           });
         }
-        this.output.push(this.src.slice(this.cursor, this.cursor + region.end));
+        this.outputCode.push(
+          this.src.slice(this.cursor, this.cursor + region.end)
+        );
         this.cursor += region.end;
-        this.output.push(disposition.end);
+        this.outputCode.push(end);
+
+        // Manufacture code regions for the new declaration and stitch into the
+        // output code regions. The original region will be treated as a side
+        // effect wrapped in an evaluation context, ()'s, on the right hand side
+        // of the declaration. We'll also manufacture a reference code region to
+        // hold the identifier on the left hand side of the declaration. The
+        // reference and side effects will become children of the new
+        // declaration region, which will arrange itself in the region tree at
+        // the same place as the original region that has been relegated to a
+        // side effect of the new declaration.
+        let predecessor: CodeRegion | undefined;
+        let predecessorPointer: RegionPointer | undefined;
+        let currentRegion = regionPointer;
+        while (!predecessor && predecessorPointer !== documentPointer) {
+          predecessorPointer = this.desc.regions.findIndex(
+            (r) =>
+              r.firstChild === currentRegion || r.nextSibling === currentRegion
+          );
+          predecessor = this.outputRegions.find(
+            (o) => o.originalPointer === predecessorPointer
+          )?.region;
+          currentRegion = predecessorPointer;
+        }
+        if (!predecessor) {
+          throw new Error(
+            `cannot find predecessor for the region pointer ${regionPointer} from regions ${JSON.stringify(
+              this.desc.regions
+            )} with dispositions: ${JSON.stringify(this.dispositions)}`
+          );
+        }
+
+        let declarationPointer = this.outputRegions.length;
+        let referencePointer = declarationPointer + 1;
+        let sideEffectPointer = referencePointer + 1;
+        if (predecessor.firstChild === currentRegion) {
+          predecessor.firstChild = declarationPointer;
+        } else {
+          predecessor.nextSibling = declarationPointer;
+        }
+        let declarationRegion: DeclarationCodeRegion = {
+          type: "declaration",
+          start: region.start,
+          end: 1, // trailing semicolon
+          firstChild: referencePointer,
+          nextSibling: region.nextSibling,
+          shorthand: false,
+          position: 0,
+          dependsOn: new Set([referencePointer]),
+          preserveGaps: false,
+          declaration: {
+            type: "local",
+            declaredName: disposition.name,
+            references: [referencePointer],
+            sideEffects: sideEffectPointer,
+          },
+        };
+        let referenceRegion: ReferenceCodeRegion = {
+          type: "reference",
+          start: 6, // "const "
+          end: disposition.name.length,
+          firstChild: undefined,
+          nextSibling: sideEffectPointer,
+          shorthand: false,
+          position: 0,
+          dependsOn: new Set(),
+          declarationRegion: declarationPointer,
+        };
+        let sideEffectRegion: GeneralCodeRegion = {
+          type: "general",
+          start: 4, // " = ("
+          end: region.end,
+          firstChild: region.firstChild,
+          nextSibling: undefined,
+          shorthand: false,
+          position: 0,
+          dependsOn: new Set([declarationPointer]),
+          preserveGaps: false,
+        };
+        if (this.pendingGap) {
+          sideEffectRegion.end += this.pendingGap;
+          this.pendingGap = 0;
+        }
+        this.outputRegions.push(
+          { originalPointer: undefined, region: declarationRegion },
+          { originalPointer: undefined, region: referenceRegion },
+          { originalPointer: undefined, region: sideEffectRegion }
+        );
         return disposition;
       case "unchanged":
+        if (regionPointer !== documentPointer) {
+          this.outputRegions.push({
+            originalPointer: regionPointer,
+            region: outputRegion,
+          });
+        }
         if (region.firstChild != null) {
-          let childDispositions: Disposition[] = [];
           let childRegion: CodeRegion;
+          let childDispositions: Disposition[] = [];
           this.forAllSiblings(region.firstChild, (r) => {
             childRegion = this.desc.regions[r];
-            let gapIndex = this.output.length;
-            this.output.push(
+            let gapIndex = this.outputCode.length;
+            this.outputCode.push(
               this.src.slice(this.cursor, this.cursor + childRegion.start)
             );
             this.cursor += childRegion.start;
+            if (this.pendingGap) {
+              childRegion.start += this.pendingGap;
+              this.pendingGap = 0;
+            }
             let disposition = this.innerSerialize(r);
             this.maybeRemovePrecedingGap(
               region,
@@ -795,9 +942,15 @@ export class RegionEditor {
             );
             childDispositions.push(disposition);
           });
+          if (this.pendingGap) {
+            outputRegion.end += this.pendingGap;
+            this.pendingGap = 0;
+          }
         }
         // emit the part of yourself that appears after the last child
-        this.output.push(this.src.slice(this.cursor, this.cursor + region.end));
+        this.outputCode.push(
+          this.src.slice(this.cursor, this.cursor + region.end)
+        );
         this.cursor += region.end;
         return disposition;
       default:
@@ -828,35 +981,67 @@ export class RegionEditor {
       (previousSiblingDisposition.state === "removed" ||
         siblingDispositions.every((d) => d.state === "removed"))
     ) {
-      this.output.splice(gapIndex, 1);
+      this.outputCode.splice(gapIndex, 1);
     }
   }
 
-  private handleReplace(region: CodeRegion, replacement: string) {
+  private handleReplace(
+    region: CodeRegion,
+    replacement: string,
+    regionPointer: RegionPointer,
+    outputRegion: CodeRegion
+  ) {
+    if (isReferenceCodeRegion(region)) {
+      let outputDeclarationRegion = this.outputRegions.find(
+        (o) => o.originalPointer === region.declarationRegion
+      );
+      if (
+        outputDeclarationRegion &&
+        isDeclarationCodeRegion(outputDeclarationRegion.region)
+      ) {
+        outputDeclarationRegion.region.declaration.declaredName = replacement;
+      }
+    }
     if (!region.shorthand) {
-      this.output.push(replacement);
+      outputRegion.end = replacement.length;
+      this.outputRegions.push({
+        originalPointer: regionPointer,
+        region: outputRegion,
+      });
+      this.outputCode.push(replacement);
       return;
     }
     let original = this.src.slice(this.cursor, this.cursor + region.end);
+    let gap: number;
     switch (region.shorthand) {
       case "import":
-        this.output.push(original);
-        this.output.push(" as ");
-        this.output.push(replacement);
+        gap = 4;
+        this.outputCode.push(original);
+        this.outputCode.push(" as ");
+        this.outputCode.push(replacement);
         break;
       case "object":
-        this.output.push(original);
-        this.output.push(":");
-        this.output.push(replacement);
+        gap = 1;
+        this.outputCode.push(original);
+        this.outputCode.push(":");
+        this.outputCode.push(replacement);
         break;
       case "export":
-        this.output.push(replacement);
-        this.output.push(" as ");
-        this.output.push(original);
+        gap = 4;
+        this.outputCode.push(replacement);
+        this.outputCode.push(" as ");
+        this.outputCode.push(original);
         break;
       default:
         throw assertNever(region.shorthand);
     }
+    outputRegion.end = replacement.length;
+    outputRegion.shorthand = false;
+    this.pendingGap = gap + original.length;
+    this.outputRegions.push({
+      originalPointer: regionPointer,
+      region: outputRegion,
+    });
   }
 
   private skip(regionPointer: RegionPointer) {
@@ -913,4 +1098,66 @@ function shorthandMode(path: NodePath): PathFacts["shorthand"] {
   }
 
   return false;
+}
+
+function remapRegions(
+  outputRegions: {
+    originalPointer: RegionPointer | undefined;
+    region: CodeRegion;
+  }[]
+): CodeRegion[] {
+  let regions = outputRegions.map(({ region }) => {
+    region.firstChild = newPointer(region.firstChild, outputRegions);
+    region.nextSibling = newPointer(region.nextSibling, outputRegions);
+    region.dependsOn = new Set(
+      [...region.dependsOn]
+        .map((p) => newPointer(p, outputRegions))
+        .filter((p) => p != null) as RegionPointer[]
+    );
+    if (region.type === "declaration") {
+      region.declaration.sideEffects = newPointer(
+        region.declaration.sideEffects,
+        outputRegions
+      );
+      region.declaration.references = region.declaration.references
+        .map((p) => newPointer(p, outputRegions))
+        .filter((p) => p != null) as RegionPointer[];
+    }
+    if (region.type === "reference") {
+      region.declarationRegion = newPointer(
+        region.declarationRegion,
+        outputRegions
+      )!;
+    }
+    return region;
+  });
+  regions[documentPointer].firstChild = 1;
+
+  return regions;
+}
+
+function newPointer(
+  originalPointer: RegionPointer | undefined,
+  outputRegions: {
+    originalPointer: RegionPointer | undefined;
+    region: CodeRegion;
+  }[]
+): RegionPointer | undefined {
+  if (originalPointer == null) {
+    return;
+  }
+  let index = outputRegions.findIndex(
+    (r) => r.originalPointer === originalPointer
+  );
+  // the pointer is to a region that did not exist in the original set of regions
+  if (
+    index === -1 &&
+    outputRegions[originalPointer] &&
+    outputRegions[originalPointer].originalPointer == null
+  ) {
+    return originalPointer;
+  } else if (index === -1) {
+    return;
+  }
+  return index;
 }

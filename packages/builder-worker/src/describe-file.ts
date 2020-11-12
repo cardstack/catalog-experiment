@@ -30,6 +30,7 @@ import {
   documentPointer,
   DeclarationCodeRegion,
   DeclarationDescription,
+  isReferenceCodeRegion,
 } from "./code-region";
 import { warn } from "./logger";
 import intersection from "lodash/intersection";
@@ -393,13 +394,14 @@ export function describeFile(
         },
         regionDeps
       );
-      if (sideEffects && !withinLval) {
-        let r = desc.regions[sideEffects];
-        r.dependsOn.add(declarationPointer);
+      for (let referencePointer of references) {
+        let reference = desc.regions[referencePointer];
+        if (isReferenceCodeRegion(reference)) {
+          reference.declarationRegion = declarationPointer;
+        }
       }
-      if (desc.regions[declarationPointer].firstChild != null) {
-        let r = desc.regions[declarationPointer];
-        r.dependsOn.add(desc.regions[declarationPointer].firstChild!);
+      if (sideEffects && !withinLval) {
+        desc.regions[sideEffects].dependsOn.add(declarationPointer);
       }
       dependsOn.set(builder.regions[declarationPointer], consumes);
     }
@@ -1115,7 +1117,7 @@ function addImportedName(
     identifierPath,
     builder
   );
-  builder.createCodeRegion(path as NodePath, {
+  let declarationPointer = builder.createCodeRegion(path as NodePath, {
     type: "import",
     declaredName: identifierPath.node.name,
     importIndex: desc.imports.length - 1, // it's always the last import description added to desc.imports because the the order in which babel traverses the module
@@ -1123,6 +1125,12 @@ function addImportedName(
     references,
     sideEffects: undefined,
   });
+  for (let referencePointer of references) {
+    let reference = desc.regions[referencePointer];
+    if (isReferenceCodeRegion(reference)) {
+      reference.declarationRegion = declarationPointer;
+    }
+  }
 }
 
 function isModuleScopedDeclaration(path: NodePath): boolean {
@@ -1192,7 +1200,7 @@ function referencesForDeclaration(
   builder: RegionBuilder
 ): RegionPointer[] {
   return [
-    builder.createCodeRegion(identifierPath as NodePath),
+    builder.createCodeRegionForReference(identifierPath as NodePath),
     ...identifierPath.scope
       .getBinding(name)!
       // we filter because babel gives you some things like

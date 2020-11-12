@@ -69,7 +69,10 @@ const importCodeRegionLegend = [
   "importIndex", // number
 ];
 
-const referenceCodeRegionLegend = [...baseCodeRegionLegend];
+const referenceCodeRegionLegend = [
+  ...baseCodeRegionLegend,
+  "declarationRegion",
+];
 
 const declarationLegend = [
   "type", // "l" = local, "i" = import

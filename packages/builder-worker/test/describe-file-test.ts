@@ -1,9 +1,6 @@
+import { describeESModule, describeCJSFile } from "./helpers/file-description";
 import {
-  describeFile as astDescribeFile,
   FileDescription,
-  isModuleDescription,
-  ModuleDescription,
-  CJSDescription,
   LocalExportDescription,
   ReexportExportDescription,
 } from "../src/describe-file";
@@ -13,7 +10,6 @@ import {
   notFoundPointer,
   RegionEditor,
 } from "../src/code-region";
-import { parse } from "@babel/core";
 
 const { test } = QUnit;
 
@@ -21,41 +17,6 @@ function keepAll(desc: FileDescription, editor: RegionEditor) {
   for (let i = 0; i < desc.regions.length; i++) {
     editor.keepRegion(i);
   }
-}
-
-function describeFile(
-  js: string
-): { desc: FileDescription; editor: RegionEditor } {
-  js = js.trim();
-  let parsed = parse(js);
-  if (parsed?.type !== "File") {
-    throw new Error(`unexpected babel output`);
-  }
-  let desc = astDescribeFile(parsed);
-  return {
-    desc,
-    editor: new RegionEditor(js, desc),
-  };
-}
-
-function describeESModule(
-  js: string
-): { desc: ModuleDescription; editor: RegionEditor } {
-  let { desc, editor } = describeFile(js);
-  if (!isModuleDescription(desc)) {
-    throw new Error(`file is CJS, but we were expecting an ES module`);
-  }
-  return { desc, editor };
-}
-
-function describeCJSFile(
-  js: string
-): { desc: CJSDescription; editor: RegionEditor } {
-  let { desc, editor } = describeFile(js);
-  if (isModuleDescription(desc)) {
-    throw new Error(`file is ES module, but we were expecting CJS`);
-  }
-  return { desc, editor };
 }
 
 QUnit.module("describe-file", function () {
@@ -82,7 +43,7 @@ QUnit.module("describe-file", function () {
       let [req] = desc.requires;
       editor.replace(req.requireRegion, `_foo`);
       assert.codeEqual(
-        editor.serialize(),
+        editor.serialize().code,
         `
         const foo = _foo;
        `
@@ -100,7 +61,7 @@ QUnit.module("describe-file", function () {
       let [req] = desc.requires;
       editor.replace(req.specifierRegion, `"./bar.cjs.js"`);
       assert.codeEqual(
-        editor.serialize(),
+        editor.serialize().code,
         `
         const foo = require("./bar.cjs.js");
        `
@@ -176,7 +137,7 @@ QUnit.module("describe-file", function () {
     assert.ok(region, "a code region was created for the declaration");
     editor.replace(pointer, "lol = 'lol'");
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
       const lol = 'lol';
       function b() { console.log('hi'); }
@@ -201,7 +162,7 @@ QUnit.module("describe-file", function () {
     assert.ok(region, "a code region was created for the declaration");
     editor.replace(pointer, "//CODE_REGION");
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
       const a = 1;
       //CODE_REGION
@@ -226,7 +187,7 @@ QUnit.module("describe-file", function () {
     assert.ok(region, "a code region was created for the declaration");
     editor.replace(pointer, "//CODE_REGION");
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
       const a = 1;
       function b() { console.log('hi'); }
@@ -236,7 +197,7 @@ QUnit.module("describe-file", function () {
     );
   });
 
-  test("creates a code regions for bindings declared in an LVal", function (assert) {
+  test("creates code regions for bindings declared in an LVal", function (assert) {
     let { desc, editor } = describeESModule(`
       let { x, y: [z] } = foo();
       export {};
@@ -267,7 +228,7 @@ QUnit.module("describe-file", function () {
     );
 
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
       let { a, y: [b] } = foo();
       export {};
@@ -287,7 +248,7 @@ QUnit.module("describe-file", function () {
     assert.equal(sideEffects.size, 1);
     editor.replace([...sideEffects][0], "//CODE_REGION");
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
         //CODE_REGION
         export {};
@@ -311,7 +272,7 @@ QUnit.module("describe-file", function () {
     editor.replace([...sideEffects][0], "//CODE_REGION_1");
     editor.replace([...sideEffects][1], "//CODE_REGION_2");
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
         //CODE_REGION_1
         const foo = "bar";
@@ -335,7 +296,7 @@ QUnit.module("describe-file", function () {
     assert.ok(region.dependsOn.has(sideEffect));
     editor.replace(sideEffect, "//CODE_REGION");
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
           //CODE_REGION
           const foo = "bar";
@@ -373,7 +334,7 @@ QUnit.module("describe-file", function () {
       editor.replace(reference, "b");
     }
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
       let b = 3;
       function printA() {
@@ -397,7 +358,7 @@ QUnit.module("describe-file", function () {
     assert.equal(declaration.sideEffects, sideEffect);
     editor.replace(sideEffect, "walkTheDog()");
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
         let a = walkTheDog();
         export {};
@@ -523,7 +484,7 @@ QUnit.module("describe-file", function () {
     keepAll(desc, editor);
     editor.rename("x", "y");
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
       function y() {}
       export { y as x };
@@ -662,7 +623,7 @@ QUnit.module("describe-file", function () {
     keepAll(desc, editor);
     editor.rename("x", "y");
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
       console.log(1);
       function y() {}
@@ -706,7 +667,7 @@ QUnit.module("describe-file", function () {
     editor.rename("c", "charlie");
     editor.rename("d", "delta");
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
       import { a as alpha, b as charlie, d as delta } from "lib";
       export default function(a) {
@@ -728,7 +689,7 @@ QUnit.module("describe-file", function () {
     keepAll(desc, editor);
     editor.rename("a", "alpha");
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
       const alpha = 1;
       export default function(a) {
@@ -749,7 +710,7 @@ QUnit.module("describe-file", function () {
     editor.rename("a", "alpha");
     editor.rename("c", "charlie");
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
       const { a: alpha, b: charlie } = foo();
       console.log(alpha, charlie);
@@ -768,7 +729,7 @@ QUnit.module("describe-file", function () {
     editor.rename("a", "alpha");
     editor.rename("b", "bravo");
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
       const { a: alpha, b: bravo = alpha } = foo();
       console.log(alpha, bravo);
@@ -786,7 +747,7 @@ QUnit.module("describe-file", function () {
     keepAll(desc, editor);
     editor.rename("bravo", "b");
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
       const { a, b = a } = foo();
       console.log(a, b);
@@ -805,7 +766,7 @@ QUnit.module("describe-file", function () {
     keepAll(desc, editor);
     editor.rename("bar", "bleep");
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
       const bleep = makeBar();
       const { a, b = bleep.blah } = foo();
@@ -824,7 +785,7 @@ QUnit.module("describe-file", function () {
     keepAll(desc, editor);
     editor.rename("y", "yas");
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
       let [{ x }, { y: yas }] = bar();
       console.log(yas);
@@ -837,6 +798,6 @@ QUnit.module("describe-file", function () {
     let { desc, editor } = describeESModule(`export const a = 'a';`);
     keepAll(desc, editor);
     editor.rename("a", "a0");
-    assert.codeEqual(editor.serialize(), `export const a0 = 'a';`);
+    assert.codeEqual(editor.serialize().code, `export const a0 = 'a';`);
   });
 });

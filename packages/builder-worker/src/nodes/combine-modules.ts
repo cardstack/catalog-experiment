@@ -445,8 +445,32 @@ class AppendImportsAndExportsNode implements BuilderNode {
     // TODO add bundle export-all's
 
     let code: string[] = [];
+    // add the document region for the bundle
+    let regions: CodeRegion[] = [
+      {
+        position: 0,
+        type: "general",
+        start: 0,
+        end: 0, // TODO might need to alter this based on the exports that we append to the bundle
+        firstChild: 1,
+        nextSibling: undefined,
+        dependsOn: new Set(), // TODO need to add all module side effects, and all the module scoped declaration side effects
+        shorthand: false,
+        preserveGaps: true,
+      },
+    ];
+
+    // TODO make sure to add code regions for the imports first so we don't end
+    // up shifting all the indices after the fact
+
+    let previousModuleRootPointer: RegionPointer | undefined;
+    let moduleRegionOffset: Map<string, number> = new Map();
     for (let rewriter of this.rewriters) {
+      moduleRegionOffset.set(rewriter.module.url.href, regions.length);
       // resolve namespace assignments
+      // TODO create code regions for namespace
+      // code, use the namespace import declaration to derive the declaration
+      // code region
       if (rewriter.namespacesAssignments.length > 0) {
         for (let assignedName of rewriter.namespacesAssignments) {
           let namespaceCode = this.state.assignedNamespaces.get(assignedName);
@@ -456,8 +480,31 @@ class AppendImportsAndExportsNode implements BuilderNode {
           }
         }
       }
-      code.push(rewriter.serialize().trim());
+
+      let { code: moduleCode, regions: moduleRegions } = rewriter.serialize();
+      code.push(moduleCode.trim());
+
+      // wire up the individual module's code regions to each other
+      if (previousModuleRootPointer != null) {
+        // your module region offset is actually also the region pointer to the
+        // beginning of the previous module
+        regions[moduleRegionOffset.get(rewriter.module.url.href)!].nextSibling =
+          regions.length;
+        // TODO might need to add 1 char to the start to accommodate added newline between each code chunk
+      }
+      // TODO need to increment all the indices in the moduleRegions by moduleRegionOffset
+      regions.push(...moduleRegions);
     }
+
+    // TODO need to figure out cross module references
+    //   idea: the underlying import declaration regions are the key to bridging the references
+    //         these regions are in the editors, and the assigned imports tell us how we have
+    //         remapped these. The references we want are the union of all the imports that were assigned
+    //         the same name with the moduleRegionOffset taken into account.
+    //   also: need to add export references to associated declarations
+    // TODO need to reassign the positions
+    // TODO need to add module side effect dependencies to all the declarations
+
     code.unshift(importDeclarations.join("\n"));
     code.push(exportDeclarations.join(" ").trim());
 
@@ -487,7 +534,7 @@ class ModuleRewriter {
 
   constructor(
     private bundle: URL,
-    private module: ModuleResolution,
+    readonly module: ModuleResolution,
     private state: HeadState,
     bundleAssignments: BundleAssignment[],
     private editor: RegionEditor
@@ -499,7 +546,7 @@ class ModuleRewriter {
     this.makeNamespaces();
   }
 
-  serialize(): string {
+  serialize(): { code: string; regions: CodeRegion[] } {
     return this.editor.serialize();
   }
 
