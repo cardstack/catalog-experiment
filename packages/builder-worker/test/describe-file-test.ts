@@ -719,7 +719,7 @@ QUnit.module("describe-file", function () {
     );
   });
 
-  test("code regions for a variable assign via an LVal AssignmentPattern can be used to replace it", function (assert) {
+  test("code regions for a variable assigned via an LVal AssignmentPattern can be used to replace it", function (assert) {
     let { desc, editor } = describeESModule(`
       const { a, b = a } = foo();
       console.log(a, b);
