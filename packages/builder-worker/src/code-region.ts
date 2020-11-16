@@ -767,14 +767,7 @@ export class RegionEditor {
     parentPointer: RegionPointer = documentPointer
   ): { disposition: Disposition; outputPointer: RegionPointer | undefined } {
     let region = this.desc.regions[regionPointer];
-    let outputRegion = cloneDeep(region);
     let disposition = this.dispositions[regionPointer];
-    if (regionPointer === documentPointer) {
-      this.outputRegions.push({
-        originalPointer: documentPointer,
-        region: outputRegion,
-      });
-    }
     switch (disposition.state) {
       case "removed": {
         if (regionPointer !== documentPointer) {
@@ -806,6 +799,7 @@ export class RegionEditor {
         return { disposition, outputPointer: undefined };
       }
       case "replaced": {
+        let outputRegion = cloneDeep(region);
         this.absorbPendingGap(outputRegion);
         this.absorbPendingStart(outputRegion);
         let outputPointer = this.outputRegions.length;
@@ -823,66 +817,32 @@ export class RegionEditor {
         }
         return { disposition, outputPointer };
       }
-      case "wrap": {
-        let beginning = `const ${disposition.declarationName} = (`;
-        let end = `);`;
-        this.outputCode.push(beginning);
-        let childDispositions: Disposition[] = [];
-        let outputPointer = this.wrapWithRegions(
-          regionPointer,
-          disposition.declarationName
-        );
-
-        this.absorbPendingGap(this.outputRegions[outputPointer].region);
-        this.absorbPendingStart(this.outputRegions[outputPointer].region);
-        let maybeNextSibling = this.reconcilePendingAntecedant(outputPointer);
-        if (maybeNextSibling != null) {
-          outputRegion.nextSibling = maybeNextSibling;
-        }
-        if (region.firstChild != null) {
-          this.forAllSiblings(region.firstChild, (r) => {
-            let childRegion = this.desc.regions[r];
-            let gapIndex = this.outputCode.length;
-            this.outputCode.push(
-              this.src.slice(this.cursor, this.cursor + childRegion.start)
-            );
-            this.cursor += childRegion.start;
-            let { disposition } = this.innerSerialize(r, regionPointer);
-            this.maybeRemovePrecedingGap(
-              region,
-              disposition,
-              childDispositions,
-              gapIndex
-            );
-            childDispositions.push(disposition);
-          });
-          this.cancelPendingActions(regionPointer);
-        }
-        this.outputCode.push(
-          this.src.slice(this.cursor, this.cursor + region.end)
-        );
-        this.cursor += region.end;
-        this.outputCode.push(end);
-
-        return { disposition, outputPointer };
-      }
+      case "wrap":
       case "unchanged": {
-        this.absorbPendingGap(outputRegion);
-        this.absorbPendingStart(outputRegion);
+        let outputRegion: CodeRegion;
         let outputPointer: RegionPointer;
-        if (regionPointer !== documentPointer) {
-          let maybeNextSibling = this.reconcilePendingAntecedant(regionPointer);
-          if (maybeNextSibling != null) {
-            outputRegion.nextSibling = maybeNextSibling;
-          }
+        if (disposition.state === "wrap") {
+          let beginning = `const ${disposition.declarationName} = (`;
+          this.outputCode.push(beginning);
+          outputPointer = this.wrapWithRegions(
+            regionPointer,
+            disposition.declarationName
+          );
+          outputRegion = this.outputRegions[outputPointer].region;
+        } else {
+          outputRegion = cloneDeep(region);
           outputPointer = this.outputRegions.length;
           this.outputRegions.push({
             originalPointer: regionPointer,
             region: outputRegion,
           });
-        } else {
-          outputPointer = documentPointer;
         }
+        let maybeNextSibling = this.reconcilePendingAntecedant(regionPointer);
+        if (maybeNextSibling != null) {
+          outputRegion.nextSibling = maybeNextSibling;
+        }
+        this.absorbPendingGap(outputRegion);
+        this.absorbPendingStart(outputRegion);
         if (region.firstChild != null) {
           let childRegion: CodeRegion;
           let childDispositions: Disposition[] = [];
@@ -910,7 +870,10 @@ export class RegionEditor {
           this.src.slice(this.cursor, this.cursor + region.end)
         );
         this.cursor += region.end;
-        return { disposition, outputPointer };
+        if (disposition.state === "wrap") {
+          this.outputCode.push(");");
+        }
+        return { disposition, outputPointer: outputPointer! };
       }
       default:
         throw assertNever(disposition);
@@ -953,7 +916,7 @@ export class RegionEditor {
       start: region.start,
       end: 1, // tailing semicolon
       firstChild: declaratorPointer,
-      nextSibling: undefined,
+      nextSibling: region.nextSibling,
       shorthand: false,
       position: 0,
       dependsOn: new Set(),

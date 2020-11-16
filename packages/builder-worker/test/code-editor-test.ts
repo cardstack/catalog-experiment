@@ -237,9 +237,200 @@ QUnit.module("module code-editor", function () {
     );
   });
 
-  test("serialized code regions reflect renamed declarations within a removed region", function (assert) {});
+  test("serialized code regions reflect renamed declarations within children of a removed region", function (assert) {
+    // In this example region 1 is the ExportDefaultDeclaration and region 2 is
+    // VariableDeclaration
+    let { desc, editor } = describeESModule(`
+      export const a = 'a';
+      const c = 'c';
+      console.log(a + c);
+    `);
+    keepAll(desc, editor);
+    editor.removeRegion(1);
+    editor.rename("a", "alpha");
 
-  test("serialized code regions reflect renamed declarations within a wrapped region", function (assert) {});
+    let { code, regions } = editor.serialize();
+    assert.ok(
+      regions.find(
+        (r) =>
+          r.type === "declaration" && r.declaration.declaredName === "alpha"
+      ),
+      "code region exists"
+    );
+    assert.codeEqual(
+      code,
+      `
+      const alpha = 'a';
+      const c = 'c';
+      console.log(alpha + c);
+      `
+    );
 
-  test("serialized code regions preserve module side effects", function (assert) {});
+    // replace using the new code regions to prove they are correct
+    let newDesc = makeDescFromRegions(regions);
+    let newEditor = new RegionEditor(code, newDesc);
+    keepAll(newDesc, newEditor);
+    newEditor.rename("alpha", "renamedA");
+    newEditor.rename("c", "renamedC");
+    assert.codeEqual(
+      newEditor.serialize().code,
+      `
+      const renamedA = 'a';
+      const renamedC = 'c';
+      console.log(renamedA + renamedC);
+      `
+    );
+  });
+
+  test("serialized code regions reflect renamed declarations of next sibling of a removed region", function (assert) {
+    let { desc, editor } = describeESModule(`
+      export const a = 'a';
+      const b = 'b', c = 'c';
+      console.log(a + c);
+    `);
+    keepAll(desc, editor);
+    let { pointer: b } = desc.declarations.get("b")!;
+    editor.removeRegionAndItsChildren(b);
+    editor.rename("c", "charlie");
+
+    let { code, regions } = editor.serialize();
+    assert.ok(
+      regions.find(
+        (r) =>
+          r.type === "declaration" && r.declaration.declaredName === "charlie"
+      ),
+      "code region exists"
+    );
+    assert.notOk(
+      regions.find(
+        (r) => r.type === "declaration" && r.declaration.declaredName === "b"
+      ),
+      "code region does not exist"
+    );
+
+    assert.codeEqual(
+      code,
+      `
+      export const a = 'a';
+      const charlie = 'c';
+      console.log(a + charlie);
+      `
+    );
+
+    // replace using the new code regions to prove they are correct
+    let newDesc = makeDescFromRegions(regions);
+    let newEditor = new RegionEditor(code, newDesc);
+    keepAll(newDesc, newEditor);
+    newEditor.rename("a", "renamedA");
+    newEditor.rename("charlie", "renamedC");
+    assert.codeEqual(
+      newEditor.serialize().code,
+      `
+      export const renamedA = 'a';
+      const renamedC = 'c';
+      console.log(renamedA + renamedC);
+      `
+    );
+  });
+
+  test("serialized code regions reflect renamed declarations of previous sibling of a removed region", function (assert) {
+    let { desc, editor } = describeESModule(`
+      export const a = 'a';
+      const b = 'b', c = 'c';
+      console.log(a + b);
+    `);
+    keepAll(desc, editor);
+    let { pointer: c } = desc.declarations.get("c")!;
+    editor.removeRegionAndItsChildren(c);
+    editor.rename("b", "bravo");
+
+    let { code, regions } = editor.serialize();
+    assert.ok(
+      regions.find(
+        (r) =>
+          r.type === "declaration" && r.declaration.declaredName === "bravo"
+      ),
+      "code region exists"
+    );
+    assert.notOk(
+      regions.find(
+        (r) => r.type === "declaration" && r.declaration.declaredName === "c"
+      ),
+      "code region does not exist"
+    );
+
+    assert.codeEqual(
+      code,
+      `
+      export const a = 'a';
+      const bravo = 'b';
+      console.log(a + bravo);
+      `
+    );
+
+    // replace using the new code regions to prove they are correct
+    let newDesc = makeDescFromRegions(regions);
+    let newEditor = new RegionEditor(code, newDesc);
+    keepAll(newDesc, newEditor);
+    newEditor.rename("a", "renamedA");
+    newEditor.rename("bravo", "renamedB");
+    assert.codeEqual(
+      newEditor.serialize().code,
+      `
+      export const renamedA = 'a';
+      const renamedB = 'b';
+      console.log(renamedA + renamedB);
+      `
+    );
+  });
+
+  test("serialized code regions reflect renamed declarations within a wrapped region", function (assert) {
+    // In this example region 1 is the ExportDefaultDeclaration and region 3 is
+    // FunctionDeclaration
+    let { desc, editor } = describeESModule(`
+      export default function () { console.log(a); }
+      const a = 'a';
+    `);
+    keepAll(desc, editor);
+    editor.removeRegion(1);
+    editor.wrapWithDeclaration(3, "_default");
+    editor.rename("a", "alpha");
+
+    let { code, regions } = editor.serialize();
+    assert.ok(
+      regions.find(
+        (r) =>
+          r.type === "declaration" && r.declaration.declaredName === "_default"
+      ),
+      "code region exists"
+    );
+    assert.ok(
+      regions.find(
+        (r) =>
+          r.type === "declaration" && r.declaration.declaredName === "alpha"
+      ),
+      "code region exists"
+    );
+
+    assert.codeEqual(
+      code,
+      `
+      const _default = (function() { console.log(alpha); });
+      const alpha = 'a';
+      `
+    );
+    // replace using the new code regions to prove they are correct
+    let newDesc = makeDescFromRegions(regions);
+    let newEditor = new RegionEditor(code, newDesc);
+    keepAll(newDesc, newEditor);
+    newEditor.rename("_default", "d");
+    newEditor.rename("alpha", "renamedA");
+    assert.codeEqual(
+      newEditor.serialize().code,
+      `
+      const d = (function() { console.log(renamedA); });
+      const renamedA = 'a';
+      `
+    );
+  });
 });
