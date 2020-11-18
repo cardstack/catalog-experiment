@@ -11,6 +11,7 @@ import {
   makeBuilder,
   makeRebuilder,
   outputOrigin,
+  bundle,
 } from "./helpers/bundle";
 import { Builder, Rebuilder, explainAsDot } from "../src/builder";
 import { FileSystem } from "../src/filesystem";
@@ -19,7 +20,10 @@ import { Logger } from "../src/logger";
 import { recipesURL } from "../src/recipes";
 import { extractDescriptionFromSource } from "../src/description-encoder";
 import { RegionEditor } from "../src/code-region";
-import { LocalExportDescription } from "../src/describe-file";
+import {
+  LocalExportDescription,
+  ModuleDescription,
+} from "../src/describe-file";
 
 Logger.setLogLevel("debug");
 Logger.echoInConsole(true);
@@ -29,6 +33,11 @@ QUnit.module("module builder", function (origHooks) {
   let builder: Builder<unknown> | undefined;
   let rebuilder: Rebuilder<unknown> | undefined;
 
+  function keepAll(desc: ModuleDescription, editor: RegionEditor) {
+    for (let i = 0; i < desc.regions.length; i++) {
+      editor.keepRegion(i);
+    }
+  }
   async function etags(
     fs: FileSystem,
     origin: string
@@ -109,14 +118,14 @@ QUnit.module("module builder", function (origHooks) {
           import { b } from './b.js';
           console.log(a + b);
         `,
-        "a.js": `export const [ { a, c } ] = foo();`,
+        "a.js": `export const [ { a, c } ] = foo;`,
         "b.js": `export const b = 'b';`,
       });
 
       assert.codeEqual(
         await bundleSource(assert.fs),
         `
-        const [ { a } ] = foo();
+        const [ { a } ] = foo;
         const b = 'b';
         console.log(a + b);
         export {};
@@ -1729,6 +1738,616 @@ QUnit.module("module builder", function (origHooks) {
       );
     });
 
+    test("removes unconsumed leading variable declarator from a declaration", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let a = 1, b = 2;
+          console.log(b);
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let b = 2;
+        console.log(b);
+        export {};
+        `
+      );
+    });
+
+    test("removes unconsumed trailing variable declarator from a declaration", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let a = 1, b = 2;
+          console.log(a);
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let a = 1;
+        console.log(a);
+        export {};
+        `
+      );
+    });
+
+    test("removes unconsumed adjacent variable declarators from a declaration", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let a = 1, b = 2, c = 3, d = 4;
+          console.log(a + d);
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let a = 1, d = 4;
+        console.log(a + d);
+        export {};
+        `
+      );
+    });
+
+    test("removes unconsumed first 2 variable declarators from a declaration", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let a = 1, b = 2, c = 3, d = 4;
+          console.log(c + d);
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let c = 3, d = 4;
+        console.log(c + d);
+        export {};
+        `
+      );
+    });
+
+    test("removes unconsumed declarator from a list that includes a mix of LVal and non-LVal declarators", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let { a } = foo, b = 2, { c } = blah, d = 4;
+          console.log(a + d);
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let { a } = foo, d = 4;
+        console.log(a + d);
+        export {};
+        `
+      );
+    });
+
+    test("removes all unconsumed declarators from a declaration and the declaration itself", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let a = 1;
+          console.log(2);
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        console.log(2);
+        export {};
+        `
+      );
+    });
+
+    test("removes all unconsumed declarators in an LVal", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let [ ...{ ...a } ] = foo;
+          console.log(2);
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        console.log(2);
+        export {};
+        `
+      );
+    });
+
+    test("removes unconsumed renamed declarators in an ObjectPattern LVal", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let { x, y: a } = foo;
+          console.log(x);
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let { x } = foo;
+        console.log(x);
+        export {};
+        `
+      );
+    });
+
+    test("retains renamed declarators in an ObjectPattern LVal", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let { x, y: a } = foo;
+          console.log(a);
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let { y: a } = foo;
+        console.log(a);
+        export {};
+        `
+      );
+    });
+
+    test("removes unconsumed declarator in a nested ObjectPattern LVal", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let { x, y: { a } } = foo;
+          console.log(x);
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let { x } = foo;
+        console.log(x);
+        export {};
+        `
+      );
+    });
+
+    test("retains declarator in a nested ObjectPattern LVal", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let { x, y: { a } } = foo;
+          console.log(a);
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let { y: { a } } = foo;
+        console.log(a);
+        export {};
+        `
+      );
+    });
+
+    test("removes unconsumed declarator in an ArrayPattern LVal", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let [ x, y, z ] = foo;
+          console.log(z);
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let [ , , z ] = foo;
+        console.log(z);
+        export {};
+        `
+      );
+    });
+
+    test("removes unconsumed declarator in a nested ArrayPattern LVal", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let [ x, [ a ] ] = foo;
+          console.log(x);
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let [ x ] = foo;
+        console.log(x);
+        export {};
+        `
+      );
+    });
+
+    test("retains declarator in a nested ArrayPattern LVal", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let [ x, [ a ] ] = foo;
+          console.log(a);
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let [ ,[ a ] ] = foo;
+        console.log(a);
+        export {};
+        `
+      );
+    });
+
+    test("removes unconsumed declarator in a RestElement LVal", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let [ x, ...y ] = foo;
+          console.log(x);
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let [ x ] = foo;
+        console.log(x);
+        export {};
+        `
+      );
+    });
+
+    test("retains declarator in a RestElement LVal", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let [ x, ...y ] = foo;
+          console.log(y);
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let [ , ...y ] = foo;
+        console.log(y);
+        export {};
+        `
+      );
+    });
+
+    test("removes unconsumed declarator in a nested RestElement LVal", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let [ x, ...[ ...y ]] = foo;
+          console.log(x);
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let [ x ] = foo;
+        console.log(x);
+        export {};
+        `
+      );
+    });
+
+    test("retains declarator in a nested RestElement LVal", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let [ x, ...[ ...y ]] = foo;
+          console.log(y);
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let [ , ...[ ...y ]] = foo;
+        console.log(y);
+        export {};
+        `
+      );
+    });
+
+    test("removes unconsumed declarator in an AssignmentPattern LVal", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let { x, y = 1 } = foo;
+          console.log(x);
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let { x } = foo;
+        console.log(x);
+        export {};
+        `
+      );
+    });
+
+    test("retains declarator in an AssignmentPattern LVal", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let { x, y = 1 } = foo;
+          console.log(y);
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let { y = 1 } = foo;
+        console.log(y);
+        export {};
+        `
+      );
+    });
+
+    test("removes unconsumed declarator in a nested AssignmentPattern LVal", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let { x, b: [ y = 1 ] } = foo;
+          console.log(x);
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let { x } = foo;
+        console.log(x);
+        export {};
+        `
+      );
+    });
+
+    test("retains declarator in a nested AssignmentPattern LVal", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let { x, b: [ y = 1 ] } = foo;
+          console.log(y);
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let { b: [ y = 1 ] } = foo;
+        console.log(y);
+        export {};
+        `
+      );
+    });
+
+    test("preserves side-effectful right-hand side when there is only one side effect at the beginning of the list", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let a = initCache(), b = true, c = 1, d = 'd', e = null, f = undefined, g = function() {}, h = class foo {};
+          export {};
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let a = initCache();
+        export {};
+        `
+      );
+    });
+
+    test("preserves side-effectful right-hand side when there is only one side effect at the end of the list", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let b = true, c = 1, d = 'd', e = null, f = undefined, g = function() {}, h = class foo {}, a = initCache();
+          export {};
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let a = initCache();
+        export {};
+        `
+      );
+    });
+
+    test("preserves side-effectful right-hand side when there is only one side effect in the middle of the list", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let b = true, c = 1, d = 'd', e = null, a = initCache(), f = undefined, g = function() {}, h = class foo {};
+          export {};
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let a = initCache();
+        export {};
+        `
+      );
+    });
+
+    test("preserves side-effectful right-hand side when there are multiple effects in the list", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let a = initACache(), b = true, c = 1, d = 'd', e = initECache(), f = undefined, g = function() {}, h = class foo {};
+          export {};
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let a = initACache(), e = initECache();
+        export {};
+        `
+      );
+    });
+
+    test("preserves side-effectful right-hand side when it is the only declarator in a declaration", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let a = initCache();
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let a = initCache();
+        export {};
+        `
+      );
+    });
+
+    test("preserves side-effectful right-hand side for ObjectPatten LVal", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let { x } = initCache();
+          export {};
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let { x } = initCache();
+        export {};
+        `
+      );
+    });
+
+    test("preserves side-effectful right-hand side for ArrayPatten LVal", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let [ x ] = initCache();
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let [ x ] = initCache();
+        export {};
+        `
+      );
+    });
+
+    test("preserves side-effectful right-hand side for RestElement LVal", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let { a: [ ...x ] } = initCache();
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let { a: [ ...x ] } = initCache();
+        export {};
+        `
+      );
+    });
+
+    test("preserves side-effectful right-hand side for multiple LVal identifiers", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let { x, y } = initCache();
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let { x, y } = initCache();
+        export {};
+        `
+      );
+    });
+
+    test("preserves side-effectful initializer in LVal", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+        let { x = initCache() } = foo;
+        export {};
+      `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let { x = initCache() } = foo;
+        export {};
+        `
+      );
+    });
+
+    test("preserves side-effectful initializer in list that includes side-effectful LVal", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let { x = initCache() } = foo, y = 1, z = initZCache();
+          export {};
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleSource(assert.fs),
+        `
+        let { x = initCache() } = foo, z = initZCache();
+        export {};
+        `
+      );
+    });
+
     test("bundle contains module description", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["index.js"] }`,
@@ -1748,563 +2367,103 @@ QUnit.module("module builder", function (origHooks) {
         console.log(a + b);
         export { a as A, b };
         */
-      let desc = await bundleDescription(assert.fs)!;
-      assert.equal(desc.declarations.size, 2);
-      let a = desc.declarations.get("a")!;
-      assert.equal(a.declaration.declaredName, "a");
-      assert.equal(a.declaration.type, "local");
-      let b = desc.declarations.get("b")!;
-      assert.equal(b.declaration.declaredName, "b");
-      assert.equal(b.declaration.type, "local");
-      // TODO assert that the "declaration.original" property is populated
+      let { source, desc } = await bundle(assert.fs);
+      assert.ok(desc, "bundle description exists");
+      if (desc) {
+        assert.equal(desc.declarations.size, 2);
+        let a = desc.declarations.get("a")!;
+        assert.equal(a.declaration.declaredName, "a");
+        assert.equal(a.declaration.type, "local");
+        let b = desc.declarations.get("b")!;
+        assert.equal(b.declaration.declaredName, "b");
+        assert.equal(b.declaration.type, "local");
+        // TODO assert that the "declaration.original" property is populated
 
-      assert.equal(desc.exports.get("A")?.type, "local");
-      assert.equal((desc.exports.get("A") as LocalExportDescription).name, "a");
-      assert.equal(desc.exports.get("b")?.type, "local");
-      assert.equal((desc.exports.get("b") as LocalExportDescription).name, "b");
+        assert.equal(desc.exports.get("A")?.type, "local");
+        assert.equal(
+          (desc.exports.get("A") as LocalExportDescription).name,
+          "a"
+        );
+        assert.ok(
+          desc.exports.get("A")?.exportRegion != null,
+          "export region exists"
+        );
+        assert.equal(desc.exports.get("b")?.type, "local");
+        assert.equal(
+          (desc.exports.get("b") as LocalExportDescription).name,
+          "b"
+        );
+        assert.ok(
+          desc.exports.get("b")?.exportRegion != null,
+          "export region exists"
+        );
 
-      let editor = new RegionEditor(await bundleSource(assert.fs), desc);
-      editor.rename("a", "renamedA");
-      editor.rename("b", "renamedB");
-      assert.codeEqual(
-        editor.serialize().code,
-        `
-        const renamedA = 'a';
-        const renamedB = 'b';
-        console.log(renamedA + renamedB);
-        export { renamedA as A, renamedB as b };
-        `
-      );
+        let editor = new RegionEditor(source, desc);
+        keepAll(desc, editor);
+        editor.rename("a", "renamedA");
+        editor.rename("b", "renamedB");
+        assert.codeEqual(
+          editor.serialize().code,
+          `
+          const renamedA = 'a';
+          const renamedB = 'b';
+          console.log(renamedA + renamedB);
+          export { renamedA as A, renamedB as b };
+          `
+        );
+      }
     });
 
-    skip("removes unconsumed leading variable declarator from a declaration", function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let a = 1, b = 2;
-        console.log(b);
-        export {};
-      `);
-      keepAll(desc, editor);
-      editor.removeDeclaration("a");
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        let b = 2;
-        console.log(b);
-        export {};
-      `
-      );
-      */
-    });
-    skip("removes unconsumed trailing variable declarator from a declaration", function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let a = 1, b = 2;
-        export {};
-      `);
-      keepAll(desc, editor);
-      editor.removeDeclaration("b");
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        let a = 1;
-        export {};
-      `
-      );
-      */
-    });
-    skip("removes unconsumed adjacent variable declarators from a declaration", function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let a = 1, b = 2, c = 3, d = 4;
-        export {};
-      `);
-      keepAll(desc, editor);
-      editor.removeDeclaration("b");
-      editor.removeDeclaration("c");
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        let a = 1, d = 4;
-        export {};
-      `
-      );
-      */
-    });
-    skip("removes unconsumed first 2 variable declarators from a declaration", function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let a = 1, b = 2, c = 3, d = 4;
-        export {};
-      `);
-      keepAll(desc, editor);
-      editor.removeDeclaration("a");
-      editor.removeDeclaration("b");
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        let c = 3, d = 4;
-        export {};
-      `
-      );
-      */
-    });
-    skip("removes unconsumed declarator from a list that includes a mix of LVal and non-LVal declarators", function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let { a } = foo, b = 2, { c } = blah, d = 4;
-        export {};
-      `);
-      keepAll(desc, editor);
-      editor.removeDeclaration("b");
-      editor.removeDeclaration("c");
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        let { a } = foo, d = 4;
-        export {};
-        `
-      );
-      */
-    });
-    skip("removes all unconsumed declarators from a declaration and the declaration itself", function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let a = 1;
-        console.log(2);
-        export {};
-      `);
-      keepAll(desc, editor);
-      editor.removeDeclaration("a");
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        console.log(2);
-        export {};
-      `
-      );
-      */
-    });
-    skip("removes all unconsumed declarators in an LVal", function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let [ ...{ ...a } ] = foo;
-        console.log(2);
-        export {};
-      `);
-      keepAll(desc, editor);
-      editor.removeDeclaration("a");
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        console.log(2);
-        export {};
-      `
-      );
-      */
-    });
-    skip("removes unconsumed renamed declarators in an ObjectPattern LVal", function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let { x, y: a } = foo;
-        console.log(2);
-        export {};
-      `);
-      keepAll(desc, editor);
-      editor.removeDeclaration("a");
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        let { x } = foo;
-        console.log(2);
-        export {};
-      `
-      );
-      */
-    });
-    skip("removes unconsumed declarator in a nested ObjectPattern LVal", function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let { x, y: { a } } = foo;
-        console.log(2);
-        export {};
-      `);
-      keepAll(desc, editor);
-      editor.removeDeclaration("a");
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        let { x } = foo;
-        console.log(2);
-        export {};
-      `
-      );
-      */
-    });
-    skip("removes unconsumed declarator in an ArrayPattern LVal", function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let [ x, y, z ] = foo;
-        console.log(2);
-        export {};
-      `);
-      keepAll(desc, editor);
-      editor.removeDeclaration("x");
-      editor.removeDeclaration("y");
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        let [ , , z ] = foo;
-        console.log(2);
-        export {};
-      `
-      );
-      */
-    });
-    skip("removes unconsumed declarator in a nested ArrayPattern LVal", function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let [ x, [ a ] ] = foo;
-        console.log(2);
-        export {};
-      `);
-      keepAll(desc, editor);
-      editor.removeDeclaration("a");
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        let [ x ] = foo;
-        console.log(2);
-        export {};
-      `
-      );
-      */
-    });
-    skip("removes unconsumed declarator in a RestElement LVal", function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let [ x, ...y ] = foo;
-        console.log(2);
-        export {};
-      `);
-      keepAll(desc, editor);
-      editor.removeDeclaration("y");
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        let [ x ] = foo;
-        console.log(2);
-        export {};
-      `
-      );
-      */
-    });
-    skip("removes unconsumed declarator in a nested RestElement LVal", function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let [ x, ...[ ...y ]] = foo;
-        console.log(2);
-        export {};
-        `);
-      keepAll(desc, editor);
-      editor.removeDeclaration("y");
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        let [ x ] = foo;
-        console.log(2);
-        export {};
-      `
-      );
-      */
-    });
-    skip("removes unconsumed declarator in an AssignmentPattern LVal", function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let { x, y = 1 } = foo;
-        console.log(2);
-        export {};
-      `);
-      keepAll(desc, editor);
-      editor.removeDeclaration("y");
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        let { x } = foo;
-        console.log(2);
-        export {};
-      `
-      );
-      */
-    });
-    skip("removes unconsumed declarator in a nested AssignmentPattern LVal", function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let { x, b: [ y = 1 ] } = foo;
-        console.log(2);
-        export {};
-      `);
-      keepAll(desc, editor);
-      editor.removeDeclaration("y");
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        let { x } = foo;
-        console.log(2);
-        export {};
-      `
-      );
-      */
-    });
-    skip("preserves side-effectful right-hand side when there is only one side effect at the beginning of the list", async function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let a = initCache(), b = true, c = 1, d = 'd', e = null, f = undefined, g = function() {}, h = class foo {};
-        export {};
-      `);
-      keepAll(desc, editor);
+    skip("bundle contains module description with reassigned local imports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { a as alpha } from './a.js';
+          import { b as beta } from './b.js';
+          console.log(alpha + beta);
+          export { alpha as A, beta };
+        `,
+        "a.js": `export const a = 'a';`,
+        "b.js": `export const b = 'b';`,
+      });
 
-      editor.removeDeclaration("a");
-      editor.removeDeclaration("b");
-      editor.removeDeclaration("c");
-      editor.removeDeclaration("d");
-      editor.removeDeclaration("e");
-      editor.removeDeclaration("f");
-      editor.removeDeclaration("g");
-      editor.removeDeclaration("h");
-
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        initCache();
-        export {};
-        `
-      );
-      */
-    });
-    skip("preserves side-effectful right-hand side when there is only one side effect at the end of the list", async function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let b = true, c = 1, d = 'd', e = null, f = undefined, g = function() {}, h = class foo {}, a = initCache();
-        export {};
-        `);
-      keepAll(desc, editor);
-
-      editor.removeDeclaration("a");
-      editor.removeDeclaration("b");
-      editor.removeDeclaration("c");
-      editor.removeDeclaration("d");
-      editor.removeDeclaration("e");
-      editor.removeDeclaration("f");
-      editor.removeDeclaration("g");
-      editor.removeDeclaration("h");
-
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        initCache();
-        export {};
-        `
-      );
-      */
+      /* resulting bundle:
+        const alpha = 'a';
+        const beta = 'b';
+        console.log(alpha + beta);
+        export { alpha as A, beta };
+        */
     });
 
-    skip("preserves side-effectful right-hand side when there is only one side effect in the middle of the list", async function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let b = true, c = 1, d = 'd', e = null, a = initCache(), f = undefined, g = function() {}, h = class foo {};
-        export {};
-      `);
-      keepAll(desc, editor);
+    skip("bundle contains module description with pruned declaration references", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { a } from './a.js';
+          import { b } from './b.js';
+          const c = b;
+          console.log(a + b);
+          export { a as A, b };
+        `,
+        "a.js": `export const a = 'a';`,
+        "b.js": `export const b = 'b';`,
+      });
 
-      editor.removeDeclaration("a");
-      editor.removeDeclaration("b");
-      editor.removeDeclaration("c");
-      editor.removeDeclaration("d");
-      editor.removeDeclaration("e");
-      editor.removeDeclaration("f");
-      editor.removeDeclaration("g");
-      editor.removeDeclaration("h");
-
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        initCache();
-        export {};
-        `
-      );
-      */
+      /* resulting bundle:
+        const a = 'a';
+        const b = 'b';
+        console.log(a + b);
+        export { a as A, b };
+        */
     });
 
-    skip("preserves side-effectful right-hand side when there are multiple effects in the list", async function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let a = initACache(), b = true, c = 1, d = 'd', e = initECache(), f = undefined, g = function() {}, h = class foo {};
-        export {};
-      `);
-      keepAll(desc, editor);
+    // TODO test through all namespace code region scenarios
 
-      editor.removeDeclaration("a");
-      editor.removeDeclaration("b");
-      editor.removeDeclaration("c");
-      editor.removeDeclaration("d");
-      editor.removeDeclaration("e");
-      editor.removeDeclaration("f");
-      editor.removeDeclaration("g");
-      editor.removeDeclaration("h");
+    // TODO test through all export code region scenarios
 
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        let unused0 = initACache(), unused1 = initECache();
-        export {};
-        `
-      );
-      */
-    });
+    // TODO test through all import code region scenarios
 
-    skip("preserves side-effectful right-hand side when it is the only declarator in a declaration", async function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let a = initCache();
-        export {};
-      `);
-      keepAll(desc, editor);
-
-      editor.removeDeclaration("a");
-
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        initCache();
-        export {};
-        `
-      );
-      */
-    });
-
-    skip("preserves side-effectful right-hand side for ObjectPatten LVal", async function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let { x } = initCache();
-        export {};
-      `);
-      keepAll(desc, editor);
-
-      editor.removeDeclaration("x");
-
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        let { x: unused0 } = initCache();
-        export {};
-        `
-      );
-      */
-    });
-
-    skip("preserves side-effectful right-hand side for ArrayPatten LVal", async function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let [ x ] = initCache();
-        export {};
-      `);
-      keepAll(desc, editor);
-
-      editor.removeDeclaration("x");
-
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        let [ unused0 ] = initCache();
-        export {};
-        `
-      );
-      */
-    });
-
-    skip("preserves side-effectful right-hand side for RestElement LVal", async function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let { a: [ ...x ] } = initCache();
-        export {};
-      `);
-      keepAll(desc, editor);
-
-      editor.removeDeclaration("x");
-
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        let { a: [ ...unused0 ] }= initCache();
-        export {};
-        `
-      );
-      */
-    });
-
-    skip("preserves side-effectful right-hand side for multiple LVal identifiers", async function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let { x, y } = initCache();
-        export {};
-      `);
-      keepAll(desc, editor);
-
-      editor.removeDeclaration("x");
-      editor.removeDeclaration("y");
-
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        let { x: unused0, y: unused1 } = initCache();
-        export {};
-        `
-      );
-      */
-    });
-
-    skip("preserves side-effectful initializer in LVal", async function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let { x = initCache() } = foo;
-        export {};
-      `);
-      keepAll(desc, editor);
-
-      editor.removeDeclaration("x");
-
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        let { x: unused0 = initCache() } = foo;
-        export {};
-        `
-      );
-      */
-    });
-
-    skip("preserves side-effectful initializer in list that includes side-effectful LVal", async function () {
-      /*
-      let { desc, editor } = describeESModule(`
-        let { x = initCache() } = foo, y = 1, z = initZCache();
-        export {};
-      `);
-      keepAll(desc, editor);
-
-      editor.removeDeclaration("x");
-      editor.removeDeclaration("y");
-      editor.removeDeclaration("z");
-
-      assert.codeEqual(
-        editor.serialize(),
-        `
-        let { x: unused0 = initCache() } = foo, unused1 = initZCache();
-        export {};
-        `
-      );
-      */
-    });
+    skip("bundle contains module description for namespace declaration", async function () {});
 
     /*
     test("module descriptions include original import info for local bindings that originally came from an import", async function (assert) {

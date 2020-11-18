@@ -63,13 +63,6 @@ export interface ModuleDescription extends Description {
   exports: Map<string | ExportAllMarker, ExportDescription>;
 
   declarations: Declarations;
-
-  // TODO we could probably remove this....
-  exportRegions: {
-    region: RegionPointer;
-    declaration: RegionPointer | undefined;
-    defaultExport: true | "identifier" | undefined;
-  }[];
 }
 
 export type Declarations = Map<
@@ -400,7 +393,7 @@ export function describeFile(
           reference.declarationRegion = declarationPointer;
         }
       }
-      if (sideEffects && !withinLval) {
+      if (sideEffects) {
         desc.regions[sideEffects].dependsOn.add(declarationPointer);
       }
       dependsOn.set(builder.regions[declarationPointer], consumes);
@@ -512,7 +505,6 @@ export function describeFile(
           requires: [],
           exports: new Map(),
           declarations: new Map(),
-          exportRegions: [],
           regions: builder.regions,
           esTranspiledExports: undefined,
         };
@@ -707,18 +699,12 @@ export function describeFile(
       let source = path.node.source.value;
       let exportRegion = builder.createCodeRegion(path as NodePath);
       let importIndex = ensureImportSpecifier(desc, source, exportRegion, true);
-      let exportRegionIndex = desc.exportRegions.length;
 
-      desc.exportRegions.push({
-        region: exportRegion,
-        defaultExport: undefined,
-        declaration: undefined,
-      });
       let marker: ExportAllMarker = { exportAllFrom: source };
       desc.exports.set(marker, {
         type: "export-all",
         importIndex,
-        exportRegion: exportRegionIndex,
+        exportRegion,
       });
     },
     ExportDefaultDeclaration: {
@@ -728,12 +714,9 @@ export function describeFile(
         // we're relying on the fact that default is a keyword so it can't be used
         // as a real local name
         let name = "default";
-        let isDefaultExportIdentifier = false;
-
         switch (path.node.declaration.type) {
           case "Identifier":
             name = path.node.declaration.name;
-            isDefaultExportIdentifier = true;
             break;
           case "ClassDeclaration":
           case "FunctionDeclaration":
@@ -742,14 +725,6 @@ export function describeFile(
             }
         }
         let exportRegion = builder.createCodeRegion(path as NodePath);
-        desc.exportRegions.push({
-          region: exportRegion,
-          defaultExport: isDefaultExportIdentifier ? "identifier" : true,
-          declaration: builder.createCodeRegion(
-            path.get("declaration") as NodePath
-          ),
-        });
-
         desc.exports.set("default", {
           type: "local",
           name,
@@ -781,19 +756,7 @@ export function describeFile(
     },
     ExportNamedDeclaration(path) {
       isES6Module = true;
-      let declaration: RegionPointer | undefined;
       let exportRegion = builder.createCodeRegion(path as NodePath);
-      if (path.node.declaration != null) {
-        declaration = builder.createCodeRegion(
-          path.get("declaration") as NodePath
-        );
-      }
-      desc.exportRegions.push({
-        region: exportRegion,
-        defaultExport: undefined,
-        declaration,
-      });
-
       if (path.node.source) {
         // we are reexporting things
         let importIndex = ensureImportSpecifier(
@@ -946,8 +909,8 @@ export function describeFile(
     let esTranspiledExports = isTranspiledFromES ? cjsExportNames : undefined;
     return { regions, requires, esTranspiledExports };
   } else {
-    let { imports, exports, exportRegions } = desc!;
-    return { regions, imports, exports, exportRegions, declarations };
+    let { imports, exports } = desc!;
+    return { regions, imports, exports, declarations };
   }
 }
 
@@ -958,7 +921,7 @@ function cleanupSelfDependencies(regions: FileDescription["regions"]) {
   }
 }
 
-function assignCodeRegionPositions(
+export function assignCodeRegionPositions(
   pointer: RegionPointer,
   regions: CodeRegion[],
   index = 0
@@ -1081,7 +1044,7 @@ function setLValExportDesc(
   }
 }
 
-function ensureImportSpecifier(
+export function ensureImportSpecifier(
   desc: ModuleDescription,
   specifier: string,
   region: RegionPointer,

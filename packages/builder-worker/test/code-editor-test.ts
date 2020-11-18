@@ -26,7 +26,6 @@ function makeDescFromRegions(regions: CodeRegion[]): ModuleDescription {
     declarations: declarationsMap(regions),
     exports: new Map(),
     imports: [],
-    exportRegions: [],
   };
 }
 

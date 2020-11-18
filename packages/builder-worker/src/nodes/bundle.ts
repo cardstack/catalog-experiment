@@ -5,7 +5,7 @@ import {
   isCyclicModuleResolution,
   Resolution,
 } from "./resolution";
-import { getExports } from "../describe-file";
+import { getExports, ModuleDescription } from "../describe-file";
 import {
   ImportedDeclarationDescription,
   NamespaceMarker,
@@ -15,6 +15,7 @@ import { makeURLEndInDir } from "../path";
 import { Resolver } from "../resolver";
 import { LockEntries } from "./lock-file";
 import { CombineModulesNode } from "./combine-modules";
+import { addDescriptionToSource } from "../description-encoder";
 
 export class BundleAssignmentsNode implements BuilderNode {
   cacheKey: string;
@@ -338,7 +339,7 @@ export class BundleNode implements BuilderNode {
 
   async deps() {
     return {
-      code: new CombineModulesNode(
+      result: new CombineModulesNode(
         this.bundle,
         new BundleAssignmentsNode(
           this.inputRoot,
@@ -351,52 +352,15 @@ export class BundleNode implements BuilderNode {
     };
   }
 
-  async run({ code }: { code: string }): Promise<Value<string>> {
-    // let { code, importAssignments } = combineModules(
-    //   this.bundle,
-    //   bundleAssignments
-    // );
-    // if (this.skipBundleAnnotation) {
-    //   return { value: code };
-    // }
-    // return {
-    //   node: new BundleSerializerNode(code, importAssignments, this.bundle),
-    // };
-    return { value: code };
-  }
-}
-
-// TODO this should not be necessary anymore--the accretion of code regions into
-// bundles will build a new module description for the bundle
-/*
-export class BundleSerializerNode implements BuilderNode {
-  cacheKey = this;
-
-  constructor(
-    private unannotatedSrc: string,
-    private importAssignments: ImportAssignments,
-    private bundleURL: URL
-  ) {}
-
-  async deps() {
-    return {
-      parsed: new JSParseNode(new ConstantNode(this.unannotatedSrc)),
-    };
-  }
-
-  async run({ parsed }: { parsed: File }): Promise<Value<string>> {
-    let desc = describeFile(parsed, {
-      importAssignments: this.importAssignments,
-      filename: this.bundleURL.href,
-    });
-    if (!isModuleDescription(desc)) {
-      throw new Error(`Cannot encode description for CJS file`);
-    }
-    let value = addDescriptionToSource(desc, this.unannotatedSrc);
+  async run({
+    result: { code, desc },
+  }: {
+    result: { code: string; desc: ModuleDescription };
+  }): Promise<Value<string>> {
+    let value = addDescriptionToSource(desc, code);
     return { value };
   }
 }
-*/
 
 export interface BundleAssignment {
   // which bundle are we in

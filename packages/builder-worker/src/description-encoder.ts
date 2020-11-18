@@ -42,8 +42,6 @@ const regionTypeShorthand = {
 const moduleDescLegend = [
   "imports", // array of import descriptions
   "exports", // [name: string]: array of export descriptions
-  "exportRegions", // [[number, number | null]]
-  "names", // [name: string]: name desc array
   "regions", // array of code regions
 ];
 
@@ -90,12 +88,6 @@ const importDescLegend = [
   "region", // number | null
   "isReexport", // boolean
   "specifierRegion", // number | null
-];
-
-const exportRegionDescLegend = [
-  "region", // number
-  "declaration", // number
-  "defaultExport", // true | "identifier" | undefined
 ];
 
 const exportDescLegend = [
@@ -154,15 +146,6 @@ function encodeModuleDescription(desc: ModuleDescription): string {
           });
         }
         encoded.push(exports);
-        break;
-      case "exportRegions":
-        encoded.push(
-          desc.exportRegions.map((r) =>
-            encodeObj(r, exportRegionDescLegend, {
-              defaultExport: { identifier: "i" },
-            })
-          )
-        );
         break;
       case "regions":
         encoded.push(
@@ -224,7 +207,6 @@ function decodeModuleDescription(encoded: string): ModuleDescription {
 
   let imports: ModuleDescription["imports"] = [];
   let exports: ModuleDescription["exports"] = new Map();
-  let exportRegions: ModuleDescription["exportRegions"] = [];
   let regions: ModuleDescription["regions"] = [];
 
   for (let [index, prop] of moduleDescLegend.entries()) {
@@ -249,13 +231,6 @@ function decodeModuleDescription(encoded: string): ModuleDescription {
             }) as ExportDescription
           );
         }
-        break;
-      case "exportRegions":
-        exportRegions = value.map((v: any[]) =>
-          decodeArray(v, exportRegionDescLegend, {
-            defaultExport: { identifier: "i" },
-          })
-        );
         break;
       case "regions":
         regions = value.map((v: any[]) => {
@@ -329,7 +304,6 @@ function decodeModuleDescription(encoded: string): ModuleDescription {
   return {
     imports,
     exports,
-    exportRegions,
     declarations: declarationsMap(regions),
     regions,
   };
@@ -337,9 +311,7 @@ function decodeModuleDescription(encoded: string): ModuleDescription {
 
 function decodeRegionType(e: string) {
   let [type] =
-    Object.entries(regionTypeShorthand)
-      .find(([, value]) => value === e)
-      ?.map(([key]) => key) ?? [];
+    Object.entries(regionTypeShorthand).find(([, value]) => value === e) ?? [];
   if (!type) {
     throw new Error(`cannot decode region type ${e}`);
   }
