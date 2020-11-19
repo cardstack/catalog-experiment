@@ -519,7 +519,14 @@ function buildBundleBody(
     let {
       region: namespaceDeclarationRegion,
       pointer: namespaceDeclarationPointer,
-    } = buildNamespaces(code, regions, rewriter, bundleDeclarations, state);
+    } = buildNamespaces(
+      code,
+      regions,
+      rewriter,
+      bundleDeclarations,
+      state,
+      bundle
+    );
 
     let offset = regions.length;
     let { code: moduleCode, regions: moduleRegions } = rewriter.serialize();
@@ -619,7 +626,8 @@ function buildNamespaces(
   regions: CodeRegion[],
   rewriter: ModuleRewriter,
   bundleDeclarations: DeclarationRegionMap,
-  state: HeadState
+  state: HeadState,
+  bundle: URL
 ): {
   pointer: RegionPointer | undefined;
   region: GeneralCodeRegion | undefined;
@@ -698,28 +706,33 @@ function buildNamespaces(
           region,
           declaratorRegion,
           referenceRegion,
-          ...[...nameMap].map(
-            ([outsideName, insideName], index) =>
-              ({
-                type: "reference",
-                start:
-                  index === 0
-                    ? 5 /* " = { " */
-                    : outsideName === insideName
-                    ? 2 /* ", "*/
-                    : outsideName.length + 4 /* ", outsideName: " */,
-                end: assignedName.length,
-                firstChild: undefined,
-                nextSibling:
-                  index === nameMap!.size - 1
-                    ? undefined
-                    : referencePointer + index + 2,
-                shorthand: outsideName === insideName ? "object" : false,
-                position: 0,
-                dependsOn: new Set(),
-                declarationRegion: declaratorPointer,
-              } as ReferenceCodeRegion)
-          )
+          ...[...nameMap].map(([outsideName, insideName], index) => {
+            let declaration = bundleDeclarations.get(insideName);
+            if (!declaration) {
+              throw new Error(
+                `bug: can't find declaration for item '${insideName}' in namespace object '${assignedName}' in bundle ${bundle.href}`
+              );
+            }
+            return {
+              type: "reference",
+              start:
+                index === 0
+                  ? 5 /* " = { " */
+                  : outsideName === insideName
+                  ? 2 /* ", "*/
+                  : outsideName.length + 4 /* ", outsideName: " */,
+              end: assignedName.length,
+              firstChild: undefined,
+              nextSibling:
+                index === nameMap!.size - 1
+                  ? undefined
+                  : referencePointer + index + 2,
+              shorthand: outsideName === insideName ? "object" : false,
+              position: 0,
+              dependsOn: new Set(),
+              declarationRegion: declaration.pointer,
+            } as ReferenceCodeRegion;
+          })
         );
         bundleDeclarations.set(assignedName, {
           pointer: declaratorPointer,
