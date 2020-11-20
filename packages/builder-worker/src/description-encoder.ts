@@ -15,11 +15,13 @@ import {
   isExportAllMarker,
   ExportAllMarker,
   declarationsMap,
+  assignCodeRegionPositions,
 } from "./describe-file";
 import isEqual from "lodash/isEqual";
 import invert from "lodash/invert";
 import {
   DeclarationCodeRegion,
+  documentPointer,
   GeneralCodeRegion,
   ImportCodeRegion,
   NamespaceMarker,
@@ -67,17 +69,13 @@ const importCodeRegionLegend = [
   "importIndex", // number
 ];
 
-const referenceCodeRegionLegend = [
-  ...baseCodeRegionLegend,
-  "declarationRegion",
-];
+const referenceCodeRegionLegend = [...baseCodeRegionLegend];
 
 const declarationLegend = [
   "type", // "l" = local, "i" = import
   "declaredName", // string,
   "references", // [number]
-  "sideEffects", // number | null
-  "original", // [moduleHref: string, exportedName: string ] | null
+  "original", // [bundleHref: string, importedAs: string | {n: true }, range: string ] | null
   "importIndex", // number | null
   "importedName", // string | { n: true }
 ];
@@ -180,7 +178,7 @@ function encodeModuleDescription(desc: ModuleDescription): string {
                       shorthand: { type: { import: "i", local: "l" } },
                       encodeProps: {
                         original: {
-                          legend: ["moduleHref", "exportedName"],
+                          legend: ["bundleHref", "importedAs", "range"],
                         },
                       },
                     },
@@ -281,7 +279,7 @@ function decodeModuleDescription(encoded: string): ModuleDescription {
                     shorthand: { type: { import: "i", local: "l" } },
                     decodeProps: {
                       original: {
-                        legend: ["moduleHref", "exportedName"],
+                        legend: ["bundleHref", "importedAs", "range"],
                       },
                     },
                   },
@@ -300,6 +298,7 @@ function decodeModuleDescription(encoded: string): ModuleDescription {
         );
     }
   }
+  assignCodeRegionPositions(documentPointer, regions);
 
   return {
     imports,

@@ -13,18 +13,43 @@ import { FileNode } from "./file";
 import { Memoize } from "typescript-memoize";
 import { maybeURL, maybeRelativeURL } from "../path";
 import { BundleAssignment } from "./bundle";
+import { assertNever } from "@catalogjs/shared/util";
+import { catalogjsHref } from "../resolver";
 
 export interface Dependencies {
-  [name: string]: {
-    url: string;
-    range: string; // TODO make this optional, as the URL might be a commit SHA
-  };
+  [name: string]: Dependency;
+}
+
+export type Dependency = NpmDependency | CatalogJSDependency;
+
+export interface NpmDependency {
+  type: "npm";
+  pkgName: string;
+  range: string;
+}
+export interface CatalogJSDependency {
+  type: "catalogjs";
+  url: string;
+  range: string;
 }
 
 export interface EntrypointsJSON {
   html?: string[];
   js?: string[];
-  dependencies: Dependencies;
+  dependencies?: Dependencies;
+}
+
+export function depAsURL(dependency: Dependency): URL {
+  switch (dependency.type) {
+    case "npm":
+      return new URL(
+        `${catalogjsHref}${dependency.type}/${dependency.pkgName}/`
+      );
+    case "catalogjs":
+      return new URL(dependency.url);
+    default:
+      assertNever(dependency);
+  }
 }
 
 export class EntrypointsJSONNode implements BuilderNode {
@@ -45,9 +70,14 @@ export class EntrypointsJSONNode implements BuilderNode {
   async run({ json }: { json: any }): Promise<NextNode<Entrypoint[]>> {
     assertEntrypointsJSON(json, this.input.href);
     let entrypoints = [];
+    let dependencies = json.dependencies ?? {};
     for (let src of [...(json.html || []), ...(json.js || [])]) {
       entrypoints.push(
-        new EntrypointNode(new URL(src, this.input), new URL(src, this.output))
+        new EntrypointNode(
+          new URL(src, this.input),
+          new URL(src, this.output),
+          dependencies
+        )
       );
     }
     return { node: new AllNode(entrypoints) };
@@ -57,8 +87,14 @@ export class EntrypointsJSONNode implements BuilderNode {
 export class EntrypointNode implements BuilderNode {
   cacheKey: string;
 
-  constructor(private src: URL, private dest: URL) {
-    this.cacheKey = `entrypoint:${this.src.href}:${this.dest.href}`;
+  constructor(
+    private src: URL,
+    private dest: URL,
+    private dependencies: Dependencies
+  ) {
+    this.cacheKey = `entrypoint:${this.src.href}:${
+      this.dest.href
+    },${JSON.stringify(this.dependencies)}`;
   }
 
   async deps() {
@@ -87,11 +123,16 @@ export class EntrypointNode implements BuilderNode {
   }): Promise<Value<Entrypoint>> {
     if (parsedHTML) {
       return {
-        value: new HTMLEntrypoint(this.src, this.dest, parsedHTML),
+        value: new HTMLEntrypoint(
+          this.src,
+          this.dest,
+          parsedHTML,
+          this.dependencies
+        ),
       };
     } else if (js) {
       return {
-        value: { url: this.src },
+        value: { url: this.src, dependencies: this.dependencies },
       };
     } else {
       throw new Error("bug: should always have either parsed HTML or js");
@@ -119,17 +160,23 @@ export type Entrypoint = HTMLEntrypoint | JSEntrypoint;
 
 export interface JSEntrypoint {
   url: URL;
+  dependencies: Dependencies;
 }
 
 export class HTMLEntrypoint {
   constructor(
     private src: URL,
     private dest: URL,
-    private parsedHTML: dom.Node[]
+    private parsedHTML: dom.Node[],
+    private deps: Dependencies
   ) {}
 
   get destURL() {
     return this.dest;
+  }
+
+  get dependencies() {
+    return this.deps;
   }
 
   @Memoize()
@@ -235,7 +282,69 @@ function assertDepEntry(
   entry: any,
   dep: string,
   srcFile: string
-): asserts entry is { url: string; range: string } {
+): asserts entry is Dependency {
+  if (typeof entry !== "object") {
+    throw new Error(
+      `invalid entrypoints.json in ${srcFile}, the dependency '${dep}' must be an object`
+    );
+  }
+  if (typeof entry.type !== "string") {
+    throw new Error(
+      `invalid entrypoints.json in ${srcFile}, the 'type' property in  dependency '${dep}' must have a string`
+    );
+  }
+  switch (entry.type) {
+    case "npm":
+      assertNpmDepEntry(entry, dep, srcFile);
+      break;
+    case "catalogjs":
+      assertCatalogJSDepEntry(entry, dep, srcFile);
+      break;
+    default:
+      throw new Error(
+        `invalid entrypoints.json in ${srcFile}, then dependency '${dep}' does not have a valid 'type' property`
+      );
+  }
+}
+
+function assertNpmDepEntry(
+  entry: any,
+  dep: string,
+  srcFile: string
+): asserts entry is NpmDependency {
+  if (typeof entry !== "object") {
+    throw new Error(
+      `invalid entrypoints.json in ${srcFile}, the dependency '${dep}' must be an object`
+    );
+  }
+
+  if (!("pkgName" in entry)) {
+    throw new Error(
+      `invalid entrypoints.json in ${srcFile}, the dependency '${dep}' must have a 'pkgName' property`
+    );
+  }
+  if (typeof entry.pkgName !== "string") {
+    throw new Error(
+      `invalid entrypoints.json in ${srcFile}, the 'pkgName' property in  dependency '${dep}' must have a string`
+    );
+  }
+  if (!("range" in entry)) {
+    throw new Error(
+      `invalid entrypoints.json in ${srcFile}, the dependency '${dep}' must have a 'range' property`
+    );
+  }
+  if (typeof entry.range !== "string") {
+    throw new Error(
+      `invalid entrypoints.json in ${srcFile}, the 'range' property in  dependency '${dep}' must have a string`
+    );
+  }
+}
+
+function assertCatalogJSDepEntry(
+  entry: any,
+  dep: string,
+  srcFile: string
+): asserts entry is CatalogJSDependency {
   if (typeof entry !== "object") {
     throw new Error(
       `invalid entrypoints.json in ${srcFile}, the dependency '${dep}' must be an object`

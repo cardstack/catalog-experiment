@@ -33,7 +33,6 @@ import {
   isReferenceCodeRegion,
 } from "./code-region";
 import { warn } from "./logger";
-import intersection from "lodash/intersection";
 import {
   ModuleResolution,
   Resolution,
@@ -360,6 +359,8 @@ export function describeFile(
       let sideEffects: RegionPointer | undefined;
       if (sideEffectsRegion) {
         sideEffects = builder.createCodeRegion(sideEffectsRegion, undefined);
+        regionDeps.add(sideEffects);
+        desc.regions[documentPointer].dependsOn.add(sideEffects);
       }
       let currentDependsOn = [...dependsOnRegion][0]; // this is the declaration region
       let withinLval = lvalStack.length > 0;
@@ -382,7 +383,6 @@ export function describeFile(
         {
           type: "local",
           references,
-          sideEffects,
           declaredName: name,
         },
         regionDeps
@@ -390,7 +390,7 @@ export function describeFile(
       for (let referencePointer of references) {
         let reference = desc.regions[referencePointer];
         if (isReferenceCodeRegion(reference)) {
-          reference.declarationRegion = declarationPointer;
+          reference.dependsOn.add(declarationPointer);
         }
       }
       if (sideEffects) {
@@ -874,7 +874,6 @@ export function describeFile(
   let declarations = declarationsMap(desc!.regions);
   let { regions } = desc!;
   resolveDependsOnReferences(dependsOn, desc!, declarations);
-  discoverReferencesConsumedBySideEffects(desc!, declarations);
 
   let sideEffectPointers = moduleSideEffects.map(
     ({ regionFromPaths: paths, dependsOn: dependsOnPaths }) => {
@@ -887,14 +886,7 @@ export function describeFile(
     region.dependsOn = new Set([...region.dependsOn, ...sideEffectPointers]);
   }
   let document = builder!.regions[documentPointer];
-  let declarationSideEffects = [...declarations.values()]
-    .filter(({ declaration }) => declaration.sideEffects != null)
-    .map(({ declaration }) => declaration.sideEffects) as RegionPointer[];
-  document.dependsOn = new Set([
-    ...document.dependsOn,
-    ...sideEffectPointers,
-    ...declarationSideEffects,
-  ]);
+  document.dependsOn = new Set([...document.dependsOn, ...sideEffectPointers]);
 
   // clean up any dependencies on ourself--this may happen because at the time
   // we didn't realize that we were identical to a code region that was
@@ -954,51 +946,6 @@ function resolveDependsOnReferences(
       }[]).map(({ pointer }) => pointer),
     ]);
   }
-}
-
-function discoverReferencesConsumedBySideEffects(
-  fileDesc: FileDescription,
-  declarations: Declarations
-) {
-  let { regions } = fileDesc;
-  let declarationsInSideEffects = [...declarations.values()].filter(
-    ({ declaration }) =>
-      declaration.sideEffects != null &&
-      regions[declaration.sideEffects].firstChild != null
-  );
-  for (let {
-    pointer: declarationRegion,
-    declaration,
-  } of declarationsInSideEffects) {
-    let region = regions[declarationRegion];
-    let sideEffectRegions = [...regionSet(declaration.sideEffects!, regions)];
-    for (let {
-      pointer,
-      declaration: { references },
-    } of declarations.values()) {
-      if (intersection(sideEffectRegions, references).length > 0) {
-        region.dependsOn.add(pointer);
-      }
-    }
-  }
-}
-
-function regionSet(
-  pointer: RegionPointer,
-  regions: CodeRegion[]
-): Set<RegionPointer> {
-  let results: RegionPointer[] = [];
-  let region = regions[pointer];
-  let { firstChild, nextSibling } = region;
-  if (firstChild !== undefined) {
-    results.push(firstChild);
-    results.push(...regionSet(firstChild, regions));
-  }
-  if (nextSibling !== undefined) {
-    results.push(nextSibling);
-    results.push(...regionSet(nextSibling, regions));
-  }
-  return new Set(results);
 }
 
 function setLValExportDesc(
@@ -1086,12 +1033,11 @@ function addImportedName(
     importIndex: desc.imports.length - 1, // it's always the last import description added to desc.imports because the the order in which babel traverses the module
     importedName: remoteName,
     references,
-    sideEffects: undefined,
   });
   for (let referencePointer of references) {
     let reference = desc.regions[referencePointer];
     if (isReferenceCodeRegion(reference)) {
-      reference.declarationRegion = declarationPointer;
+      reference.dependsOn.add(declarationPointer);
     }
   }
 }
@@ -1152,6 +1098,15 @@ function isSideEffectFree(node: Expression): boolean {
     case "FunctionExpression":
     case "ClassExpression":
       return true;
+    case "ArrayExpression":
+      return node.elements.every((e) => isSideEffectFree(e as Expression));
+    case "ObjectExpression":
+      return node.properties.every(
+        (p) =>
+          p.type === "ObjectMethod" ||
+          p.type === "SpreadElement" ||
+          isSideEffectFree(p.value as Expression)
+      );
     default:
       return false;
   }

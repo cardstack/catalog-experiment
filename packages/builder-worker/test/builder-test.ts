@@ -6,12 +6,12 @@ import {
 } from "./helpers/file-assertions";
 import "./helpers/code-equality-assertions";
 import {
-  bundleSource,
-  bundleDescription,
+  bundleCode,
   makeBuilder,
   makeRebuilder,
   outputOrigin,
   bundle,
+  bundleSource,
 } from "./helpers/bundle";
 import { Builder, Rebuilder, explainAsDot } from "../src/builder";
 import { FileSystem } from "../src/filesystem";
@@ -51,7 +51,7 @@ QUnit.module("module builder", function (origHooks) {
     return etags;
   }
 
-  // TODO use the bundleSource() function instead
+  // TODO use the bundleCode() function instead
   async function buildBundle(
     assert: FileAssert,
     bundleURL: URL,
@@ -100,7 +100,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         const a = 'a';
         const b = 'b';
@@ -123,7 +123,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         const [ { a } ] = foo;
         const b = 'b';
@@ -148,7 +148,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         const hello = 'hello';
         const b = hello + '!';
@@ -173,7 +173,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         const hello = 'hello';
         const b = hello + '!';
@@ -203,7 +203,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let shared1 = 3;
         console.log(shared1);
@@ -233,7 +233,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         const hello = 'hello';
         const a = 'a';
@@ -256,7 +256,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `const a = 'a';
          const b = 'b';
          console.log(a + b);
@@ -278,7 +278,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         const a = 'a';
         const b = 'b';
@@ -301,7 +301,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `const a = 'a';
         function b() {
           return 'b';
@@ -324,7 +324,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `const a = 'a';
         class b {
           foo() {
@@ -354,7 +354,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         const hello = 'hello';
         const goodbye = 'goodbye';
@@ -388,7 +388,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         const konnichiwa = 'konnichiwa';
         const sayonara = 'sayonara';
@@ -415,7 +415,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs, undefined, {
+        await bundleCode(assert.fs, undefined, {
           testing: {
             origin,
             exports: {
@@ -453,7 +453,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs, undefined, {
+        await bundleCode(assert.fs, undefined, {
           testing: {
             origin,
             exports: {
@@ -494,7 +494,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs, undefined, {
+        await bundleCode(assert.fs, undefined, {
           testing: {
             origin,
             exports: {
@@ -533,7 +533,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs, undefined, {
+        await bundleCode(assert.fs, undefined, {
           testing: {
             origin,
             exports: {
@@ -568,7 +568,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs, undefined, {
+        await bundleCode(assert.fs, undefined, {
           testing: {
             origin,
             exports: {
@@ -602,7 +602,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs, undefined, {
+        await bundleCode(assert.fs, undefined, {
           testing: {
             origin,
             exports: {
@@ -640,7 +640,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs, undefined, {
+        await bundleCode(assert.fs, undefined, {
           testing: {
             origin,
             exports: {
@@ -677,7 +677,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         const hello = 'hello';
         const hi = 'hi';
@@ -707,7 +707,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         const b = 'hello';
         const b0 = 1;
@@ -735,7 +735,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         const hello = function() { return 'hello'; }
         const hi = 'hi';
@@ -763,7 +763,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         const a = 1;
         const b = 'internal';
@@ -787,7 +787,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         const hello = 'hello';
         const goodbye = 'goodbye';
@@ -818,7 +818,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         const konnichiwa = 'konnichiwa';
         const sayonara = 'sayonara';
@@ -849,7 +849,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         const _default = (function() { return 'hello'; });
         const goodbye = 'goodbye';
@@ -878,7 +878,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         const _default = (function() { return 'hello'; });
         const goodbye = 'goodbye';
@@ -904,7 +904,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         const hello = 'hello';
         const goodbye = 'goodbye';
@@ -931,7 +931,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         const hello0 = 'hello';
         const goodbye = 'goodbye';
@@ -958,7 +958,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         const goodbye = 'goodbye';
         console.log(goodbye);
@@ -995,7 +995,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         const hello = 'hello';
         const goodbye = 'goodbye';
@@ -1028,7 +1028,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         const hello = 'hello';
         const goodbye = 'goodbye';
@@ -1061,7 +1061,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         const prop0 = 'propA';
         const b0 = 1;
@@ -1096,7 +1096,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         function a() {
           console.log('a');
@@ -1124,7 +1124,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
           const foo = (function a(blah) { console.log(blah); });
           foo('bar');
@@ -1157,7 +1157,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         class A {
           display() { console.log('a'); }
@@ -1190,7 +1190,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         const obj = { foo: 'bar' };
         console.log(JSON.stringify(obj));
@@ -1221,7 +1221,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         const b0 = 'b';
         class A {
@@ -1250,7 +1250,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `import { a } from "./a.js";
         const b = 'b';
         console.log(a + b);`
@@ -1278,7 +1278,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `import { b } from "./b.js";
         function b0() {
           return 'b';
@@ -1304,7 +1304,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `import "./a.js";
         const b = 'b';
         console.log(b);`
@@ -1331,7 +1331,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `import "./a.js";
         console.log('hi');
         const b = 'b';
@@ -1359,7 +1359,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `import { a } from "./a.js";
         console.log(a);
         const b = 'b';
@@ -1381,7 +1381,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         function a() { return 1; }
         console.log(a());
@@ -1404,7 +1404,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         function a() { return 1; }
         console.log(a());
@@ -1427,7 +1427,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         function a() { return 1; }
         console.log(a());
@@ -1451,7 +1451,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         function a() { return 1; }
         function b() { return 2; }
@@ -1479,7 +1479,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         function a() { return 1; }
         console.log(a());
@@ -1508,7 +1508,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         function a() { return 1; }
         console.log(a());
@@ -1535,7 +1535,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `function b() { return 1; }
         console.log(b());
         export {};
@@ -1562,7 +1562,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         function a() { return 1; }
         console.log(a());
@@ -1590,7 +1590,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let aValue;
         function a() { return aValue; }
@@ -1621,7 +1621,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         function a() { return 1; }
         const foo = 'bleep';
@@ -1649,7 +1649,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         function i() { return 1; }
         let a = initCache();
@@ -1681,7 +1681,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         function i() { return 1; }
         function getNative(a, b) { return a[b]; }
@@ -1722,7 +1722,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         function i() { return 1; }
         class Cache {
@@ -1748,7 +1748,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let b = 2;
         console.log(b);
@@ -1767,7 +1767,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let a = 1;
         console.log(a);
@@ -1786,7 +1786,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let a = 1, d = 4;
         console.log(a + d);
@@ -1805,7 +1805,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let c = 3, d = 4;
         console.log(c + d);
@@ -1824,7 +1824,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let { a } = foo, d = 4;
         console.log(a + d);
@@ -1843,7 +1843,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         console.log(2);
         export {};
@@ -1861,7 +1861,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         console.log(2);
         export {};
@@ -1879,7 +1879,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let { x } = foo;
         console.log(x);
@@ -1898,7 +1898,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let { y: a } = foo;
         console.log(a);
@@ -1917,7 +1917,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let { x } = foo;
         console.log(x);
@@ -1936,7 +1936,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let { y: { a } } = foo;
         console.log(a);
@@ -1955,7 +1955,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let [ , , z ] = foo;
         console.log(z);
@@ -1974,7 +1974,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let [ x ] = foo;
         console.log(x);
@@ -1993,7 +1993,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let [ ,[ a ] ] = foo;
         console.log(a);
@@ -2012,7 +2012,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let [ x ] = foo;
         console.log(x);
@@ -2031,7 +2031,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let [ , ...y ] = foo;
         console.log(y);
@@ -2050,7 +2050,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let [ x ] = foo;
         console.log(x);
@@ -2069,7 +2069,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let [ , ...[ ...y ]] = foo;
         console.log(y);
@@ -2088,7 +2088,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let { x } = foo;
         console.log(x);
@@ -2107,7 +2107,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let { y = 1 } = foo;
         console.log(y);
@@ -2126,7 +2126,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let { x } = foo;
         console.log(x);
@@ -2145,7 +2145,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let { b: [ y = 1 ] } = foo;
         console.log(y);
@@ -2164,7 +2164,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let a = initCache();
         export {};
@@ -2182,7 +2182,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let a = initCache();
         export {};
@@ -2200,7 +2200,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let a = initCache();
         export {};
@@ -2218,7 +2218,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let a = initACache(), e = initECache();
         export {};
@@ -2235,7 +2235,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let a = initCache();
         export {};
@@ -2253,7 +2253,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let { x } = initCache();
         export {};
@@ -2270,7 +2270,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let [ x ] = initCache();
         export {};
@@ -2287,7 +2287,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let { a: [ ...x ] } = initCache();
         export {};
@@ -2304,7 +2304,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
       });
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let { x, y } = initCache();
         export {};
@@ -2322,7 +2322,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let { x = initCache() } = foo;
         export {};
@@ -2340,7 +2340,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       assert.codeEqual(
-        await bundleSource(assert.fs),
+        await bundleCode(assert.fs),
         `
         let { x = initCache() } = foo, z = initZCache();
         export {};
@@ -2377,7 +2377,6 @@ QUnit.module("module builder", function (origHooks) {
         let b = desc.declarations.get("b")!;
         assert.equal(b.declaration.declaredName, "b");
         assert.equal(b.declaration.type, "local");
-        // TODO assert that the "declaration.original" property is populated
 
         assert.equal(desc.exports.get("A")?.type, "local");
         assert.equal(
@@ -2465,42 +2464,159 @@ QUnit.module("module builder", function (origHooks) {
 
     skip("bundle contains module description for namespace declaration", async function () {});
 
-    /*
-    test("module descriptions include original import info for local bindings that originally came from an import", async function (assert) {
+    test("module descriptions include 'original' property for declarations from external imports that reflect the consumed semver range", async function (assert) {
+      let puppiesBundleHref = `https://catalogjs.com/pkgs/npm/puppies/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=`;
       await assert.setupFiles({
+        "entrypoints.json": `{
+          "js": ["index.js"],
+          "dependencies": {
+            "puppies": {
+              "type": "npm",
+              "pkgName": "puppies",
+              "range": "^7.9.0"
+            }
+          }
+        }`,
+        // TODO need to think about how this lock file was created in the first
+        // place. For node builds, we already just reflect the version of the
+        // package that was actually consumed. But for catalogjs builds we'll
+        // need to "query" our CDN to find the latest package that matches the
+        // semver range. Perhaps a simple index file that lists out all the
+        // versions available for each package at the root of the package URL
+        // would suffice until we have an actual server that we can talk to.
+        "catalogjs.lock": `{ "puppies": "${puppiesBundleHref}/index.js" }`,
         "index.js": `
-        import { foo } from './foo.js';
-        let bar = 3;
-        console.log(foo() + bar);
-      `,
-        "foo.js": `
-        import { bar } from './lib.js';
-        export function foo() { return bar; }
+          import { puppies } from "puppies";
+          function getPuppies() { return puppies; }
+          function getCats() { return ["jojo"]; }
+          function getRats() { return ["pizza rat"]; }
+          export { getPuppies, getCats, getRats };
         `,
-        "lib.js": `
-          export const bar = 2;
-        `,
+        [`${puppiesBundleHref}/entrypoints.json`]: `{"js": ["index.js"] }`,
+        [`${puppiesBundleHref}/index.js`]: `export const puppies = ["mango", "van gogh"];`,
       });
-
-      let assignments = await makeBundleAssignments(assert.fs);
-      let { code, importAssignments } = combineModules(
-        url("dist/0.js"),
-        assignments
+      let { source, desc } = await bundle(assert.fs);
+      assert.codeEqual(
+        source,
+        `
+        const puppies = ["mango", "van gogh"];
+        function getPuppies() { return puppies; }
+        function getCats() { return ["jojo"]; }
+        function getRats() { return ["pizza rat"]; }
+        export { getPuppies, getCats, getRats };
+        `
       );
-      let parsed = parse(code);
-      if (parsed?.type !== "File") {
-        throw new Error(`unexpected babel output`);
+
+      let puppies = desc!.declarations.get("puppies");
+      assert.equal(puppies?.declaration.type, "local");
+      if (puppies?.declaration.type === "local") {
+        assert.equal(
+          puppies.declaration.original?.bundleHref,
+          `${puppiesBundleHref}/index.js`
+        );
+        assert.equal(puppies.declaration.original?.range, "^7.9.0");
+        assert.equal(puppies.declaration.original?.importedAs, "puppies");
       }
-      let bundleDescription = describeFile(parsed, { importAssignments });
-      let nameDesc = bundleDescription.names.get(
-        "bar0"
-      ) as LocalNameDescription;
-      assert.deepEqual(nameDesc.original, {
-        moduleHref: url("lib.js").href,
-        exportedName: "bar",
-      });
+
+      let getPuppies = desc!.declarations.get("getPuppies");
+      assert.equal(getPuppies?.declaration.type, "local");
+      if (getPuppies?.declaration.type === "local") {
+        assert.notOk(
+          getPuppies?.declaration.original,
+          'declaration has no "original" property'
+        );
+      }
     });
-    */
+
+    test("the module descriptions for a bundle that have an 'original' property are carried forward in subsequent builds that include that bundle", async function (assert) {
+      let puppiesBundleHref = `https://catalogjs.com/pkgs/npm/puppies/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=`;
+      await assert.setupFiles({
+        "entrypoints.json": `{
+          "js": ["index.js"],
+          "dependencies": {
+            "puppies": {
+              "type": "npm",
+              "pkgName": "puppies",
+              "range": "^7.9.0"
+            }
+          }
+        }`,
+        "catalogjs.lock": `{ "puppies": "${puppiesBundleHref}/index.js" }`,
+        "index.js": `
+          import { puppies } from "puppies";
+          function getPuppies() { return puppies; }
+          function getCats() { return ["jojo"]; }
+          function getRats() { return ["pizza rat"]; }
+          export { getPuppies, getCats, getRats };
+        `,
+        [`${puppiesBundleHref}/entrypoints.json`]: `{"js": ["index.js"] }`,
+        [`${puppiesBundleHref}/index.js`]: `export const puppies = ["mango", "van gogh"];`,
+      });
+      let bundleSrc = await bundleSource(assert.fs);
+      let libBundleHref =
+        "https://catalogjs.com/pkgs/npm/lib/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+      await assert.setupFiles({
+        "entrypoints.json": `{
+          "js": ["driver.js"],
+          "dependencies": {
+            "lib": {
+              "type": "npm",
+              "pkgName": "lib",
+              "range": "^1.0.0"
+            }
+          }
+        }`,
+        "catalogjs.lock": `{ "lib": "${libBundleHref}/lib.js" }`,
+        "driver.js": `
+          import { getPuppies } from "lib";
+          let jojo = 'Jojo'
+          console.log([jojo, ...getPuppies()]);
+        `,
+        [`${libBundleHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
+        [`${libBundleHref}/lib.js`]: bundleSrc,
+      });
+      let { source, desc } = await bundle(assert.fs, url("output/driver.js"));
+
+      assert.codeEqual(
+        source,
+        `
+        const puppies = ["mango", "van gogh"];
+        function getPuppies() { return puppies; }
+        let jojo = 'Jojo'
+        console.log([jojo, ...getPuppies()]);
+        export {};
+        `
+      );
+      let puppies = desc!.declarations.get("puppies");
+      assert.equal(puppies?.declaration.type, "local");
+      if (puppies?.declaration.type === "local") {
+        assert.equal(
+          puppies.declaration.original?.bundleHref,
+          `${puppiesBundleHref}/index.js`
+        );
+        assert.equal(puppies.declaration.original?.range, "^7.9.0");
+        assert.equal(puppies.declaration.original?.importedAs, "puppies");
+      }
+      let getPuppies = desc!.declarations.get("getPuppies");
+      assert.equal(getPuppies?.declaration.type, "local");
+      if (getPuppies?.declaration.type === "local") {
+        assert.equal(
+          getPuppies.declaration.original?.bundleHref,
+          `${libBundleHref}/lib.js`
+        );
+        assert.equal(getPuppies.declaration.original?.range, "^1.0.0");
+        assert.equal(getPuppies.declaration.original?.importedAs, "getPuppies");
+      }
+
+      let jojo = desc!.declarations.get("jojo");
+      assert.equal(jojo?.declaration.type, "local");
+      if (jojo?.declaration.type === "local") {
+        assert.notOk(
+          jojo?.declaration.original,
+          'declaration has no "original" property'
+        );
+      }
+    });
   });
 
   QUnit.module("single-shot build", function () {
@@ -3576,164 +3692,6 @@ QUnit.module("module builder", function (origHooks) {
       assert.ok(
         builder.explain().get(`module-description:${url("driver.js")}`)
       );
-    });
-
-    test("bundles include origin info for bindings", async function (assert) {
-      let puppiesPkgHref =
-        "https://catalogjs.com/pkgs/npm/puppies/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=";
-      await assert.setupFiles({
-        "entrypoints.json": `{ "js": ["index.js"] }`,
-        "catalogjs.lock": `{ "puppies": "${puppiesPkgHref}/index.js" }`,
-        "index.js": `
-          import { puppies } from "puppies";
-          function getPuppies() { return puppies; }
-          function getCats() { return ["jojo"]; }
-          function getRats() { return ["pizza rat"]; }
-          export { getPuppies, getCats, getRats };
-        `,
-        [`${puppiesPkgHref}/entrypoints.json`]: `{"js": ["index.js"] }`,
-        [`${puppiesPkgHref}/index.js`]: `export const puppies = ["mango", "van gogh"];`,
-      });
-      builder = makeBuilder(assert.fs);
-      await builder.build();
-      let bundleSrc = await (
-        await assert.fs.openFile(url("output/index.js"))
-      ).readText();
-      let { desc } = extractDescriptionFromSource(bundleSrc);
-      let {
-        region: { declaration: bindingDescription },
-      } = declarationMap(desc!).get("puppies")!;
-      assert.equal(bindingDescription.type, "local");
-      if (bindingDescription.type === "local") {
-        assert.equal(
-          bindingDescription.original?.moduleHref,
-          `${puppiesPkgHref}/index.js`
-        );
-        assert.equal(bindingDescription.original?.exportedName, "puppies");
-      }
-    });
-
-    test("bundle's binding's origin info is carried forward in subsequent builds", async function (assert) {
-      let puppiesPkgHref =
-        "https://catalogjs.com/pkgs/npm/puppies/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=";
-      await assert.setupFiles({
-        "entrypoints.json": `{ "js": ["index.js"] }`,
-        "catalogjs.lock": `{ "puppies": "${puppiesPkgHref}/index.js" }`,
-        "index.js": `
-          import { puppies } from "puppies";
-          function getPuppies() { return puppies; }
-          function getCats() { return ["jojo"]; }
-          function getRats() { return ["pizza rat"]; }
-          export { getPuppies, getCats, getRats };
-        `,
-        [`${puppiesPkgHref}/entrypoints.json`]: `{"js": ["index.js"] }`,
-        [`${puppiesPkgHref}/index.js`]: `export const puppies = ["mango", "van gogh"];`,
-      });
-      builder = makeBuilder(assert.fs);
-      await builder.build();
-      let bundleSrc = await (
-        await assert.fs.openFile(url("output/index.js"))
-      ).readText();
-
-      let libPkgHref =
-        "https://catalogjs.com/pkgs/npm/lib/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=";
-      await assert.setupFiles({
-        "entrypoints.json": `{ "js": ["driver.js"] }`,
-        "catalogjs.lock": `{ "lib": "${libPkgHref}/lib.js" }`,
-        "driver.js": `
-          import { getPuppies } from "lib";
-          console.log(getPuppies());
-        `,
-        [`${libPkgHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
-        [`${libPkgHref}/lib.js`]: bundleSrc,
-      });
-      builder = makeBuilder(assert.fs);
-      await builder.build();
-
-      let nextBuildSrc = await (
-        await assert.fs.openFile(url("output/index.js"))
-      ).readText();
-      let { desc } = extractDescriptionFromSource(nextBuildSrc);
-      let {
-        region: { declaration: bindingDescription },
-      } = declarationMap(desc!).get("puppies")!;
-      assert.equal(bindingDescription.type, "local");
-      if (bindingDescription.type === "local") {
-        assert.equal(
-          bindingDescription.original?.moduleHref,
-          `${puppiesPkgHref}/index.js`
-        );
-        assert.equal(bindingDescription.original?.exportedName, "puppies");
-      }
-    });
-
-    test("skips parse if bundle is consumed by HTML entrypoint", async function (assert) {
-      await assert.setupFiles({
-        "entrypoints.json": `{ "html": ["index.html"] }`,
-        "index.html": `<html><script type="module" src="./index.js"></script></html>`,
-        "index.js": `
-          import { puppies } from "./puppies.js";
-          function getPuppies() { return puppies; }
-          function getCats() { return ["jojo"]; }
-          function getRats() { return ["pizza rat"]; }
-          export { getPuppies, getCats, getRats };
-        `,
-        "puppies.js": `export const puppies = ["mango", "van gogh"];`,
-      });
-      builder = makeBuilder(assert.fs);
-      await builder.build();
-      let bundleSrc = await (
-        await assert.fs.openFile(url("output/dist/0.js"))
-      ).readText();
-      let { desc } = extractDescriptionFromSource(bundleSrc);
-      assert.notOk(desc, "bundle annotation does not exist");
-    });
-
-    test("the option to force a parse of a bundle consumed by HTML entrypoint creates bundle annotation", async function (assert) {
-      await assert.setupFiles({
-        "entrypoints.json": `{ "html": ["index.html"] }`,
-        "index.html": `<html><script type="module" src="./index.js"></script></html>`,
-        "index.js": `
-          import { puppies } from "./puppies.js";
-          function getPuppies() { return puppies; }
-          function getCats() { return ["jojo"]; }
-          function getRats() { return ["pizza rat"]; }
-          export { getPuppies, getCats, getRats };
-        `,
-        "puppies.js": `export const puppies = ["mango", "van gogh"];`,
-      });
-      builder = makeBuilder(assert.fs, undefined, {
-        skipAnnotationForHtmlConsumedBundles: false,
-      });
-      await builder.build();
-      let bundleSrc = await (
-        await assert.fs.openFile(url("output/dist/0.js"))
-      ).readText();
-      let { desc } = extractDescriptionFromSource(bundleSrc);
-      assert.ok(desc, "bundle annotation exists");
-    });
-
-    test("skips parse of bundle for js entrypoint if option to disable bundle annotation is enabled", async function (assert) {
-      await assert.setupFiles({
-        "entrypoints.json": `{ "js": ["index.js"] }`,
-        "index.js": `
-          import { puppies } from "./puppies.js";
-          function getPuppies() { return puppies; }
-          function getCats() { return ["jojo"]; }
-          function getRats() { return ["pizza rat"]; }
-          export { getPuppies, getCats, getRats };
-        `,
-        "puppies.js": `export const puppies = ["mango", "van gogh"];`,
-      });
-      builder = makeBuilder(assert.fs, undefined, {
-        skipBundleAnnotation: true,
-      });
-      await builder.build();
-      let bundleSrc = await (
-        await assert.fs.openFile(url("output/index.js"))
-      ).readText();
-      let { desc } = extractDescriptionFromSource(bundleSrc);
-      assert.notOk(desc, "bundle annotation does not exist");
     });
 
     test("uses bundle annotation to tree shake unused exports from bundle", async function (assert) {

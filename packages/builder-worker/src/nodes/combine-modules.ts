@@ -10,11 +10,13 @@ import {
 import { BundleAssignment, BundleAssignmentsNode } from "./bundle";
 import { HeadState, resolveDeclaration } from "../module-rewriter";
 import { AppendModuleNode } from "./append-module";
+import { Dependencies } from "./entrypoint";
 
 export class CombineModulesNode implements BuilderNode {
   cacheKey: CombineModulesNode;
   constructor(
     private bundle: URL,
+    private dependencies: Dependencies,
     private bundleAssignmentsNode: BundleAssignmentsNode
   ) {
     this.cacheKey = this;
@@ -76,7 +78,8 @@ export class CombineModulesNode implements BuilderNode {
         firstModule,
         this.bundle,
         editors,
-        assignments
+        assignments,
+        this.dependencies
       ),
     };
   }
@@ -89,6 +92,10 @@ function discoverIncludedRegions(
   editors: Map<string, RegionEditor>,
   ownAssignments: BundleAssignment[]
 ) {
+  if (editors.get(module.url.href)?.isRegionKept(pointer)) {
+    return;
+  }
+
   let region = module.desc.regions[pointer];
   if (region.type === "declaration" && region.declaration.type === "import") {
     let localDesc = region.declaration;

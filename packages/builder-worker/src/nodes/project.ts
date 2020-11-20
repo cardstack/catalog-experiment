@@ -13,14 +13,6 @@ import { Resolver } from "../resolver";
 import { LockEntries } from "./lock-file";
 
 export interface Options {
-  // parsing a bundle can be a very expensive operation, if the bundle
-  // does not appear to be meant for js consumption (because it is
-  // being built for an HTML entrypoint), then we should skip parsing
-  // it. Also, we should consider skipping parsing in a "rebuilder"
-  // situation when the developer is actively modifying the code
-  // within the bundle.
-  skipAnnotationForHtmlConsumedBundles: boolean; // defaults to true
-  skipBundleAnnotation: boolean; // defaults to false. this will override the skipAnnotationForHtmlConsumedBundles setting
   testing?: TestingOptions;
 }
 
@@ -49,8 +41,6 @@ export class MakeProjectNode implements BuilderNode<LockEntries> {
   ) {
     this.cacheKey = `project:input=${inputRoot.href},output=${projectOutputRoot.href}`;
     this.optsWithDefaults = {
-      skipAnnotationForHtmlConsumedBundles: true,
-      skipBundleAnnotation: false,
       ...options,
     };
   }
@@ -115,21 +105,6 @@ class FinishProjectNode implements BuilderNode<LockEntries> {
       flatten(this.entrypoints).filter((e) => e instanceof HTMLEntrypoint),
       "destURL"
     ) as HTMLEntrypoint[];
-    let bundleHrefsConsumedByHtml: Set<string> = new Set();
-    for (let htmlEntrypoint of htmlEntrypoints) {
-      let bundleHrefs = [...htmlEntrypoint.jsEntrypoints.keys()]
-        .map(
-          (entrypointHref) =>
-            this.bundleAssignments.find(
-              (a) => a.module.url.href === entrypointHref
-            )!
-        )
-        .map((b) => b.bundleURL.href);
-      bundleHrefsConsumedByHtml = new Set([
-        ...bundleHrefsConsumedByHtml,
-        ...bundleHrefs,
-      ]);
-    }
     let htmls = htmlEntrypoints.map(
       (htmlEntrypoint) =>
         new WriteFileNode(
@@ -138,6 +113,7 @@ class FinishProjectNode implements BuilderNode<LockEntries> {
         )
     );
 
+    let dependencies = this.entrypoints[0].dependencies;
     let bundles = uniqBy(
       this.bundleAssignments.map((a) => a.bundleURL),
       (url) => url.href
@@ -150,9 +126,7 @@ class FinishProjectNode implements BuilderNode<LockEntries> {
             this.projectOutputRoot,
             this.resolver,
             this.lockEntries,
-            this.options.skipBundleAnnotation ||
-              (this.options.skipAnnotationForHtmlConsumedBundles &&
-                bundleHrefsConsumedByHtml.has(bundleURL.href)),
+            dependencies,
             this.options.testing
           ),
           bundleURL

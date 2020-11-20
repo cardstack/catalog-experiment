@@ -354,8 +354,11 @@ QUnit.module("describe-file", function () {
     let document = desc.regions[documentPointer];
     assert.equal(document.dependsOn.size, 1);
     let [sideEffect] = [...document.dependsOn];
-    let { declaration } = desc.declarations.get("a")!;
-    assert.equal(declaration.sideEffects, sideEffect);
+    let { pointer } = desc.declarations.get("a")!;
+    assert.ok(
+      desc.regions[pointer].dependsOn.has(sideEffect),
+      "the side effect is a dependency region"
+    );
     editor.replace(sideEffect, "walkTheDog()");
     assert.codeEqual(
       editor.serialize().code,

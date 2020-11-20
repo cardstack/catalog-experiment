@@ -8,7 +8,7 @@ import { FileDescriptor } from "../../src/filesystem-drivers/filesystem-driver";
 
 export const outputOrigin = `http://output`;
 
-export async function bundle(
+export async function bundleSource(
   fs: FileSystem,
   bundleURL: URL = url("output/index.js"),
   options?: Partial<Options>
@@ -18,15 +18,24 @@ export async function bundle(
   let fd: FileDescriptor | undefined;
   try {
     fd = await fs.openFile(bundleURL);
-    return extractDescriptionFromSource(await fd.readText());
+    return await fd.readText();
   } finally {
     if (fd) {
       await fd.close();
     }
   }
 }
+export async function bundle(
+  fs: FileSystem,
+  bundleURL: URL = url("output/index.js"),
+  options?: Partial<Options>
+) {
+  return extractDescriptionFromSource(
+    await bundleSource(fs, bundleURL, options)
+  );
+}
 
-export async function bundleSource(
+export async function bundleCode(
   fs: FileSystem,
   bundleURL: URL = url("output/index.js"),
   options?: Partial<Options>

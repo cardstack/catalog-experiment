@@ -474,15 +474,15 @@ export type DeclarationDescription =
 export interface BaseDeclarationDescription {
   declaredName: string;
   references: RegionPointer[];
-  sideEffects: RegionPointer | undefined;
 }
 
 export interface LocalDeclarationDescription
   extends BaseDeclarationDescription {
   type: "local";
   original?: {
-    moduleHref: string; // TODO replace with consumption semver
-    exportedName: string;
+    bundleHref: string;
+    range: string;
+    importedAs: string | NamespaceMarker;
   };
 }
 
@@ -571,7 +571,6 @@ export function isImportCodeRegion(region: any): region is ImportCodeRegion {
 
 export interface ReferenceCodeRegion extends BaseCodeRegion {
   type: "reference";
-  declarationRegion: RegionPointer;
 }
 export function isReferenceCodeRegion(
   region: any
@@ -638,6 +637,10 @@ export class RegionEditor {
       state: index === documentPointer ? "unchanged" : "removed",
       region: index,
     }));
+  }
+
+  isRegionKept(pointer: RegionPointer) {
+    return this.dispositions[pointer].state !== "removed";
   }
 
   includedRegions(): RegionPointer[] {
@@ -945,13 +948,16 @@ export class RegionEditor {
       nextSibling: region.nextSibling,
       shorthand: false,
       position: 0,
-      dependsOn: new Set([referencePointer, declarationPointer]),
+      dependsOn: new Set([
+        referencePointer,
+        declarationPointer,
+        sideEffectPointer,
+      ]),
       preserveGaps: false,
       declaration: {
         type: "local",
         declaredName: name,
         references: [referencePointer],
-        sideEffects: sideEffectPointer,
       },
     };
     let referenceRegion: ReferenceCodeRegion = {
@@ -962,8 +968,7 @@ export class RegionEditor {
       nextSibling: sideEffectPointer,
       shorthand: false,
       position: 0,
-      dependsOn: new Set(),
-      declarationRegion: declaratorPointer,
+      dependsOn: new Set([declaratorPointer]),
     };
     let sideEffectRegion: GeneralCodeRegion = {
       type: "general",
@@ -1024,7 +1029,8 @@ export class RegionEditor {
   ) {
     if (isReferenceCodeRegion(region)) {
       let outputDeclarationRegion = this.outputRegions.find(
-        (o) => o.originalPointer === region.declarationRegion
+        (o) =>
+          o.originalPointer != null && region.dependsOn.has(o.originalPointer)
       );
       if (
         outputDeclarationRegion &&
@@ -1271,32 +1277,13 @@ function remapRegions(
     region.nextSibling = newPointer(region.nextSibling, outputRegions);
     region.dependsOn = new Set(
       [...region.dependsOn]
-        .map((p) => newPointer(p, outputRegions))
+        .map((p) => newPointer(p, outputRegions, region.type === "reference"))
         .filter((p) => p != null) as RegionPointer[]
     );
     if (region.type === "declaration") {
-      region.declaration.sideEffects = newPointer(
-        region.declaration.sideEffects,
-        outputRegions
-      );
       region.declaration.references = region.declaration.references
         .map((p) => newPointer(p, outputRegions))
         .filter((p) => p != null) as RegionPointer[];
-    }
-    if (region.type === "reference") {
-      let declarationPointer = newPointer(
-        region.declarationRegion,
-        outputRegions
-      )!;
-      if (declarationPointer == null) {
-        // in this scenario the declaration has been stripped out. we use a
-        // negative sign as an indicator that this index still needs to be
-        // reconciled after we assign this module to a bundle, as its
-        // declaration will be found in a different module.
-        region.declarationRegion = -1 * region.declarationRegion;
-      } else {
-        region.declarationRegion = declarationPointer;
-      }
     }
     return region;
   });
@@ -1305,12 +1292,17 @@ function remapRegions(
   return regions;
 }
 
+// TODO let's get rid of this negative number stuff by just feeding in all the
+// previous code regions that this module depends on (from the upstream
+// modules). then all the regions that we need will be available and we wont
+// have to fix up the regions after they leave this module.
 function newPointer(
   originalPointer: RegionPointer | undefined,
   outputRegions: {
     originalPointer: RegionPointer | undefined;
     region: CodeRegion;
-  }[]
+  }[],
+  allowOriginalRegionIndicators = false
 ): RegionPointer | undefined {
   if (originalPointer == null) {
     return;
@@ -1323,7 +1315,13 @@ function newPointer(
   let index = outputRegions.findIndex(
     (r) => r.originalPointer === originalPointer
   );
-  if (index === -1) {
+  if (allowOriginalRegionIndicators && index === -1) {
+    // in this scenario the region has been stripped out. we use a negative sign
+    // as an indicator that this pointer still needs to be reconciled after we
+    // assign this module to a bundle, as the region we want (which is most
+    // likely a declaration) will be found in a different module.
+    return originalPointer * -1;
+  } else if (index === -1) {
     return;
   }
   return index;

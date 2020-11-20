@@ -10,7 +10,12 @@ import {
   ImportedDeclarationDescription,
   NamespaceMarker,
 } from "../code-region";
-import { EntrypointsJSONNode, Entrypoint, HTMLEntrypoint } from "./entrypoint";
+import {
+  EntrypointsJSONNode,
+  Entrypoint,
+  HTMLEntrypoint,
+  Dependencies,
+} from "./entrypoint";
 import { makeURLEndInDir } from "../path";
 import { Resolver } from "../resolver";
 import { LockEntries } from "./lock-file";
@@ -331,16 +336,21 @@ export class BundleNode implements BuilderNode {
     private outputRoot: URL,
     private resolver: Resolver,
     private lockEntries: LockEntries,
-    private skipBundleAnnotation: boolean,
+    private dependencies: Dependencies,
     private testingOpts?: TestingOptions
   ) {
-    this.cacheKey = `bundle-node:url=${this.bundle.href},inputRoot=${this.inputRoot.href},outputRoot=${this.outputRoot.href}`;
+    this.cacheKey = `bundle-node:url=${this.bundle.href},inputRoot=${
+      this.inputRoot.href
+    },outputRoot=${this.outputRoot.href},dependencies=${JSON.stringify(
+      dependencies
+    )}`;
   }
 
   async deps() {
     return {
       result: new CombineModulesNode(
         this.bundle,
+        this.dependencies,
         new BundleAssignmentsNode(
           this.inputRoot,
           this.outputRoot,

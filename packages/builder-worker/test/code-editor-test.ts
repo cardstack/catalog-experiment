@@ -53,8 +53,6 @@ QUnit.module("module code-editor", function () {
     assert.equal(b.declaration.declaredName, "b");
     assert.equal(b.declaration.type, "local");
 
-    // TODO assert that the "declaration.original" property is populated
-
     assert.equal(desc.exports.get("A")?.type, "local");
     assert.equal((desc.exports.get("A") as LocalExportDescription).name, "a");
     assert.equal(desc.exports.get("b")?.type, "local");
@@ -105,8 +103,6 @@ QUnit.module("module code-editor", function () {
     assert.equal(b.declaration.declaredName, "renamedB");
     assert.equal(b.declaration.type, "local");
 
-    // TODO assert that the "declaration.original" property is populated
-
     assert.codeEqual(
       code,
       `
@@ -153,8 +149,6 @@ QUnit.module("module code-editor", function () {
     assert.equal(declaration.declaration.declaredName, "_default");
     assert.equal(declaration.declaration.type, "local");
 
-    // TODO assert that the "declaration.original" property is populated
-
     assert.codeEqual(
       code,
       `
@@ -167,7 +161,10 @@ QUnit.module("module code-editor", function () {
     keepAll(newDesc, newEditor);
     newEditor.rename("_default", "d");
     newEditor.replace(
-      newDesc.declarations.get("_default")!.declaration.sideEffects!,
+      [
+        ...newDesc.regions[newDesc.declarations.get("_default")!.pointer]
+          .dependsOn,
+      ][2], // side effect is always set as the 3rd item in this manufactured code region
       `"replaced"`
     );
     assert.codeEqual(

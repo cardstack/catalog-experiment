@@ -25,6 +25,8 @@ import {
   ModuleRewriter,
   resolveDeclaration,
 } from "../module-rewriter";
+import { Dependencies } from "./entrypoint";
+import { stringifyReplacer } from "../utils";
 
 export class AppendModuleNode implements BuilderNode {
   cacheKey: string;
@@ -35,6 +37,7 @@ export class AppendModuleNode implements BuilderNode {
     private bundle: URL,
     private editors: Map<string, RegionEditor>,
     private bundleAssignments: BundleAssignment[],
+    private dependencies: Dependencies,
     private rewriters: ModuleRewriter[] = []
   ) {
     this.cacheKey = `append-module-node:${this.bundle.href}:${
@@ -51,7 +54,8 @@ export class AppendModuleNode implements BuilderNode {
       this.module,
       this.state,
       this.bundleAssignments,
-      this.editor
+      this.editor,
+      this.dependencies
     );
     let rewriters = [rewriter, ...this.rewriters];
     let nextModule = this.state.nextModule();
@@ -63,12 +67,13 @@ export class AppendModuleNode implements BuilderNode {
           this.bundle,
           this.editors,
           this.bundleAssignments,
+          this.dependencies,
           rewriters
         ),
       };
     } else {
       return {
-        node: new AppendImportsAndExportsNode(
+        node: new FinishAppendModulesNode(
           this.state,
           this.bundle,
           this.editors,
@@ -85,7 +90,7 @@ type DeclarationRegionMap = Map<
   { pointer: RegionPointer; references: RegionPointer[] }
 >;
 
-export class AppendImportsAndExportsNode implements BuilderNode {
+export class FinishAppendModulesNode implements BuilderNode {
   cacheKey: string;
   constructor(
     private state: HeadState,
@@ -94,7 +99,7 @@ export class AppendImportsAndExportsNode implements BuilderNode {
     private bundleAssignments: BundleAssignment[],
     private rewriters: ModuleRewriter[]
   ) {
-    this.cacheKey = `append-imports-exports-node:${
+    this.cacheKey = `finish-append-module-node:${
       this.bundle.href
     }:${this.state.hash()}`;
   }
@@ -158,6 +163,8 @@ export class AppendImportsAndExportsNode implements BuilderNode {
     assignCodeRegionPositions(documentPointer, regions);
 
     // TODO need to add module side effect dependencies to all the declarations
+    // TODO review the describe-file region finalization code to make sure we
+    // perform all the same kind of stuff...
 
     let desc: ModuleDescription = {
       regions,
@@ -263,6 +270,7 @@ function buildImports(
           shorthand: false,
           preserveGaps: false,
         };
+
         let specifierRegion: DeclarationCodeRegion = {
           type: "declaration",
           start: 7 /* "import " */,
@@ -277,7 +285,6 @@ function buildImports(
             type: "import",
             declaredName: localName,
             references: [referencePointer],
-            sideEffects: undefined,
             importedName: NamespaceMarker,
             importIndex,
           },
@@ -288,10 +295,9 @@ function buildImports(
           end: localName.length,
           firstChild: undefined,
           nextSibling: undefined,
-          declarationRegion: specifierPointer,
           shorthand: false,
           position: 0,
-          dependsOn: new Set(),
+          dependsOn: new Set([specifierPointer]),
         } as ReferenceCodeRegion);
 
         bundleDeclarations.set(localName, {
@@ -314,6 +320,7 @@ function buildImports(
             ? importedAs
             : `${importedAs} as ${localName}`
         );
+
         let specifierRegion: DeclarationCodeRegion = {
           type: "declaration",
           start:
@@ -329,7 +336,6 @@ function buildImports(
             type: "import",
             declaredName: localName,
             references: [referencePointer],
-            sideEffects: undefined,
             importedName: importedAs,
             importIndex,
           },
@@ -343,10 +349,9 @@ function buildImports(
           end: localName.length,
           firstChild: undefined,
           nextSibling: undefined,
-          declarationRegion: specifierPointer,
           shorthand: importedAs === localName ? "import" : false,
           position: 0,
-          dependsOn: new Set(),
+          dependsOn: new Set([specifierPointer]),
         } as ReferenceCodeRegion);
         bundleDeclarations.set(localName, {
           pointer: specifierPointer,
@@ -471,9 +476,8 @@ function buildExports(
         nextSibling: undefined,
         start: 0,
         end: insideName.length,
-        dependsOn: new Set(),
+        dependsOn: new Set([declaration.pointer]),
         shorthand: insideName === outsideName ? "export" : false,
-        declarationRegion: declaration.pointer,
       });
 
       let declarationRegion = regions[
@@ -557,13 +561,30 @@ function buildBundleBody(
         continue;
       }
       let importRegion: CodeRegion;
-      // a negative pointer is our indication that the declaration region has
-      // been stripped out, and that we can find the declaration region in the
-      // original set of module regions
-      if (region.declarationRegion < 0) {
-        importRegion = module.desc.regions[-1 * region.declarationRegion];
+      // TODO let's get rid of this negative pointer stuff be passing in all the
+      // regions that we can constructed so far when we serialize a rewriter,
+      // that way we won't have to handle it here
+
+      // a negative pointer is our indication that the declaration region for
+      // the reference has been stripped out (e.g. it was an internal import
+      // that was collapsed), and that we can find the stripped out declaration
+      // region in the original set of module regions when we remove the sign
+      // from the negative pointer. the goal is to figure out the assigned name
+      // for declaration so we can marry up this reference to the declaration
+      // that lives outside of this module.
+      let declarationPointer = [...region.dependsOn][0]; // a reference region should always depend on just it's declaration region
+      if (declarationPointer == null) {
+        throw new Error(
+          `bug: encountered a reference region that does not depend on it's declaration region: pointer=${pointer}, region=${JSON.stringify(
+            region,
+            stringifyReplacer
+          )}, module=${module.url.href}, while making bundle ${bundle.href}`
+        );
+      }
+      if (declarationPointer < 0) {
+        importRegion = module.desc.regions[-1 * declarationPointer];
       } else {
-        importRegion = moduleRegions[region.declarationRegion - offset];
+        importRegion = moduleRegions[declarationPointer - offset];
       }
       if (
         importRegion.type !== "declaration" ||
@@ -592,8 +613,8 @@ function buildBundleBody(
         );
       }
       declaration.references.push(pointer + offset);
-      if (region.declarationRegion < 0) {
-        region.declarationRegion = declaration.pointer;
+      if (declarationPointer < 0) {
+        region.dependsOn = new Set([declaration.pointer]);
       }
     }
 
@@ -688,7 +709,6 @@ function buildNamespaces(
               referencePointer,
               // this will be populated as we build the body for the bundle
             ],
-            sideEffects: undefined,
           },
         };
         let referenceRegion: ReferenceCodeRegion = {
@@ -699,8 +719,7 @@ function buildNamespaces(
           nextSibling: referencePointer + 1,
           shorthand: false,
           position: 0,
-          dependsOn: new Set(),
-          declarationRegion: declaratorPointer,
+          dependsOn: new Set([declaratorPointer]),
         };
         regions.push(
           region,
@@ -729,8 +748,7 @@ function buildNamespaces(
                   : referencePointer + index + 2,
               shorthand: outsideName === insideName ? "object" : false,
               position: 0,
-              dependsOn: new Set(),
-              declarationRegion: declaration.pointer,
+              dependsOn: new Set([declaration.pointer]),
             } as ReferenceCodeRegion;
           })
         );
@@ -796,17 +814,7 @@ function adjustCodeRegionByOffset(regions: CodeRegion[], offset: number) {
     region.dependsOn = new Set(
       [...region.dependsOn].map((r) => offsetPointer(r, offset)!)
     );
-    if (region.type === "reference") {
-      region.declarationRegion = offsetPointer(
-        region.declarationRegion,
-        offset
-      )!;
-    }
     if (region.type === "declaration") {
-      region.declaration.sideEffects = offsetPointer(
-        region.declaration.sideEffects,
-        offset
-      );
       region.declaration.references = region.declaration.references.map(
         (r) => offsetPointer(r, offset)!
       );

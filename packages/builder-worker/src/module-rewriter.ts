@@ -15,7 +15,8 @@ import {
 import { BundleAssignment } from "./nodes/bundle";
 import stringify from "json-stable-stringify";
 import { MD5 as md5, enc } from "crypto-js";
-import { setMapping } from "./utils";
+import { setMapping, stringifyReplacer as replacer } from "./utils";
+import { depAsURL, Dependencies } from "./nodes/entrypoint";
 
 export class HeadState {
   readonly usedNames: Map<
@@ -35,10 +36,13 @@ export class HeadState {
   // map of the keys in the namespace object (the outside name) with values that
   // are the inside names for the corresponding keys
   readonly assignedNamespaces: Map<string, Map<string, string>> = new Map();
+  readonly assignedImportedDependencies: Map<
+    string,
+    { bundleHref: string; range: string; importedAs: string | NamespaceMarker }
+  > = new Map();
 
   private visitedModules: ModuleResolution[] = [];
   private moduleQueue: ModuleResolution[] = [];
-  // TODO new bundle ModuleDescription is included in this state
 
   constructor(moduleResolutions: ModuleResolution[]) {
     // we reverse the order of the modules to append such that we first emit the
@@ -62,6 +66,7 @@ export class HeadState {
     let {
       usedNames,
       assignedImportedNames,
+      assignedImportedDependencies,
       visitedModules,
       assignedNamespaces,
       moduleQueue,
@@ -70,26 +75,13 @@ export class HeadState {
       {
         usedNames,
         assignedImportedNames,
+        assignedImportedDependencies,
         visitedModules,
         assignedNamespaces,
         moduleQueue,
       },
       {
-        replacer: (_, value) => {
-          if (value instanceof Map) {
-            return {
-              dataType: "Map",
-              value: value.entries(),
-            };
-          } else if (value instanceof Set) {
-            return {
-              dataType: "Set",
-              value: value.entries(),
-            };
-          } else {
-            return value;
-          }
-        },
+        replacer,
       }
     );
 
@@ -106,7 +98,8 @@ export class ModuleRewriter {
     readonly module: ModuleResolution,
     private state: HeadState,
     bundleAssignments: BundleAssignment[],
-    private editor: RegionEditor
+    private editor: RegionEditor,
+    private dependencies: Dependencies
   ) {
     this.ownAssignments = bundleAssignments.filter(
       (a) => a.bundleURL.href === this.bundle.href
@@ -116,7 +109,22 @@ export class ModuleRewriter {
   }
 
   serialize(): { code: string; regions: CodeRegion[] } {
-    return this.editor.serialize();
+    let { code, regions } = this.editor.serialize();
+    for (let region of regions.filter(
+      (region) => region.type === "declaration"
+    ) as DeclarationCodeRegion[]) {
+      if (region.declaration.type === "import") {
+        continue;
+      }
+      let consumptionInfo = this.state.assignedImportedDependencies.get(
+        region.declaration.declaredName
+      );
+      if (consumptionInfo) {
+        region.declaration.original = { ...consumptionInfo };
+      }
+    }
+
+    return { code, regions };
   }
 
   rewriteScope(): void {
@@ -155,6 +163,17 @@ export class ModuleRewriter {
               source.importedAs,
               localName
             );
+          }
+
+          let dep = Object.values(this.dependencies).find((dep) =>
+            importedModule.url.href.includes(depAsURL(dep).href)
+          );
+          if (dep) {
+            this.state.assignedImportedDependencies.set(assignedName, {
+              bundleHref: importedModule.url.href,
+              range: dep.range,
+              importedAs: localDesc.importedName,
+            });
           }
         } else {
           // check to see if the binding was actually already assigned by a module
