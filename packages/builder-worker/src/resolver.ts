@@ -18,6 +18,7 @@ export interface Resolver {
 
 interface PkgInfo {
   pkgName: string;
+  pkgURL?: URL;
   registry: string | undefined;
   version: string | undefined;
   hash: string | undefined;
@@ -163,7 +164,10 @@ export function pkgInfoFromSpecifier(specifier: string): PkgInfo | undefined {
   };
 }
 
-export function pkgInfoFromCatalogJsURL(url: URL): PkgInfo | undefined {
+const externalRegistries = ["npm"];
+export function pkgInfoFromCatalogJsURL(
+  url: URL
+): Required<PkgInfo> | undefined {
   if (
     !url.href.startsWith(catalogjsHref) &&
     !url.href.startsWith(workingHref)
@@ -177,8 +181,15 @@ export function pkgInfoFromCatalogJsURL(url: URL): PkgInfo | undefined {
   let modulePath: string | undefined;
   let path = url.href.replace(catalogjsHref, "").replace(workingHref, "");
   let parts = path.split("/");
-  let registry = parts.shift()!;
-  let scopedName = registry === "@catalogjs" ? "@catalogjs" : parts.shift()!;
+  let registryOrScopedName = parts.shift()!;
+  let registry: string;
+  let isExternalRegistry = externalRegistries.includes(registryOrScopedName);
+  if (!isExternalRegistry) {
+    registry = "catalogjs";
+  } else {
+    registry = registryOrScopedName;
+  }
+  let scopedName = isExternalRegistry ? parts.shift()! : registryOrScopedName;
   pkgName = scopedName.startsWith("@")
     ? `${scopedName}/${parts.shift()}`
     : scopedName;
@@ -188,9 +199,13 @@ export function pkgInfoFromCatalogJsURL(url: URL): PkgInfo | undefined {
     parts.shift();
   }
   modulePath = parts.length > 0 ? parts.join("/") : undefined;
+  let pkgURL = new URL(
+    `${catalogjsHref}${isExternalRegistry ? "npm/" : ""}${pkgName}`
+  );
   return {
     registry,
     pkgName,
+    pkgURL,
     version,
     hash,
     modulePath,

@@ -15,6 +15,7 @@ import { maybeURL, maybeRelativeURL } from "../path";
 import { BundleAssignment } from "./bundle";
 import { assertNever } from "@catalogjs/shared/util";
 import { catalogjsHref } from "../resolver";
+import { validRange } from "semver";
 
 export interface Dependencies {
   [name: string]: Dependency;
@@ -338,6 +339,11 @@ function assertNpmDepEntry(
       `invalid entrypoints.json in ${srcFile}, the 'range' property in  dependency '${dep}' must have a string`
     );
   }
+  if (!validRange(entry.range)) {
+    throw new Error(
+      `invalid entrypoints.json in ${srcFile}, the 'range' property in  dependency '${dep}' must be a valid semver range`
+    );
+  }
 }
 
 function assertCatalogJSDepEntry(
@@ -369,6 +375,11 @@ function assertCatalogJSDepEntry(
   if (typeof entry.range !== "string") {
     throw new Error(
       `invalid entrypoints.json in ${srcFile}, the 'range' property in  dependency '${dep}' must have a string`
+    );
+  }
+  if (!validRange(entry.range)) {
+    throw new Error(
+      `invalid entrypoints.json in ${srcFile}, the 'range' property in  dependency '${dep}' must be a valid semver range`
     );
   }
 }

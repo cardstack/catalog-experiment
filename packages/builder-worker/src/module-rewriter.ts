@@ -11,12 +11,15 @@ import {
   RegionPointer,
   DeclarationCodeRegion,
   CodeRegion,
+  DeclarationDescription,
 } from "./code-region";
 import { BundleAssignment } from "./nodes/bundle";
 import stringify from "json-stable-stringify";
 import { MD5 as md5, enc } from "crypto-js";
 import { setMapping, stringifyReplacer as replacer } from "./utils";
 import { depAsURL, Dependencies } from "./nodes/entrypoint";
+import { ResolvedDeclarationSource } from "./nodes/combine-modules";
+import { pkgInfoFromCatalogJsURL } from "./resolver";
 
 export class HeadState {
   readonly usedNames: Map<
@@ -44,7 +47,10 @@ export class HeadState {
   private visitedModules: ModuleResolution[] = [];
   private moduleQueue: ModuleResolution[] = [];
 
-  constructor(moduleResolutions: ModuleResolution[]) {
+  constructor(
+    moduleResolutions: ModuleResolution[],
+    readonly consumptionResolutions: Map<string, ResolvedDeclarationSource[]>
+  ) {
     // we reverse the order of the modules to append such that we first emit the
     // modules that are closest to the entrypoint and work our way towards the
     // deps. This way the bindings that are closest to the entrypoints have the
@@ -70,6 +76,7 @@ export class HeadState {
       visitedModules,
       assignedNamespaces,
       moduleQueue,
+      consumptionResolutions,
     } = this;
     let str = stringify(
       {
@@ -79,6 +86,7 @@ export class HeadState {
         visitedModules,
         assignedNamespaces,
         moduleQueue,
+        consumptionResolutions,
       },
       {
         replacer,
@@ -111,16 +119,35 @@ export class ModuleRewriter {
   serialize(): { code: string; regions: CodeRegion[] } {
     let { code, regions } = this.editor.serialize();
     for (let region of regions.filter(
-      (region) => region.type === "declaration"
+      (r) => r.type === "declaration"
     ) as DeclarationCodeRegion[]) {
       if (region.declaration.type === "import") {
         continue;
       }
-      let consumptionInfo = this.state.assignedImportedDependencies.get(
-        region.declaration.declaredName
-      );
-      if (consumptionInfo) {
-        region.declaration.original = { ...consumptionInfo };
+      if (!region.declaration.original) {
+        // initialize the declaration origin from the entrypoints.json
+        // dependencies
+        let consumptionInfo = this.state.assignedImportedDependencies.get(
+          region.declaration.declaredName
+        );
+        if (consumptionInfo) {
+          region.declaration.original = { ...consumptionInfo };
+        }
+      } else {
+        // use recalculated/collapsed consumption ranges
+        let declarationOrigin = resolveDeclarationOrigin(
+          region.declaration,
+          this.module,
+          this.state
+        );
+        if (declarationOrigin?.type === "included") {
+          let { bundleHref, range, importedAs } = declarationOrigin.source;
+          region.declaration.original = { bundleHref, range, importedAs };
+        } else {
+          throw new Error(
+            `bug: should never be here--obviated regions should not be included in serialized code region result`
+          );
+        }
       }
     }
 
@@ -135,45 +162,75 @@ export class ModuleRewriter {
         { declaration: localDesc },
       ] of declarations.entries()) {
         let assignedName: string | undefined;
-        if (localDesc.type === "import") {
-          let importedModule = makeNonCyclic(this.module).resolvedImports[
-            localDesc.importIndex
-          ];
-          let source = resolveDeclaration(
-            localDesc.importedName,
-            importedModule,
-            this.module,
-            this.ownAssignments
-          );
-          if (source.type === "resolved") {
-            assignedName = this.maybeAssignImportName(
-              source.module.url.href,
-              source.importedAs,
-              localName
+        if (
+          localDesc.type === "import" ||
+          (localDesc.type === "local" && localDesc.original)
+        ) {
+          if (localDesc.type === "local" && localDesc.original) {
+            let declarationOrigin = resolveDeclarationOrigin(
+              localDesc,
+              this.module,
+              this.state
             );
-          } else if (isNamespaceMarker(source.importedAs)) {
-            assignedName = this.maybeAssignImportName(
-              source.importedFromModule.url.href,
-              NamespaceMarker,
-              localName
+            if (declarationOrigin?.type === "obviated") {
+              continue;
+            } else if (declarationOrigin?.type === "included") {
+              assignedName = this.maybeAssignImportName(
+                declarationOrigin.source.bundleHref,
+                isNamespaceMarker(declarationOrigin.source.importedAs)
+                  ? NamespaceMarker
+                  : declarationOrigin.source.importedAs,
+                localName
+              );
+            } else {
+              throw new Error(
+                `could not locate the origin for the declaration '${localName}' with origin: ${JSON.stringify(
+                  localDesc.original
+                )} used by module ${this.module.url.href} in bundle ${
+                  this.bundle.href
+                }`
+              );
+            }
+          } else if (localDesc.type === "import") {
+            let importedModule = makeNonCyclic(this.module).resolvedImports[
+              localDesc.importIndex
+            ];
+            let source = resolveDeclaration(
+              localDesc.importedName,
+              importedModule,
+              this.module,
+              this.ownAssignments
             );
-          } else {
-            assignedName = this.maybeAssignImportName(
-              source.importedFromModule.url.href,
-              source.importedAs,
-              localName
-            );
-          }
+            if (source.type === "resolved") {
+              assignedName = this.maybeAssignImportName(
+                source.module.url.href,
+                source.importedAs,
+                localName
+              );
+            } else if (isNamespaceMarker(source.importedAs)) {
+              assignedName = this.maybeAssignImportName(
+                source.importedFromModule.url.href,
+                NamespaceMarker,
+                localName
+              );
+            } else {
+              assignedName = this.maybeAssignImportName(
+                source.importedFromModule.url.href,
+                source.importedAs,
+                localName
+              );
+            }
 
-          let dep = Object.values(this.dependencies).find((dep) =>
-            importedModule.url.href.includes(depAsURL(dep).href)
-          );
-          if (dep) {
-            this.state.assignedImportedDependencies.set(assignedName, {
-              bundleHref: importedModule.url.href,
-              range: dep.range,
-              importedAs: localDesc.importedName,
-            });
+            let dep = Object.values(this.dependencies).find((dep) =>
+              importedModule.url.href.includes(depAsURL(dep).href)
+            );
+            if (dep) {
+              this.state.assignedImportedDependencies.set(assignedName, {
+                bundleHref: importedModule.url.href,
+                range: dep.range,
+                importedAs: localDesc.importedName,
+              });
+            }
           }
         } else {
           // check to see if the binding was actually already assigned by a module
@@ -192,6 +249,11 @@ export class ModuleRewriter {
             );
           }
           assignedName = assignedName ?? this.unusedNameLike(suggestedName);
+        }
+        if (!assignedName) {
+          throw new Error(
+            `unable to assign name to the binding '${localName}' in module ${this.module.url.href} when constructing bundle ${this.bundle.href}`
+          );
         }
         this.claimAndRename(localName, assignedName);
       }
@@ -267,7 +329,8 @@ export class ModuleRewriter {
             namespaceItemSource.importedAs,
             suggestedName
           );
-          // TODO don't forget to deal with situation where the declaration has an "original" property
+          // TODO don't forget to deal with situation where the declaration has
+          // an "original" property!!
           nameMap.set(exportedName, assignedName);
         } else if (isNamespaceMarker(namespaceItemSource.importedAs)) {
           nameMap.set(exportedName, exportedName);
@@ -463,6 +526,58 @@ export function resolveDeclaration(
     region,
     pointer,
   };
+}
+
+interface IncludedDeclarationOrigin {
+  type: "included";
+  source: ResolvedDeclarationSource;
+}
+
+interface ObviatedDeclarationOrigin {
+  type: "obviated";
+  source: ResolvedDeclarationSource;
+}
+
+type DeclarationOrigin = IncludedDeclarationOrigin | ObviatedDeclarationOrigin;
+
+function resolveDeclarationOrigin(
+  desc: DeclarationDescription,
+  consumedByModule: ModuleResolution,
+  state: HeadState
+): DeclarationOrigin | undefined {
+  if (desc.type === "import" || !desc.original) {
+    return;
+  }
+  let pkgURL = pkgInfoFromCatalogJsURL(new URL(desc.original.bundleHref))
+    ?.pkgURL;
+  if (!pkgURL) {
+    throw new Error(
+      `Cannot determine pkgURL that corresponds to the bundle URL: ${desc.original.bundleHref}`
+    );
+  }
+  let resolvedSources = state.consumptionResolutions.get(pkgURL.href) ?? [];
+  let obviatedSource = resolvedSources?.find((s) =>
+    s.obviatedRegions.find((r) => r.moduleHref === consumedByModule.url.href)
+  );
+  if (obviatedSource) {
+    // this region has been collapsed because it's consumption range
+    // overlaps with the same declaration elsewhere
+    return {
+      type: "obviated",
+      source: obviatedSource,
+    };
+  }
+  let includedSource = resolvedSources.find(
+    (s) => s.consumedByModuleHref === consumedByModule.url.href
+  );
+  if (includedSource) {
+    return {
+      type: "included",
+      source: includedSource,
+    };
+  }
+
+  return;
 }
 
 function pointerForImport(

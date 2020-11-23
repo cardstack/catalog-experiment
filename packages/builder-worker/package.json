@@ -52,7 +52,8 @@
     "json-stable-stringify": "^1.0.1",
     "lodash": "^4.17.19",
     "moment": "^2.25.3",
-    "semver": "^7.3.2"
+    "semver": "^7.3.2",
+    "semver-intersect": "^1.4.0"
   },
   "volta": {
     "node": "14.5.0"
