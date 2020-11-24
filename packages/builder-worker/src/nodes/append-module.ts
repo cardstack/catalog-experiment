@@ -540,8 +540,14 @@ function buildBundleBody(
     if (namespaceDeclarationRegion && namespaceDeclarationPointer != null) {
       // stitch the namespace declaration into the first child of the module's
       // document region
-      namespaceDeclarationRegion.nextSibling = moduleRegions[0].firstChild;
+      let newSiblingPointer = moduleRegions[0].firstChild;
+      namespaceDeclarationRegion.nextSibling = newSiblingPointer;
       moduleRegions[0].firstChild = namespaceDeclarationPointer;
+      if (newSiblingPointer != null) {
+        let newSibling = moduleRegions[newSiblingPointer - offset];
+        // make sure we account for newline between namespace declaration and its sibling
+        newSibling.start++;
+      }
     }
 
     for (let region of moduleRegions.filter(
@@ -740,7 +746,7 @@ function buildNamespaces(
                   : outsideName === insideName
                   ? 2 /* ", "*/
                   : outsideName.length + 4 /* ", outsideName: " */,
-              end: assignedName.length,
+              end: insideName.length,
               firstChild: undefined,
               nextSibling:
                 index === nameMap!.size - 1

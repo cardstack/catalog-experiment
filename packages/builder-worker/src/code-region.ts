@@ -1287,7 +1287,9 @@ function remapRegions(
     }
     return region;
   });
-  regions[documentPointer].firstChild = 1;
+  if (regions[documentPointer].firstChild != null) {
+    regions[documentPointer].firstChild = 1;
+  }
 
   return regions;
 }

@@ -166,12 +166,12 @@ export class ModuleRewriter {
           localDesc.type === "import" ||
           (localDesc.type === "local" && localDesc.original)
         ) {
-          if (localDesc.type === "local" && localDesc.original) {
-            let declarationOrigin = resolveDeclarationOrigin(
-              localDesc,
-              this.module,
-              this.state
-            );
+          let declarationOrigin = resolveDeclarationOrigin(
+            localDesc,
+            this.module,
+            this.state
+          );
+          if (declarationOrigin) {
             if (declarationOrigin?.type === "obviated") {
               continue;
             } else if (declarationOrigin?.type === "included") {
@@ -182,15 +182,19 @@ export class ModuleRewriter {
                   : declarationOrigin.source.importedAs,
                 localName
               );
-            } else {
-              throw new Error(
-                `could not locate the origin for the declaration '${localName}' with origin: ${JSON.stringify(
-                  localDesc.original
-                )} used by module ${this.module.url.href} in bundle ${
-                  this.bundle.href
-                }`
-              );
             }
+          } else if (
+            localDesc.type === "local" &&
+            localDesc.original &&
+            !declarationOrigin
+          ) {
+            throw new Error(
+              `could not locate the origin for the declaration '${localName}' with origin: ${JSON.stringify(
+                localDesc.original
+              )} used by module ${this.module.url.href} in bundle ${
+                this.bundle.href
+              }`
+            );
           } else if (localDesc.type === "import") {
             let importedModule = makeNonCyclic(this.module).resolvedImports[
               localDesc.importIndex
@@ -225,11 +229,15 @@ export class ModuleRewriter {
               importedModule.url.href.includes(depAsURL(dep).href)
             );
             if (dep) {
-              this.state.assignedImportedDependencies.set(assignedName, {
-                bundleHref: importedModule.url.href,
-                range: dep.range,
-                importedAs: localDesc.importedName,
-              });
+              // we deal with setting the namespace assigned import deps in the
+              // makeNamespaceMappings()
+              if (!isNamespaceMarker(localDesc.importedName)) {
+                this.state.assignedImportedDependencies.set(assignedName, {
+                  bundleHref: importedModule.url.href,
+                  range: dep.range,
+                  importedAs: localDesc.importedName,
+                });
+              }
             }
           }
         } else {
@@ -303,6 +311,9 @@ export class ModuleRewriter {
         );
       }
       let nameMap: Map<string, string> = new Map(); // outside name => inside name
+      let dep = Object.values(this.dependencies).find((dep) =>
+        importedModule.url.href.includes(depAsURL(dep).href)
+      );
       for (let [
         exportedName,
         { desc: exportDesc, module: sourceModule },
@@ -317,6 +328,7 @@ export class ModuleRewriter {
           this.ownAssignments
         );
         if (namespaceItemSource.type === "resolved") {
+          let assignedName: string;
           // the module whose binding we are including in this manufactured
           // namespace object may not necessarily have had it's bindings
           // assigned yet, so we make sure to go through that process.
@@ -324,13 +336,35 @@ export class ModuleRewriter {
             namespaceItemSource.declaredName === "default"
               ? "_default"
               : namespaceItemSource.declaredName;
-          let assignedName = this.maybeAssignImportName(
-            namespaceItemSource.module.url.href,
-            namespaceItemSource.importedAs,
-            suggestedName
+          let declarationOrigin = resolveDeclarationOrigin(
+            namespaceItemSource.declaration,
+            this.module,
+            this.state
           );
-          // TODO don't forget to deal with situation where the declaration has
-          // an "original" property!!
+          if (declarationOrigin) {
+            if (isNamespaceMarker(declarationOrigin.source.importedAs)) {
+              assignedName = exportedName;
+            } else {
+              assignedName = this.maybeAssignImportName(
+                declarationOrigin.source.bundleHref,
+                declarationOrigin.source.importedAs,
+                suggestedName
+              );
+            }
+          } else {
+            assignedName = this.maybeAssignImportName(
+              namespaceItemSource.module.url.href,
+              namespaceItemSource.importedAs,
+              suggestedName
+            );
+            if (dep) {
+              this.state.assignedImportedDependencies.set(assignedName, {
+                bundleHref: namespaceItemSource.module.url.href,
+                range: dep.range,
+                importedAs: namespaceItemSource.importedAs,
+              });
+            }
+          }
           nameMap.set(exportedName, assignedName);
         } else if (isNamespaceMarker(namespaceItemSource.importedAs)) {
           nameMap.set(exportedName, exportedName);
@@ -404,6 +438,7 @@ interface ResolvedResult {
   importedAs: string;
   region: DeclarationCodeRegion;
   pointer: RegionPointer;
+  declaration: DeclarationDescription;
 }
 
 interface UnresolvedResult {
@@ -524,6 +559,7 @@ export function resolveDeclaration(
     importedAs: importedName,
     declaredName: exportDesc.name,
     region,
+    declaration,
     pointer,
   };
 }
