@@ -12,13 +12,17 @@ import {
   DeclarationCodeRegion,
   CodeRegion,
   DeclarationDescription,
+  documentPointer,
 } from "./code-region";
 import { BundleAssignment } from "./nodes/bundle";
 import stringify from "json-stable-stringify";
 import { MD5 as md5, enc } from "crypto-js";
 import { setMapping, stringifyReplacer as replacer } from "./utils";
 import { depAsURL, Dependencies } from "./nodes/entrypoint";
-import { ResolvedDeclarationSource } from "./nodes/combine-modules";
+import {
+  ResolvedDependency,
+  DependencyResolver,
+} from "./nodes/combine-modules";
 import { pkgInfoFromCatalogJsURL } from "./resolver";
 
 export class HeadState {
@@ -47,10 +51,7 @@ export class HeadState {
   private visitedModules: ModuleResolution[] = [];
   private moduleQueue: ModuleResolution[] = [];
 
-  constructor(
-    moduleResolutions: ModuleResolution[],
-    readonly consumptionResolutions: Map<string, ResolvedDeclarationSource[]>
-  ) {
+  constructor(moduleResolutions: ModuleResolution[]) {
     // we reverse the order of the modules to append such that we first emit the
     // modules that are closest to the entrypoint and work our way towards the
     // deps. This way the bindings that are closest to the entrypoints have the
@@ -76,7 +77,6 @@ export class HeadState {
       visitedModules,
       assignedNamespaces,
       moduleQueue,
-      consumptionResolutions,
     } = this;
     let str = stringify(
       {
@@ -86,7 +86,6 @@ export class HeadState {
         visitedModules,
         assignedNamespaces,
         moduleQueue,
-        consumptionResolutions,
       },
       {
         replacer,
@@ -107,7 +106,8 @@ export class ModuleRewriter {
     private state: HeadState,
     bundleAssignments: BundleAssignment[],
     private editor: RegionEditor,
-    private dependencies: Dependencies
+    private dependencies: Dependencies,
+    private depResolver: DependencyResolver
   ) {
     this.ownAssignments = bundleAssignments.filter(
       (a) => a.bundleURL.href === this.bundle.href
@@ -138,10 +138,14 @@ export class ModuleRewriter {
         let declarationOrigin = resolveDeclarationOrigin(
           region.declaration,
           this.module,
-          this.state
+          this.depResolver
         );
         if (declarationOrigin?.type === "included") {
-          let { bundleHref, range, importedAs } = declarationOrigin.source;
+          let {
+            bundleHref: bundleHref,
+            range,
+            importedAs,
+          } = declarationOrigin.source;
           region.declaration.original = { bundleHref, range, importedAs };
         } else {
           throw new Error(
@@ -169,7 +173,7 @@ export class ModuleRewriter {
           let declarationOrigin = resolveDeclarationOrigin(
             localDesc,
             this.module,
-            this.state
+            this.depResolver
           );
           if (declarationOrigin) {
             if (declarationOrigin?.type === "obviated") {
@@ -339,7 +343,7 @@ export class ModuleRewriter {
           let declarationOrigin = resolveDeclarationOrigin(
             namespaceItemSource.declaration,
             this.module,
-            this.state
+            this.depResolver
           );
           if (declarationOrigin) {
             if (isNamespaceMarker(declarationOrigin.source.importedAs)) {
@@ -566,12 +570,12 @@ export function resolveDeclaration(
 
 interface IncludedDeclarationOrigin {
   type: "included";
-  source: ResolvedDeclarationSource;
+  source: ResolvedDependency;
 }
 
 interface ObviatedDeclarationOrigin {
   type: "obviated";
-  source: ResolvedDeclarationSource;
+  source: ResolvedDependency;
 }
 
 type DeclarationOrigin = IncludedDeclarationOrigin | ObviatedDeclarationOrigin;
@@ -579,7 +583,7 @@ type DeclarationOrigin = IncludedDeclarationOrigin | ObviatedDeclarationOrigin;
 function resolveDeclarationOrigin(
   desc: DeclarationDescription,
   consumedByModule: ModuleResolution,
-  state: HeadState
+  depResolver: DependencyResolver
 ): DeclarationOrigin | undefined {
   if (desc.type === "import" || !desc.original) {
     return;
@@ -591,9 +595,11 @@ function resolveDeclarationOrigin(
       `Cannot determine pkgURL that corresponds to the bundle URL: ${desc.original.bundleHref}`
     );
   }
-  let resolvedSources = state.consumptionResolutions.get(pkgURL.href) ?? [];
+  let resolvedSources = depResolver.resolutionsForPkg(pkgURL.href) ?? [];
   let obviatedSource = resolvedSources?.find((s) =>
-    s.obviatedRegions.find((r) => r.moduleHref === consumedByModule.url.href)
+    s.obviatedDependencies.find(
+      (r) => r.moduleHref === consumedByModule.url.href
+    )
   );
   if (obviatedSource) {
     // this region has been collapsed because it's consumption range
@@ -604,7 +610,7 @@ function resolveDeclarationOrigin(
     };
   }
   let includedSource = resolvedSources.find(
-    (s) => s.consumedByModuleHref === consumedByModule.url.href
+    (s) => s.consumedBy.url.href === consumedByModule.url.href
   );
   if (includedSource) {
     return {

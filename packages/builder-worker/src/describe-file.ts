@@ -38,7 +38,7 @@ import {
   Resolution,
   makeNonCyclic,
 } from "./nodes/resolution";
-import { NamespaceMarker } from "./code-region";
+import { NamespaceMarker, assignCodeRegionPositions } from "./code-region";
 
 export interface ExportAllMarker {
   exportAllFrom: string;
@@ -251,10 +251,7 @@ export function describeFile(
   let cjsExportNames: string[] = [];
   let isTranspiledFromES = false;
   let dependsOn = new WeakMap<CodeRegion, Set<string>>();
-  let moduleSideEffects: {
-    regionFromPaths: NodePath[];
-    dependsOn: NodePath[];
-  }[] = [];
+  let moduleSideEffects: NodePath[][] = [];
   let currentModuleScopedDeclaration:
     | {
         path: DuckPath;
@@ -441,42 +438,32 @@ export function describeFile(
     }
   }
 
-  function addModuleSideEffect(
-    path: NodePath,
-    programChildPath: NodePath = path
-  ) {
-    if (programChildPath.parent.type !== "Program") {
+  function addModuleSideEffect(path: NodePath) {
+    if (path.parent.type !== "Program") {
       return;
     }
-    let sideEffectIndex = programChildPath.parent.body.findIndex(
-      (statement) => statement === programChildPath.node
+    let sideEffectIndex = path.parent.body.findIndex(
+      (statement) => statement === path.node
     );
-    let [lastSideEffectGroup] = moduleSideEffects.slice(-1);
-    if (lastSideEffectGroup && programChildPath.type !== "ImportDeclaration") {
-      let { regionFromPaths: lastSideEffects, dependsOn } = lastSideEffectGroup;
+    let [lastSideEffects] = moduleSideEffects.slice(-1);
+    if (lastSideEffects && path.type !== "ImportDeclaration") {
       if (lastSideEffects && lastSideEffects.length > 0) {
         let [lastSideEffect] = lastSideEffects;
-        let lastSideEffectIndex = programChildPath.parent.body.findIndex(
+        let lastSideEffectIndex = path.parent.body.findIndex(
           (statement) => statement === lastSideEffect.node
         );
         // merge contiguous side effects
         if (
           lastSideEffectIndex + 1 === sideEffectIndex &&
-          lastSideEffect.type === programChildPath.type
+          lastSideEffect.type === path.type
         ) {
-          lastSideEffects.push(programChildPath as NodePath);
-          if (path !== programChildPath) {
-            dependsOn.push(path);
-          }
+          lastSideEffects.push(path as NodePath);
           return;
         }
       }
     }
 
-    moduleSideEffects.push({
-      regionFromPaths: [programChildPath as NodePath],
-      dependsOn: path !== programChildPath ? [path] : [],
-    });
+    moduleSideEffects.push([path as NodePath]);
   }
 
   const handlePossibleLVal = {
@@ -508,12 +495,6 @@ export function describeFile(
           regions: builder.regions,
           esTranspiledExports: undefined,
         };
-        for (let statement of path.get("body")) {
-          // we create a code region for each statement in the body so that
-          // reference code regions whose parents depend on them, will never be
-          // a dependency of the document region--that's for side effects only
-          builder.createCodeRegion(statement as NodePath);
-        }
       },
       exit() {
         let document = builder.regions[documentPointer];
@@ -691,7 +672,7 @@ export function describeFile(
         return;
       }
 
-      addModuleSideEffect(path.get("expression") as NodePath, path as NodePath);
+      addModuleSideEffect(path as NodePath);
     },
     ExportAllDeclaration(path) {
       isES6Module = true;
@@ -875,12 +856,9 @@ export function describeFile(
   let { regions } = desc!;
   resolveDependsOnReferences(dependsOn, desc!, declarations);
 
-  let sideEffectPointers = moduleSideEffects.map(
-    ({ regionFromPaths: paths, dependsOn: dependsOnPaths }) => {
-      let dependsOn = dependsOnPaths.map((p) => builder.createCodeRegion(p));
-      return builder.createCodeRegion(paths, "general", new Set(dependsOn));
-    }
-  );
+  let sideEffectPointers = moduleSideEffects.map((paths) => {
+    return builder.createCodeRegion(paths, "general");
+  });
   for (let { pointer } of declarations.values()) {
     let region = regions[pointer];
     region.dependsOn = new Set([...region.dependsOn, ...sideEffectPointers]);
@@ -894,7 +872,7 @@ export function describeFile(
   // LVal declarator and an identifier for the declarator
   cleanupSelfDependencies(desc!.regions);
 
-  assignCodeRegionPositions(documentPointer, desc!.regions);
+  assignCodeRegionPositions(desc!.regions);
 
   if (!isES6Module) {
     let { requires } = desc!;
@@ -910,21 +888,6 @@ function cleanupSelfDependencies(regions: FileDescription["regions"]) {
   for (let i = 0; i < regions.length; i++) {
     let region = regions[i];
     region.dependsOn.delete(i);
-  }
-}
-
-export function assignCodeRegionPositions(
-  pointer: RegionPointer,
-  regions: CodeRegion[],
-  index = 0
-) {
-  let region = regions[pointer];
-  region.position = index++;
-  if (region.firstChild != null) {
-    assignCodeRegionPositions(region.firstChild, regions, index);
-  }
-  if (region.nextSibling != null) {
-    assignCodeRegionPositions(region.nextSibling, regions, index);
   }
 }
 

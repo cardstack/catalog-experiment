@@ -15,11 +15,11 @@ import {
   isExportAllMarker,
   ExportAllMarker,
   declarationsMap,
-  assignCodeRegionPositions,
 } from "./describe-file";
 import isEqual from "lodash/isEqual";
 import invert from "lodash/invert";
 import {
+  assignCodeRegionPositions,
   DeclarationCodeRegion,
   documentPointer,
   GeneralCodeRegion,
@@ -39,6 +39,7 @@ const regionTypeShorthand = {
   reference: "r",
   import: "i",
   declaration: "d",
+  document: "o",
 };
 
 const moduleDescLegend = [
@@ -55,6 +56,7 @@ const baseCodeRegionLegend = [
   "nextSibling", // number | null
   "shorthand", // "i" = "import" | "e" = "export" | "o" = "object" | false
   "dependsOn", // Set<number>
+  "original", // [bundleHref: string, range: string ] | null
 ];
 
 const generalCodeRegionLegend = [
@@ -70,6 +72,8 @@ const importCodeRegionLegend = [
 ];
 
 const referenceCodeRegionLegend = [...baseCodeRegionLegend];
+
+const documentCodeRegionLegend = [...baseCodeRegionLegend];
 
 const declarationLegend = [
   "type", // "l" = local, "i" = import
@@ -150,12 +154,26 @@ function encodeModuleDescription(desc: ModuleDescription): string {
           desc.regions.map((r) => {
             switch (r.type) {
               case "general":
-                return encodeObj(r, generalCodeRegionLegend, {
+                return encodeObj(
+                  r,
+                  generalCodeRegionLegend,
+                  {
+                    type: { ...regionTypeShorthand },
+                    shorthand: { import: "i", export: "e", object: "o" },
+                  },
+                  {
+                    original: {
+                      legend: ["bundleHref", "range"],
+                    },
+                  }
+                );
+              case "reference":
+                return encodeObj(r, referenceCodeRegionLegend, {
                   type: { ...regionTypeShorthand },
                   shorthand: { import: "i", export: "e", object: "o" },
                 });
-              case "reference":
-                return encodeObj(r, referenceCodeRegionLegend, {
+              case "document":
+                return encodeObj(r, documentCodeRegionLegend, {
                   type: { ...regionTypeShorthand },
                   shorthand: { import: "i", export: "e", object: "o" },
                 });
@@ -242,12 +260,27 @@ function decodeModuleDescription(encoded: string): ModuleDescription {
                   type: { ...regionTypeShorthand },
                   shorthand: { import: "i", export: "e", object: "o" },
                 },
-                { dependsOn: "Set" }
+                { dependsOn: "Set" },
+                {
+                  original: {
+                    legend: ["bundleHref", "range"],
+                  },
+                }
               ) as GeneralCodeRegion;
             case "reference":
               return decodeArray(
                 v,
                 referenceCodeRegionLegend,
+                {
+                  type: { ...regionTypeShorthand },
+                  shorthand: { import: "i", export: "e", object: "o" },
+                },
+                { dependsOn: "Set" }
+              ) as ReferenceCodeRegion;
+            case "document":
+              return decodeArray(
+                v,
+                documentCodeRegionLegend,
                 {
                   type: { ...regionTypeShorthand },
                   shorthand: { import: "i", export: "e", object: "o" },
@@ -298,7 +331,7 @@ function decodeModuleDescription(encoded: string): ModuleDescription {
         );
     }
   }
-  assignCodeRegionPositions(documentPointer, regions);
+  assignCodeRegionPositions(regions);
 
   return {
     imports,

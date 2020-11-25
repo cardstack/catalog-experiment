@@ -5,10 +5,10 @@ import {
   ModuleDescription,
   ensureImportSpecifier,
   ExportAllMarker,
-  assignCodeRegionPositions,
 } from "../describe-file";
 import {
   isNamespaceMarker,
+  assignCodeRegionPositions,
   NamespaceMarker,
   RegionEditor,
   RegionPointer,
@@ -25,8 +25,10 @@ import {
   ModuleRewriter,
   resolveDeclaration,
 } from "../module-rewriter";
-import { Dependencies } from "./entrypoint";
+import { depAsURL, Dependencies } from "./entrypoint";
 import { stringifyReplacer } from "../utils";
+import { pkgInfoFromCatalogJsURL } from "../resolver";
+import { DependencyResolver } from "./combine-modules";
 
 export class AppendModuleNode implements BuilderNode {
   cacheKey: string;
@@ -38,6 +40,7 @@ export class AppendModuleNode implements BuilderNode {
     private editors: Map<string, RegionEditor>,
     private bundleAssignments: BundleAssignment[],
     private dependencies: Dependencies,
+    private depResolver: DependencyResolver,
     private rewriters: ModuleRewriter[] = []
   ) {
     this.cacheKey = `append-module-node:${this.bundle.href}:${
@@ -55,7 +58,8 @@ export class AppendModuleNode implements BuilderNode {
       this.state,
       this.bundleAssignments,
       this.editor,
-      this.dependencies
+      this.dependencies,
+      this.depResolver
     );
     let rewriters = [rewriter, ...this.rewriters];
     let nextModule = this.state.nextModule();
@@ -68,6 +72,7 @@ export class AppendModuleNode implements BuilderNode {
           this.editors,
           this.bundleAssignments,
           this.dependencies,
+          this.depResolver,
           rewriters
         ),
       };
@@ -78,6 +83,8 @@ export class AppendModuleNode implements BuilderNode {
           this.bundle,
           this.editors,
           this.bundleAssignments,
+          this.dependencies,
+          this.depResolver,
           rewriters
         ),
       };
@@ -97,6 +104,8 @@ export class FinishAppendModulesNode implements BuilderNode {
     private bundle: URL,
     private editors: Map<string, RegionEditor>,
     private bundleAssignments: BundleAssignment[],
+    private dependencies: Dependencies,
+    private depResolver: DependencyResolver,
     private rewriters: ModuleRewriter[]
   ) {
     this.cacheKey = `finish-append-module-node:${
@@ -113,14 +122,13 @@ export class FinishAppendModulesNode implements BuilderNode {
       // document region for the bundle itself
       {
         position: 0,
-        type: "general",
+        type: "document",
         start: 0,
         end: 0,
         firstChild: 1,
         nextSibling: undefined,
         dependsOn: new Set(), // TODO need to add all module side effects, and all the module scoped declaration side effects
         shorthand: false,
-        preserveGaps: true,
       },
     ];
 
@@ -128,12 +136,14 @@ export class FinishAppendModulesNode implements BuilderNode {
       this.bundle,
       this.bundleAssignments,
       this.state,
-      this.editors
+      this.editors,
+      this.depResolver
     );
     let exportAssignments = assignedExports(
       this.bundle,
       this.bundleAssignments,
-      this.state
+      this.state,
+      this.depResolver
     );
     buildImports(
       code,
@@ -149,7 +159,8 @@ export class FinishAppendModulesNode implements BuilderNode {
       exportAssignments,
       bundleDeclarations,
       this.bundle,
-      this.state
+      this.state,
+      this.dependencies
     );
     let { exportRegions, exportSpecifierRegions } = buildExports(
       code,
@@ -160,7 +171,7 @@ export class FinishAppendModulesNode implements BuilderNode {
       this.bundle
     );
 
-    assignCodeRegionPositions(documentPointer, regions);
+    assignCodeRegionPositions(regions);
 
     // TODO need to add module side effect dependencies to all the declarations
     // TODO review the describe-file region finalization code to make sure we
@@ -179,7 +190,7 @@ export class FinishAppendModulesNode implements BuilderNode {
       exportRegions
     );
 
-    return { value: { code: code.join("\n").trim(), desc } };
+    return { value: { code: code.join("\n"), desc } };
   }
 }
 
@@ -516,7 +527,8 @@ function buildBundleBody(
   },
   bundleDeclarations: DeclarationRegionMap,
   bundle: URL,
-  state: HeadState
+  state: HeadState,
+  dependencies: Dependencies
 ) {
   for (let rewriter of rewriters) {
     let { module } = rewriter;
@@ -535,14 +547,39 @@ function buildBundleBody(
     let offset = regions.length;
     let { code: moduleCode, regions: moduleRegions } = rewriter.serialize();
     code.push(moduleCode);
+
+    // denote the module side effect regions with consumption info
+    let dep = Object.values(dependencies).find((dep) =>
+      module.url.href.includes(depAsURL(dep).href)
+    );
+    if (dep) {
+      for (let pointer of moduleRegions[documentPointer].dependsOn) {
+        let region = moduleRegions[pointer];
+        if (region.type === "general") {
+          region.original = {
+            bundleHref: module.url.href,
+            range: dep.range,
+          };
+        }
+      }
+    }
+
     adjustCodeRegionByOffset(moduleRegions, offset);
+
+    // hoist the module document's side effect dependOn to the bundle's document region
+    regions[documentPointer].dependsOn = new Set([
+      ...regions[documentPointer].dependsOn,
+      ...moduleRegions[documentPointer].dependsOn,
+    ]);
+
+    moduleRegions[documentPointer].dependsOn = new Set();
 
     if (namespaceDeclarationRegion && namespaceDeclarationPointer != null) {
       // stitch the namespace declaration into the first child of the module's
       // document region
-      let newSiblingPointer = moduleRegions[0].firstChild;
+      let newSiblingPointer = moduleRegions[documentPointer].firstChild;
       namespaceDeclarationRegion.nextSibling = newSiblingPointer;
-      moduleRegions[0].firstChild = namespaceDeclarationPointer;
+      moduleRegions[documentPointer].firstChild = namespaceDeclarationPointer;
       if (newSiblingPointer != null) {
         let newSibling = moduleRegions[newSiblingPointer - offset];
         // make sure we account for newline between namespace declaration and its sibling
@@ -630,12 +667,11 @@ function buildBundleBody(
       (rewriter === rewriters[rewriters.length - 1] &&
         exportAssignments.exports.size > 0)
     ) {
-      moduleRegions[0].nextSibling = moduleRegions.length + offset;
+      moduleRegions[documentPointer].nextSibling =
+        moduleRegions.length + offset;
     }
-    if (rewriter !== rewriters[0]) {
-      // add 1 char to the start to accommodate added newline between each code chunk
-      moduleRegions[0].start++;
-    }
+    // add 1 char to the start to accommodate added newline between each code chunk
+    moduleRegions[documentPointer].start++;
     regions.push(...moduleRegions);
   }
 
@@ -894,7 +930,8 @@ function setExportDescription(
 function assignedExports(
   bundle: URL,
   assignments: BundleAssignment[],
-  state: HeadState
+  state: HeadState,
+  depResolver: DependencyResolver
 ): {
   exports: Map<string, string>; // outside name -> inside name
   reexports: Map<string, Map<string, string>>; // bundle href -> [outside name => inside name]
@@ -933,7 +970,8 @@ function assignedImports(
   bundle: URL,
   assignments: BundleAssignment[],
   state: HeadState,
-  editors: Map<string, RegionEditor>
+  editors: Map<string, RegionEditor>,
+  depResolver: DependencyResolver
 ): Map<string, Map<string | NamespaceMarker, string> | null> {
   // bundleHref => <exposedName => local name> if the inner map is null then
   // this is a side effect only import

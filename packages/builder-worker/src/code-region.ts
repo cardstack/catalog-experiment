@@ -55,14 +55,13 @@ export class RegionBuilder {
     this.types.set(documentPointer, path.type);
     this.regions.push({
       position: 0,
-      type: "general",
+      type: "document",
       start: 0,
       end: absoluteEnd,
       firstChild: undefined,
       nextSibling: undefined,
       dependsOn: new Set(),
       shorthand: false,
-      preserveGaps: true,
     });
   }
 
@@ -490,6 +489,7 @@ export interface ImportedDeclarationDescription
   extends BaseDeclarationDescription {
   type: "import";
   importIndex: number;
+  // TODO change to "exportedName: string"
   importedName: string | NamespaceMarker;
 }
 
@@ -498,6 +498,7 @@ export interface EnclosedNames {
 }
 
 export type CodeRegion =
+  | DocumentCodeRegion
   | GeneralCodeRegion
   | ImportCodeRegion
   | DeclarationCodeRegion
@@ -531,8 +532,24 @@ export interface BaseCodeRegion {
   //
   shorthand: "import" | "export" | "object" | false;
   dependsOn: Set<RegionPointer>;
+
+  // we use this to track the original source for module side-effects
+  original?: {
+    bundleHref: string;
+    range: string;
+  };
 }
 
+export interface DocumentCodeRegion extends BaseCodeRegion {
+  type: "document";
+}
+export function isDocumentCodeRegion(
+  region: any
+): region is DocumentCodeRegion {
+  return (
+    typeof region === "object" && "type" in region && region.type === "document"
+  );
+}
 export interface GeneralCodeRegion extends BaseCodeRegion {
   type: "general";
   preserveGaps: boolean;
@@ -569,6 +586,21 @@ export function isImportCodeRegion(region: any): region is ImportCodeRegion {
   );
 }
 
+export function assignCodeRegionPositions(
+  regions: CodeRegion[],
+  pointer: RegionPointer = documentPointer,
+  index = 0
+) {
+  let region = regions[pointer];
+  region.position = index++;
+  if (region.firstChild != null) {
+    assignCodeRegionPositions(regions, region.firstChild, index);
+  }
+  if (region.nextSibling != null) {
+    assignCodeRegionPositions(regions, region.nextSibling, index);
+  }
+}
+
 export interface ReferenceCodeRegion extends BaseCodeRegion {
   type: "reference";
 }
@@ -584,6 +616,7 @@ export function isReferenceCodeRegion(
 
 export function isCodeRegion(region: any): region is CodeRegion {
   return (
+    isDocumentCodeRegion(region) ||
     isGeneralCodeRegion(region) ||
     isDeclarationCodeRegion(region) ||
     isReferenceCodeRegion(region) ||
@@ -634,7 +667,7 @@ export class RegionEditor {
     // Regions are assumed to be removed unless .keepRegion() is explicitly
     // called for a region.
     this.dispositions = [...desc.regions.entries()].map(([index]) => ({
-      state: index === documentPointer ? "unchanged" : "removed",
+      state: desc.regions[index].type === "document" ? "unchanged" : "removed",
       region: index,
     }));
   }
@@ -759,9 +792,17 @@ export class RegionEditor {
     this.outputRegions = [];
     this.innerSerialize(documentPointer);
 
+    let newRegions = remapRegions(this.outputRegions);
+    let newCode = this.outputCode.join("");
+    assignCodeRegionPositions(newRegions);
+    // it's easy to trim leading whitespace, but it's difficult to deal with
+    // trailing whitespace since we don't have backwards pointers in our code
+    // regions.
+    trimLeading(newRegions, newCode);
+
     return {
-      code: this.outputCode.join(""),
-      regions: remapRegions(this.outputRegions),
+      code: newCode.replace(/^\s*/, ""),
+      regions: newRegions,
     };
   }
 
@@ -1010,6 +1051,7 @@ export class RegionEditor {
   ): boolean {
     if (
       siblingDispositions.length > 0 &&
+      parentRegion.type !== "document" &&
       (parentRegion.type === "reference" || !parentRegion.preserveGaps) &&
       (previousSiblingDisposition.state === "removed" ||
         siblingDispositions.every((d) => d.state === "removed"))
@@ -1292,6 +1334,58 @@ function remapRegions(
   }
 
   return regions;
+}
+
+function trimLeading(
+  regions: CodeRegion[],
+  code: string,
+  pointer: RegionPointer = documentPointer,
+  remainingWhitespaceLength = code.match(/^\s*/)![0].length
+): number {
+  if (remainingWhitespaceLength === code.length) {
+    // collapse this to an empty doc
+    regions = [
+      {
+        type: "document",
+        start: 0,
+        end: 0,
+        firstChild: undefined,
+        nextSibling: undefined,
+        shorthand: false,
+        dependsOn: new Set(),
+        position: 0,
+      },
+    ];
+    return 0;
+  }
+
+  if (remainingWhitespaceLength > 0) {
+    let region = regions[pointer];
+    if (region.start >= remainingWhitespaceLength) {
+      region.start = region.start - remainingWhitespaceLength;
+      return 0;
+    } else {
+      remainingWhitespaceLength -= region.start;
+      region.start = 0;
+      if (region.firstChild != null) {
+        remainingWhitespaceLength = trimLeading(
+          regions,
+          code,
+          region.firstChild,
+          remainingWhitespaceLength
+        );
+      }
+      if (region.nextSibling != null) {
+        remainingWhitespaceLength = trimLeading(
+          regions,
+          code,
+          region.nextSibling,
+          remainingWhitespaceLength
+        );
+      }
+    }
+  }
+  return remainingWhitespaceLength;
 }
 
 // TODO let's get rid of this negative number stuff by just feeding in all the

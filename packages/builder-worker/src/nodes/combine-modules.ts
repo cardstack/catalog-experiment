@@ -4,7 +4,7 @@ import { getExports, ModuleDescription } from "../describe-file";
 import {
   documentPointer,
   isNamespaceMarker,
-  LocalDeclarationDescription,
+  NamespaceMarker,
   RegionEditor,
   RegionPointer,
 } from "../code-region";
@@ -45,7 +45,6 @@ export class CombineModulesNode implements BuilderNode {
         assignments.find((a) => a.module.url.href === module.url.href)
           ?.bundleURL.href === this.bundle.href
     );
-    let exposed = exposedRegions(this.bundle, assignments);
 
     let editors: Map<string, RegionEditor> = new Map();
     for (let module of moduleResolutions) {
@@ -57,7 +56,8 @@ export class CombineModulesNode implements BuilderNode {
     let ownAssignments = assignments.filter(
       (a) => a.bundleURL.href === this.bundle.href
     );
-    let consumptionResolver = new ConsumptionResolver(assignments, this.bundle);
+    let depResolver = new DependencyResolver(assignments, this.bundle);
+    let exposed = exposedRegions(this.bundle, assignments, depResolver);
 
     for (let { pointer, module } of exposed) {
       discoverIncludedRegions(
@@ -66,7 +66,7 @@ export class CombineModulesNode implements BuilderNode {
         pointer,
         editors,
         ownAssignments,
-        consumptionResolver
+        depResolver
       );
     }
 
@@ -74,10 +74,7 @@ export class CombineModulesNode implements BuilderNode {
     // consumed semver ranges. This means that we might need to adjust the
     // included code regions accordingly.
 
-    let headState = new HeadState(
-      moduleResolutions,
-      consumptionResolver.consumptionResolutions
-    );
+    let headState = new HeadState(moduleResolutions);
     let firstModule = headState.nextModule();
     if (!firstModule) {
       throw new Error(`bug: there are no module resolutions in this bundle`);
@@ -89,31 +86,28 @@ export class CombineModulesNode implements BuilderNode {
         this.bundle,
         editors,
         assignments,
-        this.dependencies
+        this.dependencies,
+        depResolver
       ),
     };
   }
 }
 
-class ConsumptionResolver {
-  private consumptionRanges: ConsumptionRanges;
-  private resolutionCache: Map<string, ResolvedDeclarationSource[]> = new Map();
+export class DependencyResolver {
+  private consumedDeps: ConsumedDependencies;
+  private resolutionCache: Map<string, ResolvedDependency[]> = new Map();
   constructor(assignments: BundleAssignment[], private bundle: URL) {
-    this.consumptionRanges = gatherConsumptionRanges(assignments, bundle);
+    this.consumedDeps = gatherDependencies(assignments, bundle);
     this.resolutionCache = new Map();
   }
 
-  get consumptionResolutions(): Map<string, ResolvedDeclarationSource[]> {
-    return this.resolutionCache;
-  }
-
-  resolutionsForPkg(pkgHref: string): ResolvedDeclarationSource[] {
+  resolutionsForPkg(pkgHref: string): ResolvedDependency[] {
     let cachedResolutions = this.resolutionCache.get(pkgHref);
     if (cachedResolutions) {
       return cachedResolutions;
     }
 
-    let resolutions = this.consumptionRanges.get(pkgHref);
+    let resolutions = this.consumedDeps.get(pkgHref);
     if (!resolutions || resolutions.length === 0) {
       throw new Error(
         `Unable to get consumption range for package ${pkgHref}, this pkg does not appear to be consumed in the bundle ${this.bundle.href}`
@@ -127,7 +121,10 @@ class ConsumptionResolver {
         versionIndices = [];
         rangeSatisfications.set(range, versionIndices);
       }
-      for (let [versionIndex, { bundleHref }] of resolutions.entries()) {
+      for (let [
+        versionIndex,
+        { bundleHref: bundleHref },
+      ] of resolutions.entries()) {
         let { version: ver } = pkgInfoFromCatalogJsURL(new URL(bundleHref))!;
         let version = coerce(ver);
         if (!version) {
@@ -159,7 +156,7 @@ class ConsumptionResolver {
     // chose the smallest range alphabetically by the range's name. The
     // resulting range for each set will be an intersection of all the ranges
     // that correspond to the versions that were satisfied in the group.
-    let resultingResolutions: ResolvedDeclarationSource[] = [];
+    let resultingResolutions: ResolvedDependency[] = [];
     let unsatisfiedIndices = [...resolutions.entries()].map(([index]) => index);
     let sortedRanges = [...rangeSatisfications.entries()].sort(
       ([rangeA, aIndices], [rangeB, bIndices]) => {
@@ -196,20 +193,20 @@ class ConsumptionResolver {
       });
       let selected = resolutions[indicesSortedByVer[0]];
       let obviatedIndices = indicesSortedByVer.slice(1);
-      let { bundleHref, consumedByModuleHref: moduleHref, pointer } = selected;
+      let { bundleHref, consumedBy, pointer } = selected;
       let range = intersect(...indices.map((i) => resolutions![i].range));
-      let obviatedRegions = obviatedIndices.map((i) => ({
-        moduleHref: resolutions![i].consumedByModuleHref,
+      let obviatedDependencies = obviatedIndices.map((i) => ({
+        moduleHref: resolutions![i].consumedBy.url.href,
         pointer: resolutions![i].pointer,
       }));
       resultingResolutions.push({
-        consumedByModuleHref: moduleHref,
+        consumedBy,
         // capturing the region pointer is probably redundant since you could
         // never have duplicate declarations in the same consuming module
         pointer,
         bundleHref,
         range,
-        obviatedRegions,
+        obviatedDependencies,
         importedAs: resolutions[indices[0]].importedAs,
       });
       unsatisfiedIndices = unsatisfiedIndices.filter(
@@ -222,24 +219,25 @@ class ConsumptionResolver {
   }
 }
 
-interface OriginalDeclarationWithPointer
-  extends NonNullable<LocalDeclarationDescription["original"]> {
+interface ConsumedDependency {
   pointer: RegionPointer;
-  consumedByModuleHref: string;
+  consumedBy: ModuleResolution;
+  bundleHref: string;
+  range: string;
+  importedAs: string | NamespaceMarker;
 }
 
-export interface ResolvedDeclarationSource
-  extends OriginalDeclarationWithPointer {
-  obviatedRegions: { moduleHref: string; pointer: RegionPointer }[];
+export interface ResolvedDependency extends ConsumedDependency {
+  obviatedDependencies: { moduleHref: string; pointer: RegionPointer }[];
 }
 
-type ConsumptionRanges = Map<string, OriginalDeclarationWithPointer[]>; // the key of the map is the pkgHref
+type ConsumedDependencies = Map<string, ConsumedDependency[]>; // the key of the map is the pkgHref
 
-function gatherConsumptionRanges(
+function gatherDependencies(
   assignments: BundleAssignment[],
   bundle: URL
-): ConsumptionRanges {
-  let consumptionRanges: ConsumptionRanges = new Map();
+): ConsumedDependencies {
+  let consumedDeps: ConsumedDependencies = new Map();
   for (let { module } of assignments) {
     if (
       assignments.find((a) => a.module.url.href === module.url.href)?.bundleURL
@@ -260,20 +258,21 @@ function gatherConsumptionRanges(
             `cannot derive pkgURL from bundle URL ${declaration.original.bundleHref} when building bundle ${bundle.href}`
           );
         }
-        let consumed = consumptionRanges.get(pkgURL.href);
+        let consumed = consumedDeps.get(pkgURL.href);
         if (!consumed) {
           consumed = [];
-          consumptionRanges.set(pkgURL.href, consumed);
+          consumedDeps.set(pkgURL.href, consumed);
         }
+
         consumed.push({
-          consumedByModuleHref: module.url.href,
           pointer,
+          consumedBy: module,
           ...declaration.original,
         });
       }
     }
   }
-  return consumptionRanges;
+  return consumedDeps;
 }
 
 function discoverIncludedRegions(
@@ -282,13 +281,29 @@ function discoverIncludedRegions(
   pointer: RegionPointer,
   editors: Map<string, RegionEditor>,
   ownAssignments: BundleAssignment[],
-  consumptionResolver: ConsumptionResolver
+  depResolver: DependencyResolver
 ) {
   if (editors.get(module.url.href)?.isRegionKept(pointer)) {
     return;
   }
 
   let region = module.desc.regions[pointer];
+  // collapse module side effects
+  if (region.original) {
+    let pkgURL = pkgInfoFromCatalogJsURL(new URL(region.original.bundleHref))
+      ?.pkgURL;
+    if (!pkgURL) {
+      throw new Error(
+        `Cannot determine pkgURL that corresponds to the bundle URL: ${region.original.bundleHref}`
+      );
+    }
+    let resolutions = depResolver.resolutionsForPkg(pkgURL?.href);
+    if (
+      !resolutions.find((r) => r.bundleHref === region.original!.bundleHref)
+    ) {
+      return; // this region has been collapsed
+    }
+  }
   if (region.type === "declaration" && region.declaration.type === "import") {
     let localDesc = region.declaration;
     let importedModule = makeNonCyclic(module).resolvedImports[
@@ -308,7 +323,7 @@ function discoverIncludedRegions(
         source.pointer,
         editors,
         ownAssignments,
-        consumptionResolver
+        depResolver
       );
     } else {
       let consumingModule = makeNonCyclic(source.consumingModule);
@@ -334,7 +349,7 @@ function discoverIncludedRegions(
           source.importedFromModule,
           editors,
           ownAssignments,
-          consumptionResolver
+          depResolver
         );
         return; // don't include the dependsOn in this signal
       } else {
@@ -360,11 +375,11 @@ function discoverIncludedRegions(
         `Cannot determine pkgURL that corresponds to the bundle URL: ${bundleHref}`
       );
     }
-    let resolutions = consumptionResolver.resolutionsForPkg(pkgURL?.href);
+    let resolutions = depResolver.resolutionsForPkg(pkgURL?.href);
     if (
       resolutions.find(
         (r) =>
-          r.consumedByModuleHref === module.url.href && r.pointer === pointer
+          r.consumedBy.url.href === module.url.href && r.pointer === pointer
       )
     ) {
       editors.get(module.url.href)!.keepRegion(pointer);
@@ -382,7 +397,7 @@ function discoverIncludedRegions(
       depPointer,
       editors,
       ownAssignments,
-      consumptionResolver
+      depResolver
     );
   }
 }
@@ -392,7 +407,7 @@ function discoverIncludedRegionsForNamespace(
   module: Resolution,
   editors: Map<string, RegionEditor>,
   ownAssignments: BundleAssignment[],
-  consumptionResolver: ConsumptionResolver
+  depResolver: DependencyResolver
 ) {
   let exports = getExports(module);
   for (let [exportName, { module: sourceModule }] of exports.entries()) {
@@ -409,7 +424,7 @@ function discoverIncludedRegionsForNamespace(
         source.pointer,
         editors,
         ownAssignments,
-        consumptionResolver
+        depResolver
       );
     } else {
       // we mark the namespace import region as something we want to keep as a
@@ -433,7 +448,7 @@ function discoverIncludedRegionsForNamespace(
           source.importedFromModule,
           editors,
           ownAssignments,
-          consumptionResolver
+          depResolver
         );
       } else {
         // we mark the external bundle import region as something we want to keep
@@ -454,7 +469,8 @@ export interface ExposedRegionInfo {
 
 function exposedRegions(
   bundle: URL,
-  bundleAssignments: BundleAssignment[]
+  bundleAssignments: BundleAssignment[],
+  depResolver: DependencyResolver
 ): ExposedRegionInfo[] {
   let results: ExposedRegionInfo[] = [];
   let ownAssignments = bundleAssignments.filter(
