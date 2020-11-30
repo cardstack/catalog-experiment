@@ -381,15 +381,15 @@ QUnit.module("module code-editor", function () {
   });
 
   test("serialized code regions reflect renamed declarations within a wrapped region", function (assert) {
-    // In this example region 1 is the ExportDefaultDeclaration and region 3 is
+    // In this example region 1 is the ExportDefaultDeclaration and region 2 is
     // FunctionDeclaration
     let { desc, editor } = describeESModule(`
-      export default function () { console.log(a); }
+      export default function() { console.log(a); }
       const a = 'a';
     `);
     keepAll(desc, editor);
     editor.removeRegion(1);
-    editor.wrapWithDeclaration(3, "_default");
+    editor.wrapWithDeclaration(2, "_default");
     editor.rename("a", "alpha");
 
     let { code, regions } = editor.serialize();

@@ -356,9 +356,9 @@ QUnit.module("module builder", function (origHooks) {
       assert.codeEqual(
         await bundleCode(assert.fs),
         `
+        const greeting = (function(msg) { console.log(msg); });
         const hello = 'hello';
         const goodbye = 'goodbye';
-        const greeting = (function(msg) { console.log(msg); });
         greeting(hello + goodbye);
         export {};
         `
@@ -390,11 +390,11 @@ QUnit.module("module builder", function (origHooks) {
       assert.codeEqual(
         await bundleCode(assert.fs),
         `
-        const konnichiwa = 'konnichiwa';
-        const sayonara = 'sayonara';
+        const greeting = (function(msg) { console.log(msg); });
         const hello = 'hello';
         const goodbye = 'goodbye';
-        const greeting = (function(msg) { console.log(msg); });
+        const konnichiwa = 'konnichiwa';
+        const sayonara = 'sayonara';
         greeting(hello + goodbye + konnichiwa + sayonara);
         export {};
         `
@@ -2596,7 +2596,7 @@ QUnit.module("module builder", function (origHooks) {
           "catalogjs.lock": `{ "lib": "${libBundleHref}/lib.js" }`,
           "driver.js": `
             import { getPuppies } from "lib";
-            let jojo = 'Jojo'
+            let jojo = 'Jojo';
             console.log([jojo, ...getPuppies()]);
           `,
           [`${libBundleHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
@@ -2609,7 +2609,7 @@ QUnit.module("module builder", function (origHooks) {
           `
         const puppies = ["mango", "van gogh"];
         function getPuppies() { return puppies; }
-        let jojo = 'Jojo'
+        let jojo = 'Jojo';
         console.log([jojo, ...getPuppies()]);
         export {};
         `
@@ -2718,7 +2718,7 @@ QUnit.module("module builder", function (origHooks) {
           "driver.js": `
           import { getPuppies } from "lib1";
           import { myPuppies } from "lib2";
-          let jojo = 'Jojo'
+          let jojo = 'Jojo';
           console.log([jojo, ...getPuppies(), ...myPuppies()]);
         `,
           [`${lib1BundleHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
@@ -2734,7 +2734,7 @@ QUnit.module("module builder", function (origHooks) {
         const puppies = ["mango", "van gogh"];
         function getPuppies() { return puppies; }
         function myPuppies() { return puppies; }
-        let jojo = 'Jojo'
+        let jojo = 'Jojo';
         console.log([jojo, ...getPuppies(), ...myPuppies()]);
         export {};
         `
@@ -2822,7 +2822,7 @@ QUnit.module("module builder", function (origHooks) {
           "driver.js": `
           import { getPuppies } from "lib1";
           import { myPuppies } from "lib2";
-            let jojo = 'Jojo'
+            let jojo = 'Jojo';
             console.log([jojo, ...getPuppies(), ...myPuppies()]);
           `,
           [`${lib1BundleHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
@@ -2839,7 +2839,7 @@ QUnit.module("module builder", function (origHooks) {
           const pets = { puppies };
           function getPuppies() { return pets.puppies; }
           function myPuppies() { return puppies; }
-          let jojo = 'Jojo'
+          let jojo = 'Jojo';
           console.log([jojo, ...getPuppies(), ...myPuppies()]);
           export {};
           `
@@ -2923,7 +2923,7 @@ QUnit.module("module builder", function (origHooks) {
           "driver.js": `
           import { getPuppies } from "lib1";
           import { myPuppies } from "lib2";
-          let jojo = 'Jojo'
+          let jojo = 'Jojo';
           console.log([jojo, ...getPuppies(), ...myPuppies()]);
         `,
           [`${lib1BundleHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
@@ -2939,7 +2939,7 @@ QUnit.module("module builder", function (origHooks) {
         const puppies = ["mango", "van gogh"];
         function getPuppies() { return puppies; }
         function myPuppies() { return puppies; }
-        let jojo = 'Jojo'
+        let jojo = 'Jojo';
         console.log([jojo, ...getPuppies(), ...myPuppies()]);
         export {};
         `
@@ -3024,7 +3024,7 @@ QUnit.module("module builder", function (origHooks) {
           "driver.js": `
           import { getPuppies } from "lib1";
           import { myPuppies } from "lib2";
-          let jojo = 'Jojo'
+          let jojo = 'Jojo';
           console.log([jojo, ...getPuppies(), ...myPuppies()]);
         `,
           [`${lib1BundleHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
@@ -3043,7 +3043,7 @@ QUnit.module("module builder", function (origHooks) {
         console.log('side effect 3');
         function getPuppies() { return puppies; }
         function myPuppies() { return puppies; }
-        let jojo = 'Jojo'
+        let jojo = 'Jojo';
         console.log([jojo, ...getPuppies(), ...myPuppies()]);
         export {};
         `
@@ -3059,8 +3059,6 @@ QUnit.module("module builder", function (origHooks) {
           assert.equal(puppies.declaration.original?.range, "^7.9.2");
           assert.equal(puppies.declaration.original?.importedAs, "puppies");
         }
-
-        // TODO research the resulting code regions--they don't look correct...
       });
 
       skip("can prevent collision of consumed dependencies from same package when they have non-overlapping consumed semver ranges", async function (assert) {});

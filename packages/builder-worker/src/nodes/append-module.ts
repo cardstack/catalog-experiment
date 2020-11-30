@@ -27,17 +27,15 @@ import {
 } from "../module-rewriter";
 import { depAsURL, Dependencies } from "./entrypoint";
 import { stringifyReplacer } from "../utils";
-import { pkgInfoFromCatalogJsURL } from "../resolver";
 import { DependencyResolver } from "./combine-modules";
 
 export class AppendModuleNode implements BuilderNode {
   cacheKey: string;
-  private editor: RegionEditor;
   constructor(
     private state: HeadState,
     private module: ModuleResolution,
     private bundle: URL,
-    private editors: Map<string, RegionEditor>,
+    private editor: RegionEditor,
     private bundleAssignments: BundleAssignment[],
     private dependencies: Dependencies,
     private depResolver: DependencyResolver,
@@ -46,7 +44,6 @@ export class AppendModuleNode implements BuilderNode {
     this.cacheKey = `append-module-node:${this.bundle.href}:${
       this.module.url.href
     }:${this.state.hash()}`;
-    this.editor = editors.get(module.url.href)!;
   }
 
   async deps() {}
@@ -61,15 +58,20 @@ export class AppendModuleNode implements BuilderNode {
       this.dependencies,
       this.depResolver
     );
+    // the entries in the head state are reversed from what we initialized it
+    // with so as to increase the likelihood of bindings to retain their names
+    // the closer they are to the entrypoints. As such, we unshift the rewriters
+    // into the list of rewriters so they go back into the order that they
+    // should be emitted when serializing the bundle.
     let rewriters = [rewriter, ...this.rewriters];
-    let nextModule = this.state.nextModule();
-    if (nextModule) {
+    let { module, editor } = this.state.next() ?? {};
+    if (module && editor) {
       return {
         node: new AppendModuleNode(
           this.state,
-          nextModule,
+          module,
           this.bundle,
-          this.editors,
+          editor,
           this.bundleAssignments,
           this.dependencies,
           this.depResolver,
@@ -81,7 +83,6 @@ export class AppendModuleNode implements BuilderNode {
         node: new FinishAppendModulesNode(
           this.state,
           this.bundle,
-          this.editors,
           this.bundleAssignments,
           this.dependencies,
           this.depResolver,
@@ -102,7 +103,6 @@ export class FinishAppendModulesNode implements BuilderNode {
   constructor(
     private state: HeadState,
     private bundle: URL,
-    private editors: Map<string, RegionEditor>,
     private bundleAssignments: BundleAssignment[],
     private dependencies: Dependencies,
     private depResolver: DependencyResolver,
@@ -136,7 +136,6 @@ export class FinishAppendModulesNode implements BuilderNode {
       this.bundle,
       this.bundleAssignments,
       this.state,
-      this.editors,
       this.depResolver
     );
     let exportAssignments = assignedExports(
@@ -970,7 +969,6 @@ function assignedImports(
   bundle: URL,
   assignments: BundleAssignment[],
   state: HeadState,
-  editors: Map<string, RegionEditor>,
   depResolver: DependencyResolver
 ): Map<string, Map<string | NamespaceMarker, string> | null> {
   // bundleHref => <exposedName => local name> if the inner map is null then
@@ -982,11 +980,7 @@ function assignedImports(
   let ownAssignments = assignments.filter(
     (a) => a.bundleURL.href === bundle.href
   );
-  for (let [moduleHref, editor] of [...editors.entries()].reverse()) {
-    // reverse entries to get dep-first order
-    let { module } = ownAssignments.find(
-      (a) => a.module.url.href === moduleHref
-    )!;
+  for (let { module, editor } of state.visited) {
     // sort the regions by position in file to get correct order
     let regionInfo = editor
       .includedRegions()

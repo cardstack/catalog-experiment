@@ -12,7 +12,6 @@ import {
   DeclarationCodeRegion,
   CodeRegion,
   DeclarationDescription,
-  documentPointer,
 } from "./code-region";
 import { BundleAssignment } from "./nodes/bundle";
 import stringify from "json-stable-stringify";
@@ -48,25 +47,25 @@ export class HeadState {
     { bundleHref: string; range: string; importedAs: string | NamespaceMarker }
   > = new Map();
 
-  private visitedModules: ModuleResolution[] = [];
-  private moduleQueue: ModuleResolution[] = [];
+  readonly visited: { module: ModuleResolution; editor: RegionEditor }[] = [];
+  private queue: { module: ModuleResolution; editor: RegionEditor }[] = [];
 
-  constructor(moduleResolutions: ModuleResolution[]) {
+  constructor(editors: { module: ModuleResolution; editor: RegionEditor }[]) {
     // we reverse the order of the modules to append such that we first emit the
     // modules that are closest to the entrypoint and work our way towards the
     // deps. This way the bindings that are closest to the entrypoints have the
     // greatest chance of retaining their names and the bindings toward the
     // dependencies will more likely be renamed. This also means that we'll be
     // writing modules into the bundle in reverse order--from the bottom up.
-    this.moduleQueue = [...moduleResolutions].reverse();
+    this.queue = [...editors].reverse();
   }
 
-  nextModule(): ModuleResolution | undefined {
-    let nextModule = this.moduleQueue.shift();
-    if (nextModule) {
-      this.visitedModules.push(nextModule);
+  next(): { module: ModuleResolution; editor: RegionEditor } | undefined {
+    let next = this.queue.shift();
+    if (next) {
+      this.visited.push(next);
     }
-    return nextModule;
+    return next;
   }
 
   hash(): string {
@@ -74,18 +73,18 @@ export class HeadState {
       usedNames,
       assignedImportedNames,
       assignedImportedDependencies,
-      visitedModules,
+      visited,
       assignedNamespaces,
-      moduleQueue,
+      queue,
     } = this;
     let str = stringify(
       {
         usedNames,
         assignedImportedNames,
         assignedImportedDependencies,
-        visitedModules,
+        visited,
         assignedNamespaces,
-        moduleQueue,
+        queue,
       },
       {
         replacer,

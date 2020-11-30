@@ -672,8 +672,15 @@ export class RegionEditor {
     }));
   }
 
-  isRegionKept(pointer: RegionPointer) {
-    return this.dispositions[pointer].state !== "removed";
+  toJSON() {
+    return {
+      regions: this.regions,
+      dispositions: this.dispositions,
+    };
+  }
+
+  get regions() {
+    return this.desc.regions;
   }
 
   includedRegions(): RegionPointer[] {
@@ -688,7 +695,7 @@ export class RegionEditor {
 
   removeRegionAndItsChildren(pointer: RegionPointer) {
     this.removeRegion(pointer);
-    let region = this.desc.regions[pointer];
+    let region = this.regions[pointer];
     if (region.firstChild != null) {
       this.removeRegionAndItsChildrenAndSiblings(region.firstChild);
     }
@@ -696,7 +703,7 @@ export class RegionEditor {
 
   private removeRegionAndItsChildrenAndSiblings(pointer: RegionPointer) {
     this.removeRegion(pointer);
-    let region = this.desc.regions[pointer];
+    let region = this.regions[pointer];
     if (region.firstChild != null) {
       this.removeRegionAndItsChildrenAndSiblings(region.firstChild);
     }
@@ -715,7 +722,7 @@ export class RegionEditor {
     if (this.dispositions[pointer].state === "removed") {
       this.dispositions[pointer] = { state: "unchanged", region: pointer };
     }
-    let region = this.desc.regions[pointer];
+    let region = this.regions[pointer];
     if (region.firstChild != null) {
       this.keepRegionAndItsChildrenAndSiblings(region.firstChild);
     }
@@ -725,7 +732,7 @@ export class RegionEditor {
     if (this.dispositions[pointer].state === "removed") {
       this.dispositions[pointer] = { state: "unchanged", region: pointer };
     }
-    let region = this.desc.regions[pointer];
+    let region = this.regions[pointer];
     if (region.firstChild != null) {
       this.keepRegionAndItsChildrenAndSiblings(region.firstChild);
     }
@@ -781,7 +788,7 @@ export class RegionEditor {
   }
 
   serialize(): { code: string; regions: CodeRegion[] } {
-    if (this.desc.regions.length === 0) {
+    if (this.regions.length === 0) {
       return { code: this.src, regions: [] };
     }
 
@@ -814,7 +821,7 @@ export class RegionEditor {
     outputPointer: RegionPointer | undefined;
     gap: number;
   } {
-    let region = this.desc.regions[regionPointer];
+    let region = this.regions[regionPointer];
     let disposition = this.dispositions[regionPointer];
     let gap = 0;
     switch (disposition.state) {
@@ -827,7 +834,7 @@ export class RegionEditor {
           // inherit this region's start
           this.emitPendingStart(parentPointer, regionPointer);
           this.forAllSiblings(region.firstChild, (r) => {
-            let childRegion = this.desc.regions[r];
+            let childRegion = this.regions[r];
             // we need to manufacture a reasonable gap here, as we are skipping
             // over parent regions that we are intentionally not emitting
             if (
@@ -870,6 +877,7 @@ export class RegionEditor {
       case "unchanged": {
         let outputRegion: CodeRegion;
         let outputPointer: RegionPointer;
+        let maybeNextSibling: RegionPointer | undefined;
         if (disposition.state === "wrap") {
           this.outputCode.push(`const ${disposition.declarationName} = (`);
           outputPointer = this.wrapWithRegions(
@@ -877,6 +885,9 @@ export class RegionEditor {
             disposition.declarationName
           );
           outputRegion = this.outputRegions[outputPointer].region;
+          maybeNextSibling = this.reconcilePendingAntecedant(
+            -1 * outputPointer
+          );
         } else {
           outputRegion = cloneDeep(region);
           outputPointer = this.outputRegions.length;
@@ -884,8 +895,8 @@ export class RegionEditor {
             originalPointer: regionPointer,
             region: outputRegion,
           });
+          maybeNextSibling = this.reconcilePendingAntecedant(regionPointer);
         }
-        let maybeNextSibling = this.reconcilePendingAntecedant(regionPointer);
         if (maybeNextSibling != null) {
           outputRegion.nextSibling = maybeNextSibling;
         }
@@ -896,7 +907,7 @@ export class RegionEditor {
           let childDispositions: Disposition[] = [];
           let isLastChildGapRemoved: boolean;
           this.forAllSiblings(region.firstChild, (r) => {
-            childRegion = this.desc.regions[r];
+            childRegion = this.regions[r];
             let gapIndex = this.outputCode.length;
             this.outputCode.push(
               this.src.slice(this.cursor, this.cursor + childRegion.start)
@@ -952,7 +963,7 @@ export class RegionEditor {
     regionPointer: RegionPointer,
     name: string
   ): RegionPointer {
-    let region = this.desc.regions[regionPointer];
+    let region = this.regions[regionPointer];
     let {
       outputRegion: predecessor,
       isFirstChild: isChildOfPredecessor,
@@ -1140,7 +1151,7 @@ export class RegionEditor {
     let currentPointer = pointer;
     let isFirstChild = false;
     while (!output && prevPointer !== documentPointer) {
-      prevPointer = this.desc.regions.findIndex(
+      prevPointer = this.regions.findIndex(
         (r) =>
           r.firstChild === currentPointer || r.nextSibling === currentPointer
       );
@@ -1153,7 +1164,7 @@ export class RegionEditor {
     if (!output) {
       throw new Error(
         `cannot find predecessor for the region pointer ${pointer} from regions ${JSON.stringify(
-          this.desc.regions
+          this.regions
         )} with dispositions: ${JSON.stringify(this.dispositions)}`
       );
     }
@@ -1213,7 +1224,7 @@ export class RegionEditor {
         withinParent: parentPointer,
         isFirstChildOf: isFirstChild ? outputPointer : undefined,
         isNextSiblingOf: !isFirstChild ? outputPointer : undefined,
-        hasNextSiblingOf: this.desc.regions[pointer].nextSibling,
+        hasNextSiblingOf: this.regions[pointer].nextSibling,
       };
     }
   }
@@ -1222,7 +1233,7 @@ export class RegionEditor {
     parentPointer: RegionPointer,
     pointer: RegionPointer
   ) {
-    let region = this.desc.regions[pointer];
+    let region = this.regions[pointer];
     if (this.pendingStart == null && pointer !== documentPointer) {
       this.pendingStart = { withinParent: parentPointer, start: region.start };
     } else if (
@@ -1253,10 +1264,10 @@ export class RegionEditor {
   }
 
   private skip(regionPointer: RegionPointer) {
-    let region = this.desc.regions[regionPointer];
+    let region = this.regions[regionPointer];
     if (region.firstChild != null) {
       this.forAllSiblings(region.firstChild, (r) => {
-        this.cursor += this.desc.regions[r].start;
+        this.cursor += this.regions[r].start;
         this.skip(r);
       });
     }
@@ -1273,7 +1284,7 @@ export class RegionEditor {
     let current: number | undefined = regionPointer;
     while (current != null) {
       fn(current);
-      current = this.desc.regions[current].nextSibling;
+      current = this.regions[current].nextSibling;
     }
   }
 }
@@ -1314,9 +1325,14 @@ function remapRegions(
     region: CodeRegion;
   }[]
 ): CodeRegion[] {
-  let regions = outputRegions.map(({ region }) => {
+  let regions = outputRegions.map(({ region }, index) => {
     region.firstChild = newPointer(region.firstChild, outputRegions);
-    region.nextSibling = newPointer(region.nextSibling, outputRegions);
+    let maybeNextSibling = newPointer(region.nextSibling, outputRegions);
+    if (maybeNextSibling !== index) {
+      region.nextSibling = maybeNextSibling;
+    } else {
+      region.nextSibling = undefined;
+    }
     region.dependsOn = new Set(
       [...region.dependsOn]
         .map((p) => newPointer(p, outputRegions, region.type === "reference"))
