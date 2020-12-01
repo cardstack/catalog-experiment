@@ -13,7 +13,7 @@ import { HeadState, resolveDeclaration } from "../module-rewriter";
 import { AppendModuleNode } from "./append-module";
 import { Dependencies } from "./entrypoint";
 import { pkgInfoFromCatalogJsURL } from "../resolver";
-import { satisfies, coerce, minVersion, compare, rcompare } from "semver";
+import { satisfies, coerce, compare } from "semver";
 //@ts-ignore
 import { intersect } from "semver-intersect";
 export class CombineModulesNode implements BuilderNode {
@@ -44,12 +44,7 @@ export class CombineModulesNode implements BuilderNode {
       (a) => a.bundleURL.href === this.bundle.href
     );
     let depResolver = new DependencyResolver(assignments, this.bundle);
-    let exposed = exposedRegions(
-      this.bundle,
-      assignments,
-      resolutionsInDepOrder,
-      depResolver
-    );
+    let exposed = exposedRegions(this.bundle, assignments);
 
     let editors: { module: ModuleResolution; editor: RegionEditor }[] = [];
     let visitedRegions: Map<string, Set<RegionPointer>> = new Map();
@@ -144,87 +139,84 @@ export class DependencyResolver {
       );
     }
 
+    // this is a map of bundleHrefs (which include the pkg version), to a set of
+    // resolution indices (from the "resolutions" array) whose consumption range
+    // satisfies the bundleHref version. The goal is to find the package that
+    // has the most amount of range satisfications.
     let rangeSatisfications = new Map<string, number[]>();
-    for (let [rangeIndex, { range }] of resolutions.entries()) {
-      let versionIndices = rangeSatisfications.get(range);
-      if (!versionIndices) {
-        versionIndices = [];
-        rangeSatisfications.set(range, versionIndices);
+
+    for (let [versionIndex, { bundleHref }] of resolutions.entries()) {
+      let { version: ver } = pkgInfoFromCatalogJsURL(new URL(bundleHref))!;
+      let version = coerce(ver);
+      if (!version) {
+        throw new Error(
+          `the version ${ver} for the bundle ${bundleHref} is not a valid version, while processing bundle ${this.bundle.href}`
+        );
       }
-      for (let [
-        versionIndex,
-        { bundleHref: bundleHref },
-      ] of resolutions.entries()) {
-        let { version: ver } = pkgInfoFromCatalogJsURL(new URL(bundleHref))!;
-        let version = coerce(ver);
-        if (!version) {
-          throw new Error(
-            `the version ${ver} for the bundle ${bundleHref} is not a valid version, while processing bundle ${this.bundle.href}`
-          );
-        }
+      let rangeIndices = rangeSatisfications.get(bundleHref);
+      if (!rangeIndices) {
+        rangeIndices = [];
+        rangeSatisfications.set(bundleHref, rangeIndices);
+      }
+      for (let [rangeIndex, { range }] of resolutions.entries()) {
         if (versionIndex === rangeIndex) {
           // the version used for a declaration should always match its own consumption range
-          versionIndices.push(versionIndex);
+          rangeIndices.push(rangeIndex);
           continue;
         }
         if (satisfies(version, range)) {
-          versionIndices.push(versionIndex);
+          rangeIndices.push(rangeIndex);
         }
       }
     }
 
-    // Choose the range that maximizes the amount of reuse, and the resolved
-    // version for that range will be the latest version matched in that range.
-    // For the versions that were not satisfied, choose the next range that
-    // maximizes the amount of reuse among the unsatisfied versions, and so on.
-    // The determinations made will not look past local maxima when trying to
-    // optimize for the greatest reuse. There are definitely improvements that
-    // can be made to this algorithm. When there is a tie, select the index that
-    // corresponds to the range that can match the lowest possible version
-    // (using this to have a deterministic way to break ties that can cast the
-    // widest net in terms of compatibility), and if there is still a tie, just
-    // chose the smallest range alphabetically by the range's name. The
-    // resulting range for each set will be an intersection of all the ranges
-    // that correspond to the versions that were satisfied in the group.
+    // Choose the bundleHref (pkg ver) that is satisfied by the most amount of
+    // consumption ranges. For the unsatisfied bundleHrefs, choose the bundle
+    // href that has the next highest amount of satisfications, and so on, until
+    // we have accounted for all the consumption points. The determinations made
+    // using this algorithm will not look past local maxima when trying to
+    // optimize for the greatest reuse, so there are definitely improvements
+    // that can be made to this algorithm. When there is a tie, select the
+    // bundleHref that is the highest version. The resulting range for each set
+    // will be an intersection of all the ranges that correspond to the versions
+    // that were satisfied in the group.
     let resultingResolutions: ResolvedDependency[] = [];
-    let unsatisfiedIndices = [...resolutions.entries()].map(([index]) => index);
-    let sortedRanges = [...rangeSatisfications.entries()].sort(
-      ([rangeA, aIndices], [rangeB, bIndices]) => {
+    let unsatisfiedConsumptionIndices = [...resolutions.entries()].map(
+      ([index]) => index
+    );
+    let sortedBundleHrefs = [...rangeSatisfications.entries()].sort(
+      ([bundleHrefA, aIndices], [bundleHrefB, bIndices]) => {
         let diff = bIndices.length - aIndices.length;
         if (diff !== 0) {
           return diff;
         }
-        let minVerA = minVersion(rangeA)!;
-        let minVerB = minVersion(rangeB)!;
-        diff = compare(minVerA, minVerB);
-        if (diff !== 0) {
-          return diff;
-        }
-        return rangeA.localeCompare(rangeB);
+        let { version: verA } = pkgInfoFromCatalogJsURL(new URL(bundleHrefA))!;
+        let versionA = coerce(verA)!;
+        let { version: verB } = pkgInfoFromCatalogJsURL(new URL(bundleHrefB))!;
+        let versionB = coerce(verB)!;
+        return compare(versionB, versionA);
       }
     );
-    while (unsatisfiedIndices.length > 0) {
-      if (sortedRanges.length === 0) {
+    while (unsatisfiedConsumptionIndices.length > 0) {
+      if (sortedBundleHrefs.length === 0) {
         throw new Error(
-          `unable to determine range to satisfy versions: ${unsatisfiedIndices
-            .map((i) => resolutions![i].bundleHref)
+          `unable to determine bundleHref to satisfy consumption ranges: ${unsatisfiedConsumptionIndices
+            .map((i) => resolutions![i].range)
             .join()}`
         );
       }
-      let [, indices] = sortedRanges.shift()!;
-      let indicesSortedByVer = indices.sort((a, b) => {
-        let pkgAInfo = pkgInfoFromCatalogJsURL(
-          new URL(resolutions![a].bundleHref)
-        );
-        let pkgBInfo = pkgInfoFromCatalogJsURL(
-          new URL(resolutions![b].bundleHref)
-        );
-        return rcompare(coerce(pkgAInfo!.version)!, coerce(pkgBInfo!.version)!);
-      });
-      let selected = resolutions[indicesSortedByVer[0]];
-      let obviatedIndices = indicesSortedByVer.slice(1);
+      let [selectedBundleHref, consumptionIndices] = sortedBundleHrefs.shift()!;
+      let selectedIndex = resolutions.findIndex(
+        (r) => r.bundleHref === selectedBundleHref
+      )!;
+      let selected = resolutions[selectedIndex];
+      let obviatedIndices = consumptionIndices.filter(
+        (i) => i != selectedIndex
+      );
       let { bundleHref, consumedBy, pointer } = selected;
-      let range = intersect(...indices.map((i) => resolutions![i].range));
+      let range = intersect(
+        ...consumptionIndices.map((i) => resolutions![i].range)
+      );
       let obviatedDependencies = obviatedIndices.map((i) => ({
         moduleHref: resolutions![i].consumedBy.url.href,
         pointer: resolutions![i].pointer,
@@ -237,10 +229,10 @@ export class DependencyResolver {
         bundleHref,
         range,
         obviatedDependencies,
-        importedAs: resolutions[indices[0]].importedAs,
+        importedAs: resolutions[consumptionIndices[0]].importedAs,
       });
-      unsatisfiedIndices = unsatisfiedIndices.filter(
-        (i) => !indices.includes(i)
+      unsatisfiedConsumptionIndices = unsatisfiedConsumptionIndices.filter(
+        (i) => !consumptionIndices.includes(i)
       );
     }
 
@@ -627,8 +619,7 @@ export interface ExposedRegionInfo {
 
 function exposedRegions(
   bundle: URL,
-  bundleAssignments: BundleAssignment[],
-  depResolver: DependencyResolver
+  bundleAssignments: BundleAssignment[]
 ): ExposedRegionInfo[] {
   let results: ExposedRegionInfo[] = [];
   let ownAssignments = bundleAssignments.filter(

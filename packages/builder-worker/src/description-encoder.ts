@@ -21,7 +21,6 @@ import invert from "lodash/invert";
 import {
   assignCodeRegionPositions,
   DeclarationCodeRegion,
-  documentPointer,
   GeneralCodeRegion,
   ImportCodeRegion,
   NamespaceMarker,

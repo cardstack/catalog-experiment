@@ -85,7 +85,6 @@ export class AppendModuleNode implements BuilderNode {
           this.bundle,
           this.bundleAssignments,
           this.dependencies,
-          this.depResolver,
           rewriters
         ),
       };
@@ -105,7 +104,6 @@ export class FinishAppendModulesNode implements BuilderNode {
     private bundle: URL,
     private bundleAssignments: BundleAssignment[],
     private dependencies: Dependencies,
-    private depResolver: DependencyResolver,
     private rewriters: ModuleRewriter[]
   ) {
     this.cacheKey = `finish-append-module-node:${
@@ -135,14 +133,12 @@ export class FinishAppendModulesNode implements BuilderNode {
     let importAssignments = assignedImports(
       this.bundle,
       this.bundleAssignments,
-      this.state,
-      this.depResolver
+      this.state
     );
     let exportAssignments = assignedExports(
       this.bundle,
       this.bundleAssignments,
-      this.state,
-      this.depResolver
+      this.state
     );
     buildImports(
       code,
@@ -929,8 +925,7 @@ function setExportDescription(
 function assignedExports(
   bundle: URL,
   assignments: BundleAssignment[],
-  state: HeadState,
-  depResolver: DependencyResolver
+  state: HeadState
 ): {
   exports: Map<string, string>; // outside name -> inside name
   reexports: Map<string, Map<string, string>>; // bundle href -> [outside name => inside name]
@@ -968,8 +963,7 @@ function assignedExports(
 function assignedImports(
   bundle: URL,
   assignments: BundleAssignment[],
-  state: HeadState,
-  depResolver: DependencyResolver
+  state: HeadState
 ): Map<string, Map<string | NamespaceMarker, string> | null> {
   // bundleHref => <exposedName => local name> if the inner map is null then
   // this is a side effect only import
