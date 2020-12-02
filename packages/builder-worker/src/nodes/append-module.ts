@@ -94,7 +94,7 @@ export class AppendModuleNode implements BuilderNode {
 
 type DeclarationRegionMap = Map<
   string,
-  { pointer: RegionPointer; references: RegionPointer[] }
+  { pointer: RegionPointer; references: Set<RegionPointer> }
 >;
 
 export class FinishAppendModulesNode implements BuilderNode {
@@ -140,18 +140,18 @@ export class FinishAppendModulesNode implements BuilderNode {
       this.bundleAssignments,
       this.state
     );
-    buildImports(
+    let prevSibling = buildImports(
       code,
       regions,
       importAssignments,
       bundleDeclarations,
       this.bundle
     );
-    buildBundleBody(
+    prevSibling = buildBundleBody(
       code,
       regions,
+      prevSibling,
       this.rewriters,
-      exportAssignments,
       bundleDeclarations,
       this.bundle,
       this.state,
@@ -160,6 +160,7 @@ export class FinishAppendModulesNode implements BuilderNode {
     let { exportRegions, exportSpecifierRegions } = buildExports(
       code,
       regions,
+      prevSibling,
       exportAssignments,
       importAssignments,
       bundleDeclarations,
@@ -195,7 +196,10 @@ function buildImports(
   importAssignments: Map<string, Map<string | NamespaceMarker, string> | null>,
   bundleDeclarations: DeclarationRegionMap,
   bundle: URL
-) {
+): RegionPointer | undefined {
+  // this returns the pointer of the region who would need a nextSibling
+  // assignment if we want to add more regions to the document. This would be
+  // undefined if there where actually no imports
   let importDeclarations: string[] = [];
   let lastImportDeclarationPointer: RegionPointer | undefined;
   for (let [importIndex, [importSourceHref, mapping]] of [
@@ -308,7 +312,7 @@ function buildImports(
 
         bundleDeclarations.set(localName, {
           pointer: specifierPointer,
-          references: [...specifierRegion.declaration.references],
+          references: new Set([...specifierRegion.declaration.references]),
         });
         if (lastImportDeclarationPointer != null) {
           regions[
@@ -361,7 +365,7 @@ function buildImports(
         } as ReferenceCodeRegion);
         bundleDeclarations.set(localName, {
           pointer: specifierPointer,
-          references: [...specifierRegion.declaration.references],
+          references: new Set([...specifierRegion.declaration.references]),
         });
         if (lastSpecifierPointer != null) {
           regions[lastSpecifierPointer].nextSibling = specifierPointer;
@@ -391,12 +395,16 @@ function buildImports(
       lastImportDeclarationPointer = currentImportDeclarationPointer;
     }
   }
-  code.push(importDeclarations.join("\n"));
+  if (importDeclarations.length > 0) {
+    code.push(importDeclarations.join("\n"));
+  }
+  return lastImportDeclarationPointer;
 }
 
 function buildExports(
   code: string[],
   regions: CodeRegion[],
+  prevSibling: RegionPointer | undefined,
   exportAssignments: {
     exports: Map<string, string>; // outside name -> inside name
     reexports: Map<string, Map<string, string>>; // bundle href -> [outside name => inside name]
@@ -429,6 +437,11 @@ function buildExports(
   let exportRegions: Map<string, RegionPointer> = new Map();
   let exportSpecifierRegions: Map<string, RegionPointer> = new Map();
   if (exports.size > 0) {
+    if (prevSibling != null) {
+      regions[prevSibling].nextSibling = regions.length;
+    } else {
+      regions[documentPointer].firstChild = regions.length;
+    }
     exportRegions.set(bundle.href, regions.length);
     // ExportNamedDeclaration region
     regions.push({
@@ -514,30 +527,51 @@ function buildExports(
 function buildBundleBody(
   code: string[],
   regions: CodeRegion[],
+  prevSibling: RegionPointer | undefined,
   rewriters: ModuleRewriter[],
-  exportAssignments: {
-    exports: Map<string, string>; // outside name -> inside name
-    reexports: Map<string, Map<string, string>>; // bundle href -> [outside name => inside name]
-    exportAlls: Set<string>; // bundle hrefs
-  },
   bundleDeclarations: DeclarationRegionMap,
   bundle: URL,
   state: HeadState,
   dependencies: Dependencies
-) {
+): RegionPointer | undefined {
+  // this returns the pointer of the region who would need a nextSibling
+  // assignment if we want to add more regions to the document. This would be
+  // undefined if there where actually no rewriters
+
+  let prevModuleStartPointer = prevSibling;
   for (let rewriter of rewriters) {
     let { module } = rewriter;
-    let {
-      region: namespaceDeclarationRegion,
-      pointer: namespaceDeclarationPointer,
-    } = buildNamespaces(
+    let namespaceDeclarationPointer = regions.length;
+    let namespacesRegions = buildNamespaces(
       code,
-      regions,
+      regions.length,
       rewriter,
       bundleDeclarations,
       state,
       bundle
     );
+
+    // backfill references in the declarations consumed by namespace objects
+    let referencePointer = regions.length - 1;
+    for (let [i, namespaceRegions] of namespacesRegions.entries()) {
+      for (let region of namespaceRegions) {
+        referencePointer++;
+        if (region.type !== "reference") {
+          continue;
+        }
+        let declarationPointer = [...region.dependsOn][0]; // references only have a single dependency to their declaration region
+        let declaration = [...bundleDeclarations.values()].find(
+          (d) => d.pointer === declarationPointer
+        );
+        if (!declaration) {
+          throw new Error(
+            `Cannot find declaration region '${declarationPointer}' that is referenced by namespace object '${rewriter.namespacesAssignments[i]}' in module ${module.url.href} from bundle ${bundle.href}`
+          );
+        }
+        declaration.references.add(referencePointer);
+      }
+      regions.push(...namespaceRegions);
+    }
 
     let offset = regions.length;
     let { code: moduleCode, regions: moduleRegions } = rewriter.serialize();
@@ -569,11 +603,13 @@ function buildBundleBody(
 
     moduleRegions[documentPointer].dependsOn = new Set();
 
-    if (namespaceDeclarationRegion && namespaceDeclarationPointer != null) {
+    if (namespacesRegions.length > 0) {
       // stitch the namespace declaration into the first child of the module's
       // document region
       let newSiblingPointer = moduleRegions[documentPointer].firstChild;
-      namespaceDeclarationRegion.nextSibling = newSiblingPointer;
+      namespacesRegions[
+        namespacesRegions.length - 1
+      ][0].nextSibling = newSiblingPointer;
       moduleRegions[documentPointer].firstChild = namespaceDeclarationPointer;
       if (newSiblingPointer != null) {
         let newSibling = moduleRegions[newSiblingPointer - offset];
@@ -582,91 +618,27 @@ function buildBundleBody(
       }
     }
 
-    for (let region of moduleRegions.filter(
-      (r) => r.type === "declaration"
-    ) as DeclarationCodeRegion[]) {
-      let { declaration } = region;
-      if (declaration.type === "local") {
-        bundleDeclarations.set(declaration.declaredName, {
-          pointer: moduleRegions.findIndex((r) => r === region) + offset,
-          references: [...declaration.references],
-        });
-      }
-    }
-
-    for (let [pointer, region] of moduleRegions.entries()) {
-      if (region.type !== "reference") {
-        continue;
-      }
-      let importRegion: CodeRegion;
-      // TODO let's get rid of this negative pointer stuff be passing in all the
-      // regions that we can constructed so far when we serialize a rewriter,
-      // that way we won't have to handle it here
-
-      // a negative pointer is our indication that the declaration region for
-      // the reference has been stripped out (e.g. it was an internal import
-      // that was collapsed), and that we can find the stripped out declaration
-      // region in the original set of module regions when we remove the sign
-      // from the negative pointer. the goal is to figure out the assigned name
-      // for declaration so we can marry up this reference to the declaration
-      // that lives outside of this module.
-      let declarationPointer = [...region.dependsOn][0]; // a reference region should always depend on just it's declaration region
-      if (declarationPointer == null) {
-        throw new Error(
-          `bug: encountered a reference region that does not depend on it's declaration region: pointer=${pointer}, region=${JSON.stringify(
-            region,
-            stringifyReplacer
-          )}, module=${module.url.href}, while making bundle ${bundle.href}`
-        );
-      }
-      if (declarationPointer < 0) {
-        importRegion = module.desc.regions[-1 * declarationPointer];
-      } else {
-        importRegion = moduleRegions[declarationPointer - offset];
-      }
-      if (
-        importRegion.type !== "declaration" ||
-        importRegion.declaration.type !== "import"
-      ) {
-        continue;
-      }
-
-      let assignedName = state.nameAssignments
-        .get(module.url.href)
-        ?.get(importRegion.declaration.declaredName);
-      if (!assignedName) {
-        throw new Error(
-          `bug: could not find assigned name for import '${
-            importRegion.declaration.importedName
-          }' from ${
-            module.resolvedImports[importRegion.declaration.importIndex].url
-              .href
-          } in ${module.url.href} from bundle ${bundle.href}`
-        );
-      }
-      let declaration = bundleDeclarations.get(assignedName);
-      if (!declaration) {
-        throw new Error(
-          `bug: could not find declaration region for the assigned name '${assignedName}' in bundle ${bundle.href}`
-        );
-      }
-      declaration.references.push(pointer + offset);
-      if (declarationPointer < 0) {
-        region.dependsOn = new Set([declaration.pointer]);
-      }
-    }
+    discoverReferenceRegions(
+      moduleRegions,
+      offset,
+      bundleDeclarations,
+      module,
+      state,
+      bundle
+    );
 
     // wire up the individual module's code regions to each other
-    if (
-      rewriter !== rewriters[rewriters.length - 1] ||
-      (rewriter === rewriters[rewriters.length - 1] &&
-        exportAssignments.exports.size > 0)
-    ) {
-      moduleRegions[documentPointer].nextSibling =
-        moduleRegions.length + offset;
+    if (prevModuleStartPointer != null) {
+      regions[prevModuleStartPointer].nextSibling = offset;
+    } else {
+      regions[documentPointer].firstChild = offset;
     }
+    prevModuleStartPointer = offset;
+
     // add 1 char to the start to accommodate added newline between each code chunk
-    moduleRegions[documentPointer].start++;
+    if (rewriter !== rewriters[0] || prevSibling != null) {
+      moduleRegions[documentPointer].start++;
+    }
     regions.push(...moduleRegions);
   }
 
@@ -677,23 +649,113 @@ function buildBundleBody(
     }
     region.declaration.references = [...references];
   }
+
+  return prevModuleStartPointer;
+}
+
+function discoverReferenceRegions(
+  regions: CodeRegion[],
+  offset: number,
+  bundleDeclarations: DeclarationRegionMap,
+  module: ModuleResolution,
+  state: HeadState,
+  bundle: URL
+) {
+  for (let region of regions.filter(
+    (r) => r.type === "declaration"
+  ) as DeclarationCodeRegion[]) {
+    let { declaration } = region;
+    if (declaration.type === "local") {
+      bundleDeclarations.set(declaration.declaredName, {
+        pointer: regions.findIndex((r) => r === region) + offset,
+        references: new Set(declaration.references),
+      });
+    }
+  }
+
+  for (let [pointer, region] of regions.entries()) {
+    if (region.type !== "reference") {
+      continue;
+    }
+    let importRegion: CodeRegion;
+    // TODO let's get rid of this negative pointer stuff be passing in all the
+    // regions that we can constructed so far when we serialize a rewriter,
+    // that way we won't have to handle it here
+
+    // a negative pointer is our indication that the declaration region for
+    // the reference has been stripped out (e.g. it was an internal import
+    // that was collapsed), and that we can find the stripped out declaration
+    // region in the original set of module regions when we remove the sign
+    // from the negative pointer. the goal is to figure out the assigned name
+    // for declaration so we can marry up this reference to the declaration
+    // that lives outside of this module.
+    let declarationPointer = [...region.dependsOn][0]; // a reference region should always depend on just it's declaration region
+    if (declarationPointer == null) {
+      throw new Error(
+        `bug: encountered a reference region that does not depend on it's declaration region: pointer=${pointer}, region=${JSON.stringify(
+          region,
+          stringifyReplacer
+        )}, module=${module.url.href}, while making bundle ${bundle.href}`
+      );
+    }
+    if (declarationPointer < 0) {
+      importRegion = module.desc.regions[-1 * declarationPointer];
+    } else {
+      importRegion = regions[declarationPointer - offset];
+    }
+    if (
+      !importRegion ||
+      importRegion.type !== "declaration" ||
+      importRegion.declaration.type !== "import"
+    ) {
+      continue;
+    }
+
+    let assignedName = state.nameAssignments
+      .get(module.url.href)
+      ?.get(importRegion.declaration.declaredName);
+    if (!assignedName) {
+      throw new Error(
+        `bug: could not find assigned name for import '${
+          importRegion.declaration.importedName
+        }' from ${
+          module.resolvedImports[importRegion.declaration.importIndex].url.href
+        } in ${module.url.href} from bundle ${bundle.href}`
+      );
+    }
+    let declaration = bundleDeclarations.get(assignedName);
+    if (!declaration) {
+      throw new Error(
+        `bug: could not find declaration region for the assigned name '${assignedName}' in bundle ${bundle.href}`
+      );
+    }
+    declaration.references.add(pointer + offset);
+    if (declarationPointer < 0) {
+      region.dependsOn = new Set([declaration.pointer]);
+    }
+  }
 }
 
 function buildNamespaces(
   code: string[],
-  regions: CodeRegion[],
+  offset: number,
   rewriter: ModuleRewriter,
   bundleDeclarations: DeclarationRegionMap,
   state: HeadState,
   bundle: URL
-): {
-  pointer: RegionPointer | undefined;
-  region: GeneralCodeRegion | undefined;
-} {
-  let pointer: RegionPointer | undefined;
-  let region: GeneralCodeRegion | undefined;
+): CodeRegion[][] {
+  let namespacesRegions: CodeRegion[][] = [];
   if (rewriter.namespacesAssignments.length > 0) {
-    for (let assignedName of rewriter.namespacesAssignments) {
+    let previousDeclarationRegion: GeneralCodeRegion | undefined;
+    for (let [
+      index,
+      assignedName,
+    ] of rewriter.namespacesAssignments.entries()) {
+      let declarationPointer: RegionPointer =
+        offset +
+        namespacesRegions.reduce((sum, regions) => (sum += regions.length), 0);
+      let declarationRegion: GeneralCodeRegion | undefined;
+      let regions: CodeRegion[] = [];
       let nameMap = state.assignedNamespaces.get(assignedName);
       if (nameMap && nameMap?.size > 0) {
         let declarationCode: string[] = [`const ${assignedName} = {`];
@@ -708,13 +770,11 @@ function buildNamespaces(
         );
         declarationCode.push(`};`);
         code.push(declarationCode.join(" "));
-
-        pointer = regions.length;
-        let declaratorPointer = pointer + 1;
+        let declaratorPointer = declarationPointer + 1;
         let referencePointer = declaratorPointer + 1;
-        region = {
+        declarationRegion = {
           type: "general",
-          start: 1, // newline
+          start: index > 0 ? 1 : 0, // the first newline is accounted for by the parent region, otherwise add a newline
           end: 1, // trailing semicolon
           firstChild: declaratorPointer,
           nextSibling: undefined,
@@ -732,7 +792,7 @@ function buildNamespaces(
           shorthand: false,
           position: 0,
           dependsOn: new Set([
-            pointer,
+            declarationPointer,
             referencePointer,
             ...[...nameMap.keys()].map(
               (_, index) => referencePointer + 1 + index
@@ -759,7 +819,7 @@ function buildNamespaces(
           dependsOn: new Set([declaratorPointer]),
         };
         regions.push(
-          region,
+          declarationRegion,
           declaratorRegion,
           referenceRegion,
           ...[...nameMap].map(([outsideName, insideName], index) => {
@@ -791,17 +851,22 @@ function buildNamespaces(
         );
         bundleDeclarations.set(assignedName, {
           pointer: declaratorPointer,
-          references: [...declaratorRegion.declaration.references],
+          references: new Set(declaratorRegion.declaration.references),
         });
         // we remove the namespace entry from the state as a way to make sure
         // that we don't write out the namespace declaration again if another
         // module imports the same namespace
         state.assignedNamespaces.delete(assignedName);
+        namespacesRegions.push(regions);
+
+        if (previousDeclarationRegion) {
+          previousDeclarationRegion.nextSibling = declarationPointer;
+        }
+        previousDeclarationRegion = declarationRegion;
       }
     }
   }
-
-  return { region, pointer };
+  return namespacesRegions;
 }
 
 function flushImportDeclarationCode(

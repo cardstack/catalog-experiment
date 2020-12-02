@@ -2361,13 +2361,16 @@ QUnit.module("module builder", function (origHooks) {
         "b.js": `export const b = 'b';`,
       });
 
-      /* resulting bundle:
+      let { source, desc } = await bundle(assert.fs);
+      assert.codeEqual(
+        source,
+        `
         const a = 'a';
         const b = 'b';
         console.log(a + b);
         export { a as A, b };
-        */
-      let { source, desc } = await bundle(assert.fs);
+      `
+      );
       assert.ok(desc, "bundle description exists");
       if (desc) {
         assert.equal(desc.declarations.size, 2);
@@ -2413,7 +2416,7 @@ QUnit.module("module builder", function (origHooks) {
       }
     });
 
-    skip("bundle contains module description with reassigned local imports", async function (assert) {
+    test("bundle contains module description with reassigned local imports", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["index.js"] }`,
         "index.js": `
@@ -2426,15 +2429,62 @@ QUnit.module("module builder", function (origHooks) {
         "b.js": `export const b = 'b';`,
       });
 
-      /* resulting bundle:
+      let { source, desc } = await bundle(assert.fs);
+      assert.codeEqual(
+        source,
+        `
         const alpha = 'a';
         const beta = 'b';
         console.log(alpha + beta);
         export { alpha as A, beta };
-        */
+      `
+      );
+      assert.ok(desc, "bundle description exists");
+      if (desc) {
+        assert.equal(desc.declarations.size, 2);
+        let alpha = desc.declarations.get("alpha")!;
+        assert.equal(alpha.declaration.declaredName, "alpha");
+        assert.equal(alpha.declaration.type, "local");
+        let beta = desc.declarations.get("beta")!;
+        assert.equal(beta.declaration.declaredName, "beta");
+        assert.equal(beta.declaration.type, "local");
+
+        assert.equal(desc.exports.get("A")?.type, "local");
+        assert.equal(
+          (desc.exports.get("A") as LocalExportDescription).name,
+          "alpha"
+        );
+        assert.ok(
+          desc.exports.get("A")?.exportRegion != null,
+          "export region exists"
+        );
+        assert.equal(desc.exports.get("beta")?.type, "local");
+        assert.equal(
+          (desc.exports.get("beta") as LocalExportDescription).name,
+          "beta"
+        );
+        assert.ok(
+          desc.exports.get("beta")?.exportRegion != null,
+          "export region exists"
+        );
+
+        let editor = new RegionEditor(source, desc);
+        keepAll(desc, editor);
+        editor.rename("alpha", "renamedA");
+        editor.rename("beta", "renamedB");
+        assert.codeEqual(
+          editor.serialize().code,
+          `
+          const renamedA = 'a';
+          const renamedB = 'b';
+          console.log(renamedA + renamedB);
+          export { renamedA as A, renamedB as beta };
+          `
+        );
+      }
     });
 
-    skip("bundle contains module description with pruned declaration references", async function (assert) {
+    test("bundle contains module description with pruned declaration references", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["index.js"] }`,
         "index.js": `
@@ -2448,21 +2498,199 @@ QUnit.module("module builder", function (origHooks) {
         "b.js": `export const b = 'b';`,
       });
 
-      /* resulting bundle:
+      let { source, desc } = await bundle(assert.fs);
+      assert.codeEqual(
+        source,
+        `
         const a = 'a';
         const b = 'b';
         console.log(a + b);
         export { a as A, b };
-        */
+       `
+      );
+      assert.ok(desc, "bundle description exists");
+      if (desc) {
+        assert.equal(desc.declarations.size, 2);
+        let a = desc.declarations.get("a")!;
+        assert.equal(a.declaration.declaredName, "a");
+        assert.equal(a.declaration.type, "local");
+        let b = desc.declarations.get("b")!;
+        assert.equal(b.declaration.declaredName, "b");
+        assert.equal(b.declaration.type, "local");
+
+        assert.equal(desc.exports.get("A")?.type, "local");
+        assert.equal(
+          (desc.exports.get("A") as LocalExportDescription).name,
+          "a"
+        );
+        assert.ok(
+          desc.exports.get("A")?.exportRegion != null,
+          "export region exists"
+        );
+        assert.equal(desc.exports.get("b")?.type, "local");
+        assert.equal(
+          (desc.exports.get("b") as LocalExportDescription).name,
+          "b"
+        );
+        assert.ok(
+          desc.exports.get("b")?.exportRegion != null,
+          "export region exists"
+        );
+
+        let editor = new RegionEditor(source, desc);
+        keepAll(desc, editor);
+        editor.rename("a", "renamedA");
+        editor.rename("b", "renamedB");
+        assert.codeEqual(
+          editor.serialize().code,
+          `
+          const renamedA = 'a';
+          const renamedB = 'b';
+          console.log(renamedA + renamedB);
+          export { renamedA as A, renamedB as b };
+          `
+        );
+      }
     });
 
-    // TODO test through all namespace code region scenarios
+    test("bundle contains module description with interior namespace imports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import * as a from './a.js';
+          import * as b from './b.js';
+          console.log(a.foo + b.bleep);
+        `,
+        "a.js": `
+          const foo = 'foo';
+          const b = 'bar';
+          export { foo, b as bar };
+        `,
+        "b.js": `
+          const bleep = 'bleep';
+          export { bleep };
+        `,
+      });
 
-    // TODO test through all export code region scenarios
+      let { source, desc } = await bundle(assert.fs);
+      assert.codeEqual(
+        source,
+        `
+        const foo = 'foo';
+        const b0 = 'bar';
+        const bleep = 'bleep';
+        const a = { foo, bar: b0 };
+        const b = { bleep };
+        console.log(a.foo + b.bleep);
+        export {};
+        `
+      );
+      assert.ok(desc, "bundle description exists");
+      if (desc) {
+        assert.equal(desc.declarations.size, 5);
+        let a = desc.declarations.get("a")!;
+        assert.equal(a.declaration.declaredName, "a");
+        assert.equal(a.declaration.type, "local");
+        let b0 = desc.declarations.get("b0")!;
+        assert.equal(b0.declaration.declaredName, "b0");
+        assert.equal(b0.declaration.type, "local");
+        let foo = desc.declarations.get("foo")!;
+        assert.equal(foo.declaration.declaredName, "foo");
+        assert.equal(foo.declaration.type, "local");
+        let b = desc.declarations.get("b")!;
+        assert.equal(b.declaration.declaredName, "b");
+        assert.equal(b.declaration.type, "local");
+        let bleep = desc.declarations.get("bleep")!;
+        assert.equal(bleep.declaration.declaredName, "bleep");
+        assert.equal(bleep.declaration.type, "local");
 
-    // TODO test through all import code region scenarios
+        let editor = new RegionEditor(source, desc);
+        keepAll(desc, editor);
+        editor.rename("a", "renamedA");
+        editor.rename("b", "renamedB");
+        editor.rename("b0", "renamedB0");
+        editor.rename("foo", "renamedFoo");
+        editor.rename("bleep", "renamedBleep");
+        assert.codeEqual(
+          editor.serialize().code,
+          `
+          const renamedFoo = 'foo';
+          const renamedB0 = 'bar';
+          const renamedBleep = 'bleep';
+          const renamedA = { foo: renamedFoo, bar: renamedB0 };
+          const renamedB = { bleep: renamedBleep };
+          console.log(renamedA.foo + renamedB.bleep);
+          export {};
+          `
+        );
+      }
+    });
 
-    skip("bundle contains module description for namespace declaration", async function () {});
+    skip("bundle contains module description with namespace imports from external bundles", async function (assert) {});
+
+    skip("bundle contains module description with default export", async function (assert) {});
+
+    skip("bundle contains module description with named exports", async function (assert) {});
+
+    skip("bundle contains module description with reassigned named exports", async function (assert) {});
+
+    skip("bundle contains module description with reexports from external bundles", async function (assert) {});
+
+    skip("bundle contains module description with reassigned reexports from external bundles", async function (assert) {});
+
+    skip("bundle contains module description with export-all from external bundles", async function (assert) {});
+
+    test("bundle contains module description with side effect only import of external bundles", async function (assert) {});
+
+    skip("bundle contains module description with default import of external bundles", async function (assert) {});
+
+    skip("bundle contains module description with named import of external bundles", async function (assert) {});
+
+    skip("bundle contains module description with reassigned named import of external bundles", async function (assert) {});
+
+    skip("bundle contains module description with async import of external bundle", async function (assert) {});
+
+    test("optimizes default exports of variable declarations", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import alpha from "./a.js";
+          console.log(alpha);
+        `,
+        "a.js": `
+          const a = 'a';
+          export default a;
+        `,
+      });
+      let { source, desc } = await bundle(assert.fs);
+      assert.codeEqual(
+        source,
+        `
+        const alpha = 'a';
+        console.log(alpha);
+        export {};
+        `
+      );
+      assert.ok(desc, "bundle description exists");
+      if (desc) {
+        assert.equal(desc.declarations.size, 1);
+        let alpha = desc.declarations.get("alpha")!;
+        assert.equal(alpha.declaration.declaredName, "alpha");
+        assert.equal(alpha.declaration.type, "local");
+
+        let editor = new RegionEditor(source, desc);
+        keepAll(desc, editor);
+        editor.rename("alpha", "renamedA");
+        assert.codeEqual(
+          editor.serialize().code,
+          `
+          const renamedA = 'a';
+          console.log(renamedA);
+          export {};
+          `
+        );
+      }
+    });
 
     QUnit.module("pkg consumption", function (_hooks) {
       let { test, hooks } = installFileAssertions(_hooks);

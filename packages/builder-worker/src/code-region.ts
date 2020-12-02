@@ -1111,9 +1111,9 @@ export class RegionEditor {
         this.outputCode.push(replacement);
         break;
       case "object":
-        gap = 1;
+        gap = 2;
         this.outputCode.push(original);
-        this.outputCode.push(":");
+        this.outputCode.push(": ");
         this.outputCode.push(replacement);
         break;
       case "export":
