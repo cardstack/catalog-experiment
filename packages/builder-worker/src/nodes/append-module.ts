@@ -17,6 +17,7 @@ import {
   GeneralCodeRegion,
   ReferenceCodeRegion,
   documentPointer,
+  ImportCodeRegion,
 } from "../code-region";
 import { BundleAssignment } from "./bundle";
 import { maybeRelativeURL } from "../path";
@@ -169,6 +170,7 @@ export class FinishAppendModulesNode implements BuilderNode {
 
     assignCodeRegionPositions(regions);
 
+    // HASSAN DONT FORGET ABOUT THIS STUFF!!
     // TODO need to add module side effect dependencies to all the declarations
     // TODO review the describe-file region finalization code to make sure we
     // perform all the same kind of stuff...
@@ -179,6 +181,7 @@ export class FinishAppendModulesNode implements BuilderNode {
       exports: new Map(),
       imports: [],
     };
+    setImportDescription(desc, importAssignments, regions, this.bundle);
     setExportDescription(
       desc,
       exportAssignments,
@@ -193,7 +196,10 @@ export class FinishAppendModulesNode implements BuilderNode {
 function buildImports(
   code: string[],
   regions: CodeRegion[],
-  importAssignments: Map<string, Map<string | NamespaceMarker, string> | null>,
+  importAssignments: Map<
+    string,
+    Map<string | NamespaceMarker | SideEffectMarker, string | null>
+  >,
   bundleDeclarations: DeclarationRegionMap,
   bundle: URL
 ): RegionPointer | undefined {
@@ -205,40 +211,43 @@ function buildImports(
   for (let [importIndex, [importSourceHref, mapping]] of [
     ...importAssignments.entries(),
   ].entries()) {
-    if (!mapping) {
-      let currentImportDeclarationPointer = regions.length;
-      let importCode = `import "${maybeRelativeURL(
-        new URL(importSourceHref),
-        bundle
-      )}";`;
-      importDeclarations.push(importCode);
-      regions.push({
-        type: "general",
-        start: importIndex === 0 ? 0 : 1, // newline
-        end: importCode.length,
-        firstChild: undefined,
-        nextSibling: undefined,
-        position: 0,
-        dependsOn: new Set(),
-        shorthand: false,
-        preserveGaps: false,
-      } as GeneralCodeRegion);
-      // this import is a bundle side effect
-      regions[documentPointer].dependsOn.add(currentImportDeclarationPointer);
-      if (lastImportDeclarationPointer != null) {
-        regions[
-          lastImportDeclarationPointer
-        ].nextSibling = currentImportDeclarationPointer;
-      }
-      lastImportDeclarationPointer = currentImportDeclarationPointer;
-      continue;
-    }
-
     let importDeclaration: string[] = [];
     let lastSpecifierPointer: RegionPointer | undefined;
     let firstSpecifierPointer: RegionPointer | undefined;
     for (let [importedAs, localName] of mapping.entries()) {
-      if (isNamespaceMarker(importedAs)) {
+      if (isSideEffectMarker(importedAs)) {
+        let currentImportDeclarationPointer = regions.length;
+        let importCode = `import "${maybeRelativeURL(
+          new URL(importSourceHref),
+          bundle
+        )}";`;
+        importDeclarations.push(importCode);
+        regions.push({
+          type: "import",
+          importIndex,
+          start: importIndex === 0 ? 0 : 1, // newline
+          end: importCode.length,
+          firstChild: undefined,
+          nextSibling: undefined,
+          position: 0,
+          dependsOn: new Set(),
+          shorthand: false,
+          preserveGaps: false,
+        } as ImportCodeRegion);
+        // this import is a bundle side effect
+        regions[documentPointer].dependsOn.add(currentImportDeclarationPointer);
+        if (lastImportDeclarationPointer != null) {
+          regions[
+            lastImportDeclarationPointer
+          ].nextSibling = currentImportDeclarationPointer;
+        }
+        lastImportDeclarationPointer = currentImportDeclarationPointer;
+      } else if (isNamespaceMarker(importedAs)) {
+        if (localName == null) {
+          throw new Error(
+            `bug: missing local name for import '${importedAs}' from ${importSourceHref} in bundle ${bundle.href}. should never get here. only side effect imports can have a null local name.`
+          );
+        }
         if (importDeclaration.length > 0) {
           flushImportDeclarationCode(
             importDeclaration,
@@ -269,8 +278,9 @@ function buildImports(
         let currentImportDeclarationPointer = regions.length;
         let specifierPointer = currentImportDeclarationPointer + 1;
         let referencePointer = specifierPointer + 1;
-        let importDeclarationRegion: GeneralCodeRegion = {
-          type: "general",
+        let importDeclarationRegion: ImportCodeRegion = {
+          type: "import",
+          importIndex,
           start: importIndex === 0 ? 0 : 1, // newline
           end: importSourceHref.length + 11, // " } from 'importSourceHref';"
           firstChild: specifierPointer,
@@ -320,6 +330,11 @@ function buildImports(
           ].nextSibling = currentImportDeclarationPointer;
         }
       } else {
+        if (localName == null) {
+          throw new Error(
+            `bug: missing local name for import '${importedAs}' from ${importSourceHref} in bundle ${bundle.href}. should never get here. only side effect imports can have a null local name.`
+          );
+        }
         let specifierPointer = regions.length;
         if (firstSpecifierPointer == null) {
           firstSpecifierPointer = specifierPointer;
@@ -410,7 +425,10 @@ function buildExports(
     reexports: Map<string, Map<string, string>>; // bundle href -> [outside name => inside name]
     exportAlls: Set<string>; // bundle hrefs
   },
-  importAssignments: Map<string, Map<string | NamespaceMarker, string> | null>,
+  importAssignments: Map<
+    string,
+    Map<string | NamespaceMarker | SideEffectMarker, string | null>
+  >,
   bundleDeclarations: DeclarationRegionMap,
   bundle: URL
 ): {
@@ -892,7 +910,8 @@ function flushImportDeclarationRegion(
 ) {
   let currentImportDeclarationPointer = regions.length;
   regions.push({
-    type: "general",
+    type: "import",
+    importIndex,
     start: importIndex === 0 ? 0 : 1, // newline
     end: importSourceHref.length + 11, // " } from 'importSourceHref';"
     firstChild: firstSpecifierPointer,
@@ -901,7 +920,7 @@ function flushImportDeclarationRegion(
     dependsOn: new Set(),
     shorthand: false,
     preserveGaps: false,
-  } as GeneralCodeRegion);
+  } as ImportCodeRegion);
   if (lastImportDeclarationPointer != null) {
     regions[
       lastImportDeclarationPointer
@@ -935,6 +954,33 @@ function offsetPointer(
     return pointer;
   }
   return pointer + offset;
+}
+
+function setImportDescription(
+  desc: ModuleDescription,
+  assignedImports: Map<
+    string,
+    Map<string | NamespaceMarker | SideEffectMarker, string | null>
+  >,
+  regions: CodeRegion[],
+  bundle: URL
+) {
+  for (let [importIndex, [bundleHref]] of [...assignedImports].entries()) {
+    let pointer = regions.findIndex(
+      (r) => r.type === "import" && r.importIndex === importIndex
+    );
+    if (pointer === -1) {
+      throw new Error(
+        `cannot find import code region for the import of ${bundleHref} with an import index of ${importIndex} when building bundle ${bundle.href}`
+      );
+    }
+    let newIndex = ensureImportSpecifier(desc, bundleHref, pointer, false);
+    if (newIndex !== importIndex) {
+      throw new Error(
+        `import index mismatch, expecting ${bundleHref} to have an importIndex of ${importIndex}, but was ${newIndex} when building bundle ${bundleHref}`
+      );
+    }
+  }
 }
 
 function setExportDescription(
@@ -1025,16 +1071,24 @@ function assignedExports(
   return { exports, reexports, exportAlls };
 }
 
+const SideEffectMarker = { isSideEffect: true };
+type SideEffectMarker = typeof SideEffectMarker;
+function isSideEffectMarker(value: any): value is SideEffectMarker {
+  return typeof value === "object" && "isSideEffect" in value;
+}
+
 function assignedImports(
   bundle: URL,
   assignments: BundleAssignment[],
   state: HeadState
-): Map<string, Map<string | NamespaceMarker, string> | null> {
-  // bundleHref => <exposedName => local name> if the inner map is null then
-  // this is a side effect only import
+): Map<
+  string,
+  Map<string | NamespaceMarker | SideEffectMarker, string | null>
+> {
+  // bundleHref => <exposedName => local name>
   let results: Map<
     string,
-    Map<string | NamespaceMarker, string> | null
+    Map<string | NamespaceMarker | SideEffectMarker, string | null>
   > = new Map();
   let ownAssignments = assignments.filter(
     (a) => a.bundleURL.href === bundle.href
@@ -1061,7 +1115,16 @@ function assignedImports(
             (a) => a.bundleURL.href === assignment.bundleURL.href
           )
         ) {
-          results.set(assignment.bundleURL.href, null);
+          let importsFromBundle = results.get(assignment.bundleURL.href);
+
+          // no need to perform side effect import from bundle if we are already
+          // doing a namespace or named import--the side effects will come along for
+          // the ride.
+          if (!importsFromBundle) {
+            importsFromBundle = new Map();
+            results.set(assignment.bundleURL.href, importsFromBundle);
+            importsFromBundle.set(SideEffectMarker, null);
+          }
         }
         // This is the region that we were using as a signal that this import
         // should be in the bundle, now let's actually remove it (because we are
@@ -1135,6 +1198,13 @@ function assignedImports(
           );
         }
         importsFromBundle.set(exposedName, assignedName);
+      }
+
+      // no need to perform side effect import from bundle if we are already
+      // doing a namespace or named import--the side effects will come along for
+      // the ride.
+      if (importsFromBundle.has(SideEffectMarker)) {
+        importsFromBundle.delete(SideEffectMarker);
       }
     }
   }

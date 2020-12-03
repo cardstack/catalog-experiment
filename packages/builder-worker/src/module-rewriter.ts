@@ -63,7 +63,7 @@ export class HeadState {
   next(): { module: ModuleResolution; editor: RegionEditor } | undefined {
     let next = this.queue.shift();
     if (next) {
-      this.visited.push(next);
+      this.visited.unshift(next);
     }
     return next;
   }

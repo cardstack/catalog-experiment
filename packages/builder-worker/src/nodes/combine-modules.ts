@@ -102,6 +102,8 @@ export class CombineModulesNode implements BuilderNode {
     let headState = new HeadState(editors);
     let { module, editor } = headState.next() ?? {};
     if (!module || !editor) {
+      // TODO This would occur if the bundle is just an empty file. that's not
+      // technically an error, so we should make this work.
       throw new Error(`bug: there are no module resolutions in this bundle`);
     }
     return {

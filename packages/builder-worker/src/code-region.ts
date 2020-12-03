@@ -829,10 +829,10 @@ export class RegionEditor {
         if (regionPointer !== documentPointer) {
           this.emitPendingAntecedant(parentPointer, regionPointer);
         }
+        // when we remove a region then the next region in this subgraph that is output will
+        // inherit this region's start
+        this.emitPendingStart(parentPointer, regionPointer);
         if (region.firstChild != null) {
-          // when we remove a region then the next region in this subgraph that is output will
-          // inherit this region's start
-          this.emitPendingStart(parentPointer, regionPointer);
           this.forAllSiblings(region.firstChild, (r) => {
             let childRegion = this.regions[r];
             // we need to manufacture a reasonable gap here, as we are skipping
@@ -1226,6 +1226,10 @@ export class RegionEditor {
         isNextSiblingOf: !isFirstChild ? outputPointer : undefined,
         hasNextSiblingOf: this.regions[pointer].nextSibling,
       };
+    } else if (this.pendingAntecedant.hasNextSiblingOf === pointer) {
+      this.pendingAntecedant.hasNextSiblingOf = this.regions[
+        pointer
+      ].nextSibling;
     }
   }
 

@@ -2640,7 +2640,86 @@ QUnit.module("module builder", function (origHooks) {
 
     skip("bundle contains module description with export-all from external bundles", async function (assert) {});
 
-    test("bundle contains module description with side effect only import of external bundles", async function (assert) {});
+    test("bundle contains module description with side effect only import of external bundles", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js", "b.js", "c.js"] }`,
+        "index.js": `
+          import './a.js';
+          import './b.js';
+          const b = 'b';
+          console.log(b);
+        `,
+        "a.js": `
+          import './c.js';
+          const a = 'a';
+          console.log(a);
+        `,
+        "b.js": `
+          console.log('b');
+          export {};
+        `,
+        "c.js": `
+          console.log('c');
+          export {};
+        `,
+      });
+      let { source, desc } = await bundle(assert.fs);
+      assert.codeEqual(
+        source,
+        `
+        import './c.js';
+        import './b.js';
+        const a = 'a';
+        console.log(a);
+        const b = 'b';
+        console.log(b);
+        `
+      );
+
+      assert.ok(desc, "bundle description exists");
+      if (desc) {
+        assert.equal(desc.imports.length, 2);
+        let [cImport, bImport] = desc.imports;
+
+        assert.equal(cImport.isDynamic, false);
+        if (!cImport.isDynamic) {
+          assert.equal(cImport.specifier, url("output/c.js").href);
+          assert.equal(cImport.isReexport, false);
+          assert.equal(desc.regions[cImport.region].type, "import");
+          let importRegion = desc.regions[cImport.region];
+          if (importRegion.type === "import") {
+            assert.equal(importRegion.importIndex, 0);
+          }
+        }
+
+        assert.equal(bImport.isDynamic, false);
+        if (!bImport.isDynamic) {
+          assert.equal(bImport.specifier, url("output/b.js").href);
+          assert.equal(bImport.isReexport, false);
+          assert.equal(desc.regions[bImport.region].type, "import");
+          let importRegion = desc.regions[bImport.region];
+          if (importRegion.type === "import") {
+            assert.equal(importRegion.importIndex, 1);
+          }
+        }
+
+        let editor = new RegionEditor(source, desc);
+        keepAll(desc, editor);
+        editor.rename("a", "renamedA");
+        editor.rename("b", "renamedB");
+        assert.codeEqual(
+          editor.serialize().code,
+          `
+          import './c.js';
+          import './b.js';
+          const renamedA = 'a';
+          console.log(renamedA);
+          const renamedB = 'b';
+          console.log(renamedB);
+          `
+        );
+      }
+    });
 
     skip("bundle contains module description with default import of external bundles", async function (assert) {});
 
@@ -2649,6 +2728,10 @@ QUnit.module("module builder", function (origHooks) {
     skip("bundle contains module description with reassigned named import of external bundles", async function (assert) {});
 
     skip("bundle contains module description with async import of external bundle", async function (assert) {});
+
+    skip("bundle contains the build output of both a bundle and another bundle that is imported by the first bundle", async function (assert) {});
+
+    skip("bundle contains an empty module", async function (assert) {});
 
     test("optimizes default exports of variable declarations", async function (assert) {
       await assert.setupFiles({
