@@ -214,7 +214,9 @@ function buildImports(
     let importDeclaration: string[] = [];
     let lastSpecifierPointer: RegionPointer | undefined;
     let firstSpecifierPointer: RegionPointer | undefined;
-    for (let [importedAs, localName] of mapping.entries()) {
+    for (let [declarationIndex, [importedAs, localName]] of [
+      ...mapping.entries(),
+    ].entries()) {
       if (isSideEffectMarker(importedAs)) {
         let currentImportDeclarationPointer = regions.length;
         let importCode = `import "${maybeRelativeURL(
@@ -240,6 +242,8 @@ function buildImports(
           regions[
             lastImportDeclarationPointer
           ].nextSibling = currentImportDeclarationPointer;
+        } else {
+          regions[documentPointer].firstChild = currentImportDeclarationPointer;
         }
         lastImportDeclarationPointer = currentImportDeclarationPointer;
       } else if (isNamespaceMarker(importedAs)) {
@@ -265,15 +269,14 @@ function buildImports(
             importIndex,
             importSourceHref,
             firstSpecifierPointer,
-            lastImportDeclarationPointer
+            lastImportDeclarationPointer,
+            bundle
           );
           firstSpecifierPointer = undefined;
         }
+        let importSource = maybeRelativeURL(new URL(importSourceHref), bundle);
         importDeclarations.push(
-          `import * as ${localName} from "${maybeRelativeURL(
-            new URL(importSourceHref),
-            bundle
-          )}";`
+          `import * as ${localName} from "${importSource}";`
         );
         let currentImportDeclarationPointer = regions.length;
         let specifierPointer = currentImportDeclarationPointer + 1;
@@ -281,14 +284,16 @@ function buildImports(
         let importDeclarationRegion: ImportCodeRegion = {
           type: "import",
           importIndex,
+          isDynamic: false,
           start: importIndex === 0 ? 0 : 1, // newline
-          end: importSourceHref.length + 11, // " } from 'importSourceHref';"
+          end: importSource.length + 11, // " } from 'importSource';"
           firstChild: specifierPointer,
           nextSibling: undefined,
           position: 0,
           dependsOn: new Set(),
           shorthand: false,
           preserveGaps: false,
+          specifierForDynamicImport: undefined,
         };
 
         let specifierRegion: DeclarationCodeRegion = {
@@ -348,8 +353,7 @@ function buildImports(
 
         let specifierRegion: DeclarationCodeRegion = {
           type: "declaration",
-          start:
-            lastSpecifierPointer == null ? 9 /* "import { " */ : 2 /* ", " */,
+          start: declarationIndex === 0 ? 9 /* "import { " */ : 2 /* ", " */,
           end: 0, // declaration ends at the same place as enclosing reference
           firstChild: referencePointer,
           nextSibling: undefined,
@@ -385,6 +389,7 @@ function buildImports(
         if (lastSpecifierPointer != null) {
           regions[lastSpecifierPointer].nextSibling = specifierPointer;
         }
+        lastSpecifierPointer = specifierPointer;
       }
     }
     if (importDeclaration.length > 0) {
@@ -405,7 +410,8 @@ function buildImports(
         importIndex,
         importSourceHref,
         firstSpecifierPointer,
-        lastImportDeclarationPointer
+        lastImportDeclarationPointer,
+        bundle
       );
       lastImportDeclarationPointer = currentImportDeclarationPointer;
     }
@@ -893,11 +899,12 @@ function flushImportDeclarationCode(
   importSourceHref: string,
   bundle: URL
 ) {
-  importDeclaration.unshift(`import {`);
-  importDeclaration.push(
-    `} from "${maybeRelativeURL(new URL(importSourceHref), bundle)}";`
+  importDeclarations.push(
+    `import { ${importDeclaration.join(", ")} } from "${maybeRelativeURL(
+      new URL(importSourceHref),
+      bundle
+    )}";`
   );
-  importDeclarations.push(importDeclaration.join(" "));
   importDeclaration = [];
 }
 
@@ -906,25 +913,31 @@ function flushImportDeclarationRegion(
   importIndex: number,
   importSourceHref: string,
   firstSpecifierPointer: RegionPointer,
-  lastImportDeclarationPointer: RegionPointer | undefined
+  lastImportDeclarationPointer: RegionPointer | undefined,
+  bundle: URL
 ) {
   let currentImportDeclarationPointer = regions.length;
+  let importSource = maybeRelativeURL(new URL(importSourceHref), bundle);
   regions.push({
     type: "import",
     importIndex,
     start: importIndex === 0 ? 0 : 1, // newline
-    end: importSourceHref.length + 11, // " } from 'importSourceHref';"
+    end: importSource.length + 11, // " } from 'importSource';"
     firstChild: firstSpecifierPointer,
     nextSibling: undefined,
     position: 0,
+    isDynamic: false,
     dependsOn: new Set(),
     shorthand: false,
     preserveGaps: false,
+    specifierForDynamicImport: undefined,
   } as ImportCodeRegion);
   if (lastImportDeclarationPointer != null) {
     regions[
       lastImportDeclarationPointer
     ].nextSibling = currentImportDeclarationPointer;
+  } else {
+    regions[documentPointer].firstChild = currentImportDeclarationPointer;
   }
 }
 
@@ -980,6 +993,20 @@ function setImportDescription(
         `import index mismatch, expecting ${bundleHref} to have an importIndex of ${importIndex}, but was ${newIndex} when building bundle ${bundleHref}`
       );
     }
+  }
+  let dynamicImports = regions
+    .filter((r) => r.type === "import" && r.isDynamic)
+    .sort(({ position: a }, { position: b }) => a - b) as ImportCodeRegion[];
+  for (let region of dynamicImports) {
+    if (region.type !== "import" || !region.isDynamic) {
+      continue;
+    }
+    desc.imports.push({
+      isDynamic: true,
+      // dynamic import regions only depend on their specifier regions
+      specifierRegion: [...region.dependsOn][0],
+      specifier: region.specifierForDynamicImport!,
+    });
   }
 }
 
@@ -1106,6 +1133,9 @@ function assignedImports(
 
       // check to see if this is a side-effect only import from another bundle
       if (region.type === "import") {
+        if (region.isDynamic) {
+          continue;
+        }
         let importedModule = module.resolvedImports[region.importIndex];
         let assignment = assignments.find(
           (a) => a.module.url.href === importedModule.url.href

@@ -2721,13 +2721,291 @@ QUnit.module("module builder", function (origHooks) {
       }
     });
 
-    skip("bundle contains module description with default import of external bundles", async function (assert) {});
+    test("bundle contains module description with default import of external bundles", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js", "b.js"] }`,
+        "index.js": `
+          import bar from './a.js';
+          console.log(bar());
+        `,
+        "a.js": `
+          import foo from './b.js';
+          export default function() { console.log(foo); }
+        `,
+        "b.js": `
+          export default function() { console.log('foo') }
+        `,
+      });
+      let { source, desc } = await bundle(assert.fs);
+      assert.codeEqual(
+        source,
+        `
+        import { default as foo } from './b.js';
+        const bar = (function() { console.log(foo); });
+        console.log(bar());
+        `
+      );
+      if (desc) {
+        assert.equal(desc.declarations.size, 2);
+        let foo = desc.declarations.get("foo");
+        assert.equal(foo?.declaration.declaredName, "foo");
+        assert.equal(foo?.declaration.type, "import");
+        if (foo?.declaration.type === "import") {
+          assert.equal(foo.declaration.importIndex, 0);
+          assert.equal(foo.declaration.importedName, "default");
+        }
 
-    skip("bundle contains module description with named import of external bundles", async function (assert) {});
+        assert.equal(desc.imports.length, 1);
+        let [defaultImport] = desc.imports;
 
-    skip("bundle contains module description with reassigned named import of external bundles", async function (assert) {});
+        assert.equal(defaultImport.isDynamic, false);
+        if (!defaultImport.isDynamic) {
+          assert.equal(defaultImport.specifier, url("output/b.js").href);
+          assert.equal(defaultImport.isReexport, false);
+          assert.equal(desc.regions[defaultImport.region].type, "import");
+          let importRegion = desc.regions[defaultImport.region];
+          if (importRegion.type === "import") {
+            assert.equal(importRegion.importIndex, 0);
+          }
+        }
 
-    skip("bundle contains module description with async import of external bundle", async function (assert) {});
+        let editor = new RegionEditor(source, desc);
+        keepAll(desc, editor);
+        editor.rename("foo", "renamedFoo");
+        editor.rename("bar", "renamedBar");
+        assert.codeEqual(
+          editor.serialize().code,
+          `
+          import { default as renamedFoo } from './b.js';
+          const renamedBar = (function() { console.log(renamedFoo); });
+          console.log(renamedBar());
+          `
+        );
+      }
+    });
+
+    test("bundle contains module description with named import of external bundles", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js", "b.js"] }`,
+        "index.js": `
+          import { bar } from './a.js';
+          console.log(bar());
+        `,
+        "a.js": `
+          import { foo, fleep } from './b.js';
+          export function bar() { console.log(foo() + fleep()); }
+        `,
+        "b.js": `
+          export function foo() { console.log('foo') }
+          export function fleep() { console.log('fleep') }
+        `,
+      });
+      let { source, desc } = await bundle(assert.fs);
+      assert.codeEqual(
+        source,
+        `
+        import { foo, fleep } from './b.js';
+        function bar() { console.log(foo() + fleep()); }
+        console.log(bar());
+        `
+      );
+
+      if (desc) {
+        assert.equal(desc.declarations.size, 3);
+        let foo = desc.declarations.get("foo");
+        assert.equal(foo?.declaration.declaredName, "foo");
+        assert.equal(foo?.declaration.type, "import");
+        if (foo?.declaration.type === "import") {
+          assert.equal(foo.declaration.importIndex, 0);
+          assert.equal(foo.declaration.importedName, "foo");
+        }
+        let fleep = desc.declarations.get("fleep");
+        assert.equal(fleep?.declaration.declaredName, "fleep");
+        assert.equal(fleep?.declaration.type, "import");
+        if (fleep?.declaration.type === "import") {
+          assert.equal(fleep.declaration.importIndex, 0);
+          assert.equal(fleep.declaration.importedName, "fleep");
+        }
+
+        assert.equal(desc.imports.length, 1);
+        let [defaultImport] = desc.imports;
+
+        assert.equal(defaultImport.isDynamic, false);
+        if (!defaultImport.isDynamic) {
+          assert.equal(defaultImport.specifier, url("output/b.js").href);
+          assert.equal(defaultImport.isReexport, false);
+          assert.equal(desc.regions[defaultImport.region].type, "import");
+          let importRegion = desc.regions[defaultImport.region];
+          if (importRegion.type === "import") {
+            assert.equal(importRegion.importIndex, 0);
+          }
+        }
+
+        let editor = new RegionEditor(source, desc);
+        keepAll(desc, editor);
+        editor.rename("foo", "renamedFoo");
+        editor.rename("fleep", "renamedFleep");
+        editor.rename("bar", "renamedBar");
+        assert.codeEqual(
+          editor.serialize().code,
+          `
+          import { foo as renamedFoo, fleep as renamedFleep } from './b.js';
+          function renamedBar() { console.log(renamedFoo() + renamedFleep()); }
+          console.log(renamedBar());
+          `
+        );
+      }
+    });
+
+    test("bundle contains module description with reassigned named import of external bundles", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js", "b.js"] }`,
+        "index.js": `
+          import { b as bar } from './a.js';
+          console.log(bar());
+        `,
+        "a.js": `
+          import { f1 as foo, f2 as fleep } from './b.js';
+          export function b() { console.log(foo() + fleep()); }
+        `,
+        "b.js": `
+          export function f1() { console.log('foo') }
+          export function f2() { console.log('fleep') }
+        `,
+      });
+      let { source, desc } = await bundle(assert.fs);
+      assert.codeEqual(
+        source,
+        `
+        import { f1 as foo, f2 as fleep } from './b.js';
+        function bar() { console.log(foo() + fleep()); }
+        console.log(bar());
+        `
+      );
+
+      if (desc) {
+        assert.equal(desc.declarations.size, 3);
+        let foo = desc.declarations.get("foo");
+        assert.equal(foo?.declaration.declaredName, "foo");
+        assert.equal(foo?.declaration.type, "import");
+        if (foo?.declaration.type === "import") {
+          assert.equal(foo.declaration.importIndex, 0);
+          assert.equal(foo.declaration.importedName, "f1");
+        }
+        let fleep = desc.declarations.get("fleep");
+        assert.equal(fleep?.declaration.declaredName, "fleep");
+        assert.equal(fleep?.declaration.type, "import");
+        if (fleep?.declaration.type === "import") {
+          assert.equal(fleep.declaration.importIndex, 0);
+          assert.equal(fleep.declaration.importedName, "f2");
+        }
+
+        assert.equal(desc.imports.length, 1);
+        let [defaultImport] = desc.imports;
+
+        assert.equal(defaultImport.isDynamic, false);
+        if (!defaultImport.isDynamic) {
+          assert.equal(defaultImport.specifier, url("output/b.js").href);
+          assert.equal(defaultImport.isReexport, false);
+          assert.equal(desc.regions[defaultImport.region].type, "import");
+          let importRegion = desc.regions[defaultImport.region];
+          if (importRegion.type === "import") {
+            assert.equal(importRegion.importIndex, 0);
+          }
+        }
+
+        let editor = new RegionEditor(source, desc);
+        keepAll(desc, editor);
+        editor.rename("foo", "renamedFoo");
+        editor.rename("fleep", "renamedFleep");
+        editor.rename("bar", "renamedBar");
+        assert.codeEqual(
+          editor.serialize().code,
+          `
+          import { f1 as renamedFoo, f2 as renamedFleep } from './b.js';
+          function renamedBar() { console.log(renamedFoo() + renamedFleep()); }
+          console.log(renamedBar());
+          `
+        );
+      }
+    });
+
+    test("bundle contains module description with async import of external bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { bar } from "./a.js";
+          async function getFoo() {
+            const { foo } = await import("./foo.js");
+            const { bleep } = await import("./bleep.js");
+            return foo + bar + bleep;
+          }
+          export { getFoo };
+        `,
+        "a.js": `
+          export const bar = 'bar';
+        `,
+        "foo.js": `
+          export function foo() { return 'foo'; }
+        `,
+        "bleep.js": `
+          export function bleep() { return 'bleep'; }
+        `,
+      });
+      let { source, desc } = await bundle(assert.fs);
+      assert.codeEqual(
+        source,
+        `
+        const bar = 'bar';
+        async function getFoo() {
+          const { foo } = await import("./foo.js");
+          const { bleep } = await import("./bleep.js");
+          return foo + bar + bleep;
+        }
+        export { getFoo };
+        `
+      );
+      if (desc) {
+        // only module scoped bindings are in included in our declarations,
+        // since foo is not module scoped, it is not included.
+        assert.equal(desc.declarations.size, 2);
+        assert.ok(desc.declarations.get("bar"), "declaration exists");
+
+        assert.equal(desc.imports.length, 2);
+        let [dynamicImportFoo, dynamicImportBleep] = desc.imports;
+        assert.equal(dynamicImportFoo.isDynamic, true);
+        assert.equal(dynamicImportBleep.isDynamic, true);
+        if (dynamicImportFoo.isDynamic && dynamicImportBleep.isDynamic) {
+          assert.equal(dynamicImportFoo.specifier, "./foo.js");
+          assert.equal(dynamicImportBleep.specifier, "./bleep.js");
+
+          let editor = new RegionEditor(source, desc);
+          keepAll(desc, editor);
+          editor.rename("bar", "renamedBar");
+          editor.rename("getFoo", "renamedGetFoo");
+          editor.replace(
+            dynamicImportFoo.specifierRegion,
+            '"./replacedFoo.js"'
+          );
+          editor.replace(
+            dynamicImportBleep.specifierRegion,
+            '"./replacedBleep.js"'
+          );
+          assert.codeEqual(
+            editor.serialize().code,
+            `
+            const renamedBar = 'bar';
+            async function renamedGetFoo() {
+              const { foo } = await import("./replacedFoo.js");
+              const { bleep } = await import("./replacedBleep.js");
+              return foo + renamedBar + bleep;
+            }
+            export { renamedGetFoo as getFoo };
+            `
+          );
+        }
+      }
+    });
 
     skip("bundle contains the build output of both a bundle and another bundle that is imported by the first bundle", async function (assert) {});
 
@@ -3827,6 +4105,8 @@ QUnit.module("module builder", function (origHooks) {
           assert.equal(puppies.declaration.original?.importedAs, "puppies");
         }
       });
+
+      skip("can collapse direct pkg dependency when an overlapping consumed range already exist in an included bundle", async function (assert) {});
 
       test("chooses the pkg whose version satisfies the most consumption ranges when multiple overlapping possibilities exist", async function (assert) {
         // this package's version is satisfied by 2 consumption ranges

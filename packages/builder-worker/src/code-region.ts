@@ -32,6 +32,8 @@ interface NewRegion {
   dependsOn: Set<RegionPointer>;
   declaration: DeclarationDescription | undefined;
   importIndex: number | undefined;
+  isDynamic: boolean | undefined;
+  specifierForDynamicImport: string | undefined;
   pathFacts: PathFacts;
 }
 
@@ -86,6 +88,15 @@ export class RegionBuilder {
   ): RegionPointer;
   createCodeRegion(
     path: NodePath,
+    importInfo?: {
+      importIndex: number;
+      isDynamic: boolean;
+      specifierForDynamicImport: string | undefined;
+    },
+    dependsOnRegion?: Set<RegionPointer>
+  ): RegionPointer;
+  createCodeRegion(
+    path: NodePath,
     declaration?: DeclarationDescription,
     dependsOnRegion?: Set<RegionPointer>
   ): RegionPointer;
@@ -93,6 +104,11 @@ export class RegionBuilder {
     pathOrPaths: NodePath | NodePath[],
     declarationOrImportIndexOrType?:
       | DeclarationDescription
+      | {
+          importIndex: number;
+          isDynamic: boolean;
+          specifierForDynamicImport: string | undefined;
+        }
       | number
       | CodeRegion["type"],
     dependsOnRegion?: Set<RegionPointer>
@@ -117,10 +133,21 @@ export class RegionBuilder {
 
     // TODO add support for simpler reference regions...
     let type: CodeRegion["type"];
-    if (typeof declarationOrImportIndexOrType === "object") {
+    let importIndex: number | undefined;
+    let isDynamic: boolean | undefined;
+    let specifierForDynamicImport: string | undefined;
+    if (isDeclarationDescription(declarationOrImportIndexOrType)) {
       type = "declaration";
+    } else if (typeof declarationOrImportIndexOrType === "object") {
+      type = "import";
+      ({
+        importIndex,
+        isDynamic,
+        specifierForDynamicImport,
+      } = declarationOrImportIndexOrType);
     } else if (typeof declarationOrImportIndexOrType === "number") {
       type = "import";
+      isDynamic = false;
     } else if (typeof declarationOrImportIndexOrType === "string") {
       type = declarationOrImportIndexOrType;
     } else {
@@ -138,14 +165,15 @@ export class RegionBuilder {
       // then reconcile the dependsOn only after all the code regions for the
       // file have been created.
       dependsOn: dependsOnRegion ?? new Set(),
-      declaration:
-        typeof declarationOrImportIndexOrType === "object"
-          ? declarationOrImportIndexOrType
-          : undefined,
+      declaration: isDeclarationDescription(declarationOrImportIndexOrType)
+        ? declarationOrImportIndexOrType
+        : undefined,
       importIndex:
         typeof declarationOrImportIndexOrType === "number"
           ? declarationOrImportIndexOrType
-          : undefined,
+          : importIndex,
+      isDynamic,
+      specifierForDynamicImport,
       pathFacts: {
         shorthand: Array.isArray(pathOrPaths)
           ? false
@@ -235,9 +263,25 @@ export class RegionBuilder {
           }
           if (isDeclarationCodeRegion(child)) {
             child.declaration = newRegion.declaration ?? child.declaration;
+
+            // look for import regions and depend on them
+            if (child.firstChild != null) {
+              let cursor: RegionPointer | undefined = child.firstChild;
+              while (cursor != null) {
+                let maybeImport = this.getRegion(cursor);
+                if (maybeImport.type === "import") {
+                  child.dependsOn.add(cursor);
+                }
+                cursor = maybeImport.nextSibling;
+              }
+            }
           }
           if (isImportCodeRegion(child)) {
             child.importIndex = newRegion.importIndex ?? child.importIndex;
+            child.isDynamic = newRegion.isDynamic ?? child.isDynamic;
+            child.specifierForDynamicImport =
+              newRegion.specifierForDynamicImport ??
+              child.specifierForDynamicImport;
           }
           newRegion.index = childPointer;
           return;
@@ -280,7 +324,14 @@ export class RegionBuilder {
   ) {
     let basis = this.linkToNewRegion(targetParent, targetPrevious, newRegion);
     this.adjustStartRelativeTo(target, newRegion.absoluteEnd);
-    let { declaration, dependsOn, type, importIndex } = newRegion;
+    let {
+      declaration,
+      dependsOn,
+      type,
+      importIndex,
+      isDynamic,
+      specifierForDynamicImport,
+    } = newRegion;
     let data = {
       type,
       start: newRegion.absoluteStart - basis,
@@ -290,6 +341,8 @@ export class RegionBuilder {
       dependsOn,
       declaration,
       importIndex,
+      isDynamic,
+      specifierForDynamicImport,
       ...newRegion.pathFacts,
     };
     let pointer = this.regions.length;
@@ -297,6 +350,12 @@ export class RegionBuilder {
       this.regions.push(data);
     }
     if (data.type === "reference") {
+      this.regions[targetParent].dependsOn.add(pointer);
+    }
+    if (
+      data.type === "import" &&
+      this.regions[targetParent].type === "declaration"
+    ) {
       this.regions[targetParent].dependsOn.add(pointer);
     }
   }
@@ -310,17 +369,19 @@ export class RegionBuilder {
     targetPrevious: RegionPointer | undefined,
     newRegion: NewRegion
   ) {
-    let referenceRegions: RegionPointer[] = [];
+    let dependsOnRegions: RegionPointer[] = [];
     let basis = this.linkToNewRegion(targetParent, targetPrevious, newRegion);
     this.adjustStartRelativeTo(target, newRegion.absoluteStart);
     let cursor: RegionPointer = target;
     let nextSibling: RegionPointer | undefined;
     while (cursor != null) {
       if (
-        this.regions[cursor].type === "reference" &&
-        newRegion.declaration?.type !== "import"
+        (this.regions[cursor].type === "reference" &&
+          newRegion.declaration?.type !== "import") ||
+        (this.regions[cursor].type === "import" &&
+          newRegion.type === "declaration")
       ) {
-        referenceRegions.push(cursor);
+        dependsOnRegions.push(cursor);
         this.regions[targetParent].dependsOn.delete(cursor);
       }
       let nextRegion = this.getRegion(cursor).nextSibling;
@@ -344,16 +405,25 @@ export class RegionBuilder {
 
     // at this point, cursor is the last region that we surround
     this.getRegion(cursor).nextSibling = undefined;
-    let { declaration, dependsOn, type, importIndex } = newRegion;
+    let {
+      declaration,
+      dependsOn,
+      type,
+      importIndex,
+      isDynamic,
+      specifierForDynamicImport,
+    } = newRegion;
     let data = {
       type,
       start: newRegion.absoluteStart - basis,
       end: newRegion.absoluteEnd - this.getAbsolute(cursor).end,
       firstChild: target,
       nextSibling,
-      dependsOn: new Set([...dependsOn, ...referenceRegions]),
+      dependsOn: new Set([...dependsOn, ...dependsOnRegions]),
       declaration,
       importIndex,
+      isDynamic,
+      specifierForDynamicImport,
       ...newRegion.pathFacts,
     };
     if (isCodeRegion(data)) {
@@ -368,7 +438,14 @@ export class RegionBuilder {
     newRegion: NewRegion
   ) {
     let basis = this.linkToNewRegion(targetParent, target, newRegion);
-    let { declaration, dependsOn, type, importIndex } = newRegion;
+    let {
+      declaration,
+      dependsOn,
+      type,
+      importIndex,
+      isDynamic,
+      specifierForDynamicImport,
+    } = newRegion;
     let data = {
       type,
       start: newRegion.absoluteStart - basis,
@@ -378,6 +455,8 @@ export class RegionBuilder {
       dependsOn,
       declaration,
       importIndex,
+      isDynamic,
+      specifierForDynamicImport,
       ...newRegion.pathFacts,
     };
     let pointer = this.regions.length;
@@ -386,6 +465,12 @@ export class RegionBuilder {
     }
     this.adjustEndRelativeTo(targetParent, newRegion.absoluteEnd);
     if (data.type === "reference") {
+      this.regions[targetParent].dependsOn.add(pointer);
+    }
+    if (
+      data.type === "import" &&
+      this.regions[targetParent].type === "declaration"
+    ) {
       this.regions[targetParent].dependsOn.add(pointer);
     }
   }
@@ -484,6 +569,13 @@ export interface LocalDeclarationDescription
     importedAs: string | NamespaceMarker;
   };
 }
+export function isDeclarationDescription(
+  desc: any
+): desc is DeclarationDescription {
+  return (
+    typeof desc === "object" && "declaredName" in desc && "references" in desc
+  );
+}
 
 export interface ImportedDeclarationDescription
   extends BaseDeclarationDescription {
@@ -575,9 +667,17 @@ export function isDeclarationCodeRegion(
   );
 }
 
+// When an import region is inserted within a declaration region, or declaration
+// region is inserted around an import region, then the declaration region will
+// automatically depend on the reference region--this will allow dynamically
+// loaded module code regions to be traversed. Note that we'll need to update
+// this for top level await so that a document region can automatically depend
+// on an import region when the import is a direct child of the document region.
 export interface ImportCodeRegion extends Omit<GeneralCodeRegion, "type"> {
   type: "import";
   importIndex: number;
+  isDynamic: boolean;
+  specifierForDynamicImport: string | undefined;
 }
 
 export function isImportCodeRegion(region: any): region is ImportCodeRegion {
@@ -601,6 +701,9 @@ export function assignCodeRegionPositions(
   }
 }
 
+// When a reference region is inserted, or another region is inserted around a
+// reference region, then the parent of the reference region will automatically
+// depend on the reference region.
 export interface ReferenceCodeRegion extends BaseCodeRegion {
   type: "reference";
 }

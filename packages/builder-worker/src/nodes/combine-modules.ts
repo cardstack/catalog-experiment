@@ -471,7 +471,7 @@ function discoverIncludedRegions(
         visitedRegions
       );
     }
-  } else if (region.type === "import") {
+  } else if (region.type === "import" && !region.isDynamic) {
     // we mark the external bundle import region as something we want to keep
     // as a signal to the Append nodes that this import is consumed and to
     // include this region in the resulting bundle.

@@ -641,7 +641,7 @@ QUnit.module("describe-file", function () {
       function x({ a }) {}
       export {};
     `);
-    assert.ok(desc.declarations.has("a"));
+    assert.notOk(desc.declarations.has("a"));
   });
 
   test("function default arguments consume other bindings", function (assert) {

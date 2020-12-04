@@ -527,7 +527,10 @@ export function describeFile(
     RestElement: handlePossibleLVal,
     ObjectProperty: handlePossibleLVal,
     Identifier(path) {
-      if (currentModuleScopedDeclaration?.lvalStack) {
+      if (
+        currentModuleScopedDeclaration?.lvalStack &&
+        currentModuleScopedDeclaration.lvalStack.length > 0
+      ) {
         let declaration = declarationForIdentifier(path);
         let sideEffects = sideEffectsForIdentifier(path);
         if (declaration) {
@@ -643,9 +646,10 @@ export function describeFile(
       isES6Module = true;
       let callExpression = path.parentPath as NodePath<CallExpression>;
       let stringLiteral = callExpression.node.arguments[0] as StringLiteral;
-      let importDesc = desc.imports.find(
+      let importIndex = desc.imports.findIndex(
         (i) => i.specifier === stringLiteral.value
       );
+      let importDesc = importIndex > -1 ? desc.imports[importIndex] : undefined;
       if (!importDesc) {
         if (!Array.isArray(path.parentPath.get("arguments"))) {
           throw new Error(
@@ -659,10 +663,27 @@ export function describeFile(
           specifier: stringLiteral.value,
           isDynamic: true,
         };
+        importIndex = desc.imports.length;
         desc.imports.push(importDesc);
       } else {
         importDesc.isDynamic = true;
       }
+      if (!importDesc.isDynamic || !importDesc.specifier) {
+        throw new Error(
+          `should never get here. the import description for a dynamic import should always be marked as dynamic and have a specifier. issue with dynamic import of ${
+            importDesc.specifier
+          }${filename ? "in file " + filename : ""}`
+        );
+      }
+      builder.createCodeRegion(
+        path as NodePath,
+        {
+          importIndex,
+          isDynamic: true,
+          specifierForDynamicImport: importDesc.specifier,
+        },
+        new Set([importDesc.specifierRegion])
+      );
     },
     ExpressionStatement(path) {
       if (

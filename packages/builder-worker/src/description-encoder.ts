@@ -68,6 +68,8 @@ const declarationCodeRegionLegend = [...generalCodeRegionLegend, "declaration"];
 const importCodeRegionLegend = [
   ...generalCodeRegionLegend,
   "importIndex", // number
+  "isDynamic", // boolean
+  "specifierForDynamicImport", // string | null
 ];
 
 const referenceCodeRegionLegend = [...baseCodeRegionLegend];
