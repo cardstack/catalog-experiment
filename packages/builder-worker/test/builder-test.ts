@@ -19,7 +19,7 @@ import { flushEvents, removeAllEventListeners } from "../src/event-bus";
 import { Logger } from "../src/logger";
 import { recipesURL } from "../src/recipes";
 import { extractDescriptionFromSource } from "../src/description-encoder";
-import { RegionEditor } from "../src/code-region";
+import { isNamespaceMarker, RegionEditor } from "../src/code-region";
 import {
   LocalExportDescription,
   ModuleDescription,
@@ -2626,7 +2626,66 @@ QUnit.module("module builder", function (origHooks) {
       }
     });
 
-    skip("bundle contains module description with namespace imports from external bundles", async function (assert) {});
+    test("bundle contains module description with namespace imports from external bundles", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js", "a.js", "b.js"] }`,
+        "index.js": `
+          import * as a from './a.js';
+          import * as b from './b.js';
+          console.log(a.foo + b.bleep);
+        `,
+        "a.js": `
+          const foo = 'foo';
+          const b = 'bar';
+          export { foo, b as bar };
+        `,
+        "b.js": `
+          const bleep = 'bleep';
+          export { bleep };
+        `,
+      });
+
+      let { source, desc } = await bundle(assert.fs);
+      assert.codeEqual(
+        source,
+        `
+        import * as a from './a.js';
+        import * as b from './b.js';
+        console.log(a.foo + b.bleep);
+        `
+      );
+      assert.ok(desc, "bundle description exists");
+      if (desc) {
+        assert.equal(desc.declarations.size, 2);
+        let a = desc.declarations.get("a")!;
+        assert.equal(a.declaration.declaredName, "a");
+        assert.equal(a.declaration.type, "import");
+        if (a.declaration.type === "import") {
+          assert.equal(a.declaration.importIndex, 0);
+          assert.equal(isNamespaceMarker(a.declaration.importedName), true);
+        }
+        let b = desc.declarations.get("b")!;
+        assert.equal(b.declaration.declaredName, "b");
+        assert.equal(b.declaration.type, "import");
+        if (b.declaration.type === "import") {
+          assert.equal(b.declaration.importIndex, 1);
+          assert.equal(isNamespaceMarker(b.declaration.importedName), true);
+        }
+
+        let editor = new RegionEditor(source, desc);
+        keepAll(desc, editor);
+        editor.rename("a", "renamedA");
+        editor.rename("b", "renamedB");
+        assert.codeEqual(
+          editor.serialize().code,
+          `
+          import * as renamedA from './a.js';
+          import * as renamedB from './b.js';
+          console.log(renamedA.foo + renamedB.bleep);
+          `
+        );
+      }
+    });
 
     skip("bundle contains module description with default export", async function (assert) {});
 
@@ -3007,9 +3066,31 @@ QUnit.module("module builder", function (origHooks) {
       }
     });
 
-    skip("bundle contains the build output of both a bundle and another bundle that is imported by the first bundle", async function (assert) {});
+    test("bundle contains an empty module", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js", "a.js"] }`,
+        "index.js": `
+          import './a.js';
+          console.log('hi');
+        `,
+        "a.js": `
+          export {};
+        `,
+      });
+      let { source, desc } = await bundle(assert.fs, url("output/a.js"));
+      assert.codeEqual(source, `export {};`);
+      assert.ok(desc, "bundle description exists");
+      if (desc) {
+        assert.equal(desc.declarations.size, 0);
+        assert.equal(desc.regions.length, 1);
+        assert.equal(desc.exports.size, 0);
+        assert.equal(desc.imports.length, 0);
 
-    skip("bundle contains an empty module", async function (assert) {});
+        let editor = new RegionEditor(source, desc);
+        keepAll(desc, editor);
+        assert.codeEqual(editor.serialize().code, `export {};`);
+      }
+    });
 
     test("optimizes default exports of variable declarations", async function (assert) {
       await assert.setupFiles({

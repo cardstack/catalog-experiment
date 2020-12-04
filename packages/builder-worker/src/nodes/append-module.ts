@@ -168,6 +168,10 @@ export class FinishAppendModulesNode implements BuilderNode {
       this.bundle
     );
 
+    if (regions.length === 1) {
+      regions[documentPointer].firstChild = undefined;
+    }
+
     assignCodeRegionPositions(regions);
 
     // HASSAN DONT FORGET ABOUT THIS STUFF!!
@@ -286,7 +290,7 @@ function buildImports(
           importIndex,
           isDynamic: false,
           start: importIndex === 0 ? 0 : 1, // newline
-          end: importSource.length + 11, // " } from 'importSource';"
+          end: importSource.length + 9, // " from 'importSource';"
           firstChild: specifierPointer,
           nextSibling: undefined,
           position: 0,
@@ -333,7 +337,10 @@ function buildImports(
           regions[
             lastImportDeclarationPointer
           ].nextSibling = currentImportDeclarationPointer;
+        } else {
+          regions[documentPointer].firstChild = currentImportDeclarationPointer;
         }
+        lastImportDeclarationPointer = currentImportDeclarationPointer;
       } else {
         if (localName == null) {
           throw new Error(

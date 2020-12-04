@@ -434,7 +434,7 @@ export class ModuleRewriter {
   }
 }
 
-interface ResolvedResult {
+export interface ResolvedResult {
   type: "resolved";
   module: Resolution;
   declaredName: string;
@@ -444,7 +444,7 @@ interface ResolvedResult {
   declaration: DeclarationDescription;
 }
 
-interface UnresolvedResult {
+export interface UnresolvedResult {
   type: "unresolved";
   importedFromModule: Resolution;
   consumingModule: Resolution;
