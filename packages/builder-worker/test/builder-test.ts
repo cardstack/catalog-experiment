@@ -2687,15 +2687,392 @@ QUnit.module("module builder", function (origHooks) {
       }
     });
 
-    skip("bundle contains module description with default export", async function (assert) {});
+    test("bundle contains module description with named default export", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { foo } from './a.js';
+          export default function bar() {
+            return foo;
+          }
+        `,
+        "a.js": `
+          export const foo = 'foo';
+        `,
+      });
 
-    skip("bundle contains module description with named exports", async function (assert) {});
+      let { source, desc } = await bundle(assert.fs);
+      assert.codeEqual(
+        source,
+        `
+        const foo = 'foo';
+        function bar() {
+          return foo;
+        }
+        export { bar as default };
+        `
+      );
+      assert.ok(desc, "bundle description exists");
+      if (desc) {
+        assert.equal(desc.declarations.size, 2);
+        let bar = desc.declarations.get("bar")!;
+        assert.equal(bar.declaration.declaredName, "bar");
+        assert.equal(bar.declaration.type, "local");
 
-    skip("bundle contains module description with reassigned named exports", async function (assert) {});
+        assert.equal(desc.exports.size, 1);
+        let defaultExport = desc.exports.get("default")!;
+        assert.equal(defaultExport.type, "local");
+        if (defaultExport.type === "local") {
+          assert.equal(defaultExport.name, "bar");
+          assert.ok(defaultExport.exportRegion != null);
+        }
+        let editor = new RegionEditor(source, desc);
+        keepAll(desc, editor);
+        editor.rename("foo", "renamedFoo");
+        editor.rename("bar", "renamedBar");
+        assert.codeEqual(
+          editor.serialize().code,
+          `
+          const renamedFoo = 'foo';
+          function renamedBar() {
+            return renamedFoo;
+          }
+          export { renamedBar as default };
+          `
+        );
+      }
+    });
 
-    skip("bundle contains module description with reexports from external bundles", async function (assert) {});
+    test("bundle contains module description with unnamed default export", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { foo } from './a.js';
+          export default function() {
+            return foo;
+          }
+        `,
+        "a.js": `
+          export const foo = 'foo';
+        `,
+      });
+
+      let { source, desc } = await bundle(assert.fs);
+      assert.codeEqual(
+        source,
+        `
+        const foo = 'foo';
+        const _default = (function() {
+          return foo;
+        });
+        export { _default as default };
+        `
+      );
+      assert.ok(desc, "bundle description exists");
+      if (desc) {
+        assert.equal(desc.declarations.size, 2);
+        let _default = desc.declarations.get("_default")!;
+        assert.equal(_default.declaration.declaredName, "_default");
+        assert.equal(_default.declaration.type, "local");
+
+        assert.equal(desc.exports.size, 1);
+        let defaultExport = desc.exports.get("default")!;
+        assert.equal(defaultExport.type, "local");
+        if (defaultExport.type === "local") {
+          assert.equal(defaultExport.name, "_default");
+          assert.ok(defaultExport.exportRegion != null);
+        }
+        let editor = new RegionEditor(source, desc);
+        keepAll(desc, editor);
+        editor.rename("foo", "renamedFoo");
+        editor.rename("_default", "renamedDefault");
+        assert.codeEqual(
+          editor.serialize().code,
+          `
+          const renamedFoo = 'foo';
+          const renamedDefault = (function() {
+            return renamedFoo;
+          });
+          export { renamedDefault as default };
+          `
+        );
+      }
+    });
+
+    test("bundle contains module description with named exports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { foo } from './a.js';
+          export function bar() {
+            return foo;
+          }
+          export const bleep = 'bleep';
+        `,
+        "a.js": `
+          export const foo = 'foo';
+        `,
+      });
+
+      let { source, desc } = await bundle(assert.fs);
+      assert.codeEqual(
+        source,
+        `
+        const foo = 'foo';
+        function bar() {
+          return foo;
+        }
+        const bleep = 'bleep';
+        export { bar, bleep };
+        `
+      );
+      assert.ok(desc, "bundle description exists");
+      if (desc) {
+        assert.equal(desc.exports.size, 2);
+        let bar = desc.exports.get("bar")!;
+        assert.equal(bar.type, "local");
+        if (bar.type === "local") {
+          assert.equal(bar.name, "bar");
+          assert.ok(bar.exportRegion != null);
+        }
+        let bleep = desc.exports.get("bleep")!;
+        assert.equal(bleep.type, "local");
+        if (bleep.type === "local") {
+          assert.equal(bleep.name, "bleep");
+          assert.ok(bleep.exportRegion != null);
+        }
+        let editor = new RegionEditor(source, desc);
+        keepAll(desc, editor);
+        editor.rename("foo", "renamedFoo");
+        editor.rename("bar", "renamedBar");
+        editor.rename("bleep", "renamedBleep");
+        assert.codeEqual(
+          editor.serialize().code,
+          `
+          const renamedFoo = 'foo';
+          function renamedBar() {
+            return renamedFoo;
+          }
+          const renamedBleep = 'bleep';
+          export { renamedBar as bar, renamedBleep as bleep };
+          `
+        );
+      }
+    });
+
+    test("bundle contains module description with named and default exports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { foo } from './a.js';
+          export default function() {
+            return foo;
+          }
+          export const bleep = 'bleep';
+        `,
+        "a.js": `
+          export const foo = 'foo';
+        `,
+      });
+
+      let { source, desc } = await bundle(assert.fs);
+      assert.codeEqual(
+        source,
+        `
+        const foo = 'foo';
+        const _default = (function() {
+          return foo;
+        });
+        const bleep = 'bleep';
+        export { _default as default, bleep };
+        `
+      );
+      assert.ok(desc, "bundle description exists");
+      if (desc) {
+        assert.equal(desc.declarations.size, 3);
+        let _default = desc.declarations.get("_default")!;
+        assert.equal(_default.declaration.declaredName, "_default");
+        assert.equal(_default.declaration.type, "local");
+
+        assert.equal(desc.exports.size, 2);
+        let defaultExport = desc.exports.get("default")!;
+        assert.equal(defaultExport.type, "local");
+        if (defaultExport.type === "local") {
+          assert.equal(defaultExport.name, "_default");
+          assert.ok(defaultExport.exportRegion != null);
+        }
+        let bleep = desc.exports.get("bleep")!;
+        assert.equal(bleep.type, "local");
+        if (bleep.type === "local") {
+          assert.equal(bleep.name, "bleep");
+          assert.ok(bleep.exportRegion != null);
+        }
+        let editor = new RegionEditor(source, desc);
+        keepAll(desc, editor);
+        editor.rename("foo", "renamedFoo");
+        editor.rename("_default", "renamedDefault");
+        editor.rename("bleep", "renamedBleep");
+        assert.codeEqual(
+          editor.serialize().code,
+          `
+          const renamedFoo = 'foo';
+          const renamedDefault = (function() {
+            return renamedFoo;
+          });
+          const renamedBleep = 'bleep';
+          export { renamedDefault as default, renamedBleep as bleep };
+          `
+        );
+      }
+    });
+
+    skip("bundle contains module description with an export of an internal namespace import", async function (assert) {});
+
+    skip("bundle contains module description with an export of a namespace import from an external bundle", async function (assert) {});
+
+    test("bundle contains module description with reassigned named exports", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { foo } from './a.js';
+          function bar() {
+            return foo;
+          }
+          const bleep = 'bleep';
+          export { bar as b1, bleep as b2 };
+        `,
+        "a.js": `
+          export const foo = 'foo';
+        `,
+      });
+
+      let { source, desc } = await bundle(assert.fs);
+      assert.codeEqual(
+        source,
+        `
+        const foo = 'foo';
+        function bar() {
+          return foo;
+        }
+        const bleep = 'bleep';
+        export { bar as b1, bleep as b2 };
+        `
+      );
+      assert.ok(desc, "bundle description exists");
+      if (desc) {
+        assert.equal(desc.exports.size, 2);
+        let b1 = desc.exports.get("b1")!;
+        assert.equal(b1.type, "local");
+        if (b1.type === "local") {
+          assert.equal(b1.name, "bar");
+          assert.ok(b1.exportRegion != null);
+        }
+        let b2 = desc.exports.get("b2")!;
+        assert.equal(b2.type, "local");
+        if (b2.type === "local") {
+          assert.equal(b2.name, "bleep");
+          assert.ok(b2.exportRegion != null);
+        }
+        let editor = new RegionEditor(source, desc);
+        keepAll(desc, editor);
+        editor.rename("foo", "renamedFoo");
+        editor.rename("bar", "renamedBar");
+        editor.rename("bleep", "renamedBleep");
+        assert.codeEqual(
+          editor.serialize().code,
+          `
+          const renamedFoo = 'foo';
+          function renamedBar() {
+            return renamedFoo;
+          }
+          const renamedBleep = 'bleep';
+          export { renamedBar as b1, renamedBleep as b2 };
+          `
+        );
+      }
+    });
+
+    test("bundle contains module description with reexports from external bundles", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js", "b.js"] }`,
+        "index.js": `
+          import { bar } from './a.js';
+          export { foo, fleep } from './b.js';
+          console.log(bar);
+        `,
+        "a.js": `
+          export const bar = 'bar';
+        `,
+        "b.js": `
+          export function foo() { console.log('foo') }
+          export function fleep() { console.log('fleep') }
+        `,
+      });
+      let { source, desc } = await bundle(assert.fs);
+      assert.codeEqual(
+        source,
+        `
+        const bar = 'bar';
+        console.log(bar);
+        export { foo, fleep } from './b.js';
+        `
+      );
+
+      if (desc) {
+        assert.equal(desc.declarations.size, 1);
+        assert.equal(desc.imports.length, 1);
+        let [reexport] = desc.imports;
+
+        assert.equal(reexport.isDynamic, false);
+        if (!reexport.isDynamic) {
+          assert.equal(reexport.specifier, url("output/b.js").href);
+          assert.equal(reexport.isReexport, true);
+          assert.equal(desc.regions[reexport.region].type, "import");
+          let importRegion = desc.regions[reexport.region];
+          if (importRegion.type === "import") {
+            assert.equal(importRegion.importIndex, 0);
+          }
+        }
+
+        assert.equal(desc.exports.size, 2);
+        let foo = desc.exports.get("foo")!;
+        assert.equal(foo.type, "reexport");
+        if (foo.type === "reexport") {
+          assert.equal(foo.importIndex, 0);
+          assert.equal(foo.name, "foo");
+          assert.ok(foo.exportRegion != null, "export region exists in desc");
+        }
+        let fleep = desc.exports.get("fleep")!;
+        assert.equal(fleep.type, "reexport");
+        if (fleep.type === "reexport") {
+          assert.equal(fleep.importIndex, 0);
+          assert.equal(fleep.name, "fleep");
+          assert.ok(fleep.exportRegion != null, "export region exists in desc");
+        }
+
+        let editor = new RegionEditor(source, desc);
+        keepAll(desc, editor);
+        editor.rename("bar", "renamedBar");
+        assert.codeEqual(
+          editor.serialize().code,
+          `
+          const renamedBar = 'bar';
+          console.log(renamedBar);
+          export { foo, fleep } from './b.js';
+          `
+        );
+      }
+    });
+
+    skip("bundle contains module description with manual reexport (import followed by export) from external bundles", async function (assert) {});
+
+    skip("bundle contains module description with namespace reexport from external bundles", async function (assert) {});
+
+    skip("bundle contains module description with default reexport from external bundles", async function (assert) {});
 
     skip("bundle contains module description with reassigned reexports from external bundles", async function (assert) {});
+
+    skip("bundle contains module description with reassigned default reexport from external bundles", async function (assert) {});
 
     skip("bundle contains module description with export-all from external bundles", async function (assert) {});
 
@@ -3050,8 +3427,12 @@ QUnit.module("module builder", function (origHooks) {
             dynamicImportBleep.specifierRegion,
             '"./replacedBleep.js"'
           );
+          let {
+            code: updatedCode,
+            regions: updatedRegions,
+          } = editor.serialize();
           assert.codeEqual(
-            editor.serialize().code,
+            updatedCode,
             `
             const renamedBar = 'bar';
             async function renamedGetFoo() {
@@ -3061,6 +3442,16 @@ QUnit.module("module builder", function (origHooks) {
             }
             export { renamedGetFoo as getFoo };
             `
+          );
+
+          let updatedImport = updatedRegions.find(
+            (r) =>
+              r.type === "import" &&
+              r.specifierForDynamicImport === "./replacedFoo.js"
+          );
+          assert.ok(
+            updatedImport,
+            "the import region's specifier property was updated"
           );
         }
       }

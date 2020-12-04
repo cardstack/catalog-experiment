@@ -25,9 +25,10 @@ import {
   HeadState,
   ModuleRewriter,
   resolveDeclaration,
+  UnresolvedResult,
 } from "../module-rewriter";
 import { depAsURL, Dependencies } from "./entrypoint";
-import { stringifyReplacer } from "../utils";
+import { setMapping, stringifyReplacer } from "../utils";
 import { DependencyResolver } from "./combine-modules";
 
 export class AppendModuleNode implements BuilderNode {
@@ -449,8 +450,11 @@ function buildExports(
   exportSpecifierRegions: Map<string, RegionPointer>;
 } {
   let { exports, reexports, exportAlls } = exportAssignments!;
-  let exportDeclarations: string[] = [];
+  let exportRegions: Map<string, RegionPointer> = new Map();
+  let exportSpecifierRegions: Map<string, RegionPointer> = new Map();
+
   if (exports.size > 0) {
+    let exportDeclarations: string[] = [];
     exportDeclarations.push("export {");
     exportDeclarations.push(
       [...exports]
@@ -462,97 +466,158 @@ function buildExports(
         .join(", ")
     );
     exportDeclarations.push("};");
-  }
+    code.push(exportDeclarations.join(" "));
 
-  code.push(exportDeclarations.join(" "));
-  let exportRegions: Map<string, RegionPointer> = new Map();
-  let exportSpecifierRegions: Map<string, RegionPointer> = new Map();
-  if (exports.size > 0) {
     if (prevSibling != null) {
       regions[prevSibling].nextSibling = regions.length;
     } else {
       regions[documentPointer].firstChild = regions.length;
     }
     exportRegions.set(bundle.href, regions.length);
-    // ExportNamedDeclaration region
-    regions.push({
-      type: "general",
-      position: 0,
-      firstChild: regions.length + 1,
-      nextSibling: undefined,
-      start: 1, // newline
-      end: 3, // " };"
-      dependsOn: new Set(),
-      shorthand: false,
-      preserveGaps: false,
-    });
-    let lastExport: [string, string] | undefined;
-    let lastSpecifier: RegionPointer | undefined;
-    for (let [outsideName, insideName] of exports.entries()) {
-      let declaration = bundleDeclarations.get(insideName);
-      if (!declaration) {
-        throw new Error(
-          `bug: cannot find declaration region when building export for '${insideName}' in bundle ${bundle.href}`
-        );
-      }
-      let currentSpecifier: RegionPointer = regions.length;
-      exportSpecifierRegions.set(outsideName, currentSpecifier);
-      if (lastSpecifier != null) {
-        regions[lastSpecifier].nextSibling = currentSpecifier;
-      }
+    prevSibling = buildExportNamedDeclaration(
+      exports,
+      regions,
+      exportSpecifierRegions,
+      bundleDeclarations,
+      bundle
+    );
+  }
 
-      let referencePointer = currentSpecifier + 1;
-      // ExportSpecifier region
-      regions.push({
-        type: "general",
-        position: 0,
-        firstChild: referencePointer,
-        nextSibling: undefined,
-        start: lastExport == null ? 9 /* "export { " */ : 2 /* ", " */,
-        end:
-          insideName === outsideName
-            ? 0
-            : 4 + outsideName.length /* " as outsideName" */,
-        dependsOn: new Set([referencePointer]),
-        shorthand: false,
-        preserveGaps: false,
-      });
+  if (reexports.size > 0) {
+    for (let [reexportIndex, [bundleHref, mapping]] of [
+      ...reexports.entries(),
+    ].entries()) {
+      let source = maybeRelativeURL(new URL(bundleHref), bundle);
+      let exportDeclarations: string[] = [];
+      exportDeclarations.push("export {");
+      exportDeclarations.push(
+        [...mapping]
+          .map(([outsideName, insideName]) =>
+            outsideName === insideName
+              ? outsideName
+              : `${insideName} as ${outsideName}`
+          )
+          .join(", ")
+      );
+      exportDeclarations.push(`} from "${source}";`);
+      let reexportDeclaration = exportDeclarations.join(" ");
+      code.push(reexportDeclaration);
 
-      // Reference region
+      if (prevSibling != null) {
+        regions[prevSibling].nextSibling = regions.length;
+      } else {
+        regions[documentPointer].firstChild = regions.length;
+      }
+      exportRegions.set(bundleHref, regions.length);
+      prevSibling = regions.length;
+      let importIndex = [...importAssignments.keys()].findIndex(
+        (importedBundleHref) => bundleHref === importedBundleHref
+      );
+      if (importIndex === -1) {
+        importIndex = importAssignments.size + reexportIndex;
+      }
       regions.push({
-        type: "reference",
+        type: "import",
         position: 0,
         firstChild: undefined,
         nextSibling: undefined,
-        start: 0,
-        end: insideName.length,
-        dependsOn: new Set([declaration.pointer]),
-        shorthand: insideName === outsideName ? "export" : false,
+        start: 1, // newline
+        end: reexportDeclaration.length,
+        dependsOn: new Set(),
+        shorthand: false,
+        preserveGaps: false,
+        isDynamic: false,
+        specifierForDynamicImport: undefined,
+        importIndex,
       });
-
-      let declarationRegion = regions[
-        declaration.pointer
-      ] as DeclarationCodeRegion;
-      declarationRegion.declaration.references.push(referencePointer);
-      lastSpecifier = currentSpecifier;
-      lastExport = [outsideName, insideName];
     }
   }
 
-  // TODO handle reexports
   // TODO handle export-alls
 
   if (
     importAssignments.size === 0 &&
-    exportAssignments.exports.size === 0 &&
-    exportAssignments.reexports.size === 0 &&
-    exportAssignments.exportAlls.size === 0
+    exports.size === 0 &&
+    reexports.size === 0 &&
+    exportAlls.size === 0
   ) {
     let emptyExport = "export {};";
     code.push(emptyExport);
     regions[0].end += emptyExport.length + 1; // add one char for the newline
   }
   return { exportRegions, exportSpecifierRegions };
+}
+
+function buildExportNamedDeclaration(
+  exportMappings: Map<string, string>, // outsideName -> insideName
+  regions: CodeRegion[],
+  specifierRegions: Map<string, RegionPointer>,
+  bundleDeclarations: DeclarationRegionMap,
+  bundle: URL
+): RegionPointer | undefined {
+  regions.push({
+    type: "general",
+    position: 0,
+    firstChild: regions.length + 1,
+    nextSibling: undefined,
+    start: 1, // newline
+    end: 3, // " };"
+    dependsOn: new Set(),
+    shorthand: false,
+    preserveGaps: false,
+  });
+  let lastSpecifier: RegionPointer | undefined;
+  for (let [specifierIndex, [outsideName, insideName]] of [
+    ...exportMappings.entries(),
+  ].entries()) {
+    let currentSpecifier: RegionPointer = regions.length;
+    specifierRegions.set(outsideName, currentSpecifier);
+    if (lastSpecifier != null) {
+      regions[lastSpecifier].nextSibling = currentSpecifier;
+    }
+    let declaration = bundleDeclarations.get(insideName);
+    if (!declaration) {
+      throw new Error(
+        `bug: cannot find declaration region when building export for '${insideName}' in bundle ${bundle.href}`
+      );
+    }
+
+    let referencePointer = currentSpecifier + 1;
+    // ExportSpecifier region
+    regions.push({
+      type: "general",
+      position: 0,
+      firstChild: referencePointer,
+      nextSibling: undefined,
+      start: specifierIndex === 0 ? 9 /* "export { " */ : 2 /* ", " */,
+      end:
+        insideName === outsideName
+          ? 0
+          : 4 + outsideName.length /* " as outsideName" */,
+      dependsOn: new Set([referencePointer]),
+      shorthand: false,
+      preserveGaps: false,
+    });
+
+    // Reference region
+    regions.push({
+      type: "reference",
+      position: 0,
+      firstChild: undefined,
+      nextSibling: undefined,
+      start: 0,
+      end: insideName.length,
+      dependsOn: new Set([declaration.pointer]),
+      shorthand: insideName === outsideName ? "export" : false,
+    });
+
+    let declarationRegion = regions[
+      declaration.pointer
+    ] as DeclarationCodeRegion;
+    declarationRegion.declaration.references.push(referencePointer);
+    lastSpecifier = currentSpecifier;
+  }
+  return lastSpecifier;
 }
 
 function buildBundleBody(
@@ -1051,7 +1116,7 @@ function setExportDescription(
           true
         ),
         name: insideName,
-        exportRegion: exportSpecifierRegions.get(outsideName)!,
+        exportRegion: exportRegions.get(bundleHref)!,
       });
     }
   }
@@ -1097,8 +1162,35 @@ function assignedExports(
         }
         exports.set(exposedAs, assignedName);
       } else {
-        // TODO deal with NamespaceMarkers and external bundles
-        throw new Error("unimplemented");
+        let assignment = assignments.find(
+          (a) =>
+            a.module.url.href ===
+            (source as UnresolvedResult).importedFromModule.url.href
+        );
+        if (assignment && !ownAssignments.includes(assignment)) {
+          setMapping(assignment.bundleURL.href, exposedAs, original, reexports);
+          if (source.importedPointer == null) {
+            throw new Error(
+              `bug: don't know which region to expose for '${original}' from module ${source.importedFromModule.url.href} consumed by module ${source.consumingModule.url.href} in bundle ${bundle.href}`
+            );
+          }
+          // This is the region that we were using as a signal that this reexport
+          // should be in the bundle, now let's actually remove it (because we are
+          // going to refashion it).
+          let editors = state.visited
+            .filter(
+              (v) =>
+                v.module.url.href ===
+                (source as UnresolvedResult).consumingModule.url.href
+            )
+            .map(({ editor }) => editor);
+          for (let editor of editors) {
+            editor.removeRegionAndItsChildren(source.importedPointer);
+          }
+        } else {
+          // TODO deal with NamespaceMarkers
+          throw new Error("unimplemented");
+        }
       }
     }
   }

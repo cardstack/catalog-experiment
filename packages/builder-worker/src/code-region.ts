@@ -1194,7 +1194,33 @@ export class RegionEditor {
       ) {
         outputDeclarationRegion.region.declaration.declaredName = replacement;
       }
+    } else {
+      let prevSiblingPointer = this.regions.findIndex(
+        (r) => r.nextSibling === regionPointer
+      );
+      let prevSibling = this.regions[prevSiblingPointer];
+      if (
+        prevSibling &&
+        isGeneralCodeRegion(region) &&
+        isImportCodeRegion(prevSibling) &&
+        prevSibling.dependsOn.has(regionPointer) &&
+        prevSibling.specifierForDynamicImport
+      ) {
+        let outputImportRegion = this.outputRegions.find(
+          (o) => o.originalPointer === prevSiblingPointer
+        );
+        if (
+          outputImportRegion &&
+          isImportCodeRegion(outputImportRegion.region)
+        ) {
+          // we use JSON.parse to eliminate the wrapping quotes in the replacement string
+          outputImportRegion.region.specifierForDynamicImport = JSON.parse(
+            replacement
+          );
+        }
+      }
     }
+
     if (!region.shorthand) {
       outputRegion.end = replacement.length;
       this.outputRegions.push({
@@ -1254,15 +1280,20 @@ export class RegionEditor {
     let currentPointer = pointer;
     let isFirstChild = false;
     while (!output && prevPointer !== documentPointer) {
-      prevPointer = this.regions.findIndex(
+      output = this.outputRegions.find(
+        ({ region }) =>
+          region.firstChild === currentPointer ||
+          region.nextSibling === currentPointer
+      );
+      if (output) {
+        isFirstChild = output?.region?.firstChild === currentPointer;
+        break;
+      }
+      prevPointer = currentPointer;
+      currentPointer = this.regions.findIndex(
         (r) =>
           r.firstChild === currentPointer || r.nextSibling === currentPointer
       );
-      output = this.outputRegions.find(
-        (o) => o.originalPointer === prevPointer
-      );
-      isFirstChild = output?.region?.firstChild === currentPointer;
-      currentPointer = prevPointer;
     }
     if (!output) {
       throw new Error(

@@ -635,5 +635,15 @@ function pointerForImport(
         consumingModule.resolvedImports[declaration.importIndex].url.href ===
           importedFromModule.url.href
     ) ?? {};
+  if (pointer == null) {
+    ({ exportRegion: pointer } =
+      [...consumingModule.desc.exports.values()].find(
+        (e) =>
+          e.type === "reexport" &&
+          e.name === importedAs &&
+          consumingModule.resolvedImports[e.importIndex].url.href ===
+            importedFromModule.url.href
+      ) ?? {});
+  }
   return pointer;
 }

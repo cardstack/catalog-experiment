@@ -651,14 +651,28 @@ function exposedRegions(
     for (let [original, exposed] of assignment.exposedNames) {
       let source = resolveDeclaration(original, module, module, ownAssignments);
       if (source.type === "resolved") {
-        results.push({
+        let exposedInfo = {
           module: source.module,
           exposedAs: exposed,
           pointer: source.pointer,
-        });
+        };
+        if (!hasExposedRegionInfo(exposedInfo, results)) {
+          results.push(exposedInfo);
+        }
       } else {
-        // TODO deal with NamespaceMarkers and external bundles
-        throw new Error("unimplemented");
+        if (source.importedPointer == null) {
+          throw new Error(
+            `bug: don't know which region to expose for '${original}' from module ${source.importedFromModule.url.href} consumed by module ${source.consumingModule.url.href} in bundle ${bundle.href}`
+          );
+        }
+        let exposedInfo = {
+          module: source.consumingModule,
+          pointer: source.importedPointer,
+          exposedAs: exposed,
+        };
+        if (!hasExposedRegionInfo(exposedInfo, results)) {
+          results.push(exposedInfo);
+        }
       }
     }
 
@@ -666,14 +680,31 @@ function exposedRegions(
     let moduleDependencies = module.desc.regions[documentPointer].dependsOn;
     if (moduleDependencies.size > 0) {
       for (let moduleDependency of moduleDependencies) {
-        results.push({
+        let exposedInfo = {
           module,
           pointer: moduleDependency,
           exposedAs: undefined,
-        });
+        };
+        if (!hasExposedRegionInfo(exposedInfo, results)) {
+          results.push(exposedInfo);
+        }
       }
     }
   }
 
   return results;
+}
+
+function hasExposedRegionInfo(
+  info: ExposedRegionInfo,
+  infos: ExposedRegionInfo[]
+): boolean {
+  return Boolean(
+    infos.find(
+      (i) =>
+        i.module.url.href === info.module.url.href &&
+        i.pointer === info.pointer &&
+        i.exposedAs === info.exposedAs
+    )
+  );
 }
