@@ -1498,18 +1498,16 @@ function trimLeading(
 ): number {
   if (remainingWhitespaceLength === code.length) {
     // collapse this to an empty doc
-    regions = [
-      {
-        type: "document",
-        start: 0,
-        end: 0,
-        firstChild: undefined,
-        nextSibling: undefined,
-        shorthand: false,
-        dependsOn: new Set(),
-        position: 0,
-      },
-    ];
+    regions.splice(0, regions.length, {
+      type: "document",
+      start: 0,
+      end: 0,
+      firstChild: undefined,
+      nextSibling: undefined,
+      shorthand: false,
+      dependsOn: new Set(),
+      position: 0,
+    });
     return 0;
   }
 

@@ -1152,12 +1152,13 @@ function assignedExports(
     for (let [original, exposedAs] of assignment.exposedNames.entries()) {
       let source = resolveDeclaration(original, module, module, ownAssignments);
       if (source.type === "resolved") {
+        // this is an export from within our own bundle
         let assignedName = state.nameAssignments
           .get(source.module.url.href)
           ?.get(source.declaredName);
         if (!assignedName) {
           throw new Error(
-            `could not find assigned name for declaration '${source.declaredName} in ${source.module.url.href}`
+            `could not find assigned name for declaration '${source.declaredName} in ${source.module.url.href} within bundle ${bundle.href}`
           );
         }
         exports.set(exposedAs, assignedName);
@@ -1166,9 +1167,21 @@ function assignedExports(
           (a) =>
             a.module.url.href ===
             (source as UnresolvedResult).importedFromModule.url.href
-        );
-        if (assignment && !ownAssignments.includes(assignment)) {
+        )!;
+        let assignedName = state.assignedImportedNames
+          .get(source.importedFromModule.url.href)
+          ?.get(source.importedAs);
+        if (!assignedName) {
+          // this is a reexport of an external bundle, it has no scope in the
+          // bundle, and hence no assigned name
           setMapping(assignment.bundleURL.href, exposedAs, original, reexports);
+        } else {
+          // this is an "import" into the bundle's scope, and then an "export"
+          // of that same binding
+          exports.set(exposedAs, assignedName);
+        }
+
+        if (!ownAssignments.includes(assignment)) {
           if (source.importedPointer == null) {
             throw new Error(
               `bug: don't know which region to expose for '${original}' from module ${source.importedFromModule.url.href} consumed by module ${source.consumingModule.url.href} in bundle ${bundle.href}`
@@ -1187,9 +1200,6 @@ function assignedExports(
           for (let editor of editors) {
             editor.removeRegionAndItsChildren(source.importedPointer);
           }
-        } else {
-          // TODO deal with NamespaceMarkers
-          throw new Error("unimplemented");
         }
       }
     }
