@@ -3,7 +3,12 @@ import {
   ModuleResolution,
   Resolution,
 } from "./nodes/resolution";
-import { getExports, getExportDesc } from "./describe-file";
+import {
+  getExports,
+  getExportDesc,
+  isExportAllMarker,
+  ExportAllExportDescription,
+} from "./describe-file";
 import {
   isNamespaceMarker,
   NamespaceMarker,
@@ -272,6 +277,35 @@ export class ModuleRewriter {
   }
 
   private makeNamespaceMappings() {
+    // assign names for "export *" of external bundles that need to be converted
+    // into namespace imports so as not to alter the bundle's API, which we only
+    // consider in non-entrypoint modules
+    if (
+      this.ownAssignments[0].entrypointModuleURL.href !== this.module.url.href
+    ) {
+      let externalExportAlls = [...this.module.desc.exports]
+        .filter(
+          ([exportName, exportDesc]) =>
+            isExportAllMarker(exportName) &&
+            exportDesc.type === "export-all" &&
+            !this.ownAssignments.find(
+              (a) =>
+                a.module.url.href ===
+                this.module.resolvedImports[exportDesc.importIndex].url.href
+            )
+        )
+        .map(([, exportDesc]) => exportDesc) as ExportAllExportDescription[];
+      for (let [index, exportAll] of externalExportAlls.entries()) {
+        let importedModule = this.module.resolvedImports[exportAll.importIndex];
+        this.maybeAssignImportName(
+          importedModule.url.href,
+          NamespaceMarker,
+          `_namespace${index}`
+        );
+      }
+    }
+
+    // deal with bundle-internal namespace imports
     for (let pointer of this.editor.includedRegions()) {
       let region = this.module.desc.regions[pointer];
       if (
@@ -513,9 +547,37 @@ export function resolveDeclaration(
     getExportDesc(importedFromModule, importedName) ?? {};
   if (!sourceModule || !exportDesc) {
     throw new Error(
-      `The module ${importedFromModule.url.href} has no export '${importedName}`
+      `The module ${importedFromModule.url.href} has no export '${importedName}'`
     );
   }
+  if (
+    !ownAssignments.find((a) => a.module.url.href === sourceModule!.url.href)
+  ) {
+    // TODO we could do better here at figuring out the consuming module--in
+    // this case we only look one level deep in the "export *"" chain. this should
+    // really be a stack...
+    consumingModule =
+      importedFromModule.url.href !== sourceModule.url.href
+        ? importedFromModule
+        : consumingModule;
+    let importedPointer = pointerForImport(
+      importedName,
+      sourceModule,
+      makeNonCyclic(consumingModule)
+    );
+    return {
+      type: "unresolved",
+      importedAs: importedName,
+      importedFromModule: sourceModule,
+      consumingModule,
+      importedPointer,
+      importedRegion:
+        importedPointer != null
+          ? consumingModule.desc.regions[importedPointer]
+          : undefined,
+    };
+  }
+
   let { declarations } = sourceModule.desc;
   if (
     exportDesc?.type === "reexport" ||
@@ -639,8 +701,8 @@ function pointerForImport(
     ({ exportRegion: pointer } =
       [...consumingModule.desc.exports.values()].find(
         (e) =>
-          e.type === "reexport" &&
-          e.name === importedAs &&
+          ((e.type === "reexport" && e.name === importedAs) ||
+            e.type === "export-all") &&
           consumingModule.resolvedImports[e.importIndex].url.href ===
             importedFromModule.url.href
       ) ?? {});

@@ -1,6 +1,6 @@
 import { BuilderNode, NextNode } from "./common";
 import { makeNonCyclic, ModuleResolution, Resolution } from "./resolution";
-import { getExports, ModuleDescription } from "../describe-file";
+import { getExportDesc, getExports, ModuleDescription } from "../describe-file";
 import {
   documentPointer,
   isNamespaceMarker,
@@ -388,6 +388,9 @@ function discoverIncludedRegions(
           }`
         );
       }
+      if (source.consumingModule.url.href !== module.url.href) {
+        editor = addNewEditor(source.consumingModule, editor, editors);
+      }
       if (
         ownAssignments.find(
           (a) =>
@@ -399,9 +402,6 @@ function discoverIncludedRegions(
         // we mark the namespace import region as something we want to keep as a
         // signal to the Append nodes to manufacture a namespace object for this
         // consumed import--ultimately, though, we will not include this region.
-        if (source.consumingModule.url.href !== module.url.href) {
-          editor = addNewEditor(source.consumingModule, editor, editors);
-        }
         if (source.importedPointer == null) {
           throw new Error(
             `unable to determine the region for a namespace import '${region.declaration.declaredName}' of ${source.importedFromModule.url.href} from the consuming module ${source.consumingModule.url.href} in bundle ${bundle.href}`
@@ -646,9 +646,26 @@ function exposedRegions(
     (a) => a.bundleURL.href === bundle.href
   );
   for (let assignment of ownAssignments) {
-    let { module }: { module: Resolution } = assignment;
+    let { module: resolution }: { module: Resolution } = assignment;
+    let module = makeNonCyclic(resolution);
 
     for (let [original, exposed] of assignment.exposedNames) {
+      let { module: sourceModule } = getExportDesc(module, original) ?? {};
+      if (!sourceModule) {
+        throw new Error(
+          `cannot determine the module that the export '${original}' originally comes from when evaluating the module ${module.url.href} in the bundle ${bundle.href}`
+        );
+      }
+      if (
+        !ownAssignments.find(
+          (a) => a.module.url.href === sourceModule!.url.href
+        )
+      ) {
+        // In this scenario the export actually comes from an external bundle
+        // via an export-all. we'll deal with this as part of determining the
+        // assigned exports in a later step
+        continue;
+      }
       let source = resolveDeclaration(original, module, module, ownAssignments);
       if (source.type === "resolved") {
         let exposedInfo = {

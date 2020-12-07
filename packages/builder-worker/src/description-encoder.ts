@@ -70,6 +70,7 @@ const importCodeRegionLegend = [
   "importIndex", // number
   "isDynamic", // boolean
   "specifierForDynamicImport", // string | null
+  "exportType", // "r" = "reexport" | "e" = "export-all" | null
 ];
 
 const referenceCodeRegionLegend = [...baseCodeRegionLegend];
@@ -182,6 +183,7 @@ function encodeModuleDescription(desc: ModuleDescription): string {
                 return encodeObj(r, importCodeRegionLegend, {
                   type: { ...regionTypeShorthand },
                   shorthand: { import: "i", export: "e", object: "o" },
+                  exportType: { reexport: "r", "export-all": "e" },
                 });
               case "declaration":
                 return encodeObj(
@@ -295,6 +297,7 @@ function decodeModuleDescription(encoded: string): ModuleDescription {
                 {
                   type: { ...regionTypeShorthand },
                   shorthand: { import: "i", export: "e", object: "o" },
+                  exportType: { reexport: "r", "export-all": "e" },
                 },
                 { dependsOn: "Set" }
               ) as ImportCodeRegion;
@@ -358,7 +361,7 @@ function encodeExportAllMarker(marker: ExportAllMarker) {
 function decodeExportAllMarker(encoded: string) {
   let match = encoded.match(exportAllMarkerRegex);
   if (match) {
-    return match[1];
+    return { exportAllFrom: match[1] };
   }
   return;
 }

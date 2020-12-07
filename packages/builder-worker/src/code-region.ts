@@ -33,6 +33,7 @@ interface NewRegion {
   declaration: DeclarationDescription | undefined;
   importIndex: number | undefined;
   isDynamic: boolean | undefined;
+  exportType: ImportCodeRegion["exportType"];
   specifierForDynamicImport: string | undefined;
   pathFacts: PathFacts;
 }
@@ -90,6 +91,7 @@ export class RegionBuilder {
     path: NodePath,
     importInfo?: {
       importIndex: number;
+      exportType: ImportCodeRegion["exportType"];
       isDynamic: boolean;
       specifierForDynamicImport: string | undefined;
     },
@@ -106,6 +108,7 @@ export class RegionBuilder {
       | DeclarationDescription
       | {
           importIndex: number;
+          exportType: ImportCodeRegion["exportType"];
           isDynamic: boolean;
           specifierForDynamicImport: string | undefined;
         }
@@ -135,6 +138,7 @@ export class RegionBuilder {
     let type: CodeRegion["type"];
     let importIndex: number | undefined;
     let isDynamic: boolean | undefined;
+    let exportType: ImportCodeRegion["exportType"];
     let specifierForDynamicImport: string | undefined;
     if (isDeclarationDescription(declarationOrImportIndexOrType)) {
       type = "declaration";
@@ -142,6 +146,7 @@ export class RegionBuilder {
       type = "import";
       ({
         importIndex,
+        exportType,
         isDynamic,
         specifierForDynamicImport,
       } = declarationOrImportIndexOrType);
@@ -173,6 +178,7 @@ export class RegionBuilder {
           ? declarationOrImportIndexOrType
           : importIndex,
       isDynamic,
+      exportType,
       specifierForDynamicImport,
       pathFacts: {
         shorthand: Array.isArray(pathOrPaths)
@@ -278,6 +284,7 @@ export class RegionBuilder {
           }
           if (isImportCodeRegion(child)) {
             child.importIndex = newRegion.importIndex ?? child.importIndex;
+            child.exportType = newRegion.exportType ?? child.exportType;
             child.isDynamic = newRegion.isDynamic ?? child.isDynamic;
             child.specifierForDynamicImport =
               newRegion.specifierForDynamicImport ??
@@ -329,6 +336,7 @@ export class RegionBuilder {
       dependsOn,
       type,
       importIndex,
+      exportType,
       isDynamic,
       specifierForDynamicImport,
     } = newRegion;
@@ -341,6 +349,7 @@ export class RegionBuilder {
       dependsOn,
       declaration,
       importIndex,
+      exportType,
       isDynamic,
       specifierForDynamicImport,
       ...newRegion.pathFacts,
@@ -411,6 +420,7 @@ export class RegionBuilder {
       type,
       importIndex,
       isDynamic,
+      exportType,
       specifierForDynamicImport,
     } = newRegion;
     let data = {
@@ -423,6 +433,7 @@ export class RegionBuilder {
       declaration,
       importIndex,
       isDynamic,
+      exportType,
       specifierForDynamicImport,
       ...newRegion.pathFacts,
     };
@@ -444,6 +455,7 @@ export class RegionBuilder {
       type,
       importIndex,
       isDynamic,
+      exportType,
       specifierForDynamicImport,
     } = newRegion;
     let data = {
@@ -456,6 +468,7 @@ export class RegionBuilder {
       declaration,
       importIndex,
       isDynamic,
+      exportType,
       specifierForDynamicImport,
       ...newRegion.pathFacts,
     };
@@ -678,6 +691,7 @@ export interface ImportCodeRegion extends Omit<GeneralCodeRegion, "type"> {
   importIndex: number;
   isDynamic: boolean;
   specifierForDynamicImport: string | undefined;
+  exportType: "reexport" | "export-all" | undefined;
 }
 
 export function isImportCodeRegion(region: any): region is ImportCodeRegion {

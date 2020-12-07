@@ -1,10 +1,11 @@
 import { BuilderNode, Value, NodeOutput } from "./common";
-import { ModuleResolution } from "./resolution";
+import { makeNonCyclic, ModuleResolution } from "./resolution";
 import {
   declarationsMap,
   ModuleDescription,
   ensureImportSpecifier,
   ExportAllMarker,
+  ExportAllExportDescription,
 } from "../describe-file";
 import {
   isNamespaceMarker,
@@ -30,6 +31,7 @@ import {
 import { depAsURL, Dependencies } from "./entrypoint";
 import { setMapping, stringifyReplacer } from "../utils";
 import { DependencyResolver } from "./combine-modules";
+import { flatMap } from "lodash";
 
 export class AppendModuleNode implements BuilderNode {
   cacheKey: string;
@@ -149,6 +151,15 @@ export class FinishAppendModulesNode implements BuilderNode {
       bundleDeclarations,
       this.bundle
     );
+    prevSibling = buildManufacturedCode(
+      code,
+      regions,
+      prevSibling,
+      this.state,
+      this.bundleAssignments,
+      bundleDeclarations,
+      this.bundle
+    );
     prevSibling = buildBundleBody(
       code,
       regions,
@@ -198,6 +209,182 @@ export class FinishAppendModulesNode implements BuilderNode {
   }
 }
 
+// This manufactures declarations for "export *" that we converted into an
+// "import *" because the "export *" was included in a module that is not an
+// entrypoint for the bundle--and hence does not effect the bundle's API.
+function buildManufacturedCode(
+  code: string[],
+  regions: CodeRegion[],
+  prevSibling: RegionPointer | undefined,
+  state: HeadState,
+  assignments: BundleAssignment[],
+  bundleDeclarations: DeclarationRegionMap,
+  bundle: URL
+): RegionPointer | undefined {
+  let ownAssignments = assignments.filter(
+    (a) => a.bundleURL.href === bundle.href
+  );
+  let declarations: Map<string, Map<string, string>> = new Map(); // namespaceBindingName => <exportedName => assignedName>
+  for (let { module } of state.visited) {
+    for (let exportDesc of [...module.desc.exports.values()].filter(
+      (exportDesc) =>
+        exportDesc.type === "export-all" &&
+        !ownAssignments.find(
+          (a) =>
+            a.module.url.href ===
+            module.resolvedImports[exportDesc.importIndex].url.href
+        )
+    ) as ExportAllExportDescription[]) {
+      let importedModule = makeNonCyclic(
+        module.resolvedImports[exportDesc.importIndex]
+      );
+      // find all the bindings that import this module that are missing declarations--these are the declarations that we need to manufacture.
+      let mappings = state.assignedImportedNames.get(importedModule.url.href);
+      if (!mappings) {
+        continue;
+      }
+      let namespaceBinding = mappings.get(NamespaceMarker);
+      if (!namespaceBinding) {
+        throw new Error(
+          `missing manufactured namespace binding for the namespace import that corresponds to the export * of ${importedModule.url.href} in module ${module.url.href} within bundle ${bundle.href}`
+        );
+      }
+      for (let [outsideName, assignedName] of mappings) {
+        if (isNamespaceMarker(outsideName)) {
+          continue;
+        }
+        let source = resolveDeclaration(
+          outsideName,
+          importedModule,
+          module,
+          ownAssignments
+        );
+        if (
+          source.type === "unresolved" &&
+          !ownAssignments.find(
+            (a) =>
+              a.module.url.href ===
+              (source as UnresolvedResult).importedFromModule.url.href
+          )
+        ) {
+          setMapping(namespaceBinding, outsideName, assignedName, declarations);
+        }
+      }
+    }
+  }
+
+  for (let [namespaceBinding, mappings] of [...declarations]) {
+    let { pointer: importPointer } =
+      bundleDeclarations.get(namespaceBinding) ?? {};
+    if (importPointer == null) {
+      throw new Error(
+        `cannot find region for manufactured namespace import '${namespaceBinding}' within bundle ${bundle.href}`
+      );
+    }
+    let declaration: string[] = [`const {`];
+    let props: string[] = [];
+    for (let [outsideName, assignedName] of mappings) {
+      props.push(
+        outsideName === assignedName
+          ? assignedName
+          : `${outsideName}: ${assignedName}`
+      );
+    }
+    declaration.push(props.join(", "), `} = ${namespaceBinding};`);
+    code.push(declaration.join(" "));
+
+    if (prevSibling != null) {
+      regions[prevSibling].nextSibling = regions.length;
+    } else {
+      regions[documentPointer].firstChild = regions.length;
+    }
+    let declarationPointer = regions.length;
+    let namespaceBindingReferencePointer = declarationPointer + 1;
+    prevSibling = declarationPointer;
+    let { references: namespaceReferences } = bundleDeclarations.get(
+      namespaceBinding
+    )!;
+    namespaceReferences.add(namespaceBindingReferencePointer);
+    let declarationRegion = {
+      type: "general",
+      start: 1, // newline
+      end: 1, // trailing semicolon
+      firstChild: namespaceBindingReferencePointer + 1,
+      nextSibling: undefined,
+      shorthand: false,
+      position: 0,
+      dependsOn: new Set([namespaceBindingReferencePointer]),
+      preserveGaps: false,
+    } as GeneralCodeRegion;
+    let namespaceBindingReferenceRegion = {
+      type: "reference",
+      start: 5 /* " } = " */,
+      end: namespaceBinding.length,
+      firstChild: undefined,
+      nextSibling: undefined,
+      position: 0,
+      shorthand: false,
+      dependsOn: new Set([importPointer]),
+    } as ReferenceCodeRegion;
+    regions.push(
+      declarationRegion,
+      namespaceBindingReferenceRegion,
+      ...flatMap(
+        [...mappings.entries()],
+        ([outsideName, assignedName], index) => {
+          let declaratorPointer =
+            namespaceBindingReferencePointer + 1 + index * 2;
+          let referencePointer = declaratorPointer + 1;
+          // it's side-effecty, i know, but it's super convenient since we're
+          // right there...
+          bundleDeclarations.set(assignedName, {
+            pointer: declaratorPointer,
+            references: new Set([referencePointer]),
+          });
+          return [
+            {
+              type: "declaration",
+              start: index === 0 ? 8 /* const { " */ : 2 /* ", " */,
+              end: 0,
+              firstChild: referencePointer,
+              nextSibling:
+                index === mappings.size - 1
+                  ? namespaceBindingReferencePointer
+                  : referencePointer + 1,
+              shorthand: false,
+              position: 0,
+              dependsOn: new Set([declarationPointer, referencePointer]),
+              preserveGaps: false,
+              declaration: {
+                type: "local",
+                declaredName: assignedName,
+                references: [
+                  referencePointer,
+                  // this will be populated as we build the body for the bundle
+                ],
+              },
+            } as DeclarationCodeRegion,
+            {
+              type: "reference",
+              start:
+                outsideName === assignedName
+                  ? 0
+                  : outsideName.length + 2 /* "outsideName: " */,
+              end: assignedName.length,
+              firstChild: undefined,
+              nextSibling: undefined,
+              shorthand: outsideName === assignedName ? "object" : false,
+              position: 0,
+              dependsOn: new Set([declaratorPointer]),
+            } as ReferenceCodeRegion,
+          ];
+        }
+      )
+    );
+  }
+  return prevSibling;
+}
+
 function buildImports(
   code: string[],
   regions: CodeRegion[],
@@ -232,6 +419,7 @@ function buildImports(
         regions.push({
           type: "import",
           importIndex,
+          exportType: undefined,
           start: importIndex === 0 ? 0 : 1, // newline
           end: importCode.length,
           firstChild: undefined,
@@ -297,6 +485,7 @@ function buildImports(
           position: 0,
           dependsOn: new Set(),
           shorthand: false,
+          exportType: undefined,
           preserveGaps: false,
           specifierForDynamicImport: undefined,
         };
@@ -527,13 +716,49 @@ function buildExports(
         shorthand: false,
         preserveGaps: false,
         isDynamic: false,
+        exportType: "reexport",
         specifierForDynamicImport: undefined,
         importIndex,
       });
     }
   }
 
-  // TODO handle export-alls
+  if (exportAlls.size > 0) {
+    for (let [exportAllIndex, bundleHref] of [...exportAlls].entries()) {
+      let source = maybeRelativeURL(new URL(bundleHref), bundle);
+      let exportAllDeclaration = `export * from "${source}";`;
+      code.push(exportAllDeclaration);
+
+      if (prevSibling != null) {
+        regions[prevSibling].nextSibling = regions.length;
+      } else {
+        regions[documentPointer].firstChild = regions.length;
+      }
+      exportRegions.set(bundleHref, regions.length);
+      prevSibling = regions.length;
+      let importIndex = [...importAssignments.keys()].findIndex(
+        (importedBundleHref) => bundleHref === importedBundleHref
+      );
+      if (importIndex === -1) {
+        importIndex = importAssignments.size + exportAllIndex;
+      }
+      regions.push({
+        type: "import",
+        position: 0,
+        firstChild: undefined,
+        nextSibling: undefined,
+        start: 1, // newline
+        end: exportAllDeclaration.length,
+        dependsOn: new Set(),
+        shorthand: false,
+        preserveGaps: false,
+        isDynamic: false,
+        exportType: "export-all",
+        specifierForDynamicImport: undefined,
+        importIndex,
+      });
+    }
+  }
 
   if (
     importAssignments.size === 0 &&
@@ -993,6 +1218,7 @@ function flushImportDeclarationRegion(
   regions.push({
     type: "import",
     importIndex,
+    exportType: undefined,
     start: importIndex === 0 ? 0 : 1, // newline
     end: importSource.length + 11, // " } from 'importSource';"
     firstChild: firstSpecifierPointer,
@@ -1172,9 +1398,35 @@ function assignedExports(
           .get(source.importedFromModule.url.href)
           ?.get(source.importedAs);
         if (!assignedName) {
-          // this is a reexport of an external bundle, it has no scope in the
-          // bundle, and hence no assigned name
-          setMapping(assignment.bundleURL.href, exposedAs, original, reexports);
+          if (source.importedPointer == null) {
+            throw new Error(
+              `cannot determine code region that imports (as a reexport or export-all) the module ${source.importedFromModule.url.href} in module ${source.consumingModule.url.href} within bundle ${bundle.href}`
+            );
+          }
+          let region =
+            source.consumingModule.desc.regions[source.importedPointer];
+          if (region.type !== "import" || !region.exportType) {
+            throw new Error(
+              `expected code region ${source.importedPointer} in ${
+                source.consumingModule.url.href
+              } within bundle ${
+                bundle.href
+              } to be an import region with an export type of "reexport" or "export-all" but instead it is ${JSON.stringify(
+                region,
+                stringifyReplacer
+              )}`
+            );
+          }
+          if (region.exportType === "reexport") {
+            setMapping(
+              assignment.bundleURL.href,
+              exposedAs,
+              source.importedAs,
+              reexports
+            );
+          } else {
+            exportAlls.add(assignment.bundleURL.href);
+          }
         } else {
           // this is an "import" into the bundle's scope, and then an "export"
           // of that same binding
@@ -1236,13 +1488,50 @@ function assignedImports(
       .map((pointer) => ({ pointer, region: module.desc.regions[pointer] }))
       .sort((a, b) => a.region.position - b.region.position);
     for (let { pointer, region } of regionInfo) {
-      if (region.type !== "declaration" && region.type !== "import") {
+      if (
+        region.type === "import" &&
+        region.exportType === "export-all" &&
+        ownAssignments[0].entrypointModuleURL.href !== module.url.href
+      ) {
+        // we manufacture "import *" for "export *" of external
+        // bundles that are present in modules that are not entrypoints (meaning that
+        // the "export *" is not part of the bundle's API)
+        let importedModule = module.resolvedImports[region.importIndex];
+        let assignment = assignments.find(
+          (a) => a.module.url.href === importedModule.url.href
+        )!;
+        if (
+          !ownAssignments.find(
+            (a) => a.bundleURL.href === assignment.bundleURL.href
+          )
+        ) {
+          let assignedName = state.assignedImportedNames
+            .get(importedModule.url.href)
+            ?.get(NamespaceMarker);
+          if (!assignedName) {
+            throw new Error(
+              `cannot determine the assigned name for the manufactured namespace import that corresponds to the export * from ${importedModule.url.href} in module ${module.url.href} within bundle ${bundle.href}`
+            );
+          }
+          setMapping(
+            assignment.bundleURL.href,
+            NamespaceMarker,
+            assignedName,
+            results
+          );
+          // This is the region that we were using as a signal that this import
+          // should be in the bundle, now let's actually remove it (because we are
+          // going to refashion it).
+          editor.removeRegionAndItsChildren(pointer);
+        }
+        continue;
+      } else if (region.type !== "declaration" && region.type !== "import") {
         continue;
       }
 
       // check to see if this is a side-effect only import from another bundle
       if (region.type === "import") {
-        if (region.isDynamic) {
+        if (region.isDynamic || region.exportType) {
           continue;
         }
         let importedModule = module.resolvedImports[region.importIndex];

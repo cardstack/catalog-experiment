@@ -679,6 +679,7 @@ export function describeFile(
         path as NodePath,
         {
           importIndex,
+          exportType: undefined,
           isDynamic: true,
           specifierForDynamicImport: importDesc.specifier,
         },
@@ -699,8 +700,26 @@ export function describeFile(
       isES6Module = true;
 
       let source = path.node.source.value;
-      let exportRegion = builder.createCodeRegion(path as NodePath);
-      let importIndex = ensureImportSpecifier(desc, source, exportRegion, true);
+      let specifier = path.node.source.value;
+      let importIndex = desc.imports.findIndex(
+        (i) => i.specifier === specifier
+      );
+      let importExists = importIndex > -1;
+      importIndex = importIndex === -1 ? desc.imports.length : importIndex;
+      let exportRegion = builder.createCodeRegion(path as NodePath, {
+        importIndex,
+        exportType: "export-all",
+        specifierForDynamicImport: undefined,
+        isDynamic: false,
+      });
+      if (!importExists) {
+        desc.imports.push({
+          specifier,
+          isDynamic: false,
+          isReexport: true,
+          region: exportRegion,
+        });
+      }
 
       let marker: ExportAllMarker = { exportAllFrom: source };
       desc.exports.set(marker, {
@@ -758,16 +777,28 @@ export function describeFile(
     },
     ExportNamedDeclaration(path) {
       isES6Module = true;
-      let exportRegion = builder.createCodeRegion(path as NodePath);
       if (path.node.source) {
         // we are reexporting things
-        let importIndex = ensureImportSpecifier(
-          desc,
-          path.node.source!.value,
-          exportRegion,
-          true
+        let specifier = path.node.source.value;
+        let importIndex = desc.imports.findIndex(
+          (i) => i.specifier === specifier
         );
-
+        let importExists = importIndex > -1;
+        importIndex = importIndex === -1 ? desc.imports.length : importIndex;
+        let exportRegion = builder.createCodeRegion(path as NodePath, {
+          importIndex,
+          exportType: "reexport",
+          specifierForDynamicImport: undefined,
+          isDynamic: false,
+        });
+        if (!importExists) {
+          desc.imports.push({
+            specifier,
+            isDynamic: false,
+            isReexport: true,
+            region: exportRegion,
+          });
+        }
         for (let spec of path.node.specifiers) {
           switch (spec.type) {
             case "ExportDefaultSpecifier":
@@ -800,6 +831,7 @@ export function describeFile(
         }
       } else {
         // we are not reexporting
+        let exportRegion = builder.createCodeRegion(path as NodePath);
         if (path.node.declaration) {
           switch (path.node.declaration.type) {
             case "ClassDeclaration":
