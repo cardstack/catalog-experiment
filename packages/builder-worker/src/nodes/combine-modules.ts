@@ -19,6 +19,7 @@ import {
   HeadState,
   resolveDeclaration,
   UnresolvedResult,
+  resolutionForPkgDepDeclaration,
 } from "../module-rewriter";
 import { AppendModuleNode, FinishAppendModulesNode } from "./append-module";
 import { Dependencies } from "./entrypoint";
@@ -70,7 +71,7 @@ export class CombineModulesNode implements BuilderNode {
       this.bundle
     );
 
-    let exposed = exposedRegions(this.bundle, assignments);
+    let exposed = exposedRegions(this.bundle, assignments, depResolver);
 
     let editors: { module: ModuleResolution; editor: RegionEditor }[] = [];
     let visitedRegions: Map<string, Set<RegionPointer>> = new Map();
@@ -940,7 +941,8 @@ export interface ExposedRegionInfo {
 
 function exposedRegions(
   bundle: URL,
-  bundleAssignments: BundleAssignment[]
+  bundleAssignments: BundleAssignment[],
+  depResolver: DependencyResolver
 ): ExposedRegionInfo[] {
   let results: ExposedRegionInfo[] = [];
   let ownAssignments = bundleAssignments.filter(
@@ -951,12 +953,14 @@ function exposedRegions(
     let module = makeNonCyclic(resolution);
 
     for (let [original, exposed] of assignment.exposedNames) {
-      let { module: sourceModule } = getExportDesc(module, original) ?? {};
-      if (!sourceModule) {
+      let { module: sourceModule, desc: exportDesc } =
+        getExportDesc(module, original) ?? {};
+      if (!sourceModule || !exportDesc) {
         throw new Error(
           `cannot determine the module that the export '${original}' originally comes from when evaluating the module ${module.url.href} in the bundle ${bundle.href}`
         );
       }
+      let importedFrom = sourceModule;
       if (
         !ownAssignments.find(
           (a) => a.module.url.href === sourceModule!.url.href
@@ -967,7 +971,40 @@ function exposedRegions(
         // assigned exports in a later step
         continue;
       }
-      let source = resolveDeclaration(original, module, module, ownAssignments);
+
+      if (exportDesc.type === "local") {
+        let resolution = resolutionForPkgDepDeclaration(
+          sourceModule,
+          exportDesc.name,
+          depResolver
+        );
+        if (resolution) {
+          if (isNamespaceMarker(resolution.importedAs)) {
+            throw new Error("unimplemented");
+          }
+          if (!resolution.importedSource) {
+            let exposedInfo = {
+              module: resolution.consumedBy,
+              exposedAs: exposed,
+              pointer: resolution.consumedByPointer,
+            };
+            if (!hasExposedRegionInfo(exposedInfo, results)) {
+              results.push(exposedInfo);
+            }
+            continue;
+          }
+          original = resolution.importedAs;
+          module = resolution.consumedBy;
+          importedFrom = resolution.importedSource.declaredIn;
+        }
+      }
+
+      let source = resolveDeclaration(
+        original,
+        importedFrom,
+        sourceModule,
+        ownAssignments
+      );
       if (source.type === "resolved") {
         let exposedInfo = {
           module: source.module,

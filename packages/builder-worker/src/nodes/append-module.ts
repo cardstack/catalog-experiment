@@ -26,6 +26,7 @@ import { maybeRelativeURL } from "../path";
 import {
   HeadState,
   ModuleRewriter,
+  resolutionForPkgDepDeclaration,
   resolveDeclaration,
   UnresolvedResult,
 } from "../module-rewriter";
@@ -150,7 +151,8 @@ export class FinishAppendModulesNode implements BuilderNode {
     let exportAssignments = assignedExports(
       this.bundle,
       this.bundleAssignments,
-      this.state
+      this.state,
+      this.depResolver
     );
     let prevSibling = buildImports(
       code,
@@ -955,6 +957,7 @@ function buildBundleBody(
       bundleDeclarations,
       module,
       state,
+      depResolver,
       bundle
     );
 
@@ -1047,6 +1050,7 @@ function discoverReferenceRegions(
   bundleDeclarations: DeclarationRegionMap,
   module: ModuleResolution,
   state: HeadState,
+  depResolver: DependencyResolver,
   bundle: URL
 ) {
   for (let region of regions.filter(
@@ -1091,24 +1095,30 @@ function discoverReferenceRegions(
     } else {
       importRegion = regions[declarationPointer - offset];
     }
-    if (
-      !importRegion ||
-      importRegion.type !== "declaration" ||
-      importRegion.declaration.type !== "import"
-    ) {
+    if (importRegion?.type !== "declaration") {
+      continue;
+    }
+    let resolution = resolutionForPkgDepDeclaration(
+      module,
+      importRegion.declaration.declaredName,
+      depResolver
+    );
+    let assignedName: string | undefined;
+    if (resolution?.importedSource) {
+      assignedName = state.assignedImportedNames
+        .get(resolution.importedSource.declaredIn.url.href)
+        ?.get(resolution.importedAs);
+    } else if (importRegion.declaration.type === "import") {
+      assignedName = state.nameAssignments
+        .get(module.url.href)
+        ?.get(importRegion.declaration.declaredName);
+    } else {
       continue;
     }
 
-    let assignedName = state.nameAssignments
-      .get(module.url.href)
-      ?.get(importRegion.declaration.declaredName);
     if (!assignedName) {
       throw new Error(
-        `bug: could not find assigned name for import '${
-          importRegion.declaration.importedName
-        }' from ${
-          module.resolvedImports[importRegion.declaration.importIndex].url.href
-        } in ${module.url.href} from bundle ${bundle.href}`
+        `bug: could not find assigned name for import '${importRegion.declaration.declaredName}' in ${module.url.href} from bundle ${bundle.href}`
       );
     }
     let declaration = bundleDeclarations.get(assignedName);
@@ -1428,7 +1438,8 @@ function setExportDescription(
 function assignedExports(
   bundle: URL,
   assignments: BundleAssignment[],
-  state: HeadState
+  state: HeadState,
+  depResolver: DependencyResolver
 ): {
   exports: Map<string, string>; // outside name -> inside name
   reexports: Map<string, Map<string, string>>; // bundle href -> [outside name => inside name]
@@ -1442,8 +1453,42 @@ function assignedExports(
   );
   for (let assignment of ownAssignments) {
     let { module } = assignment;
+    let importedFrom = module;
     for (let [original, exposedAs] of assignment.exposedNames.entries()) {
-      let source = resolveDeclaration(original, module, module, ownAssignments);
+      let exportDesc = module.desc.exports.get(original);
+      if (exportDesc && exportDesc.type === "local") {
+        let resolution = resolutionForPkgDepDeclaration(
+          module,
+          exportDesc.name,
+          depResolver
+        );
+        if (resolution) {
+          if (isNamespaceMarker(resolution.importedAs)) {
+            throw new Error("unimplemented");
+          }
+          if (!resolution.importedSource) {
+            let assignedName = state.nameAssignments
+              .get(resolution.consumedBy.url.href)
+              ?.get(resolution.importedAs);
+            if (!assignedName) {
+              throw new Error(
+                `could not find assigned name for declaration '${resolution.importedAs} in ${resolution.consumedBy.url.href} within bundle ${bundle.href}`
+              );
+            }
+            exports.set(exposedAs, assignedName);
+            continue;
+          }
+          original = resolution.importedAs;
+          module = resolution.consumedBy;
+          importedFrom = resolution.importedSource.declaredIn;
+        }
+      }
+      let source = resolveDeclaration(
+        original,
+        importedFrom,
+        module,
+        ownAssignments
+      );
       if (source.type === "resolved") {
         // this is an export from within our own bundle
         let assignedName = state.nameAssignments

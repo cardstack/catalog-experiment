@@ -5445,7 +5445,7 @@ QUnit.module("module builder", function (origHooks) {
           "driver.js": `
             import { getPuppies } from "lib1";
             import { puppies } from "puppies";
-            console.log([...puppies, ...getPuppies(), ...myPuppies()]);
+            console.log([...puppies, ...getPuppies()]);
           `,
           [`${lib1BundleHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
           [`${lib1BundleHref}/lib.js`]: bundle1Src,
@@ -5457,7 +5457,7 @@ QUnit.module("module builder", function (origHooks) {
           `
           const puppies = ["mango", "van gogh"];
           function getPuppies() { return puppies; }
-          console.log([...puppies, ...getPuppies(), ...myPuppies()]);
+          console.log([...puppies, ...getPuppies()]);
           export {};
           `
         );
@@ -5526,7 +5526,7 @@ QUnit.module("module builder", function (origHooks) {
           "driver.js": `
             import { getPuppies } from "lib1";
             import { puppies } from "puppies";
-            console.log([...puppies, ...getPuppies(), ...myPuppies()]);
+            console.log([...puppies, ...getPuppies()]);
           `,
           [`${lib1BundleHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
           [`${lib1BundleHref}/lib.js`]: bundle1Src,
@@ -5538,7 +5538,7 @@ QUnit.module("module builder", function (origHooks) {
           `
           const puppies = ["mango", "van gogh"];
           function getPuppies() { return puppies; }
-          console.log([...puppies, ...getPuppies(), ...myPuppies()]);
+          console.log([...puppies, ...getPuppies()]);
           export {};
           `
         );
@@ -5552,6 +5552,94 @@ QUnit.module("module builder", function (origHooks) {
           );
           assert.equal(puppies.declaration.original?.range, "^7.9.3");
           assert.equal(puppies.declaration.original?.importedAs, "puppies");
+        }
+      });
+
+      test("prevents collision when a bundle consumes a pkg that is also a direct dependency of the project, and they do not have overlapping consumption ranges", async function (assert) {
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["index.js"],
+            "dependencies": {
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "7.9.4"
+              }
+            }
+          }`,
+          "catalogjs.lock": `{ "puppies": "${puppiesBundle1Href}/index.js" }`, // ver 7.9.4
+          "index.js": `
+            import { puppies } from "puppies";
+            function getPuppies() { return puppies; }
+            function getCats() { return ["jojo"]; }
+            function getRats() { return ["pizza rat"]; }
+            export { getPuppies, getCats, getRats };
+          `,
+        });
+        let bundle1Src = await bundleSource(assert.fs);
+        let lib1BundleHref =
+          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["driver.js"],
+            "dependencies": {
+              "lib1": {
+                "type": "npm",
+                "pkgName": "lib1",
+                "range": "^1.0.0"
+              },
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "7.9.2"
+              }
+            }
+          }`,
+          // puppies dep is ver 7.9.2
+          "catalogjs.lock": `{
+            "lib1": "${lib1BundleHref}/lib.js",
+            "puppies": "${puppiesBundle2Href}/index.js"
+          }`,
+          "driver.js": `
+            import { getPuppies } from "lib1";
+            import { puppies } from "puppies";
+            console.log([...puppies, ...getPuppies()]);
+          `,
+          [`${lib1BundleHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
+          [`${lib1BundleHref}/lib.js`]: bundle1Src,
+        });
+        let { source, desc } = await bundle(assert.fs, url("output/driver.js"));
+
+        assert.codeEqual(
+          source,
+          `
+          const puppies = ["mango", "van gogh"];
+          const puppies0 = ["mango", "van gogh"];
+          function getPuppies() { return puppies0; }
+          console.log([...puppies, ...getPuppies()]);
+          export {};
+          `
+        );
+
+        let puppies = desc!.declarations.get("puppies");
+        assert.equal(puppies?.declaration.type, "local");
+        if (puppies?.declaration.type === "local") {
+          assert.equal(
+            puppies.declaration.original?.bundleHref,
+            `${puppiesBundle2Href}/index.js`
+          );
+          assert.equal(puppies.declaration.original?.range, "7.9.2");
+          assert.equal(puppies.declaration.original?.importedAs, "puppies");
+        }
+        let puppies0 = desc!.declarations.get("puppies0");
+        assert.equal(puppies0?.declaration.type, "local");
+        if (puppies0?.declaration.type === "local") {
+          assert.equal(
+            puppies0.declaration.original?.bundleHref,
+            `${puppiesBundle1Href}/index.js`
+          );
+          assert.equal(puppies0.declaration.original?.range, "7.9.4");
+          assert.equal(puppies0.declaration.original?.importedAs, "puppies");
         }
       });
 
@@ -5844,9 +5932,218 @@ QUnit.module("module builder", function (origHooks) {
           assert.equal(puppies0.declaration.original?.importedAs, "puppies");
         }
       });
-    });
 
-    skip("bundle exports binding from pkg dependency that was collapsed", async function (assert) {});
+      test("bundle exports binding from pkg dependency that was collapsed", async function (assert) {
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["index.js"],
+            "dependencies": {
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "^7.9.3"
+              }
+            }
+          }`,
+          "catalogjs.lock": `{ "puppies": "${puppiesBundle1Href}/index.js" }`, // ver 7.9.4
+          "index.js": `
+            import { puppies } from "puppies";
+            function getPuppies() { return puppies; }
+            function getCats() { return ["jojo"]; }
+            function getRats() { return ["pizza rat"]; }
+            export { getPuppies, getCats, getRats };
+          `,
+        });
+        let bundle1Src = await bundleSource(assert.fs);
+        let lib1BundleHref =
+          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["driver.js"],
+            "dependencies": {
+              "lib1": {
+                "type": "npm",
+                "pkgName": "lib1",
+                "range": "^1.0.0"
+              },
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "^7.9.2"
+              }
+            }
+          }`,
+          // puppies dep is ver 7.9.2 and is only satisfied by 1 consumption range
+          "catalogjs.lock": `{
+            "lib1": "${lib1BundleHref}/lib.js",
+            "puppies": "${puppiesBundle2Href}/index.js"
+          }`,
+          "driver.js": `
+            import { getPuppies } from "lib1";
+            import { puppies } from "puppies";
+            console.log([...puppies, ...getPuppies()]);
+            export { puppies };
+          `,
+          [`${lib1BundleHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
+          [`${lib1BundleHref}/lib.js`]: bundle1Src,
+        });
+        let { source, desc } = await bundle(assert.fs, url("output/driver.js"));
+
+        assert.codeEqual(
+          source,
+          `
+          const puppies = ["mango", "van gogh"];
+          function getPuppies() { return puppies; }
+          console.log([...puppies, ...getPuppies()]);
+          export { puppies };
+          `
+        );
+
+        if (desc) {
+          let puppies = desc.declarations.get("puppies");
+          assert.equal(puppies?.declaration.type, "local");
+          if (puppies?.declaration.type === "local") {
+            assert.equal(
+              puppies.declaration.original?.bundleHref,
+              `${puppiesBundle1Href}/index.js`
+            );
+            assert.equal(puppies.declaration.original?.range, "^7.9.3");
+            assert.equal(puppies.declaration.original?.importedAs, "puppies");
+          }
+
+          assert.equal(desc?.exports.size, 1);
+          let puppiesExport = desc.exports.get("puppies")!;
+          assert.equal(puppiesExport.type, "local");
+          if (puppiesExport.type === "local") {
+            assert.equal(puppiesExport.name, "puppies");
+            assert.ok(
+              puppiesExport.exportRegion != null,
+              "export desc contains region"
+            );
+          }
+
+          let editor = new RegionEditor(source, desc);
+          keepAll(desc, editor);
+          editor.rename("puppies", "renamedPuppies");
+          editor.rename("getPuppies", "renamedGetPuppies");
+          assert.codeEqual(
+            editor.serialize().code,
+            `
+            const renamedPuppies = ["mango", "van gogh"];
+            function renamedGetPuppies() { return renamedPuppies; }
+            console.log([...renamedPuppies, ...renamedGetPuppies()]);
+            export { renamedPuppies as puppies };
+            `
+          );
+        }
+      });
+
+      test("bundle exports binding from pkg dependency that collapses an overlapping range in an included bundle", async function (assert) {
+        // inverse of the test above
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["index.js"],
+            "dependencies": {
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "^7.9.3"
+              }
+            }
+          }`,
+          "catalogjs.lock": `{ "puppies": "${puppiesBundle2Href}/index.js" }`, // ver 7.9.2
+          "index.js": `
+            import { puppies } from "puppies";
+            function getPuppies() { return puppies; }
+            function getCats() { return ["jojo"]; }
+            function getRats() { return ["pizza rat"]; }
+            export { getPuppies, getCats, getRats };
+          `,
+        });
+        let bundle1Src = await bundleSource(assert.fs);
+        let lib1BundleHref =
+          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["driver.js"],
+            "dependencies": {
+              "lib1": {
+                "type": "npm",
+                "pkgName": "lib1",
+                "range": "^1.0.0"
+              },
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "^7.9.2"
+              }
+            }
+          }`,
+          // puppies dep is ver 7.9.4
+          "catalogjs.lock": `{
+            "lib1": "${lib1BundleHref}/lib.js",
+            "puppies": "${puppiesBundle1Href}/index.js"
+          }`,
+          "driver.js": `
+            import { getPuppies } from "lib1";
+            import { puppies } from "puppies";
+            console.log([...puppies, ...getPuppies()]);
+            export { puppies };
+          `,
+          [`${lib1BundleHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
+          [`${lib1BundleHref}/lib.js`]: bundle1Src,
+        });
+        let { source, desc } = await bundle(assert.fs, url("output/driver.js"));
+
+        assert.codeEqual(
+          source,
+          `
+          const puppies = ["mango", "van gogh"];
+          function getPuppies() { return puppies; }
+          console.log([...puppies, ...getPuppies()]);
+          export { puppies };
+          `
+        );
+
+        if (desc) {
+          let puppies = desc.declarations.get("puppies");
+          assert.equal(puppies?.declaration.type, "local");
+          if (puppies?.declaration.type === "local") {
+            assert.equal(
+              puppies.declaration.original?.bundleHref,
+              `${puppiesBundle1Href}/index.js`
+            );
+            assert.equal(puppies.declaration.original?.range, "^7.9.3");
+            assert.equal(puppies.declaration.original?.importedAs, "puppies");
+          }
+
+          assert.equal(desc?.exports.size, 1);
+          let puppiesExport = desc.exports.get("puppies")!;
+          assert.equal(puppiesExport.type, "local");
+          if (puppiesExport.type === "local") {
+            assert.equal(puppiesExport.name, "puppies");
+            assert.ok(
+              puppiesExport.exportRegion != null,
+              "export desc contains region"
+            );
+          }
+
+          let editor = new RegionEditor(source, desc);
+          keepAll(desc, editor);
+          editor.rename("puppies", "renamedPuppies");
+          editor.rename("getPuppies", "renamedGetPuppies");
+          assert.codeEqual(
+            editor.serialize().code,
+            `
+            const renamedPuppies = ["mango", "van gogh"];
+            function renamedGetPuppies() { return renamedPuppies; }
+            console.log([...renamedPuppies, ...renamedGetPuppies()]);
+            export { renamedPuppies as puppies };
+            `
+          );
+        }
+      });
+    });
   });
 
   QUnit.module("single-shot build", function () {
