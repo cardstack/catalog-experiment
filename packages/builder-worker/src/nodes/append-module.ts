@@ -19,6 +19,7 @@ import {
   ReferenceCodeRegion,
   documentPointer,
   ImportCodeRegion,
+  LocalDeclarationDescription,
 } from "../code-region";
 import { BundleAssignment } from "./bundle";
 import { maybeRelativeURL } from "../path";
@@ -32,6 +33,7 @@ import { depAsURL, Dependencies } from "./entrypoint";
 import { setMapping, stringifyReplacer } from "../utils";
 import { DependencyResolver } from "./combine-modules";
 import { flatMap } from "lodash";
+import { pkgInfoFromCatalogJsURL } from "../resolver";
 
 export class AppendModuleNode implements BuilderNode {
   cacheKey: string;
@@ -89,7 +91,8 @@ export class AppendModuleNode implements BuilderNode {
           this.bundle,
           this.bundleAssignments,
           this.dependencies,
-          rewriters
+          rewriters,
+          this.depResolver
         ),
       };
     }
@@ -98,7 +101,11 @@ export class AppendModuleNode implements BuilderNode {
 
 type DeclarationRegionMap = Map<
   string,
-  { pointer: RegionPointer; references: Set<RegionPointer> }
+  {
+    pointer: RegionPointer;
+    references: Set<RegionPointer>;
+    original?: LocalDeclarationDescription["original"];
+  }
 >;
 
 export class FinishAppendModulesNode implements BuilderNode {
@@ -108,7 +115,8 @@ export class FinishAppendModulesNode implements BuilderNode {
     private bundle: URL,
     private bundleAssignments: BundleAssignment[],
     private dependencies: Dependencies,
-    private rewriters: ModuleRewriter[]
+    private rewriters: ModuleRewriter[],
+    private depResolver: DependencyResolver
   ) {
     this.cacheKey = `finish-append-module-node:${
       this.bundle.href
@@ -168,7 +176,8 @@ export class FinishAppendModulesNode implements BuilderNode {
       bundleDeclarations,
       this.bundle,
       this.state,
-      this.dependencies
+      this.dependencies,
+      this.depResolver
     );
     let { exportRegions, exportSpecifierRegions } = buildExports(
       code,
@@ -853,7 +862,8 @@ function buildBundleBody(
   bundleDeclarations: DeclarationRegionMap,
   bundle: URL,
   state: HeadState,
-  dependencies: Dependencies
+  dependencies: Dependencies,
+  depResolver: DependencyResolver
 ): RegionPointer | undefined {
   // this returns the pointer of the region who would need a nextSibling
   // assignment if we want to add more regions to the document. This would be
@@ -961,14 +971,71 @@ function buildBundleBody(
       moduleRegions[documentPointer].start++;
     }
     regions.push(...moduleRegions);
+
+    // update the declaration "original" property with the resolved dependency
+    // info. (consumption ranges may have been narrowed because of collapsed
+    // declaration regions).
+    let pkgURL = pkgInfoFromCatalogJsURL(module.url)?.pkgURL;
+    if (pkgURL) {
+      let resolutions = depResolver
+        .resolutionsForPkg(pkgURL?.href)
+        .filter(
+          (r) =>
+            (!r.importedSource && r.consumedBy.url.href === module.url.href) ||
+            (r.importedSource &&
+              r.importedSource.declaredIn.url.href === module.url.href)
+        );
+      // we're spinning though all the declarations we have resolutions for in
+      // this pkg, not all of them may be used here.
+      for (let resolution of resolutions) {
+        let region = resolution.importedSource
+          ? resolution.importedSource.declaredIn.desc.regions[
+              resolution.importedSource.pointer
+            ]
+          : resolution.consumedBy.desc.regions[resolution.consumedByPointer];
+        if (
+          region.type !== "declaration" ||
+          region.declaration.type === "import"
+        ) {
+          throw new Error(
+            `expected region for resolved pkg dep '${
+              resolution.importedAs
+            }' from ${resolution.bundleHref} contained in ${
+              resolution.importedSource
+                ? resolution.importedSource.declaredIn.url.href
+                : resolution.consumedBy.url.href
+            } for bundle ${bundle.href}. instead it was ${JSON.stringify(
+              region,
+              stringifyReplacer
+            )}`
+          );
+        }
+        let declaration = bundleDeclarations.get(
+          region.declaration.declaredName
+        );
+        if (!declaration || declaration.original) {
+          // this particular declaration is not used here or we already
+          // processed it.
+          continue;
+        }
+        declaration.original = {
+          bundleHref: resolution.bundleHref,
+          range: resolution.range,
+          importedAs: resolution.importedAs,
+        };
+      }
+    }
   }
 
-  for (let { pointer, references } of bundleDeclarations.values()) {
+  for (let { pointer, references, original } of bundleDeclarations.values()) {
     let region = regions[pointer];
     if (region.type !== "declaration") {
       throw new Error(`bug: 'should never get here'`);
     }
     region.declaration.references = [...references];
+    if (original && region.declaration.type === "local") {
+      region.declaration.original = { ...original };
+    }
   }
 
   return prevModuleStartPointer;

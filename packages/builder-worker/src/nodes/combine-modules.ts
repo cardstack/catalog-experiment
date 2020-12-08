@@ -1,7 +1,13 @@
-import { BuilderNode, NextNode } from "./common";
-import { makeNonCyclic, ModuleResolution, Resolution } from "./resolution";
+import { BuilderNode, NextNode, Value } from "./common";
+import {
+  makeNonCyclic,
+  ModuleResolution,
+  Resolution,
+  ResolveFromLock,
+} from "./resolution";
 import { getExportDesc, getExports, ModuleDescription } from "../describe-file";
 import {
+  DeclarationCodeRegion,
   documentPointer,
   isNamespaceMarker,
   NamespaceMarker,
@@ -20,11 +26,14 @@ import { pkgInfoFromCatalogJsURL } from "../resolver";
 import { satisfies, coerce, compare } from "semver";
 //@ts-ignore
 import { intersect } from "semver-intersect";
+import { LockEntries } from "./lock-file";
+
 export class CombineModulesNode implements BuilderNode {
   cacheKey: CombineModulesNode;
   constructor(
     private bundle: URL,
     private dependencies: Dependencies,
+    private lockEntries: LockEntries,
     private bundleAssignmentsNode: BundleAssignmentsNode
   ) {
     this.cacheKey = this;
@@ -32,22 +41,35 @@ export class CombineModulesNode implements BuilderNode {
 
   async deps() {
     return {
-      bundleAssignments: this.bundleAssignmentsNode,
+      info: new PrepareCombineModulesNode(
+        this.bundle,
+        this.dependencies,
+        this.lockEntries,
+        this.bundleAssignmentsNode
+      ),
     };
   }
 
   async run({
-    bundleAssignments: { assignments, resolutionsInDepOrder },
+    info: { assignments, resolutionsInDepOrder, pkgResolutions },
   }: {
-    bundleAssignments: {
+    info: {
       assignments: BundleAssignment[];
       resolutionsInDepOrder: ModuleResolution[];
+      pkgResolutions: { [pkgName: string]: string };
     };
   }): Promise<NextNode<{ code: string; desc: ModuleDescription }>> {
     let ownAssignments = assignments.filter(
       (a) => a.bundleURL.href === this.bundle.href
     );
-    let depResolver = new DependencyResolver(assignments, this.bundle);
+
+    let depResolver = new DependencyResolver(
+      this.dependencies,
+      pkgResolutions,
+      assignments,
+      this.bundle
+    );
+
     let exposed = exposedRegions(this.bundle, assignments);
 
     let editors: { module: ModuleResolution; editor: RegionEditor }[] = [];
@@ -113,7 +135,8 @@ export class CombineModulesNode implements BuilderNode {
           this.bundle,
           assignments,
           this.dependencies,
-          []
+          [],
+          depResolver
         ),
       };
     }
@@ -131,11 +154,118 @@ export class CombineModulesNode implements BuilderNode {
   }
 }
 
+class PrepareCombineModulesNode implements BuilderNode {
+  cacheKey: PrepareCombineModulesNode;
+  constructor(
+    private bundle: URL,
+    private dependencies: Dependencies,
+    private lockEntries: LockEntries,
+    private bundleAssignmentsNode: BundleAssignmentsNode
+  ) {
+    this.cacheKey = this;
+  }
+
+  async deps() {
+    return {
+      bundleAssignments: this.bundleAssignmentsNode,
+    };
+  }
+
+  async run({
+    bundleAssignments: { assignments, resolutionsInDepOrder },
+  }: {
+    bundleAssignments: {
+      assignments: BundleAssignment[];
+      resolutionsInDepOrder: ModuleResolution[];
+    };
+  }): Promise<
+    NextNode<{
+      assignments: BundleAssignment[];
+      resolutionsInDepOrder: ModuleResolution[];
+      pkgResolutions: { [pkgName: string]: string };
+    }>
+  > {
+    return {
+      node: new ResolvePkgDeps(
+        this.bundle,
+        this.dependencies,
+        this.lockEntries,
+        assignments,
+        resolutionsInDepOrder
+      ),
+    };
+  }
+}
+
+class ResolvePkgDeps implements BuilderNode {
+  // caching is not ideal here--we are relying on the fact that the nodes that
+  // this builder node kicks off are most likely all cached
+  cacheKey: ResolvePkgDeps;
+  private ownAssignments: BundleAssignment[];
+  constructor(
+    private bundle: URL,
+    private dependencies: Dependencies,
+    private lockEntries: LockEntries,
+    private assignments: BundleAssignment[],
+    private resolutionsInDepOrder: ModuleResolution[]
+  ) {
+    this.cacheKey = this;
+    this.ownAssignments = assignments.filter(
+      (a) => a.bundleURL.href === this.bundle.href
+    );
+  }
+  async deps() {
+    let pkgs = Object.keys(this.dependencies).sort();
+    let { entrypointModuleURL } = this.ownAssignments[0];
+    return pkgs.map(
+      (pkg) => new ResolveFromLock(pkg, entrypointModuleURL, this.lockEntries)
+    );
+  }
+  async run(resolutions: {
+    [pkgIndex: number]: URL | undefined;
+  }): Promise<
+    Value<{
+      assignments: BundleAssignment[];
+      resolutionsInDepOrder: ModuleResolution[];
+      pkgResolutions: { [pkgName: string]: string };
+    }>
+  > {
+    let pkgs = Object.keys(this.dependencies).sort();
+    let pkgResolutions: { [pkgName: string]: string } = {};
+    for (let [index, pkgName] of pkgs.entries()) {
+      let bundleHref = resolutions[index]?.href;
+      if (!bundleHref) {
+        throw new Error(
+          `could not find pkg '${pkgName}' in lockfile for ${this.ownAssignments[0].entrypointModuleURL.href} when building bundle ${this.bundle.href}`
+        );
+      }
+      pkgResolutions[pkgName] = bundleHref;
+    }
+    return {
+      value: {
+        assignments: this.assignments,
+        resolutionsInDepOrder: this.resolutionsInDepOrder,
+        pkgResolutions,
+      },
+    };
+  }
+}
+
 export class DependencyResolver {
   private consumedDeps: ConsumedDependencies;
   private resolutionCache: Map<string, ResolvedDependency[]> = new Map();
-  constructor(assignments: BundleAssignment[], private bundle: URL) {
-    this.consumedDeps = gatherDependencies(assignments, bundle);
+  constructor(
+    dependencies: Dependencies,
+    resolutions: { [pkgName: string]: string },
+    assignments: BundleAssignment[],
+    private bundle: URL
+  ) {
+    this.consumedDeps = gatherDependencies(
+      dependencies,
+      resolutions,
+      assignments,
+      bundle
+    );
     this.resolutionCache = new Map();
   }
 
@@ -147,16 +277,14 @@ export class DependencyResolver {
 
     let resolutions = this.consumedDeps.get(pkgHref);
     if (!resolutions || resolutions.length === 0) {
-      throw new Error(
-        `Unable to get consumption range for package ${pkgHref}, this pkg does not appear to be consumed in the bundle ${this.bundle.href}`
-      );
+      return [];
     }
 
     // this is a map of bundleHrefs (which include the pkg version), to a set of
     // resolution indices (from the "resolutions" array) whose consumption range
     // satisfies the bundleHref version. The goal is to find the package that
     // has the most amount of range satisfications.
-    let rangeSatisfications = new Map<string, number[]>();
+    let rangeSatisfications = new Map<string, Set<number>>();
 
     for (let [versionIndex, { bundleHref }] of resolutions.entries()) {
       let { version: ver } = pkgInfoFromCatalogJsURL(new URL(bundleHref))!;
@@ -168,17 +296,17 @@ export class DependencyResolver {
       }
       let rangeIndices = rangeSatisfications.get(bundleHref);
       if (!rangeIndices) {
-        rangeIndices = [];
+        rangeIndices = new Set();
         rangeSatisfications.set(bundleHref, rangeIndices);
       }
       for (let [rangeIndex, { range }] of resolutions.entries()) {
         if (versionIndex === rangeIndex) {
           // the version used for a declaration should always match its own consumption range
-          rangeIndices.push(rangeIndex);
+          rangeIndices.add(rangeIndex);
           continue;
         }
         if (satisfies(version, range)) {
-          rangeIndices.push(rangeIndex);
+          rangeIndices.add(rangeIndex);
         }
       }
     }
@@ -199,7 +327,7 @@ export class DependencyResolver {
     );
     let sortedBundleHrefs = [...rangeSatisfications.entries()].sort(
       ([bundleHrefA, aIndices], [bundleHrefB, bIndices]) => {
-        let diff = bIndices.length - aIndices.length;
+        let diff = bIndices.size - aIndices.size;
         if (diff !== 0) {
           return diff;
         }
@@ -223,29 +351,34 @@ export class DependencyResolver {
         (r) => r.bundleHref === selectedBundleHref
       )!;
       let selected = resolutions[selectedIndex];
-      let obviatedIndices = consumptionIndices.filter(
+      let obviatedIndices = [...consumptionIndices].filter(
         (i) => i != selectedIndex
       );
-      let { bundleHref, consumedBy, pointer } = selected;
+      let {
+        bundleHref,
+        importedSource,
+        consumedBy,
+        consumedByPointer,
+      } = selected;
       let range = intersect(
-        ...consumptionIndices.map((i) => resolutions![i].range)
+        ...[...consumptionIndices].map((i) => resolutions![i].range)
       );
       let obviatedDependencies = obviatedIndices.map((i) => ({
         moduleHref: resolutions![i].consumedBy.url.href,
-        pointer: resolutions![i].pointer,
+        pointer: resolutions![i].consumedByPointer,
       }));
+
       resultingResolutions.push({
+        importedSource,
         consumedBy,
-        // capturing the region pointer is probably redundant since you could
-        // never have duplicate declarations in the same consuming module
-        pointer,
+        consumedByPointer,
         bundleHref,
         range,
         obviatedDependencies,
-        importedAs: resolutions[consumptionIndices[0]].importedAs,
+        importedAs: resolutions[[...consumptionIndices][0]].importedAs,
       });
       unsatisfiedConsumptionIndices = unsatisfiedConsumptionIndices.filter(
-        (i) => !consumptionIndices.includes(i)
+        (i) => !consumptionIndices.has(i)
       );
     }
 
@@ -255,11 +388,15 @@ export class DependencyResolver {
 }
 
 interface ConsumedDependency {
-  pointer: RegionPointer;
+  importedSource?: {
+    pointer: RegionPointer;
+    declaredIn: ModuleResolution;
+  };
+  importedAs: string | NamespaceMarker;
+  consumedByPointer: RegionPointer;
   consumedBy: ModuleResolution;
   bundleHref: string;
   range: string;
-  importedAs: string | NamespaceMarker;
 }
 
 export interface ResolvedDependency extends ConsumedDependency {
@@ -269,10 +406,80 @@ export interface ResolvedDependency extends ConsumedDependency {
 type ConsumedDependencies = Map<string, ConsumedDependency[]>; // the key of the map is the pkgHref
 
 function gatherDependencies(
+  dependencies: Dependencies,
+  resolutions: { [pkgName: string]: string },
   assignments: BundleAssignment[],
   bundle: URL
 ): ConsumedDependencies {
   let consumedDeps: ConsumedDependencies = new Map();
+  let ownAssignments = assignments.filter(
+    (a) => a.bundleURL.href === bundle.href
+  );
+
+  // first we gather up all the direct dependencies of the project
+  for (let [pkgName, dependency] of Object.entries(dependencies)) {
+    let bundleHref = resolutions[pkgName];
+    if (!bundleHref) {
+      throw new Error(
+        `unable to determine resolution for pkg ${pkgName} in bundle ${bundle.href} from lock file.`
+      );
+    }
+    let pkgAssignment = assignments.find(
+      (a) => a.module.url.href === bundleHref
+    );
+    if (!pkgAssignment) {
+      throw new Error(
+        `unable to find bundle assignment for pkg ${pkgName} with url ${bundleHref} in bundle ${bundle.href}`
+      );
+    }
+    let { pkgURL } = pkgInfoFromCatalogJsURL(new URL(bundleHref)) ?? {};
+    if (!pkgURL) {
+      throw new Error(
+        `cannot derive pkgURL from bundle URL ${bundleHref} when building bundle ${bundle.href}`
+      );
+    }
+    for (let { module } of ownAssignments) {
+      for (let [pointer, region] of module.desc.regions.entries()) {
+        // TODO don't forget about pure side effect imports...
+        if (
+          region.type !== "declaration" ||
+          region.declaration.type !== "import" ||
+          module.resolvedImports[region.declaration.importIndex].url.href !==
+            bundleHref
+        ) {
+          continue;
+        }
+        let source = resolveDeclaration(
+          region.declaration.importedName,
+          module.resolvedImports[region.declaration.importIndex],
+          module,
+          ownAssignments
+        );
+        if (source.type === "resolved") {
+          let consumed = consumedDeps.get(pkgURL.href);
+          if (!consumed) {
+            consumed = [];
+            consumedDeps.set(pkgURL.href, consumed);
+          }
+
+          consumed.push({
+            importedSource: {
+              pointer: source.pointer,
+              declaredIn: makeNonCyclic(source.module),
+            },
+            bundleHref,
+            consumedBy: module,
+            consumedByPointer: pointer,
+            importedAs: region.declaration.importedName,
+            range: dependency.range,
+          });
+        }
+      }
+    }
+  }
+
+  // then we gather up all the embedded deps in the included bundles via the
+  // "original" property
   for (let { module } of assignments) {
     if (
       assignments.find((a) => a.module.url.href === module.url.href)?.bundleURL
@@ -300,9 +507,11 @@ function gatherDependencies(
         }
 
         consumed.push({
-          pointer,
+          consumedByPointer: pointer,
           consumedBy: module,
-          ...declaration.original,
+          importedAs: declaration.original.importedAs,
+          range: declaration.original.range,
+          bundleHref: declaration.original.bundleHref,
         });
       }
     }
@@ -354,22 +563,20 @@ function discoverIncludedRegions(
       localDesc.importIndex
     ];
     let importedName = localDesc.importedName;
-    let source = resolveDeclaration(
-      importedName,
-      importedModule,
-      module,
-      ownAssignments
-    );
-    if (source.type === "resolved") {
-      if (source.module.url.href !== module.url.href) {
-        editor = addNewEditor(source.module, editor, editors);
-        module = source.module;
-        region = editor.regions[source.pointer];
-      }
+    ({ module, region, pointer, editor } = resolveDependency(
+      importedModule.url.href,
+      depResolver,
+      makeNonCyclic(module),
+      pointer,
+      region,
+      editor,
+      editors
+    ));
+    if (region.declaration.type === "local") {
       discoverIncludedRegions(
         bundle,
-        source.module,
-        source.pointer,
+        module,
+        pointer,
         editor,
         editors,
         ownAssignments,
@@ -377,59 +584,83 @@ function discoverIncludedRegions(
         visitedRegions
       );
     } else {
-      let consumingModule = makeNonCyclic(source.consumingModule);
-      let { importedPointer } = source;
-      if (importedPointer == null) {
-        throw new Error(
-          `bug: could not determine code region pointer for import of ${JSON.stringify(
-            source.importedAs
-          )} from ${source.importedFromModule.url.href} in module ${
-            consumingModule.url.href
-          }`
-        );
-      }
-      if (source.consumingModule.url.href !== module.url.href) {
-        editor = addNewEditor(source.consumingModule, editor, editors);
-      }
-      if (
-        ownAssignments.find(
-          (a) =>
-            a.module.url.href ===
-            (source as UnresolvedResult).importedFromModule.url.href
-        ) &&
-        isNamespaceMarker(source.importedAs)
-      ) {
-        // we mark the namespace import region as something we want to keep as a
-        // signal to the Append nodes to manufacture a namespace object for this
-        // consumed import--ultimately, though, we will not include this region.
-        if (source.importedPointer == null) {
-          throw new Error(
-            `unable to determine the region for a namespace import '${region.declaration.declaredName}' of ${source.importedFromModule.url.href} from the consuming module ${source.consumingModule.url.href} in bundle ${bundle.href}`
-          );
+      let source = resolveDeclaration(
+        importedName,
+        importedModule,
+        module,
+        ownAssignments
+      );
+      if (source.type === "resolved") {
+        if (source.module.url.href !== module.url.href) {
+          editor = addNewEditor(source.module, editor, editors);
+          module = source.module;
+          region = editor.regions[source.pointer];
         }
-        editor.keepRegion(source.importedPointer);
-
-        let newEditor = addNewEditor(
-          source.importedFromModule,
-          editor,
-          editors
-        );
-        discoverIncludedRegionsForNamespace(
+        discoverIncludedRegions(
           bundle,
-          source.importedFromModule,
-          newEditor,
+          source.module,
+          source.pointer,
+          editor,
           editors,
           ownAssignments,
           depResolver,
           visitedRegions
         );
-        return; // don't include the dependsOn in this signal
       } else {
-        // we mark the external bundle import region as something we want to keep
-        // as a signal to the Append nodes that this import is consumed and to
-        // include this region in the resulting bundle.
-        editor.keepRegion(importedPointer);
-        return; // don't include the dependsOn in this signal
+        let consumingModule = makeNonCyclic(source.consumingModule);
+        let { importedPointer } = source;
+        if (importedPointer == null) {
+          throw new Error(
+            `bug: could not determine code region pointer for import of ${JSON.stringify(
+              source.importedAs
+            )} from ${source.importedFromModule.url.href} in module ${
+              consumingModule.url.href
+            }`
+          );
+        }
+        if (source.consumingModule.url.href !== module.url.href) {
+          editor = addNewEditor(source.consumingModule, editor, editors);
+        }
+        if (
+          ownAssignments.find(
+            (a) =>
+              a.module.url.href ===
+              (source as UnresolvedResult).importedFromModule.url.href
+          ) &&
+          isNamespaceMarker(source.importedAs)
+        ) {
+          // we mark the namespace import region as something we want to keep as a
+          // signal to the Append nodes to manufacture a namespace object for this
+          // consumed import--ultimately, though, we will not include this region.
+          if (source.importedPointer == null) {
+            throw new Error(
+              `unable to determine the region for a namespace import '${region.declaration.declaredName}' of ${source.importedFromModule.url.href} from the consuming module ${source.consumingModule.url.href} in bundle ${bundle.href}`
+            );
+          }
+          editor.keepRegion(source.importedPointer);
+
+          let newEditor = addNewEditor(
+            source.importedFromModule,
+            editor,
+            editors
+          );
+          discoverIncludedRegionsForNamespace(
+            bundle,
+            source.importedFromModule,
+            newEditor,
+            editors,
+            ownAssignments,
+            depResolver,
+            visitedRegions
+          );
+          return; // don't include the dependsOn in this signal
+        } else {
+          // we mark the external bundle import region as something we want to keep
+          // as a signal to the Append nodes that this import is consumed and to
+          // include this region in the resulting bundle.
+          editor.keepRegion(importedPointer);
+          return; // don't include the dependsOn in this signal
+        }
       }
     }
   } else if (
@@ -437,58 +668,32 @@ function discoverIncludedRegions(
     region.declaration.type === "local" &&
     region.declaration.original
   ) {
-    // check for overlapping consumption ranges
     let bundleHref = region.declaration.original.bundleHref;
-    let pkgURL = pkgInfoFromCatalogJsURL(new URL(bundleHref))?.pkgURL;
-    if (!pkgURL) {
-      throw new Error(
-        `Cannot determine pkgURL that corresponds to the bundle URL: ${bundleHref}`
-      );
-    }
-    let resolution = depResolver
-      .resolutionsForPkg(pkgURL?.href)
-      .find(
-        (r) =>
-          (r.consumedBy.url.href === module.url.href &&
-            r.pointer === pointer) ||
-          r.obviatedDependencies.find(
-            (o) => o.moduleHref === module.url.href && o.pointer === pointer
-          )
-      );
-
-    if (!resolution) {
-      throw new Error(
-        `Cannot determine dependency where the declaration '${
-          region.declaration.declaredName
-        }' in ${module.url.href} comes from with a source of ${JSON.stringify(
-          region.declaration.original
-        )}`
-      );
-    }
-    if (
-      resolution.consumedBy.url.href === module.url.href &&
-      resolution.pointer === pointer
-    ) {
+    let isRegionObviated: boolean;
+    ({ module, region, pointer, editor, isRegionObviated } = resolveDependency(
+      bundleHref,
+      depResolver,
+      makeNonCyclic(module),
+      pointer,
+      region,
+      editor,
+      editors
+    ));
+    if (!isRegionObviated) {
       // the region we entered this function with is the region that we actually
       // want to keep.
       editor.keepRegion(pointer);
-    } else {
-      // region we entered this function with is actually obviated by a
-      // different region
-      editor = addNewEditor(resolution.consumedBy, editor, editors);
-      module = resolution.consumedBy;
-      region = editor.regions[resolution.pointer];
-      discoverIncludedRegions(
-        bundle,
-        module,
-        resolution.pointer,
-        editor,
-        editors,
-        ownAssignments,
-        depResolver,
-        visitedRegions
-      );
     }
+    discoverIncludedRegions(
+      bundle,
+      module,
+      pointer,
+      editor,
+      editors,
+      ownAssignments,
+      depResolver,
+      visitedRegions
+    );
   } else if (region.type === "import" && !region.isDynamic) {
     // we mark the external bundle import region as something we want to keep
     // as a signal to the Append nodes that this import is consumed and to
@@ -528,6 +733,92 @@ function discoverIncludedRegions(
       visitedRegions
     );
   }
+}
+
+function resolveDependency(
+  bundleURL: string,
+  depResolver: DependencyResolver,
+  consumingModule: ModuleResolution,
+  pointer: RegionPointer,
+  region: DeclarationCodeRegion,
+  editor: RegionEditor,
+  editors: { module: ModuleResolution; editor: RegionEditor }[]
+): {
+  isRegionObviated: boolean;
+  module: ModuleResolution;
+  editor: RegionEditor;
+  region: DeclarationCodeRegion;
+  pointer: RegionPointer;
+} {
+  let module: ModuleResolution = consumingModule;
+  let pkgURL = pkgInfoFromCatalogJsURL(new URL(bundleURL))?.pkgURL;
+  let isRegionObviated = false;
+  if (!pkgURL) {
+    // not all modules are packages
+    return {
+      isRegionObviated,
+      module,
+      editor,
+      pointer,
+      region,
+    };
+  }
+  let resolution = depResolver
+    .resolutionsForPkg(pkgURL?.href)
+    .find(
+      (r) =>
+        (r.consumedBy.url.href === consumingModule.url.href &&
+          r.consumedByPointer === pointer) ||
+        r.obviatedDependencies.find(
+          (o) =>
+            o.moduleHref === consumingModule.url.href && o.pointer === pointer
+        )
+    );
+
+  if (!resolution) {
+    // not all modules have dep resolutions
+    return {
+      isRegionObviated,
+      module,
+      editor,
+      pointer,
+      region,
+    };
+  }
+  if (
+    resolution.consumedBy.url.href !== consumingModule.url.href ||
+    resolution.consumedByPointer !== pointer
+  ) {
+    // region we entered this function with is actually obviated by a
+    // different region
+    isRegionObviated = true;
+    if (resolution.importedSource) {
+      editor = addNewEditor(
+        resolution.importedSource.declaredIn,
+        editor,
+        editors
+      );
+      module = resolution.importedSource.declaredIn;
+      region = editor.regions[
+        resolution.importedSource.pointer
+      ] as DeclarationCodeRegion;
+      pointer = resolution.importedSource.pointer;
+    } else {
+      editor = addNewEditor(resolution.consumedBy, editor, editors);
+      module = resolution.consumedBy;
+      region = editor.regions[
+        resolution.consumedByPointer
+      ] as DeclarationCodeRegion;
+      pointer = resolution.consumedByPointer;
+    }
+  }
+  return {
+    isRegionObviated,
+    module,
+    editor,
+    pointer,
+    region,
+  };
 }
 
 function discoverIncludedRegionsForNamespace(

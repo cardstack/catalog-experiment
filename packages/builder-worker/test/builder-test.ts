@@ -5387,7 +5387,97 @@ QUnit.module("module builder", function (origHooks) {
         }
       });
 
-      skip("can collapse direct pkg dependency when an overlapping consumed range already exist in an included bundle", async function (assert) {});
+      // in this case it would not be up to the dep resolver to choose the
+      // dependency--rather, when the lock file is generated for the project,
+      // the lockfile should take into account that the project has a pkg
+      // dependency that overlaps with a package consumed by another declared
+      // pkg dependency, and set the lockfile to resolve to the same
+      // bundleHref that the other pkg consumes. The job of the dependency
+      // resolver then becomes to make sure that these identical pkg versions
+      // are not duplicated in the resulting bundle.
+      test("can collapse direct pkg dependency when an overlapping consumed range already exist in an included bundle", async function (assert) {
+        // this pkg version is satisfied by both consumption ranges (so we choose it)
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["index.js"],
+            "dependencies": {
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "^7.9.3"
+              }
+            }
+          }`,
+          "catalogjs.lock": `{ "puppies": "${puppiesBundle1Href}/index.js" }`, // ver 7.9.4
+          "index.js": `
+            import { puppies } from "puppies";
+            function getPuppies() { return puppies; }
+            function getCats() { return ["jojo"]; }
+            function getRats() { return ["pizza rat"]; }
+            export { getPuppies, getCats, getRats };
+          `,
+        });
+        let bundle1Src = await bundleSource(assert.fs);
+        let lib1BundleHref =
+          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["driver.js"],
+            "dependencies": {
+              "lib1": {
+                "type": "npm",
+                "pkgName": "lib1",
+                "range": "^1.0.0"
+              },
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "^7.9.2"
+              }
+            }
+          }`,
+          // the lock file generation process identified that the puppies pkg
+          // range overlaps with the puppies package in lib1 bundle, and
+          // resolved the puppies pkg to the same bundle because of the overlap.
+          // The lock file generation logic for browser builds is TBD.
+          "catalogjs.lock": `{
+            "lib1": "${lib1BundleHref}/lib.js",
+            "puppies": "${puppiesBundle1Href}/index.js"
+          }`,
+          "driver.js": `
+            import { getPuppies } from "lib1";
+            import { puppies } from "puppies";
+            console.log([...puppies, ...getPuppies(), ...myPuppies()]);
+          `,
+          [`${lib1BundleHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
+          [`${lib1BundleHref}/lib.js`]: bundle1Src,
+        });
+        let { source, desc } = await bundle(assert.fs, url("output/driver.js"));
+
+        assert.codeEqual(
+          source,
+          `
+          const puppies = ["mango", "van gogh"];
+          function getPuppies() { return puppies; }
+          console.log([...puppies, ...getPuppies(), ...myPuppies()]);
+          export {};
+          `
+        );
+
+        let puppies = desc!.declarations.get("puppies");
+        assert.equal(puppies?.declaration.type, "local");
+        if (puppies?.declaration.type === "local") {
+          assert.equal(
+            // we chose the bundle whose version satisfies the most consumption ranges
+            puppies.declaration.original?.bundleHref,
+            `${puppiesBundle1Href}/index.js`
+          );
+          // the combined consumption range then represents the intersection of
+          // all the collapsed consumption ranges
+          assert.equal(puppies.declaration.original?.range, "^7.9.3");
+          assert.equal(puppies.declaration.original?.importedAs, "puppies");
+        }
+      });
 
       test("chooses the pkg whose version satisfies the most consumption ranges when multiple overlapping possibilities exist", async function (assert) {
         // this package's version is satisfied by 2 consumption ranges

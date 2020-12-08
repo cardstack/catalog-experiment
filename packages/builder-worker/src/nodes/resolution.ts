@@ -208,7 +208,7 @@ export class ModuleResolutionNode implements BuilderNode<Resolution> {
   }
 }
 
-class ResolveFromLock implements BuilderNode<URL | undefined> {
+export class ResolveFromLock implements BuilderNode<URL | undefined> {
   cacheKey: string;
   constructor(
     private specifier: string,
