@@ -21,13 +21,18 @@ import {
 import { BundleAssignment } from "./nodes/bundle";
 import stringify from "json-stable-stringify";
 import { MD5 as md5, enc } from "crypto-js";
-import { setMapping, stringifyReplacer as replacer } from "./utils";
+import {
+  setMapping,
+  stringifyReplacer as replacer,
+  stringifyReplacer,
+} from "./utils";
 import { depAsURL, Dependencies } from "./nodes/entrypoint";
 import {
   ResolvedDependency,
   DependencyResolver,
 } from "./dependency-resolution";
 import { pkgInfoFromCatalogJsURL } from "./resolver";
+import { maybeRelativeURL } from "./path";
 
 export class HeadState {
   readonly usedNames: Map<
@@ -108,7 +113,7 @@ export class ModuleRewriter {
     private bundle: URL,
     readonly module: ModuleResolution,
     private state: HeadState,
-    bundleAssignments: BundleAssignment[],
+    private bundleAssignments: BundleAssignment[],
     private editor: RegionEditor,
     private dependencies: Dependencies,
     private depResolver: DependencyResolver
@@ -257,6 +262,41 @@ export class ModuleRewriter {
         }
         this.claimAndRename(localName, assignedName);
       }
+    }
+
+    // rewrite dynamic imports to use bundle specifiers
+    let myAssignment = this.ownAssignments.find(
+      (a) => a.module.url.href === this.module.url.href
+    )!;
+    for (let [pointer, region] of this.module.desc.regions.entries()) {
+      if (region.type !== "import" || !region.isDynamic) {
+        continue;
+      }
+      let specifierPointer = [...region.dependsOn][0]; // all dynamic import regions depend solely on their specifier region
+      if (specifierPointer == null) {
+        throw new Error(
+          `the specifier pointer for the dynamic import region is not specified. '${pointer}' in ${
+            this.module.url.href
+          } within bundle ${this.bundle.href}: region=${JSON.stringify(
+            region,
+            stringifyReplacer
+          )}`
+        );
+      }
+      let importedModule = this.module.resolvedImports[region.importIndex];
+      let importAssignment = this.bundleAssignments.find(
+        (a) => a.module.url.href === importedModule.url.href
+      );
+      if (!importAssignment) {
+        throw new Error(
+          `could not find bundle assignment for dynamically imported module ${importedModule.url.href} in ${this.module.url.href} within bundle ${this.bundle.href}`
+        );
+      }
+      let specifier = `"${maybeRelativeURL(
+        importAssignment.bundleURL,
+        myAssignment?.bundleURL
+      )}"`;
+      this.editor.replace(specifierPointer, specifier);
     }
   }
 

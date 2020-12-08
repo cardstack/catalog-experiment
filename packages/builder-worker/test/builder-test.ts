@@ -1,9 +1,4 @@
-import {
-  installFileAssertions,
-  origin,
-  url,
-  FileAssert,
-} from "./helpers/file-assertions";
+import { installFileAssertions, origin, url } from "./helpers/file-assertions";
 import "./helpers/code-equality-assertions";
 import {
   bundleCode,
@@ -18,7 +13,6 @@ import { FileSystem } from "../src/filesystem";
 import { flushEvents, removeAllEventListeners } from "../src/event-bus";
 import { Logger } from "../src/logger";
 import { recipesURL } from "../src/recipes";
-import { extractDescriptionFromSource } from "../src/description-encoder";
 import {
   ImportCodeRegion,
   isNamespaceMarker,
@@ -35,7 +29,7 @@ Logger.setLogLevel("debug");
 Logger.echoInConsole(true);
 
 QUnit.module("module builder", function (origHooks) {
-  let { test, skip } = installFileAssertions(origHooks);
+  let { test } = installFileAssertions(origHooks);
   let builder: Builder<unknown> | undefined;
   let rebuilder: Rebuilder<unknown> | undefined;
 
@@ -55,20 +49,6 @@ QUnit.module("module builder", function (origHooks) {
       }
     }
     return etags;
-  }
-
-  // TODO use the bundleCode() function instead
-  async function buildBundle(
-    assert: FileAssert,
-    bundleURL: URL,
-    bundleFiles: { [filename: string]: string }
-  ): Promise<string> {
-    await assert.setupFiles(bundleFiles);
-    builder = makeBuilder(assert.fs);
-    await builder.build();
-    let bundleSrc = await (await assert.fs.openFile(bundleURL)).readText();
-    await assert.fs.remove(url("/"));
-    return bundleSrc;
   }
 
   async function buildDidFinish(rebuilder: Rebuilder<unknown>) {
@@ -4203,8 +4183,8 @@ QUnit.module("module builder", function (origHooks) {
         `
         const bar = 'bar';
         async function getFoo() {
-          const { foo } = await import("./foo.js");
-          const { bleep } = await import("./bleep.js");
+          const { foo } = await import("./dist/0.js");
+          const { bleep } = await import("./dist/1.js");
           return foo + bar + bleep;
         }
         export { getFoo };
@@ -4221,8 +4201,8 @@ QUnit.module("module builder", function (origHooks) {
         assert.equal(dynamicImportFoo.isDynamic, true);
         assert.equal(dynamicImportBleep.isDynamic, true);
         if (dynamicImportFoo.isDynamic && dynamicImportBleep.isDynamic) {
-          assert.equal(dynamicImportFoo.specifier, "./foo.js");
-          assert.equal(dynamicImportBleep.specifier, "./bleep.js");
+          assert.equal(dynamicImportFoo.specifier, "./dist/0.js");
+          assert.equal(dynamicImportBleep.specifier, "./dist/1.js");
 
           let editor = new RegionEditor(source, desc);
           keepAll(desc, editor);
@@ -6750,7 +6730,7 @@ QUnit.module("module builder", function (origHooks) {
     });
 
     test("module uses a namespace import to consume exports from an incorporated bundle whose entrypoints utilize export *", async function (assert) {
-      let bundleSrc = await buildBundle(assert, url("output/toPairs.js"), {
+      await assert.setupFiles({
         "entrypoints.json": `{ "js": ["toPairs.js"] }`,
         "toPairs.js": `
           export * from "./internal.js";
@@ -6759,6 +6739,7 @@ QUnit.module("module builder", function (origHooks) {
           export function toPairs() { console.log("toPairs"); }
         `,
       });
+      let bundleSrc = await bundleCode(assert.fs, url("output/toPairs.js"));
 
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["./entries.js"] }`,
@@ -6798,9 +6779,11 @@ QUnit.module("module builder", function (origHooks) {
       await assert
         .file("output/toPairs.js")
         .matches(
-          /const toPairs = \(function\(\) { console\.log\("toPairs"\); }\);/
+          /const _default = \(function\(\) { console\.log\("toPairs"\); }\);/
         );
-      await assert.file("output/toPairs.js").matches(/export { toPairs };/);
+      await assert
+        .file("output/toPairs.js")
+        .matches(/export { _default as toPairs };/);
       await assert
         .file("output/entries.js")
         .matches(/import { toPairs } from "\.\/toPairs\.js";/);
@@ -7138,7 +7121,7 @@ QUnit.module("module builder", function (origHooks) {
         .matches(/export { _default as default }/);
     });
 
-    test("adds serialized analysis to bundle", async function (assert) {
+    test("performs parse if annotation does not exist in bundle", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["index.js"] }`,
         "index.js": `
@@ -7150,28 +7133,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
         "puppies.js": `export const puppies = ["mango", "van gogh"];`,
       });
-      builder = makeBuilder(assert.fs);
-      await builder.build();
-      let bundleSrc = await (
-        await assert.fs.openFile(url("output/index.js"))
-      ).readText();
-      let { desc } = extractDescriptionFromSource(bundleSrc);
-      assert.ok(desc, "bundle annotation exists");
-    });
-
-    test("performs parse if annotation does not exist in bundle", async function (assert) {
-      let bundleSrc = await buildBundle(assert, url("output/index.js"), {
-        "entrypoints.json": `{ "js": ["index.js"] }`,
-        "index.js": `
-          import { puppies } from "./puppies.js";
-          function getPuppies() { return puppies; }
-          function getCats() { return ["jojo"]; }
-          function getRats() { return ["pizza rat"]; }
-          export { getPuppies, getCats, getRats };
-        `,
-        "puppies.js": `export const puppies = ["mango", "van gogh"];`,
-      });
-      ({ source: bundleSrc } = extractDescriptionFromSource(bundleSrc));
+      let bundleSrc = await bundleCode(assert.fs); // this helpers strips annotation
 
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["driver.js"] }`,
@@ -7187,7 +7149,7 @@ QUnit.module("module builder", function (origHooks) {
     });
 
     test("skips parse if annotation exists in bundle", async function (assert) {
-      let bundleSrc = await buildBundle(assert, url("output/index.js"), {
+      await assert.setupFiles({
         "entrypoints.json": `{ "js": ["index.js"] }`,
         "index.js": `
           import { puppies } from "./puppies.js";
@@ -7198,6 +7160,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
         "puppies.js": `export const puppies = ["mango", "van gogh"];`,
       });
+      let bundleSrc = await bundleSource(assert.fs);
 
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["driver.js"] }`,
@@ -7214,15 +7177,13 @@ QUnit.module("module builder", function (origHooks) {
         builder.explain().get(`module-description:${url("lib.js")}`)
       );
 
-      // experimental control: make sure we can detect the node for modules that
-      // definitely do need to be parsed
       assert.ok(
         builder.explain().get(`module-description:${url("driver.js")}`)
       );
     });
 
     test("uses bundle annotation to tree shake unused exports from bundle", async function (assert) {
-      let bundleSrc = await buildBundle(assert, url("output/index.js"), {
+      await assert.setupFiles({
         "entrypoints.json": `{ "js": ["index.js"] }`,
         "index.js": `
           import { puppies } from "./puppies.js";
@@ -7233,6 +7194,7 @@ QUnit.module("module builder", function (origHooks) {
         `,
         "puppies.js": `export const puppies = ["mango", "van gogh"];`,
       });
+      let bundleSrc = await bundleSource(assert.fs);
 
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["driver.js"] }`,
