@@ -220,13 +220,13 @@ export class Assigner {
               ({ declaration }) => declaration
             ) as ImportedDeclarationDescription[]) {
             let [exportedName] =
-              [...getExports(consumer.module).entries()].find(
+              [...getExports(module).entries()].find(
                 ([, { desc: exportDesc }]) =>
                   exportDesc.name === importDeclaration.importedName
               ) ?? [];
             if (!exportedName) {
               throw new Error(
-                `cannot find export of binding '${importDeclaration.importedName} in ${consumer.module.url.href}`
+                `cannot find export of binding '${importDeclaration.importedName}' in ${module.url.href}`
               );
             }
             ensureExposed(exportedName, internalAssignment.assignment);
@@ -281,12 +281,12 @@ export class Assigner {
               continue;
             }
             let [exportedName] =
-              [...getExports(externalConsumer.module).entries()].find(
+              [...getExports(module).entries()].find(
                 ([, { desc: exportDesc }]) => exportDesc.name === name
               ) ?? [];
             if (!exportedName) {
               throw new Error(
-                `cannot find export of binding '${name} in ${externalConsumer.module.url.href}`
+                `cannot find export of binding '${name}' in ${module.url.href}`
               );
             }
             ensureExposed(exportedName, internalAssignment.assignment);

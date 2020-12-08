@@ -1281,7 +1281,7 @@ function flushImportDeclarationCode(
       bundle
     )}";`
   );
-  importDeclaration = [];
+  importDeclaration.splice(0, importDeclaration.length);
 }
 
 function flushImportDeclarationRegion(

@@ -7026,8 +7026,9 @@ QUnit.module("module builder", function (origHooks) {
         );
       await assert
         .file("output/index.js")
-        .matches(/import \* as lib from "\.\/lib\.js";/);
-      await assert.file("output/index.js").matches(/const { goodbye } = lib;/);
+        .matches(
+          /import { goodbye } from "\.\/lib\.js";[ \n]+import \* as lib from "\.\/lib\.js";/
+        );
       await assert
         .file("output/index.js")
         .matches(
