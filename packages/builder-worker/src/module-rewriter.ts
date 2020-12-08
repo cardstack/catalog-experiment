@@ -26,7 +26,7 @@ import { depAsURL, Dependencies } from "./nodes/entrypoint";
 import {
   ResolvedDependency,
   DependencyResolver,
-} from "./nodes/combine-modules";
+} from "./dependency-resolution";
 import { pkgInfoFromCatalogJsURL } from "./resolver";
 
 export class HeadState {
@@ -611,39 +611,6 @@ export function resolveDeclaration(
     declaration,
     pointer,
   };
-}
-
-export function resolutionForPkgDepDeclaration(
-  module: ModuleResolution,
-  bindingName: string,
-  depResolver: DependencyResolver
-): ResolvedDependency | undefined {
-  let { declaration: desc, pointer } =
-    module.desc.declarations.get(bindingName) ?? {};
-  if (!desc) {
-    return;
-  }
-  let pkgURL: URL | undefined;
-  if (desc.type === "local" && desc.original) {
-    pkgURL = pkgInfoFromCatalogJsURL(new URL(desc.original.bundleHref))?.pkgURL;
-  } else if (desc.type === "import") {
-    pkgURL = pkgInfoFromCatalogJsURL(
-      module.resolvedImports[desc.importIndex].url
-    )?.pkgURL;
-  }
-  if (pkgURL) {
-    return depResolver
-      .resolutionsForPkg(pkgURL?.href)
-      .find(
-        (r) =>
-          (r.consumedBy.url.href === module!.url.href &&
-            r.consumedByPointer === pointer) ||
-          r.obviatedDependencies.find(
-            (o) => o.moduleHref === module!.url.href && o.pointer === pointer
-          )
-      );
-  }
-  return;
 }
 
 interface IncludedDeclarationOrigin {

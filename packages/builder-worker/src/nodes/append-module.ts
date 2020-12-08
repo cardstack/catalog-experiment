@@ -26,13 +26,15 @@ import { maybeRelativeURL } from "../path";
 import {
   HeadState,
   ModuleRewriter,
-  resolutionForPkgDepDeclaration,
   resolveDeclaration,
   UnresolvedResult,
 } from "../module-rewriter";
+import {
+  DependencyResolver,
+  resolutionForPkgDepDeclaration,
+} from "../dependency-resolution";
 import { depAsURL, Dependencies } from "./entrypoint";
 import { setMapping, stringifyReplacer } from "../utils";
-import { DependencyResolver } from "./combine-modules";
 import { flatMap } from "lodash";
 import { pkgInfoFromCatalogJsURL } from "../resolver";
 
