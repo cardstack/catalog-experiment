@@ -180,28 +180,12 @@ export class ModuleRewriter {
             this.depResolver
           );
           if (declarationOrigin) {
-            if (declarationOrigin?.type === "obviated") {
-              continue;
-            } else if (declarationOrigin?.type === "included") {
-              assignedName = this.maybeAssignImportName(
-                declarationOrigin.source.bundleHref,
-                isNamespaceMarker(declarationOrigin.source.importedAs)
-                  ? NamespaceMarker
-                  : declarationOrigin.source.importedAs,
-                localName
-              );
-            }
-          } else if (
-            localDesc.type === "local" &&
-            localDesc.original &&
-            !declarationOrigin
-          ) {
-            throw new Error(
-              `could not locate the origin for the declaration '${localName}' with origin: ${JSON.stringify(
-                localDesc.original
-              )} used by module ${this.module.url.href} in bundle ${
-                this.bundle.href
-              }`
+            assignedName = this.maybeAssignImportName(
+              declarationOrigin.source.bundleHref,
+              isNamespaceMarker(declarationOrigin.source.importedAs)
+                ? NamespaceMarker
+                : declarationOrigin.source.importedAs,
+              localName
             );
           } else if (localDesc.type === "import") {
             let importedModule = makeNonCyclic(this.module).resolvedImports[
@@ -646,15 +630,23 @@ function resolveDeclarationOrigin(
   consumedByModule: ModuleResolution,
   depResolver: DependencyResolver
 ): DeclarationOrigin | undefined {
-  if (desc.type === "import" || !desc.original) {
+  let pkgURL: URL | undefined;
+  if (desc.type === "local" && desc.original) {
+    pkgURL = pkgInfoFromCatalogJsURL(new URL(desc.original.bundleHref))?.pkgURL;
+    if (!pkgURL) {
+      throw new Error(
+        `Cannot determine pkgURL that corresponds to the bundle URL: ${desc.original.bundleHref}`
+      );
+    }
+  } else if (desc.type === "import") {
+    pkgURL = pkgInfoFromCatalogJsURL(
+      consumedByModule.resolvedImports[desc.importIndex].url
+    )?.pkgURL;
+    if (!pkgURL) {
+      return;
+    }
+  } else {
     return;
-  }
-  let pkgURL = pkgInfoFromCatalogJsURL(new URL(desc.original.bundleHref))
-    ?.pkgURL;
-  if (!pkgURL) {
-    throw new Error(
-      `Cannot determine pkgURL that corresponds to the bundle URL: ${desc.original.bundleHref}`
-    );
   }
   let resolvedSources = depResolver.resolutionsForPkg(pkgURL.href) ?? [];
   let obviatedSource = resolvedSources?.find((s) =>

@@ -911,6 +911,16 @@ function addNewEditor(
     nonCyclicModule.source,
     moduleForNewEditor.desc
   );
+  let editorIndex = editors.findIndex((e) => e.editor === insertBefore);
+  // if the editor before the editor we are inserting before is already an
+  // editor for the same module that we need an editor for, then just use that
+  // one.
+  if (
+    editorIndex > 0 &&
+    editors[editorIndex - 1].module.url.href === moduleForNewEditor.url.href
+  ) {
+    return editors[editorIndex - 1].editor;
+  }
   editors.splice(
     editors.findIndex((e) => e.editor === insertBefore),
     0,
