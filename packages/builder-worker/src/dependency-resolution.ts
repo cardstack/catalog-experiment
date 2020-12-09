@@ -10,7 +10,7 @@ import { resolveDeclaration } from "./module-rewriter";
 import { Dependencies } from "./nodes/entrypoint";
 import { pkgInfoFromCatalogJsURL, Resolver } from "./resolver";
 import { LockEntries } from "./nodes/lock-file";
-import { satisfies, coerce, compare } from "semver";
+import { satisfies, coerce, compare, validRange } from "semver";
 //@ts-ignore
 import { intersect } from "semver-intersect";
 
@@ -171,6 +171,11 @@ export class DependencyResolver {
           rangeIndices.add(rangeIndex);
           continue;
         }
+        // npm allows non-semver range strings in the right hand side of the
+        // dependency (e.g. URL's, tags, branches, etc)
+        if (!validRange(range)) {
+          continue;
+        }
         if (satisfies(version, range)) {
           rangeIndices.add(rangeIndex);
         }
@@ -226,13 +231,37 @@ export class DependencyResolver {
         consumedBy,
         consumedByPointer,
       } = selected;
-      let range = intersect(
-        ...[...consumptionIndices].map((i) => resolutions![i].range)
+
+      let invalidSemverRangeIndex = [...consumptionIndices].find(
+        (i) => !validRange(resolutions![i].range)
       );
-      let obviatedDependencies = obviatedIndices.map((i) => ({
-        moduleHref: resolutions![i].consumedBy.url.href,
-        pointer: resolutions![i].consumedByPointer,
-      }));
+      let invalidSemverRange =
+        invalidSemverRangeIndex != null
+          ? resolutions[invalidSemverRangeIndex].range
+          : undefined;
+      if (invalidSemverRange && consumptionIndices.size > 1) {
+        throw new Error(
+          `a non semver range '${invalidSemverRange}' satisfied more than one pkg version--this should be impossible. the satisfied packages are: ${[
+            ...consumptionIndices,
+          ]
+            .map((i) => resolutions![i].bundleHref)
+            .join(", ")}`
+        );
+      }
+      let range: string;
+      let obviatedDependencies: ResolvedDependency["obviatedDependencies"];
+      if (invalidSemverRange) {
+        range = invalidSemverRange;
+        obviatedDependencies = [];
+      } else {
+        range = intersect(
+          ...[...consumptionIndices].map((i) => resolutions![i].range)
+        );
+        obviatedDependencies = obviatedIndices.map((i) => ({
+          moduleHref: resolutions![i].consumedBy.url.href,
+          pointer: resolutions![i].consumedByPointer,
+        }));
+      }
 
       resultingResolutions.push({
         importedSource,

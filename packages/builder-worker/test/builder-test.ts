@@ -5466,7 +5466,7 @@ QUnit.module("module builder", function (origHooks) {
               "puppies": {
                 "type": "npm",
                 "pkgName": "puppies",
-                "range": "^7.9.3"
+                "range": "^7.9.2"
               }
             }
           }`,
@@ -5494,7 +5494,7 @@ QUnit.module("module builder", function (origHooks) {
               "puppies": {
                 "type": "npm",
                 "pkgName": "puppies",
-                "range": "^7.9.2"
+                "range": "^7.9.3"
               }
             }
           }`,
@@ -5916,7 +5916,98 @@ QUnit.module("module builder", function (origHooks) {
       // npm allows a lot of things besides semver ranges on the right hand side
       // of the dependency name. If we see a non-semver range, we'll just treat
       // it as a range that can't satisfy any semver.
-      test("can handle non-range strings in an npm pkg dependency (aka SHA, URLs, tag, branch, etc)", async function (assert) {});
+      test("can handle non-range strings in an npm pkg dependency (aka SHA, URLs, tag, branch, etc)", async function (assert) {
+        // puppies dep is ver 7.9.2
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["index.js"],
+            "dependencies": {
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "https://github.com/cardstack/cardstack.git#master"
+              }
+            }
+          }`,
+          "catalogjs.lock": `{ "puppies": "${puppiesBundle2Href}/index.js" }`, // ver 7.9.2
+          "index.js": `
+            import { puppies } from "puppies";
+            function getPuppies() { return puppies; }
+            function getCats() { return ["jojo"]; }
+            function getRats() { return ["pizza rat"]; }
+            export { getPuppies, getCats, getRats };
+          `,
+        });
+        let bundle1Src = await bundleSource(assert.fs);
+        let lib1BundleHref =
+          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["driver.js"],
+            "dependencies": {
+              "lib1": {
+                "type": "npm",
+                "pkgName": "lib1",
+                "range": "^1.0.0"
+              },
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "^7.9.3"
+              }
+            }
+          }`,
+          // puppies dep is ver 7.9.4
+          "catalogjs.lock": `{
+            "lib1": "${lib1BundleHref}/lib.js",
+            "puppies": "${puppiesBundle1Href}/index.js"
+          }`,
+          "driver.js": `
+            import { getPuppies } from "lib1";
+            import { puppies } from "puppies";
+            console.log([...puppies, ...getPuppies()]);
+          `,
+          [`${lib1BundleHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
+          [`${lib1BundleHref}/lib.js`]: bundle1Src,
+        });
+        let { source, desc } = await bundle(assert.fs, url("output/driver.js"));
+
+        assert.codeEqual(
+          source,
+          `
+          const puppies = ["mango", "van gogh"];
+          const puppies0 = ["mango", "van gogh"];
+          function getPuppies() { return puppies0; }
+          console.log([...puppies, ...getPuppies()]);
+          export {};
+          `
+        );
+
+        let puppies = desc!.declarations.get("puppies");
+        assert.equal(puppies?.declaration.type, "local");
+        if (puppies?.declaration.type === "local") {
+          assert.equal(
+            puppies.declaration.original?.bundleHref,
+            `${puppiesBundle1Href}/index.js`
+          );
+          assert.equal(puppies.declaration.original?.range, "^7.9.3");
+          assert.equal(puppies.declaration.original?.importedAs, "puppies");
+        }
+
+        let puppies0 = desc!.declarations.get("puppies0");
+        assert.equal(puppies0?.declaration.type, "local");
+        if (puppies0?.declaration.type === "local") {
+          assert.equal(
+            puppies0.declaration.original?.bundleHref,
+            `${puppiesBundle2Href}/index.js`
+          );
+          assert.equal(
+            puppies0.declaration.original?.range,
+            "https://github.com/cardstack/cardstack.git#master"
+          );
+          assert.equal(puppies0.declaration.original?.importedAs, "puppies");
+        }
+      });
 
       test("bundle exports binding from pkg dependency that was collapsed", async function (assert) {
         await assert.setupFiles({
@@ -6032,7 +6123,7 @@ QUnit.module("module builder", function (origHooks) {
               "puppies": {
                 "type": "npm",
                 "pkgName": "puppies",
-                "range": "^7.9.3"
+                "range": "^7.9.2"
               }
             }
           }`,
@@ -6060,7 +6151,7 @@ QUnit.module("module builder", function (origHooks) {
               "puppies": {
                 "type": "npm",
                 "pkgName": "puppies",
-                "range": "^7.9.2"
+                "range": "^7.9.3"
               }
             }
           }`,
