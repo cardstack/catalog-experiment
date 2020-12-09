@@ -14,7 +14,7 @@ import { extractDescriptionFromSource } from "../../builder-worker/src/descripti
 
 QUnit.module("Install from npm", function () {
   QUnit.module("pkg dependencies", function (origHooks) {
-    let { test, hooks, only } = installFileAssertions(origHooks);
+    let { test, hooks } = installFileAssertions(origHooks);
     let project: Project;
     let fs: FileSystem;
     let packageURLs: URL[];
@@ -272,7 +272,7 @@ QUnit.module("Install from npm", function () {
   });
 
   QUnit.module("ES interop", function (origHooks) {
-    let { test, hooks, only } = installFileAssertions(origHooks);
+    let { test, hooks } = installFileAssertions(origHooks);
     let project: Project;
     let fs: FileSystem;
     let packageURLs: URL[];

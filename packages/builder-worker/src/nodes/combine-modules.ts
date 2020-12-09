@@ -24,14 +24,12 @@ import {
 } from "../dependency-resolution";
 //@ts-ignore
 import { intersect } from "semver-intersect";
-import { LockEntries } from "./lock-file";
 
 export class CombineModulesNode implements BuilderNode {
   cacheKey: CombineModulesNode;
   constructor(
     private bundle: URL,
     private dependencies: Dependencies,
-    private lockEntries: LockEntries,
     private resolver: Resolver,
     private bundleAssignmentsNode: BundleAssignmentsNode
   ) {
@@ -43,7 +41,6 @@ export class CombineModulesNode implements BuilderNode {
       info: new PrepareCombineModulesNode(
         this.bundle,
         this.dependencies,
-        this.lockEntries,
         this.bundleAssignmentsNode,
         this.resolver
       ),
@@ -159,7 +156,6 @@ class PrepareCombineModulesNode implements BuilderNode {
   constructor(
     private bundle: URL,
     private dependencies: Dependencies,
-    private lockEntries: LockEntries,
     private bundleAssignmentsNode: BundleAssignmentsNode,
     private resolver: Resolver
   ) {
@@ -190,7 +186,6 @@ class PrepareCombineModulesNode implements BuilderNode {
       node: new ResolvePkgDeps(
         this.bundle,
         this.dependencies,
-        this.lockEntries,
         assignments,
         resolutionsInDepOrder,
         this.resolver

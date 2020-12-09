@@ -9,14 +9,10 @@ import { BundleAssignment } from "./nodes/bundle";
 import { resolveDeclaration } from "./module-rewriter";
 import { Dependencies } from "./nodes/entrypoint";
 import { pkgInfoFromCatalogJsURL, Resolver } from "./resolver";
-import { LockEntries } from "./nodes/lock-file";
 import { satisfies, coerce, compare, validRange } from "semver";
 //@ts-ignore
 import { intersect } from "semver-intersect";
 
-// TODO we don't care about lock entries here, the act of doing previous builds
-// should have locked everything that needs to be locked, we would not expect
-// any new locks to be generated as a result of doing this. let's remove all the lockEntries handling...
 export class ResolvePkgDeps implements BuilderNode {
   // caching is not ideal here--we are relying on the fact that the nodes that
   // this builder node kicks off are most likely all cached
@@ -25,7 +21,6 @@ export class ResolvePkgDeps implements BuilderNode {
   constructor(
     private bundle: URL,
     private dependencies: Dependencies,
-    private lockEntries: LockEntries,
     private assignments: BundleAssignment[],
     private resolutionsInDepOrder: ModuleResolution[],
     private resolver: Resolver
@@ -39,7 +34,7 @@ export class ResolvePkgDeps implements BuilderNode {
     let pkgs = Object.keys(this.dependencies).sort();
     let { entrypointModuleURL } = this.ownAssignments[0];
     return pkgs.map(
-      (pkg) => new ResolveFromLock(pkg, entrypointModuleURL, this.lockEntries)
+      (pkg) => new ResolveFromLock(pkg, entrypointModuleURL, new Map())
     );
   }
   async run(resolutions: {
@@ -61,7 +56,7 @@ export class ResolvePkgDeps implements BuilderNode {
           return await this.resolver.resolveAsBuilderNode(
             pkgName,
             this.ownAssignments[0].entrypointModuleURL,
-            this.lockEntries
+            new Map() // we don't care about lock entries
           );
         }
       })
@@ -172,7 +167,7 @@ export class DependencyResolver {
           continue;
         }
         // npm allows non-semver range strings in the right hand side of the
-        // dependency (e.g. URL's, tags, branches, etc)
+        // dependency (e.g. URLs, tags, branches, etc)
         if (!validRange(range)) {
           continue;
         }
