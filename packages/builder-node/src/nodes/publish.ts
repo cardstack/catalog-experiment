@@ -28,6 +28,7 @@ import {
   extractDescriptionFromSource,
 } from "../../../builder-worker/src/description-encoder";
 import groupBy from "lodash/groupBy";
+import { declarationsMap } from "../../../builder-worker/src/describe-file";
 
 export class MakePackageHashNode implements BuilderNode {
   cacheKey: string;
@@ -250,22 +251,34 @@ class PublishFileNode implements BuilderNode {
     // the final pkg URL includes a hash of the lock file).
     let { source, desc } = extractDescriptionFromSource(contents);
     if (desc) {
-      for (let nameDesc of desc.names.values()) {
-        if (nameDesc.type !== "local") {
-          continue;
-        }
+      for (let region of desc.regions) {
         if (
-          nameDesc.original?.moduleHref &&
-          nameDesc.original.moduleHref.startsWith(
-            `${this.pkgWorkingURL.href}${buildSrcDir}`
-          )
+          region.original ||
+          (region.type === "declaration" &&
+            region.declaration.type === "local" &&
+            region.declaration.original)
         ) {
-          nameDesc.original.moduleHref = nameDesc.original.moduleHref.replace(
-            `${this.pkgWorkingURL.href}${buildSrcDir}`,
-            this.pkgFinalURL.href
-          );
+          let original =
+            region.type === "declaration" &&
+            region.declaration.type === "local" &&
+            region.declaration.original
+              ? region.declaration.original!
+              : region.original!;
+          if (
+            original.bundleHref &&
+            original.bundleHref.startsWith(
+              `${this.pkgWorkingURL.href}${buildSrcDir}`
+            )
+          ) {
+            original.bundleHref = original.bundleHref.replace(
+              `${this.pkgWorkingURL.href}${buildSrcDir}`,
+              this.pkgFinalURL.href
+            );
+          }
         }
       }
+
+      desc.declarations = declarationsMap(desc.regions);
       source = addDescriptionToSource(desc, source);
     }
 

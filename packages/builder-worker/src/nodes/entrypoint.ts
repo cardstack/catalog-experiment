@@ -339,11 +339,6 @@ function assertNpmDepEntry(
       `invalid entrypoints.json in ${srcFile}, the 'range' property in  dependency '${dep}' must have a string`
     );
   }
-  if (!validRange(entry.range)) {
-    throw new Error(
-      `invalid entrypoints.json in ${srcFile}, the 'range' property in  dependency '${dep}' must be a valid semver range`
-    );
-  }
 }
 
 function assertCatalogJSDepEntry(

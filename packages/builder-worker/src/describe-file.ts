@@ -75,6 +75,7 @@ export interface CJSDescription extends Description {
   // value: true }) we'll keep track of all the named exports so that we can
   // have a higher fidelity ES shim for this module
   esTranspiledExports: string[] | undefined;
+  declarations: Declarations;
 }
 
 // TODO we need to refactor this to be region-centric as well....
@@ -930,7 +931,7 @@ export function describeFile(
   if (!isES6Module) {
     let { requires } = desc!;
     let esTranspiledExports = isTranspiledFromES ? cjsExportNames : undefined;
-    return { regions, requires, esTranspiledExports };
+    return { regions, requires, esTranspiledExports, declarations };
   } else {
     let { imports, exports } = desc!;
     return { regions, imports, exports, declarations };

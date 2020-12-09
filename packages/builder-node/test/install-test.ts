@@ -14,7 +14,7 @@ import { extractDescriptionFromSource } from "../../builder-worker/src/descripti
 
 QUnit.module("Install from npm", function () {
   QUnit.module("pkg dependencies", function (origHooks) {
-    let { test, hooks } = installFileAssertions(origHooks);
+    let { test, hooks, only } = installFileAssertions(origHooks);
     let project: Project;
     let fs: FileSystem;
     let packageURLs: URL[];
@@ -131,8 +131,8 @@ QUnit.module("Install from npm", function () {
       assert.deepEqual(aEntrypoints.js, ["./index.js"]);
       assert.notOk(aEntrypoints.html);
       assert.deepEqual(aEntrypoints.dependencies, {
-        b: { url: "https://catalogjs.com/pkgs/npm/b/", range: "4.5.6" },
-        e: { url: "https://catalogjs.com/pkgs/npm/e/", range: "2.3.4" },
+        b: { type: "npm", pkgName: "b", range: "4.5.6" },
+        e: { type: "npm", pkgName: "e", range: "2.3.4" },
       });
 
       let cEntrypoints = JSON.parse(
@@ -143,7 +143,7 @@ QUnit.module("Install from npm", function () {
       assert.deepEqual(cEntrypoints.js, ["./index.js"]);
       assert.notOk(cEntrypoints.html);
       assert.deepEqual(cEntrypoints.dependencies, {
-        b: { url: "https://catalogjs.com/pkgs/npm/b/", range: "7.8.9" },
+        b: { type: "npm", pkgName: "b", range: "7.8.9" },
       });
     });
 
@@ -182,7 +182,7 @@ QUnit.module("Install from npm", function () {
       assert.deepEqual(b1Entrypoints.js, ["./b.js"]);
       assert.notOk(b1Entrypoints.html);
       assert.deepEqual(b1Entrypoints.dependencies, {
-        d: { url: "https://catalogjs.com/pkgs/npm/d/", range: "10.11.12" },
+        d: { type: "npm", pkgName: "d", range: "10.11.12" },
       });
 
       let { e: pkgEURL } = aLock;
@@ -229,7 +229,7 @@ QUnit.module("Install from npm", function () {
       assert.deepEqual(b2Entrypoints.js, ["./index.js"]);
       assert.notOk(b2Entrypoints.html);
       assert.deepEqual(b2Entrypoints.dependencies, {
-        d: { url: "https://catalogjs.com/pkgs/npm/d/", range: "10.11.12" },
+        d: { type: "npm", pkgName: "d", range: "10.11.12" },
       });
 
       let b2Lock = JSON.parse(
@@ -251,17 +251,20 @@ QUnit.module("Install from npm", function () {
       ).readText();
       let { desc } = extractDescriptionFromSource(source);
 
-      let nameDesc = desc!.names.get("a")!;
-      assert.equal(nameDesc?.type, "local");
-      if (nameDesc.type === "local") {
-        assert.equal(nameDesc.original?.moduleHref, `${pkgAURL}a.js`);
-      }
-
-      nameDesc = desc!.names.get("b")!;
+      let { declaration: nameDesc } = desc!.declarations.get("e")!;
       assert.equal(nameDesc?.type, "local");
       if (nameDesc.type === "local") {
         assert.equal(
-          nameDesc.original?.moduleHref,
+          nameDesc.original?.bundleHref,
+          "https://catalogjs.com/pkgs/npm/e/2.3.4/3HHDrHWAD4EmwKIiLurOF2RsOr0=/index.js"
+        );
+      }
+
+      ({ declaration: nameDesc } = desc!.declarations.get("b")!);
+      assert.equal(nameDesc?.type, "local");
+      if (nameDesc.type === "local") {
+        assert.equal(
+          nameDesc.original?.bundleHref,
           "https://catalogjs.com/pkgs/npm/b/4.5.6/GPK8msJ9aPVm9Y8BPhPPh5fA5M4=/b.js"
         );
       }
@@ -269,7 +272,7 @@ QUnit.module("Install from npm", function () {
   });
 
   QUnit.module("ES interop", function (origHooks) {
-    let { test, hooks } = installFileAssertions(origHooks);
+    let { test, hooks, only } = installFileAssertions(origHooks);
     let project: Project;
     let fs: FileSystem;
     let packageURLs: URL[];

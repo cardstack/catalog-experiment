@@ -5913,6 +5913,11 @@ QUnit.module("module builder", function (origHooks) {
         }
       });
 
+      // npm allows a lot of things besides semver ranges on the right hand side
+      // of the dependency name. If we see a non-semver range, we'll just treat
+      // it as a range that can't satisfy any semver.
+      test("can handle non-range strings in an npm pkg dependency (aka SHA, URLs, tag, branch, etc)", async function (assert) {});
+
       test("bundle exports binding from pkg dependency that was collapsed", async function (assert) {
         await assert.setupFiles({
           "entrypoints.json": `{

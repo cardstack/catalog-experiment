@@ -112,7 +112,8 @@ class IntrospectSrcNode implements BuilderNode {
     );
     if (!desc || isModuleDescription(desc)) {
       let jsonDeps = new Set<string>();
-      for (let importDesc of desc?.names.values() || []) {
+      for (let { declaration: importDesc } of desc?.declarations.values() ||
+        []) {
         if (
           importDesc.type === "import" &&
           desc!.imports[importDesc.importIndex].specifier.endsWith(".json")
@@ -176,13 +177,14 @@ function remapRequires(
   desc: CJSDescription,
   depBindingName: string
 ): string {
-  let editor = new RegionEditor(origSrc, desc, () => {
-    throw new Error(`Cannot obtain unused binding name for CJS file`);
-  });
+  let editor = new RegionEditor(origSrc, desc);
+  for (let [pointer] of editor.regions.entries()) {
+    editor.keepRegion(pointer);
+  }
   for (let [index, require] of desc.requires.entries()) {
     editor.replace(require.requireRegion, `${depBindingName}[${index}]()`);
   }
-  return editor.serialize();
+  return editor.serialize().code;
 }
 
 function depFactoryName(specifier: string): string {
@@ -261,7 +263,7 @@ class RewriteCJSNode implements BuilderNode {
     });
     let depBindingName = "dependencies";
     let count = 0;
-    while (this.desc.names.has(depBindingName)) {
+    while (this.desc.declarations.has(depBindingName)) {
       depBindingName = `dependencies${count++}`;
     }
     let newSrc = `${[...imports].join("\n")}

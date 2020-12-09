@@ -1,4 +1,4 @@
-import { BuilderNode, Value } from "./nodes/common";
+import { BuilderNode, ConstantNode, NextNode, Value } from "./nodes/common";
 import {
   makeNonCyclic,
   ModuleResolution,
@@ -8,12 +8,15 @@ import { NamespaceMarker, RegionPointer } from "./code-region";
 import { BundleAssignment } from "./nodes/bundle";
 import { resolveDeclaration } from "./module-rewriter";
 import { Dependencies } from "./nodes/entrypoint";
-import { pkgInfoFromCatalogJsURL } from "./resolver";
+import { pkgInfoFromCatalogJsURL, Resolver } from "./resolver";
 import { LockEntries } from "./nodes/lock-file";
 import { satisfies, coerce, compare } from "semver";
 //@ts-ignore
 import { intersect } from "semver-intersect";
 
+// TODO we don't care about lock entries here, the act of doing previous builds
+// should have locked everything that needs to be locked, we would not expect
+// any new locks to be generated as a result of doing this. let's remove all the lockEntries handling...
 export class ResolvePkgDeps implements BuilderNode {
   // caching is not ideal here--we are relying on the fact that the nodes that
   // this builder node kicks off are most likely all cached
@@ -24,7 +27,8 @@ export class ResolvePkgDeps implements BuilderNode {
     private dependencies: Dependencies,
     private lockEntries: LockEntries,
     private assignments: BundleAssignment[],
-    private resolutionsInDepOrder: ModuleResolution[]
+    private resolutionsInDepOrder: ModuleResolution[],
+    private resolver: Resolver
   ) {
     this.cacheKey = this;
     this.ownAssignments = assignments.filter(
@@ -41,6 +45,56 @@ export class ResolvePkgDeps implements BuilderNode {
   async run(resolutions: {
     [pkgIndex: number]: URL | undefined;
   }): Promise<
+    NextNode<{
+      assignments: BundleAssignment[];
+      resolutionsInDepOrder: ModuleResolution[];
+      pkgResolutions: { [pkgName: string]: string };
+    }>
+  > {
+    let pkgs = Object.keys(this.dependencies).sort();
+    let depNodes = await Promise.all(
+      pkgs.map(async (pkgName, index) => {
+        let bundleHref = resolutions[index]?.href;
+        if (bundleHref) {
+          return new ConstantNode({ resolution: new URL(bundleHref) });
+        } else {
+          return await this.resolver.resolveAsBuilderNode(
+            pkgName,
+            this.ownAssignments[0].entrypointModuleURL,
+            this.lockEntries
+          );
+        }
+      })
+    );
+    return {
+      node: new FinishResolvePkgDeps(
+        depNodes,
+        this.dependencies,
+        this.assignments,
+        this.resolutionsInDepOrder
+      ),
+    };
+  }
+}
+
+class FinishResolvePkgDeps implements BuilderNode {
+  cacheKey: FinishResolvePkgDeps;
+  constructor(
+    private depURLNodes: BuilderNode<{ resolution: URL }>[],
+    private dependencies: Dependencies,
+    private assignments: BundleAssignment[],
+    private resolutionsInDepOrder: ModuleResolution[]
+  ) {
+    this.cacheKey = this;
+  }
+
+  async deps() {
+    return this.depURLNodes;
+  }
+
+  async run(resolutions: {
+    [pkgIndex: number]: { resolution: URL };
+  }): Promise<
     Value<{
       assignments: BundleAssignment[];
       resolutionsInDepOrder: ModuleResolution[];
@@ -50,19 +104,14 @@ export class ResolvePkgDeps implements BuilderNode {
     let pkgs = Object.keys(this.dependencies).sort();
     let pkgResolutions: { [pkgName: string]: string } = {};
     for (let [index, pkgName] of pkgs.entries()) {
-      let bundleHref = resolutions[index]?.href;
-      if (!bundleHref) {
-        throw new Error(
-          `could not find pkg '${pkgName}' in lockfile for ${this.ownAssignments[0].entrypointModuleURL.href} when building bundle ${this.bundle.href}`
-        );
-      }
+      let bundleHref = resolutions[index].resolution.href;
       pkgResolutions[pkgName] = bundleHref;
     }
     return {
       value: {
+        pkgResolutions,
         assignments: this.assignments,
         resolutionsInDepOrder: this.resolutionsInDepOrder,
-        pkgResolutions,
       },
     };
   }

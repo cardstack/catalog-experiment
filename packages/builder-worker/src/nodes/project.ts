@@ -30,6 +30,7 @@ export interface Options {
 // global bundle assignment effort.
 export class MakeProjectNode implements BuilderNode<LockEntries> {
   cacheKey: string;
+  // TODO we can't just pass this Map around. it needs to be the output of a builder node...
   private lockEntries: LockEntries = new Map();
   private optsWithDefaults: Options;
 

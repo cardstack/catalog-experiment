@@ -16,7 +16,7 @@ import {
 } from "../module-rewriter";
 import { AppendModuleNode, FinishAppendModulesNode } from "./append-module";
 import { Dependencies } from "./entrypoint";
-import { pkgInfoFromCatalogJsURL } from "../resolver";
+import { pkgInfoFromCatalogJsURL, Resolver } from "../resolver";
 import {
   ResolvePkgDeps,
   DependencyResolver,
@@ -32,6 +32,7 @@ export class CombineModulesNode implements BuilderNode {
     private bundle: URL,
     private dependencies: Dependencies,
     private lockEntries: LockEntries,
+    private resolver: Resolver,
     private bundleAssignmentsNode: BundleAssignmentsNode
   ) {
     this.cacheKey = this;
@@ -43,7 +44,8 @@ export class CombineModulesNode implements BuilderNode {
         this.bundle,
         this.dependencies,
         this.lockEntries,
-        this.bundleAssignmentsNode
+        this.bundleAssignmentsNode,
+        this.resolver
       ),
     };
   }
@@ -158,7 +160,8 @@ class PrepareCombineModulesNode implements BuilderNode {
     private bundle: URL,
     private dependencies: Dependencies,
     private lockEntries: LockEntries,
-    private bundleAssignmentsNode: BundleAssignmentsNode
+    private bundleAssignmentsNode: BundleAssignmentsNode,
+    private resolver: Resolver
   ) {
     this.cacheKey = this;
   }
@@ -189,7 +192,8 @@ class PrepareCombineModulesNode implements BuilderNode {
         this.dependencies,
         this.lockEntries,
         assignments,
-        resolutionsInDepOrder
+        resolutionsInDepOrder,
+        this.resolver
       ),
     };
   }

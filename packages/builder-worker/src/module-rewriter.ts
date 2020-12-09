@@ -192,6 +192,15 @@ export class ModuleRewriter {
                 : declarationOrigin.source.importedAs,
               localName
             );
+            // we deal with setting the namespace assigned import deps in the
+            // makeNamespaceMappings()
+            if (!isNamespaceMarker(declarationOrigin.source.importedAs)) {
+              this.state.assignedImportedDependencies.set(assignedName, {
+                bundleHref: declarationOrigin.source.bundleHref,
+                range: declarationOrigin.source.range,
+                importedAs: declarationOrigin.source.importedAs,
+              });
+            }
           } else if (localDesc.type === "import") {
             let importedModule = makeNonCyclic(this.module).resolvedImports[
               localDesc.importIndex
@@ -220,21 +229,6 @@ export class ModuleRewriter {
                 source.importedAs,
                 localName
               );
-            }
-
-            let dep = Object.values(this.dependencies).find((dep) =>
-              importedModule.url.href.includes(depAsURL(dep).href)
-            );
-            if (dep) {
-              // we deal with setting the namespace assigned import deps in the
-              // makeNamespaceMappings()
-              if (!isNamespaceMarker(localDesc.importedName)) {
-                this.state.assignedImportedDependencies.set(assignedName, {
-                  bundleHref: importedModule.url.href,
-                  range: dep.range,
-                  importedAs: localDesc.importedName,
-                });
-              }
             }
           }
         } else {

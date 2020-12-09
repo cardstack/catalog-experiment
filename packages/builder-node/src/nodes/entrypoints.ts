@@ -62,11 +62,8 @@ export class EntrypointsNode implements BuilderNode {
     let dependencies: Dependencies = {};
     for (let [name, range] of Object.entries(this.pkgJSON.dependencies ?? {})) {
       dependencies[name] = {
-        url: `https://catalogjs.com/pkgs/npm/${name}/`,
-        //TODO: this is a bit awkward as npm shoves a lot of things besides the
-        // range on the right-hand side of the dep name (src URL, SHA, tag,
-        // branch, etc). work with Ed to figure out a better/less npm-ish
-        // thing(s) to capture here
+        type: "npm",
+        pkgName: name,
         range,
       };
     }

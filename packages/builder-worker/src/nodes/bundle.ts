@@ -352,6 +352,7 @@ export class BundleNode implements BuilderNode {
         this.bundle,
         this.dependencies,
         this.lockEntries,
+        this.resolver,
         new BundleAssignmentsNode(
           this.inputRoot,
           this.outputRoot,
