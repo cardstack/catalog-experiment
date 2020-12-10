@@ -759,7 +759,7 @@ type Disposition =
     };
 
 export class RegionEditor {
-  private dispositions: Disposition[];
+  readonly dispositions: Disposition[];
 
   private pendingGap: { withinParent: RegionPointer; gap: number } | undefined;
   private pendingStart:

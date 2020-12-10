@@ -119,7 +119,7 @@ class MakePackageWorkingAreaNode implements BuilderNode {
         new URL(
           `${workingHref}npm/${this.pkgJSON.name}/${this.pkgJSON.version}/${hash}/`
         ),
-        // TODO make this configurably be a memory driver. using node fs by
+        // TODO make this configure-ably be a memory driver. using node fs by
         // default because it easy to debug when there are build failures.
         new NodeFileSystemDriver(underlyingPkgPath)
       ),

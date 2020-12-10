@@ -186,12 +186,12 @@ export class ModuleResolutionNode implements BuilderNode<Resolution> {
         if (sourcePkgName && sourcePkgVersion) {
           let { resolutions } =
             (await getRecipe(sourcePkgName, sourcePkgVersion)) ?? {};
-          let href = resolutions?.[imp.specifier];
+          let href = resolutions?.[imp.specifier!];
           if (href) {
             return new ConstantNode(new URL(href));
           }
         }
-        return new ResolveFromLock(imp.specifier, this.url, this.lockEntries);
+        return new ResolveFromLock(imp.specifier!, this.url, this.lockEntries);
       })
     );
     return {
@@ -276,7 +276,7 @@ class FinishResolutionsFromLockNode implements BuilderNode {
           });
         }
         return await this.resolver.resolveAsBuilderNode(
-          imp.specifier,
+          imp.specifier!,
           this.consumerURL,
           this.lockEntries
         );

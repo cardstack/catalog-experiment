@@ -1,129 +1,26 @@
-import { BuilderNode, ConstantNode, NextNode, Value } from "./nodes/common";
-import {
-  makeNonCyclic,
-  ModuleResolution,
-  ResolveFromLock,
-} from "./nodes/resolution";
+import { makeNonCyclic, ModuleResolution } from "./nodes/resolution";
 import { NamespaceMarker, RegionPointer } from "./code-region";
 import { BundleAssignment } from "./nodes/bundle";
 import { resolveDeclaration } from "./module-rewriter";
 import { Dependencies } from "./nodes/entrypoint";
-import { pkgInfoFromCatalogJsURL, Resolver } from "./resolver";
+import { pkgInfoFromCatalogJsURL } from "./resolver";
 import { satisfies, coerce, compare, validRange } from "semver";
 //@ts-ignore
 import { intersect } from "semver-intersect";
-
-export class ResolvePkgDeps implements BuilderNode {
-  // caching is not ideal here--we are relying on the fact that the nodes that
-  // this builder node kicks off are most likely all cached
-  cacheKey: ResolvePkgDeps;
-  private ownAssignments: BundleAssignment[];
-  constructor(
-    private bundle: URL,
-    private dependencies: Dependencies,
-    private assignments: BundleAssignment[],
-    private resolutionsInDepOrder: ModuleResolution[],
-    private resolver: Resolver
-  ) {
-    this.cacheKey = this;
-    this.ownAssignments = assignments.filter(
-      (a) => a.bundleURL.href === this.bundle.href
-    );
-  }
-  async deps() {
-    let pkgs = Object.keys(this.dependencies).sort();
-    let { entrypointModuleURL } = this.ownAssignments[0];
-    return pkgs.map(
-      (pkg) => new ResolveFromLock(pkg, entrypointModuleURL, new Map())
-    );
-  }
-  async run(resolutions: {
-    [pkgIndex: number]: URL | undefined;
-  }): Promise<
-    NextNode<{
-      assignments: BundleAssignment[];
-      resolutionsInDepOrder: ModuleResolution[];
-      pkgResolutions: { [pkgName: string]: string };
-    }>
-  > {
-    let pkgs = Object.keys(this.dependencies).sort();
-    let depNodes = await Promise.all(
-      pkgs.map(async (pkgName, index) => {
-        let bundleHref = resolutions[index]?.href;
-        if (bundleHref) {
-          return new ConstantNode({ resolution: new URL(bundleHref) });
-        } else {
-          return await this.resolver.resolveAsBuilderNode(
-            pkgName,
-            this.ownAssignments[0].entrypointModuleURL,
-            new Map() // we don't care about lock entries
-          );
-        }
-      })
-    );
-    return {
-      node: new FinishResolvePkgDeps(
-        depNodes,
-        this.dependencies,
-        this.assignments,
-        this.resolutionsInDepOrder
-      ),
-    };
-  }
-}
-
-class FinishResolvePkgDeps implements BuilderNode {
-  cacheKey: FinishResolvePkgDeps;
-  constructor(
-    private depURLNodes: BuilderNode<{ resolution: URL }>[],
-    private dependencies: Dependencies,
-    private assignments: BundleAssignment[],
-    private resolutionsInDepOrder: ModuleResolution[]
-  ) {
-    this.cacheKey = this;
-  }
-
-  async deps() {
-    return this.depURLNodes;
-  }
-
-  async run(resolutions: {
-    [pkgIndex: number]: { resolution: URL };
-  }): Promise<
-    Value<{
-      assignments: BundleAssignment[];
-      resolutionsInDepOrder: ModuleResolution[];
-      pkgResolutions: { [pkgName: string]: string };
-    }>
-  > {
-    let pkgs = Object.keys(this.dependencies).sort();
-    let pkgResolutions: { [pkgName: string]: string } = {};
-    for (let [index, pkgName] of pkgs.entries()) {
-      let bundleHref = resolutions[index].resolution.href;
-      pkgResolutions[pkgName] = bundleHref;
-    }
-    return {
-      value: {
-        pkgResolutions,
-        assignments: this.assignments,
-        resolutionsInDepOrder: this.resolutionsInDepOrder,
-      },
-    };
-  }
-}
+import { LockFile } from "./nodes/lock-file";
 
 export class DependencyResolver {
   private consumedDeps: ConsumedDependencies;
   private resolutionCache: Map<string, ResolvedDependency[]> = new Map();
   constructor(
     dependencies: Dependencies,
-    resolutions: { [pkgName: string]: string },
+    lockFile: LockFile | undefined,
     assignments: BundleAssignment[],
     private bundle: URL
   ) {
     this.consumedDeps = gatherDependencies(
       dependencies,
-      resolutions,
+      lockFile,
       assignments,
       bundle
     );
@@ -297,7 +194,7 @@ type ConsumedDependencies = Map<string, ConsumedDependency[]>; // the key of the
 
 function gatherDependencies(
   dependencies: Dependencies,
-  resolutions: { [pkgName: string]: string },
+  lockFile: LockFile | undefined,
   assignments: BundleAssignment[],
   bundle: URL
 ): ConsumedDependencies {
@@ -306,26 +203,35 @@ function gatherDependencies(
     (a) => a.bundleURL.href === bundle.href
   );
 
-  // first we gather up all the direct dependencies of the project
-  for (let [pkgName, dependency] of Object.entries(dependencies)) {
-    let bundleHref = resolutions[pkgName];
+  // first we gather up all the direct dependencies of the project from the lock
+  // file--this has the benefit of listing out all the direct dependencies of
+  // the project and their resolutions
+  for (let [specifier, bundleHref] of Object.entries(lockFile ?? {})) {
+    let [pkgName, ...bundleParts] = specifier.split("/");
+    if (pkgName.startsWith("@")) {
+      pkgName = `${pkgName}/${bundleParts.shift()}`;
+    }
     if (!bundleHref) {
       throw new Error(
-        `unable to determine resolution for pkg ${pkgName} in bundle ${bundle.href} from lock file.`
+        `unable to determine resolution for ${specifier} in bundle ${bundle.href} from lock file.`
       );
     }
     let pkgAssignment = assignments.find(
       (a) => a.module.url.href === bundleHref
     );
     if (!pkgAssignment) {
+      continue;
+    }
+    let dependency = dependencies[pkgName];
+    if (!dependency) {
       throw new Error(
-        `unable to find bundle assignment for pkg ${pkgName} with url ${bundleHref} in bundle ${bundle.href}`
+        `unable to determine entrypoints.json dependency from the specifier ${specifier} with resolution ${bundleHref} in bundle ${bundle.href}. Are you missing an dependency for '${pkgName}' in your entrypoints.json file?`
       );
     }
     let { pkgURL } = pkgInfoFromCatalogJsURL(new URL(bundleHref)) ?? {};
     if (!pkgURL) {
       throw new Error(
-        `cannot derive pkgURL from bundle URL ${bundleHref} when building bundle ${bundle.href}`
+        `cannot derive pkgURL from bundle URL ${bundleHref} (resolved from '${specifier}') when building bundle ${bundle.href}`
       );
     }
     for (let { module } of ownAssignments) {

@@ -3167,7 +3167,7 @@ QUnit.module("module builder", function (origHooks) {
 
         assert.equal(reexport.isDynamic, false);
         if (!reexport.isDynamic) {
-          assert.equal(reexport.specifier, url("output/b.js").href);
+          assert.equal(reexport.specifier, "./b.js");
           assert.equal(reexport.isReexport, true);
           assert.equal(desc.regions[reexport.region].type, "import");
           let importRegion = desc.regions[reexport.region];
@@ -3274,7 +3274,7 @@ QUnit.module("module builder", function (origHooks) {
 
         assert.equal(reexport.isDynamic, false);
         if (!reexport.isDynamic) {
-          assert.equal(reexport.specifier, url("output/b.js").href);
+          assert.equal(reexport.specifier, "./b.js");
           assert.equal(reexport.isReexport, false);
           assert.equal(desc.regions[reexport.region].type, "import");
           let importRegion = desc.regions[reexport.region];
@@ -3346,7 +3346,7 @@ QUnit.module("module builder", function (origHooks) {
 
         assert.equal(reexport.isDynamic, false);
         if (!reexport.isDynamic) {
-          assert.equal(reexport.specifier, url("output/b.js").href);
+          assert.equal(reexport.specifier, "./b.js");
           assert.equal(reexport.isReexport, true);
           assert.equal(desc.regions[reexport.region].type, "import");
           let importRegion = desc.regions[reexport.region];
@@ -3424,7 +3424,7 @@ QUnit.module("module builder", function (origHooks) {
 
         assert.equal(reexport.isDynamic, false);
         if (!reexport.isDynamic) {
-          assert.equal(reexport.specifier, url("output/b.js").href);
+          assert.equal(reexport.specifier, "./b.js");
           assert.equal(reexport.isReexport, true);
           assert.equal(desc.regions[reexport.region].type, "import");
           let importRegion = desc.regions[reexport.region];
@@ -3497,7 +3497,7 @@ QUnit.module("module builder", function (origHooks) {
 
         assert.equal(reexport.isDynamic, false);
         if (!reexport.isDynamic) {
-          assert.equal(reexport.specifier, url("output/b.js").href);
+          assert.equal(reexport.specifier, "./b.js");
           assert.equal(reexport.isReexport, true);
           assert.equal(desc.regions[reexport.region].type, "import");
           let importRegion = desc.regions[reexport.region];
@@ -3764,7 +3764,7 @@ QUnit.module("module builder", function (origHooks) {
         let [, barExport] = [...desc.exports].find(
           ([exportName]) =>
             isExportAllMarker(exportName) &&
-            exportName.exportAllFrom === url("output/b.js").href
+            exportName.exportAllFrom === "./b.js"
         )!;
         assert.equal(barExport.type, "export-all");
         if (barExport.type === "export-all") {
@@ -3908,7 +3908,7 @@ QUnit.module("module builder", function (origHooks) {
 
         assert.equal(cImport.isDynamic, false);
         if (!cImport.isDynamic) {
-          assert.equal(cImport.specifier, url("output/c.js").href);
+          assert.equal(cImport.specifier, "./c.js");
           assert.equal(cImport.isReexport, false);
           assert.equal(desc.regions[cImport.region].type, "import");
           let importRegion = desc.regions[cImport.region];
@@ -3919,7 +3919,7 @@ QUnit.module("module builder", function (origHooks) {
 
         assert.equal(bImport.isDynamic, false);
         if (!bImport.isDynamic) {
-          assert.equal(bImport.specifier, url("output/b.js").href);
+          assert.equal(bImport.specifier, "./b.js");
           assert.equal(bImport.isReexport, false);
           assert.equal(desc.regions[bImport.region].type, "import");
           let importRegion = desc.regions[bImport.region];
@@ -3985,7 +3985,7 @@ QUnit.module("module builder", function (origHooks) {
 
         assert.equal(defaultImport.isDynamic, false);
         if (!defaultImport.isDynamic) {
-          assert.equal(defaultImport.specifier, url("output/b.js").href);
+          assert.equal(defaultImport.specifier, "./b.js");
           assert.equal(defaultImport.isReexport, false);
           assert.equal(desc.regions[defaultImport.region].type, "import");
           let importRegion = desc.regions[defaultImport.region];
@@ -4057,7 +4057,7 @@ QUnit.module("module builder", function (origHooks) {
 
         assert.equal(defaultImport.isDynamic, false);
         if (!defaultImport.isDynamic) {
-          assert.equal(defaultImport.specifier, url("output/b.js").href);
+          assert.equal(defaultImport.specifier, "./b.js");
           assert.equal(defaultImport.isReexport, false);
           assert.equal(desc.regions[defaultImport.region].type, "import");
           let importRegion = desc.regions[defaultImport.region];
@@ -4130,7 +4130,7 @@ QUnit.module("module builder", function (origHooks) {
 
         assert.equal(defaultImport.isDynamic, false);
         if (!defaultImport.isDynamic) {
-          assert.equal(defaultImport.specifier, url("output/b.js").href);
+          assert.equal(defaultImport.specifier, "./b.js");
           assert.equal(defaultImport.isReexport, false);
           assert.equal(desc.regions[defaultImport.region].type, "import");
           let importRegion = desc.regions[defaultImport.region];
@@ -4327,9 +4327,11 @@ QUnit.module("module builder", function (origHooks) {
         await assert.setupFiles({
           [`${puppiesBundle1Href}/entrypoints.json`]: `{"js": ["index.js"] }`,
           [`${puppiesBundle1Href}/index.js`]: `export const puppies = ["mango", "van gogh"];`,
+          [`${puppiesBundle1Href}/toys.js`]: `export const toys = ["poopkin pie", "turkey hat"];`,
 
           [`${puppiesBundle2Href}/entrypoints.json`]: `{"js": ["index.js"] }`,
           [`${puppiesBundle2Href}/index.js`]: `export const puppies = ["mango", "van gogh"];`,
+          [`${puppiesBundle2Href}/toys.js`]: `export const toys = ["poopkin pie", "turkey hat"];`,
 
           [`${puppiesBundle3Href}/entrypoints.json`]: `{"js": ["index.js"] }`,
           [`${puppiesBundle3Href}/index.js`]: `
@@ -5532,6 +5534,88 @@ QUnit.module("module builder", function (origHooks) {
           );
           assert.equal(puppies.declaration.original?.range, "^7.9.3");
           assert.equal(puppies.declaration.original?.importedAs, "puppies");
+        }
+      });
+
+      test("can collapse direct pkg dependency when a non-primary bundle from the same package is included in the project with an overlapping range", async function (assert) {
+        // puppies dep is ver 7.9.2 and is only satisfied by 1 consumption range
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["index.js"],
+            "dependencies": {
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "^7.9.2"
+              }
+            }
+          }`,
+          "catalogjs.lock": `{
+            "puppies": "${puppiesBundle2Href}/index.js",
+            "puppies/toys": "${puppiesBundle2Href}/toys.js"
+          }`, // ver 7.9.2
+          "index.js": `
+            import { puppies } from "puppies";
+            import { toys } from "puppies/toys";
+            function getPuppies() { return puppies; }
+            function getToys() { return toys; }
+            export { getPuppies, getToys };
+          `,
+        });
+        let bundle1Src = await bundleSource(assert.fs);
+        let lib1BundleHref =
+          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["driver.js"],
+            "dependencies": {
+              "lib1": {
+                "type": "npm",
+                "pkgName": "lib1",
+                "range": "^1.0.0"
+              },
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "^7.9.3"
+              }
+            }
+          }`,
+          // puppies dep is ver 7.9.4 and is satisfied by both consumption ranges (so we choose it)
+          "catalogjs.lock": `{
+            "lib1": "${lib1BundleHref}/lib.js",
+            "puppies": "${puppiesBundle1Href}/index.js",
+            "puppies/toys": "${puppiesBundle1Href}/toys.js"
+          }`,
+          "driver.js": `
+            import { getToys } from "lib1";
+            import { toys } from "puppies/toys";
+            console.log([...toys, ...getToys()]);
+          `,
+          [`${lib1BundleHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
+          [`${lib1BundleHref}/lib.js`]: bundle1Src,
+        });
+        let { source, desc } = await bundle(assert.fs, url("output/driver.js"));
+
+        assert.codeEqual(
+          source,
+          `
+          const toys = ["poopkin pie", "turkey hat"];
+          function getToys() { return toys; }
+          console.log([...toys, ...getToys()]);
+          export {};
+          `
+        );
+
+        let puppies = desc!.declarations.get("toys");
+        assert.equal(puppies?.declaration.type, "local");
+        if (puppies?.declaration.type === "local") {
+          assert.equal(
+            puppies.declaration.original?.bundleHref,
+            `${puppiesBundle1Href}/toys.js`
+          );
+          assert.equal(puppies.declaration.original?.range, "^7.9.3");
+          assert.equal(puppies.declaration.original?.importedAs, "toys");
         }
       });
 
@@ -7653,7 +7737,16 @@ QUnit.module("module builder", function (origHooks) {
 
     test("can resolve entrypoint module from pkg in lock file", async function (assert) {
       await assert.setupFiles({
-        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "entrypoints.json": `{
+          "js": ["index.js"],
+          "dependencies": {
+            "a": {
+              "type": "npm",
+              "pkgName": "a",
+              "range": "7.9.4"
+            }
+          }
+        }`,
         "catalogjs.lock": `{ "a": "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/dist/a-es6.js" }`,
         "index.js": `
           import a from "a";
@@ -7680,7 +7773,16 @@ QUnit.module("module builder", function (origHooks) {
 
     test("can resolve entrypoint module from pkg with scoped name in lock file", async function (assert) {
       await assert.setupFiles({
-        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "entrypoints.json": `{
+          "js": ["index.js"],
+          "dependencies": {
+            "@mango/a": {
+              "type": "npm",
+              "pkgName": "a",
+              "range": "7.9.4"
+            }
+          }
+        }`,
         "catalogjs.lock": `{ "@mango/a": "https://catalogjs.com/pkgs/npm/@mango/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/dist/a-es6.js" }`,
         "index.js": `
           import a from "@mango/a";
@@ -7707,7 +7809,16 @@ QUnit.module("module builder", function (origHooks) {
 
     test("can resolve non-primary entrypoint module from pkg in lock file", async function (assert) {
       await assert.setupFiles({
-        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "entrypoints.json": `{
+          "js": ["index.js"],
+          "dependencies": {
+            "a": {
+              "type": "npm",
+              "pkgName": "a",
+              "range": "7.9.4"
+            }
+          }
+        }`,
         "catalogjs.lock": `{
           "a": "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/a.js",
           "a/b": "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/b.js"

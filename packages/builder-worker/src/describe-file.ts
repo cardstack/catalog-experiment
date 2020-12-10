@@ -11,7 +11,6 @@ import {
   LVal,
   ObjectProperty,
   CallExpression,
-  StringLiteral,
   isVariableDeclarator,
   isIdentifier,
   isStringLiteral,
@@ -123,7 +122,10 @@ export type ImportDescription =
     }
   | {
       isDynamic: true;
-      specifier: string;
+      // if the specifier for an import() is not a string literal, then we throw
+      // a runtime error. we identify that by setting the specifier to
+      // undefined.
+      specifier: string | undefined;
       specifierRegion: RegionPointer;
     };
 
@@ -646,46 +648,57 @@ export function describeFile(
     Import(path) {
       isES6Module = true;
       let callExpression = path.parentPath as NodePath<CallExpression>;
-      let stringLiteral = callExpression.node.arguments[0] as StringLiteral;
+      let specifier: string | undefined;
+      if (isStringLiteral(callExpression.node.arguments[0])) {
+        specifier = callExpression.node.arguments[0].value;
+      } else {
+        warn(
+          `encountered an import() whose specifier is not a string literal${
+            filename ? " in file " + filename : ""
+          }. If this import() is evaluated, a runtime error will be thrown.`
+        );
+      }
       let importIndex = desc.imports.findIndex(
-        (i) => i.specifier === stringLiteral.value
+        (i) => i.specifier === specifier
       );
       let importDesc = importIndex > -1 ? desc.imports[importIndex] : undefined;
+      let specifierRegion = builder.createCodeRegion(
+        (path.parentPath.get("arguments") as NodePath[])[0]
+      );
       if (!importDesc) {
         if (!Array.isArray(path.parentPath.get("arguments"))) {
           throw new Error(
-            `bug: Cannot determine path to dynamic import's specifier`
+            `Cannot determine path to dynamic import's specifier '${specifier}'${
+              filename ? " in file " + filename : ""
+            }`
           );
         }
         importDesc = {
-          specifierRegion: builder.createCodeRegion(
-            (path.parentPath.get("arguments") as NodePath[])[0]
-          ),
-          specifier: stringLiteral.value,
+          specifierRegion,
+          specifier,
           isDynamic: true,
         };
         importIndex = desc.imports.length;
         desc.imports.push(importDesc);
       } else {
         importDesc.isDynamic = true;
+        if (importDesc.isDynamic) {
+          importDesc.specifier = specifier;
+          importDesc.specifierRegion = specifierRegion;
+        }
       }
-      if (!importDesc.isDynamic || !importDesc.specifier) {
-        throw new Error(
-          `should never get here. the import description for a dynamic import should always be marked as dynamic and have a specifier. issue with dynamic import of ${
-            importDesc.specifier
-          }${filename ? "in file " + filename : ""}`
+      if (importDesc.isDynamic) {
+        builder.createCodeRegion(
+          path as NodePath,
+          {
+            importIndex,
+            exportType: undefined,
+            isDynamic: true,
+            specifierForDynamicImport: importDesc.specifier,
+          },
+          new Set([importDesc.specifierRegion])
         );
       }
-      builder.createCodeRegion(
-        path as NodePath,
-        {
-          importIndex,
-          exportType: undefined,
-          isDynamic: true,
-          specifierForDynamicImport: importDesc.specifier,
-        },
-        new Set([importDesc.specifierRegion])
-      );
     },
     ExpressionStatement(path) {
       if (

@@ -1,4 +1,4 @@
-import { BuilderNode, NextNode } from "./common";
+import { BuilderNode, NextNode, Value } from "./common";
 import { makeNonCyclic, ModuleResolution, Resolution } from "./resolution";
 import { getExportDesc, getExports, ModuleDescription } from "../describe-file";
 import {
@@ -16,21 +16,20 @@ import {
 } from "../module-rewriter";
 import { AppendModuleNode, FinishAppendModulesNode } from "./append-module";
 import { Dependencies } from "./entrypoint";
-import { pkgInfoFromCatalogJsURL, Resolver } from "../resolver";
+import { pkgInfoFromCatalogJsURL } from "../resolver";
 import {
-  ResolvePkgDeps,
   DependencyResolver,
   resolutionForPkgDepDeclaration,
 } from "../dependency-resolution";
 //@ts-ignore
 import { intersect } from "semver-intersect";
+import { GetLockFileNode, LockFile } from "./lock-file";
 
 export class CombineModulesNode implements BuilderNode {
   cacheKey: CombineModulesNode;
   constructor(
     private bundle: URL,
     private dependencies: Dependencies,
-    private resolver: Resolver,
     private bundleAssignmentsNode: BundleAssignmentsNode
   ) {
     this.cacheKey = this;
@@ -40,20 +39,18 @@ export class CombineModulesNode implements BuilderNode {
     return {
       info: new PrepareCombineModulesNode(
         this.bundle,
-        this.dependencies,
-        this.bundleAssignmentsNode,
-        this.resolver
+        this.bundleAssignmentsNode
       ),
     };
   }
 
   async run({
-    info: { assignments, resolutionsInDepOrder, pkgResolutions },
+    info: { assignments, resolutionsInDepOrder, lockFile },
   }: {
     info: {
       assignments: BundleAssignment[];
       resolutionsInDepOrder: ModuleResolution[];
-      pkgResolutions: { [pkgName: string]: string };
+      lockFile: LockFile | undefined;
     };
   }): Promise<NextNode<{ code: string; desc: ModuleDescription }>> {
     let ownAssignments = assignments.filter(
@@ -62,7 +59,7 @@ export class CombineModulesNode implements BuilderNode {
 
     let depResolver = new DependencyResolver(
       this.dependencies,
-      pkgResolutions,
+      lockFile,
       assignments,
       this.bundle
     );
@@ -155,9 +152,7 @@ class PrepareCombineModulesNode implements BuilderNode {
   cacheKey: PrepareCombineModulesNode;
   constructor(
     private bundle: URL,
-    private dependencies: Dependencies,
-    private bundleAssignmentsNode: BundleAssignmentsNode,
-    private resolver: Resolver
+    private bundleAssignmentsNode: BundleAssignmentsNode
   ) {
     this.cacheKey = this;
   }
@@ -179,17 +174,55 @@ class PrepareCombineModulesNode implements BuilderNode {
     NextNode<{
       assignments: BundleAssignment[];
       resolutionsInDepOrder: ModuleResolution[];
-      pkgResolutions: { [pkgName: string]: string };
+      lockFile: LockFile | undefined;
     }>
   > {
     return {
-      node: new ResolvePkgDeps(
+      node: new FinishPrepareCombineModulesNode(
         this.bundle,
-        this.dependencies,
         assignments,
-        resolutionsInDepOrder,
-        this.resolver
+        resolutionsInDepOrder
       ),
+    };
+  }
+}
+class FinishPrepareCombineModulesNode implements BuilderNode {
+  // caching is not ideal here--we are relying on the fact that the nodes that
+  // this builder node depends on are cached
+  cacheKey: FinishPrepareCombineModulesNode;
+  private ownAssignments: BundleAssignment[];
+  constructor(
+    private bundle: URL,
+    private assignments: BundleAssignment[],
+    private resolutionsInDepOrder: ModuleResolution[]
+  ) {
+    this.cacheKey = this;
+    this.ownAssignments = assignments.filter(
+      (a) => a.bundleURL.href === this.bundle.href
+    );
+  }
+  async deps() {
+    return {
+      lockFile: new GetLockFileNode(this.ownAssignments[0].entrypointModuleURL),
+    };
+  }
+  async run({
+    lockFile,
+  }: {
+    lockFile: LockFile | undefined;
+  }): Promise<
+    Value<{
+      assignments: BundleAssignment[];
+      resolutionsInDepOrder: ModuleResolution[];
+      lockFile: LockFile | undefined;
+    }>
+  > {
+    return {
+      value: {
+        lockFile,
+        assignments: this.assignments,
+        resolutionsInDepOrder: this.resolutionsInDepOrder,
+      },
     };
   }
 }

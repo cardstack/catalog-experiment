@@ -1,2 +1,5 @@
 export { requireNodeBuiltin } from "./node-builtin";
-export { requireHasNonStringLiteralSpecifier } from "./non-string-literal-specifier";
+export {
+  importHasNonStringLiteralSpecifier,
+  requireHasNonStringLiteralSpecifier,
+} from "./non-string-literal-specifier";

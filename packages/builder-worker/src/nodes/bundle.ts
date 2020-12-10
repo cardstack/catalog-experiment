@@ -351,7 +351,6 @@ export class BundleNode implements BuilderNode {
       result: new CombineModulesNode(
         this.bundle,
         this.dependencies,
-        this.resolver,
         new BundleAssignmentsNode(
           this.inputRoot,
           this.outputRoot,

@@ -87,14 +87,27 @@ export class HeadState {
       assignedNamespaces,
       queue,
     } = this;
+    // creating summary objects, as otherwise the nesting nature of
+    // ModuleResolutions makes the resulting object too large to stringify in V8
+    // for big packages like lodash, resulting in memory issues
+    let visitedSummary = visited.map(({ module, editor }) => ({
+      url: module.url.href,
+      desc: module.desc,
+      dispositions: editor.dispositions,
+    }));
+    let queueSummary = queue.map(({ module, editor }) => ({
+      url: module.url.href,
+      desc: module.desc,
+      dispositions: editor.dispositions,
+    }));
     let str = stringify(
       {
         usedNames,
         assignedImportedNames,
         assignedImportedDependencies,
-        visited,
+        visitedSummary,
         assignedNamespaces,
-        queue,
+        queueSummary,
       },
       {
         replacer,

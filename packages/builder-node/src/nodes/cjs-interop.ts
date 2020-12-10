@@ -97,13 +97,16 @@ class IntrospectSrcNode implements BuilderNode {
       return {};
     }
     return {
+      src: new FileNode(this.url),
       desc: new AnalyzeFileNode(this.url),
     };
   }
 
   async run({
+    src,
     desc,
   }: {
+    src: string;
     desc: FileDescription | undefined;
   }): Promise<NodeOutput<void[] | void[][]>> {
     let url = new URL(
@@ -112,25 +115,56 @@ class IntrospectSrcNode implements BuilderNode {
     );
     if (!desc || isModuleDescription(desc)) {
       let jsonDeps = new Set<string>();
+      let updatedSrc: string | undefined;
+      let editor: RegionEditor | undefined;
+      let pkgInfo = pkgInfoFromCatalogJsURL(this.url)!;
+      let { pkgName, version, modulePath } = pkgInfo;
+      for (let [pointer, region] of desc?.regions.entries() ?? []) {
+        if (
+          region.type === "import" &&
+          region.isDynamic &&
+          region.specifierForDynamicImport == null
+        ) {
+          editor = editor ?? new RegionEditor(src, desc!);
+          for (let [p] of editor.regions.entries()) {
+            editor.keepRegion(p);
+          }
+          editor.replace(
+            pointer,
+            `importHasNonStringLiteralSpecifier("${pkgName}", "${version}", ${
+              modulePath ? '"' + modulePath + '"' : "undefined"
+            })`
+          );
+        }
+      }
       for (let { declaration: importDesc } of desc?.declarations.values() ||
         []) {
         if (
           importDesc.type === "import" &&
-          desc!.imports[importDesc.importIndex].specifier.endsWith(".json")
+          desc!.imports[importDesc.importIndex].specifier &&
+          desc!.imports[importDesc.importIndex].specifier!.endsWith(".json")
         ) {
-          jsonDeps.add(desc!.imports[importDesc.importIndex].specifier);
+          jsonDeps.add(desc!.imports[importDesc.importIndex].specifier!);
         }
       }
       for (let exportDesc of desc?.exports.values() || []) {
         if (
           exportDesc.type === "reexport" &&
-          desc!.imports[exportDesc.importIndex].specifier.endsWith(".json")
+          desc!.imports[exportDesc.importIndex].specifier &&
+          desc!.imports[exportDesc.importIndex].specifier!.endsWith(".json")
         ) {
-          jsonDeps.add(desc!.imports[exportDesc.importIndex].specifier);
+          jsonDeps.add(desc!.imports[exportDesc.importIndex].specifier!);
         }
       }
+      if (editor) {
+        updatedSrc = `import { importHasNonStringLiteralSpecifier } from "@catalogjs/loader";
+${editor.serialize().code}`;
+      }
       let nodes: BuilderNode<void>[] = [
-        new WriteFileNode(new FileNode(this.url), url),
+        new WriteFileNode(
+          updatedSrc ? new ConstantNode(updatedSrc) : new FileNode(this.url),
+          url
+        ),
         ...[...jsonDeps].map(
           (specifier) =>
             new JSONRewriterNode(

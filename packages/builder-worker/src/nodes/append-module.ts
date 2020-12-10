@@ -215,7 +215,8 @@ export class FinishAppendModulesNode implements BuilderNode {
       desc,
       exportAssignments,
       exportSpecifierRegions,
-      exportRegions
+      exportRegions,
+      this.bundle
     );
 
     return { value: { code: code.join("\n"), desc } };
@@ -1364,7 +1365,12 @@ function setImportDescription(
         `cannot find import code region for the import of ${bundleHref} with an import index of ${importIndex} when building bundle ${bundle.href}`
       );
     }
-    let newIndex = ensureImportSpecifier(desc, bundleHref, pointer, false);
+    let newIndex = ensureImportSpecifier(
+      desc,
+      maybeRelativeURL(new URL(bundleHref), bundle),
+      pointer,
+      false
+    );
     if (newIndex !== importIndex) {
       throw new Error(
         `import index mismatch, expecting ${bundleHref} to have an importIndex of ${importIndex}, but was ${newIndex} when building bundle ${bundleHref}`
@@ -1399,7 +1405,8 @@ function setExportDescription(
     exportAlls: Set<string>;
   },
   exportSpecifierRegions: Map<string, RegionPointer>,
-  exportRegions: Map<string, RegionPointer>
+  exportRegions: Map<string, RegionPointer>,
+  bundle: URL
 ) {
   let exportDesc: ModuleDescription["exports"] = new Map();
   for (let [outsideName, insideName] of exports.entries()) {
@@ -1416,7 +1423,7 @@ function setExportDescription(
         type: "reexport",
         importIndex: ensureImportSpecifier(
           desc,
-          bundleHref,
+          maybeRelativeURL(new URL(bundleHref), bundle),
           exportRegion,
           true
         ),
@@ -1427,10 +1434,11 @@ function setExportDescription(
   }
   for (let bundleHref of exportAlls) {
     let exportRegion = exportRegions.get(bundleHref)!;
-    let marker: ExportAllMarker = { exportAllFrom: bundleHref };
+    let source = maybeRelativeURL(new URL(bundleHref), bundle);
+    let marker: ExportAllMarker = { exportAllFrom: source };
     exportDesc.set(marker, {
       type: "export-all",
-      importIndex: ensureImportSpecifier(desc, bundleHref, exportRegion, true),
+      importIndex: ensureImportSpecifier(desc, source, exportRegion, true),
       exportRegion,
     });
   }
