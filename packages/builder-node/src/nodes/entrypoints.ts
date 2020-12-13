@@ -48,19 +48,27 @@ export class EntrypointsNode implements BuilderNode {
     };
   }
 
-  async run({
-    entrypointsExist,
-  }: {
-    entrypointsExist: boolean[];
-  }): Promise<NextNode<void>> {
+  async run(
+    {
+      entrypointsExist,
+    }: {
+      entrypointsExist: boolean[];
+    },
+    getRecipe: RecipeGetter
+  ): Promise<NextNode<void>> {
     let { name, version } = this.pkgJSON;
     if (entrypointsExist.some((exist) => !exist)) {
       throw new Error(
         `The package is missing entrypoint(s) files for the package ${name} ${version} at ${this.pkgURL.href}`
       );
     }
+    let recipe = await getRecipe(name, version);
+    let { dependencies: dependencyOverrides = {} } = recipe ?? {};
     let dependencies: Dependencies = {};
-    for (let [name, range] of Object.entries(this.pkgJSON.dependencies ?? {})) {
+    for (let [name, range] of Object.entries({
+      ...(this.pkgJSON.dependencies ?? {}),
+      ...dependencyOverrides,
+    })) {
       dependencies[name] = {
         type: "npm",
         pkgName: name,

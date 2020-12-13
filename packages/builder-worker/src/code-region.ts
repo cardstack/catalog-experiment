@@ -1147,7 +1147,10 @@ export class RegionEditor {
       nextSibling: undefined,
       shorthand: false,
       position: 0,
-      dependsOn: new Set([declaratorPointer]),
+      dependsOn: new Set([
+        declaratorPointer,
+        ...(region.firstChild != null ? [region.firstChild] : []),
+      ]),
       preserveGaps: false,
     };
     this.absorbPendingGap(sideEffectRegion);

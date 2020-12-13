@@ -24,6 +24,7 @@ import {
   LocalExportDescription,
   ModuleDescription,
 } from "../src/describe-file";
+import { extractDescriptionFromSource } from "../src/description-encoder";
 
 Logger.setLogLevel("debug");
 Logger.echoInConsole(true);
@@ -247,6 +248,27 @@ QUnit.module("module builder", function (origHooks) {
          const b = 'b';
          console.log(a + b);
          export { b };
+        `
+      );
+    });
+
+    test("can combine modules that use multiple names for an exported declaration", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { a } from './a.js';
+          console.log(a);
+      `,
+        "a.js": `
+          export const A = 'a';
+          export { A as a };
+        `,
+      });
+      assert.codeEqual(
+        await bundleCode(assert.fs),
+        `const a = 'a';
+         console.log(a);
+         export {};
         `
       );
     });
@@ -2539,6 +2561,66 @@ QUnit.module("module builder", function (origHooks) {
       }
     });
 
+    test("bundle contains module description with an exported default function", async function (assert) {
+      let doerBundleHref = `https://catalogjs.com/pkgs/npm/doer/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=`;
+      await assert.setupFiles({
+        [`${doerBundleHref}/entrypoints.json`]: `{ "js": ["index.js"] }`,
+        [`${doerBundleHref}/index.js`]: `
+          export default function() { console.log('do something'); }
+        `,
+        "entrypoints.json": `{
+          "js": ["index.js"],
+          "dependencies": {
+            "doer": {
+              "type": "npm",
+              "pkgName": "doer",
+              "range": "^7.9.4"
+            }
+          }
+        }`,
+        "catalogjs.lock": `{
+          "doer": "${doerBundleHref}/index.js"
+        }`,
+        "index.js": `
+          import doSomething from 'doer';
+          export default function() { doSomething(); }
+        `,
+      });
+
+      let { source, desc } = await bundle(assert.fs);
+      assert.codeEqual(
+        source,
+        `
+        const doSomething = (function() { console.log('do something'); });
+        const _default = (function() { doSomething(); });
+        export { _default as default };
+        `
+      );
+      assert.ok(desc, "bundle description exists");
+      if (desc) {
+        assert.equal(desc.declarations.size, 2);
+        let doSomething = desc.declarations.get("doSomething")!;
+        assert.equal(doSomething.declaration.declaredName, "doSomething");
+        assert.equal(doSomething.declaration.type, "local");
+        let _default = desc.declarations.get("_default")!;
+        assert.equal(_default.declaration.declaredName, "_default");
+        assert.equal(_default.declaration.type, "local");
+
+        let editor = new RegionEditor(source, desc);
+        keepAll(desc, editor);
+        editor.rename("doSomething", "renamedSomething");
+        editor.rename("_default", "renamedDefault");
+        assert.codeEqual(
+          editor.serialize().code,
+          `
+          const renamedSomething = (function() { console.log('do something'); });
+          const renamedDefault = (function() { renamedSomething(); });
+          export { renamedDefault as default };
+          `
+        );
+      }
+    });
+
     test("bundle contains module description with interior namespace imports", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["index.js"] }`,
@@ -4682,7 +4764,7 @@ QUnit.module("module builder", function (origHooks) {
             "lib1": "${lib1BundleHref}/lib.js",
             "lib2": "${lib2BundleHref}/lib.js"
           }`,
-          // we consume myPuppies() before getPuppies(), which is transposed in the previous test
+          // we consume myPuppies() before getPuppies(), which is transposed from the previous test
           "driver.js": `
             import { getPuppies } from "lib1";
             import { myPuppies } from "lib2";
@@ -5129,6 +5211,20 @@ QUnit.module("module builder", function (origHooks) {
           assert.equal(puppies.declaration.original?.range, "^7.9.2");
           assert.equal(puppies.declaration.original?.importedAs, "puppies");
         }
+
+        let sideEffectRegions = desc?.regions.filter((r) => r.original);
+        assert.equal(
+          sideEffectRegions?.every(
+            (r) => r.original?.bundleHref === `${puppiesBundle4Href}/index.js`
+          ),
+          true,
+          "the side effect bundleHrefs are correct"
+        );
+        assert.equal(
+          sideEffectRegions?.every((r) => r.original?.range === "^7.9.2"),
+          true,
+          "the side effect ranges is correct"
+        );
       });
 
       test("can prevent collision of consumed dependencies from same package when they have non-overlapping consumed semver ranges", async function (assert) {
@@ -5581,10 +5677,10 @@ QUnit.module("module builder", function (origHooks) {
               }
             }
           }`,
-          // puppies dep is ver 7.9.4 and is satisfied by both consumption ranges (so we choose it)
+          // puppies dep is ver 7.9.4 and is satisfied by both consumption
+          // ranges (so we choose it)
           "catalogjs.lock": `{
             "lib1": "${lib1BundleHref}/lib.js",
-            "puppies": "${puppiesBundle1Href}/index.js",
             "puppies/toys": "${puppiesBundle1Href}/toys.js"
           }`,
           "driver.js": `
@@ -5846,7 +5942,7 @@ QUnit.module("module builder", function (origHooks) {
       });
 
       test("prevents collision when some but not all of versions the same package have overlapping consumption ranges", async function (assert) {
-        // this package's version is satisfied by 2 consumption ranges
+        // this package's version is satisfied by 1 consumption range
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["index.js"],
@@ -5888,7 +5984,7 @@ QUnit.module("module builder", function (origHooks) {
         });
         let bundle2Src = await bundleSource(assert.fs);
 
-        // this package's version is satisfied by 2 consumption ranges
+        // this package's version is satisfied by 2 consumption ranges (^7.9.4 and its own)
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["index.js"],

@@ -12,6 +12,9 @@
         "./src/index.js"
       ],
       "srcIgnoreGlob": "{node_modules,test,scripts}/**",
+      "dependencies": {
+        "charcodes": "^0.2.0"
+      },
       "babelPlugins": [
         "@babel/plugin-transform-flow-strip-types",
         [

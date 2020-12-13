@@ -67,7 +67,10 @@ export class CombineModulesNode implements BuilderNode {
     let exposed = exposedRegions(this.bundle, assignments, depResolver);
 
     let editors: { module: ModuleResolution; editor: RegionEditor }[] = [];
-    let visitedRegions: Map<string, Set<RegionPointer>> = new Map();
+    let visitedRegions: Map<
+      string,
+      Map<RegionPointer, RegionEditor>
+    > = new Map();
 
     // the exposed regions inherit their order from BundleAssignments which is
     // organized consumers first.
@@ -235,17 +238,32 @@ function discoverIncludedRegions(
   editors: { module: ModuleResolution; editor: RegionEditor }[],
   ownAssignments: BundleAssignment[],
   depResolver: DependencyResolver,
-  visitedRegions: Map<string, Set<RegionPointer>>
+  visitedRegions: Map<string, Map<RegionPointer, RegionEditor>>
 ) {
   if (visitedRegions.get(module.url.href)?.has(pointer)) {
-    return;
+    let previousEditor = visitedRegions.get(module.url.href)!.get(pointer)!;
+    if (previousEditor === editor) {
+      return;
+    }
+    let previousEditorIndex = editors.findIndex(
+      (e) => e.editor === previousEditor
+    );
+    let currentEditorIndex = editors.findIndex((e) => e.editor === editor);
+    if (previousEditorIndex < currentEditorIndex) {
+      return;
+    }
+    // the region that we are visiting and it's subgraph need to be hoisted to
+    // the current editor so that it is serialized in the correct order. remove
+    // the region from the previous editor and recalculate the region to keep
+    // with the current editor.
+    previousEditor.removeRegion(pointer);
   }
   let visited = visitedRegions.get(module.url.href);
   if (!visited) {
-    visited = new Set();
+    visited = new Map();
     visitedRegions.set(module.url.href, visited);
   }
-  visited.add(pointer);
+  visited.set(pointer, editor);
 
   let region = module.desc.regions[pointer];
   // collapse module side effects
@@ -257,10 +275,12 @@ function discoverIncludedRegions(
         `Cannot determine pkgURL that corresponds to the bundle URL: ${region.original.bundleHref}`
       );
     }
-    let resolutions = depResolver.resolutionsForPkg(pkgURL?.href);
-    if (
-      !resolutions.find((r) => r.bundleHref === region.original!.bundleHref)
-    ) {
+    let resolution = depResolver.resolutionByConsumptionPoint(
+      pkgURL,
+      module,
+      pointer
+    );
+    if (!resolution) {
       return; // this region has been collapsed
     }
   }
@@ -471,17 +491,11 @@ function resolveDependency(
       region,
     };
   }
-  let resolution = depResolver
-    .resolutionsForPkg(pkgURL?.href)
-    .find(
-      (r) =>
-        (r.consumedBy.url.href === consumingModule.url.href &&
-          r.consumedByPointer === pointer) ||
-        r.obviatedDependencies.find(
-          (o) =>
-            o.moduleHref === consumingModule.url.href && o.pointer === pointer
-        )
-    );
+  let resolution = depResolver.resolutionByConsumptionPoint(
+    pkgURL,
+    consumingModule,
+    pointer
+  );
 
   if (!resolution) {
     // not all modules have dep resolutions
@@ -500,7 +514,7 @@ function resolveDependency(
     // region we entered this function with is actually obviated by a
     // different region
     isRegionObviated = true;
-    if (resolution.importedSource) {
+    if (resolution.type === "declaration" && resolution.importedSource) {
       editor = addNewEditor(
         resolution.importedSource.declaredIn,
         editor,
@@ -536,7 +550,7 @@ function discoverIncludedRegionsForNamespace(
   editors: { module: ModuleResolution; editor: RegionEditor }[],
   ownAssignments: BundleAssignment[],
   depResolver: DependencyResolver,
-  visitedRegions: Map<string, Set<RegionPointer>>
+  visitedRegions: Map<string, Map<RegionPointer, RegionEditor>>
 ) {
   let exports = getExports(module);
   for (let [exportName, { module: sourceModule }] of exports.entries()) {

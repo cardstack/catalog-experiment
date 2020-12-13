@@ -52,6 +52,11 @@
           "title": "Resolutions",
           "description": "If you wish to override the resolver and provide a specific resolution, then use the \"resolution\" property. This is an object whose keys are specifier strings that appear in the import statements you wish to resolve yourself. The values are the catalogjs URLs to modules you would like the specifier to resolve to. For instance, in order to add a resolution for the builtin node module \"assert\" to leverage the catalogjs assert polyfill you can specify:\n \"assert\": \"https://catalogjs.com/pkgs/@catalogjs/polyfills/assert.js\""
         },
+        "dependencies": {
+          "$ref": "#/definitions/dependencies",
+          "title": "Dependencies",
+          "description": "If you want to override the package.json dependencies in order to specify a consumption range for the package because the consumed dependency is actually shadowing the consumption range of another consumer's package.json, then use the \"dependencies\" property. This is an object whose keys are the dependencies' package names, and whose values are the semver range to use for the dependency. Any values declared here will override what is in the package.json. It's worth paying attention to what the resolved package dependency actually is so you don't provide a conflicting consumption range. The resolved version is available in the catalogjs.lock file."
+        },
         "macros": {
           "$ref": "#/definitions/macros",
           "title": "Macros",
@@ -99,6 +104,13 @@
       "minItems": 1
     },
     "resolutions": {
+      "type": "object",
+      "minItems": 1,
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "dependencies": {
       "type": "object",
       "minItems": 1,
       "additionalProperties": {

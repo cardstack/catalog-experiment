@@ -1,4 +1,8 @@
-import { makeNonCyclic, ModuleResolution } from "./nodes/resolution";
+import {
+  makeNonCyclic,
+  ModuleResolution,
+  Resolution,
+} from "./nodes/resolution";
 import { NamespaceMarker, RegionPointer } from "./code-region";
 import { BundleAssignment } from "./nodes/bundle";
 import { resolveDeclaration } from "./module-rewriter";
@@ -8,10 +12,15 @@ import { satisfies, coerce, compare, validRange } from "semver";
 //@ts-ignore
 import { intersect } from "semver-intersect";
 import { LockFile } from "./nodes/lock-file";
+import { setMapping } from "./utils";
 
 export class DependencyResolver {
   private consumedDeps: ConsumedDependencies;
-  private resolutionCache: Map<string, ResolvedDependency[]> = new Map();
+  // pkgHref => consumingModuleHref => consumingRegion => ResolvedDependency
+  private consumptionCache: Map<
+    string,
+    Map<string, Map<RegionPointer, ResolvedDependency>>
+  >;
   constructor(
     dependencies: Dependencies,
     lockFile: LockFile | undefined,
@@ -24,52 +33,84 @@ export class DependencyResolver {
       assignments,
       bundle
     );
-    this.resolutionCache = new Map();
+    this.consumptionCache = new Map();
   }
 
-  resolutionsForPkg(pkgHref: string): ResolvedDependency[] {
-    let cachedResolutions = this.resolutionCache.get(pkgHref);
-    if (cachedResolutions) {
-      return cachedResolutions;
-    }
+  resolutionsByConsumingModule(
+    pkg: URL,
+    consumedBy: Resolution
+  ): ResolvedDependency[] {
+    let pkgHref = pkg.href;
+    let resolutionsForPkg = this.getResolutionsForPkg(pkgHref);
+    return [...(resolutionsForPkg?.get(consumedBy.url.href)?.values() ?? [])];
+  }
 
-    let resolutions = this.consumedDeps.get(pkgHref);
-    if (!resolutions || resolutions.length === 0) {
-      return [];
+  resolutionByConsumptionPoint(
+    pkg: URL,
+    consumedBy: Resolution,
+    consumedByPointer: RegionPointer
+  ): ResolvedDependency | undefined {
+    let pkgHref = pkg.href;
+    let resolutionsForPkg = this.getResolutionsForPkg(pkgHref);
+    return resolutionsForPkg?.get(consumedBy.url.href)?.get(consumedByPointer);
+  }
+
+  private getResolutionsForPkg(
+    pkgHref: string
+  ): Map<string, Map<RegionPointer, ResolvedDependency>> {
+    if (!this.consumptionCache.has(pkgHref)) {
+      this.buildResolutionsForPkg(pkgHref);
+    }
+    return this.consumptionCache.get(pkgHref)!;
+  }
+
+  private buildResolutionsForPkg(pkgHref: string) {
+    let pkgVersions = this.consumedDeps.get(pkgHref);
+    if (!pkgVersions || pkgVersions.size === 0) {
+      this.consumptionCache.set(pkgHref, new Map());
+      return;
     }
 
     // this is a map of bundleHrefs (which include the pkg version), to a set of
-    // resolution indices (from the "resolutions" array) whose consumption range
-    // satisfies the bundleHref version. The goal is to find the package that
-    // has the most amount of range satisfications.
-    let rangeSatisfications = new Map<string, Set<number>>();
+    // bundle versions whose consumption range satisfies the bundleHref version.
+    // The goal is to find the package that has the most amount of range
+    // satisfications.
+    let rangeSatisfications = new Map<string, Set<string>>();
 
-    for (let [versionIndex, { bundleHref }] of resolutions.entries()) {
-      let { version: ver } = pkgInfoFromCatalogJsURL(new URL(bundleHref))!;
+    for (let bundleVersion of pkgVersions.keys()) {
+      let [ver] = bundleVersion.split("/");
       let version = coerce(ver);
       if (!version) {
         throw new Error(
-          `the version ${ver} for the bundle ${bundleHref} is not a valid version, while processing bundle ${this.bundle.href}`
+          `the version ${ver} for the bundle ${pkgHref}/${bundleVersion} is not a valid version, while processing bundle ${this.bundle.href}`
         );
       }
-      let rangeIndices = rangeSatisfications.get(bundleHref);
-      if (!rangeIndices) {
-        rangeIndices = new Set();
-        rangeSatisfications.set(bundleHref, rangeIndices);
+      let satisfiedVersions = rangeSatisfications.get(bundleVersion);
+      if (!satisfiedVersions) {
+        satisfiedVersions = new Set();
+        rangeSatisfications.set(bundleVersion, satisfiedVersions);
       }
-      for (let [rangeIndex, { range }] of resolutions.entries()) {
-        if (versionIndex === rangeIndex) {
-          // the version used for a declaration should always match its own consumption range
-          rangeIndices.add(rangeIndex);
+      for (let [otherBundleVersion, resolutions] of pkgVersions.entries()) {
+        let { range } = resolutions[0]; // the resolutions all come from the same version, so just grab the first one
+        // the version used for a declaration should always match its own consumption range
+        if (bundleVersion === otherBundleVersion) {
+          // npm allows non-semver range strings in the right hand side of the
+          // dependency (e.g. URLs, tags, branches, etc)
+          if (!validRange(range)) {
+            satisfiedVersions.add(otherBundleVersion);
+            continue;
+          }
+          if (!satisfies(version, range)) {
+            throw new Error(
+              `The version of the package ${pkgHref}/${bundleVersion} does not satisfy it's own consumer's specified range: ${range}. Are you specifying a custom "dependency" recipe? If so, check to make sure the range you are specifying satisfies the version of the package that is actually consumed (as denoted in the catalogjs.lock file).`
+            );
+          }
+          satisfiedVersions.add(otherBundleVersion);
           continue;
         }
-        // npm allows non-semver range strings in the right hand side of the
-        // dependency (e.g. URLs, tags, branches, etc)
-        if (!validRange(range)) {
-          continue;
-        }
+
         if (satisfies(version, range)) {
-          rangeIndices.add(rangeIndex);
+          satisfiedVersions.add(otherBundleVersion);
         }
       }
     }
@@ -84,113 +125,166 @@ export class DependencyResolver {
     // bundleHref that is the highest version. The resulting range for each set
     // will be an intersection of all the ranges that correspond to the versions
     // that were satisfied in the group.
-    let resultingResolutions: ResolvedDependency[] = [];
-    let unsatisfiedConsumptionIndices = [...resolutions.entries()].map(
-      ([index]) => index
-    );
-    let sortedBundleHrefs = [...rangeSatisfications.entries()].sort(
-      ([bundleHrefA, aIndices], [bundleHrefB, bIndices]) => {
+    let resolutionsForPkg: Map<
+      string,
+      Map<RegionPointer, ResolvedDependency>
+    > = new Map();
+    let unsatisfiedVersions = new Set([...pkgVersions.keys()]);
+    let sortedBundleVersions = [...rangeSatisfications.entries()].sort(
+      ([bundleVerA, aIndices], [bundleVerB, bIndices]) => {
         let diff = bIndices.size - aIndices.size;
         if (diff !== 0) {
           return diff;
         }
-        let { version: verA } = pkgInfoFromCatalogJsURL(new URL(bundleHrefA))!;
+        let [verA] = bundleVerA.split("/");
         let versionA = coerce(verA)!;
-        let { version: verB } = pkgInfoFromCatalogJsURL(new URL(bundleHrefB))!;
+        let [verB] = bundleVerB.split("/");
         let versionB = coerce(verB)!;
         return compare(versionB, versionA);
       }
     );
-    while (unsatisfiedConsumptionIndices.length > 0) {
-      if (sortedBundleHrefs.length === 0) {
+    while (unsatisfiedVersions.size > 0) {
+      if (sortedBundleVersions.length === 0) {
         throw new Error(
-          `unable to determine bundleHref to satisfy consumption ranges: ${unsatisfiedConsumptionIndices
-            .map((i) => resolutions![i].range)
+          `unable to determine bundleHref to satisfy consumption ranges: ${[
+            ...unsatisfiedVersions,
+          ]
+            .map((ver) => (pkgVersions?.get(ver))![0].range)
             .join()}`
         );
       }
-      let [selectedBundleHref, consumptionIndices] = sortedBundleHrefs.shift()!;
-      let selectedIndex = resolutions.findIndex(
-        (r) => r.bundleHref === selectedBundleHref
-      )!;
-      let selected = resolutions[selectedIndex];
-      let obviatedIndices = [...consumptionIndices].filter(
-        (i) => i != selectedIndex
-      );
-      let {
-        bundleHref,
-        importedSource,
-        consumedBy,
-        consumedByPointer,
-      } = selected;
+      let [selectedBundleVer, consumedVersions] = sortedBundleVersions.shift()!;
+      if (!unsatisfiedVersions.has(selectedBundleVer)) {
+        continue; // we've already satisfied this, keep going
+      }
 
-      let invalidSemverRangeIndex = [...consumptionIndices].find(
-        (i) => !validRange(resolutions![i].range)
+      let verWithInvalidSemverRange = [...consumedVersions].find(
+        (ver) => !validRange(pkgVersions?.get(ver)![0].range)
       );
-      let invalidSemverRange =
-        invalidSemverRangeIndex != null
-          ? resolutions[invalidSemverRangeIndex].range
-          : undefined;
-      if (invalidSemverRange && consumptionIndices.size > 1) {
+      let invalidSemverRange = verWithInvalidSemverRange
+        ? pkgVersions.get(verWithInvalidSemverRange)![0].range
+        : undefined;
+      if (invalidSemverRange && consumedVersions.size > 1) {
         throw new Error(
           `a non semver range '${invalidSemverRange}' satisfied more than one pkg version--this should be impossible. the satisfied packages are: ${[
-            ...consumptionIndices,
+            ...consumedVersions,
           ]
-            .map((i) => resolutions![i].bundleHref)
+            .map((ver) => pkgHref + "/" + ver)
             .join(", ")}`
         );
       }
+
       let range: string;
-      let obviatedDependencies: ResolvedDependency["obviatedDependencies"];
+      let obviatedVersions = [...consumedVersions].filter(
+        (ver) => ver !== selectedBundleVer
+      );
       if (invalidSemverRange) {
         range = invalidSemverRange;
-        obviatedDependencies = [];
       } else {
         range = intersect(
-          ...[...consumptionIndices].map((i) => resolutions![i].range)
+          ...[...consumedVersions].map((ver) => pkgVersions?.get(ver)![0].range)
         );
-        obviatedDependencies = obviatedIndices.map((i) => ({
-          moduleHref: resolutions![i].consumedBy.url.href,
-          pointer: resolutions![i].consumedByPointer,
-        }));
       }
 
-      resultingResolutions.push({
-        importedSource,
-        consumedBy,
-        consumedByPointer,
-        bundleHref,
-        range,
-        obviatedDependencies,
-        importedAs: resolutions[[...consumptionIndices][0]].importedAs,
-      });
-      unsatisfiedConsumptionIndices = unsatisfiedConsumptionIndices.filter(
-        (i) => !consumptionIndices.has(i)
-      );
+      for (let resolution of pkgVersions.get(selectedBundleVer)!) {
+        let obviatedResolutions = obviatedVersions
+          .map((ver) =>
+            pkgVersions
+              ?.get(ver)!
+              .find(
+                (r) =>
+                  r.type === "declaration" &&
+                  resolution.type === r.type &&
+                  r.importedAs === resolution.importedAs
+              )
+          )
+          .filter(Boolean) as ResolvedDependency[];
+        let dupeResolutions = pkgVersions!
+          .get(selectedBundleVer)!
+          .filter(
+            (r) =>
+              r.type === "declaration" &&
+              resolution.type === r.type &&
+              resolution.importedAs === r.importedAs
+          );
+        if (dupeResolutions.length > 1) {
+          range = intersect(range, ...dupeResolutions.map((r) => r.range));
+          dupeResolutions.sort(
+            ({ consumedBy: consumedByA }, { consumedBy: consumedByB }) =>
+              consumedByA.url.href.localeCompare(consumedByB.url.href)
+          );
+          // when there are duplicate resolutions, the first one
+          // alphabetically by consumer href wins
+          if (resolution !== dupeResolutions.shift()) {
+            // you lost, we'll add you to the obviatedResolutions handle you there
+            continue;
+          }
+          obviatedResolutions.push(...dupeResolutions);
+        }
+        let finalResolution = { ...resolution, range };
+        setMapping(
+          finalResolution.consumedBy.url.href,
+          finalResolution.consumedByPointer,
+          finalResolution,
+          resolutionsForPkg
+        );
+        // also set resolution for the local declaration of imports
+        if (
+          finalResolution.type === "declaration" &&
+          finalResolution.importedSource
+        ) {
+          setMapping(
+            finalResolution.importedSource.declaredIn.url.href,
+            finalResolution.importedSource.pointer,
+            {
+              ...finalResolution,
+              importedSource: undefined,
+            },
+            resolutionsForPkg
+          );
+        }
+        for (let obviatedResolution of obviatedResolutions) {
+          setMapping(
+            obviatedResolution.consumedBy.url.href,
+            obviatedResolution.consumedByPointer,
+            finalResolution,
+            resolutionsForPkg
+          );
+        }
+      }
+
+      for (let ver of consumedVersions) {
+        unsatisfiedVersions.delete(ver);
+      }
     }
 
-    this.resolutionCache.set(pkgHref, resultingResolutions);
-    return resultingResolutions;
+    this.consumptionCache.set(pkgHref, resolutionsForPkg);
   }
 }
 
-interface ConsumedDependency {
-  importedSource?: {
-    pointer: RegionPointer;
-    declaredIn: ModuleResolution;
-  };
-  importedAs: string | NamespaceMarker;
+export type ResolvedDependency =
+  | ResolvedDeclarationDependency
+  | ResolvedSideEffectDependency;
+interface DependencyBase {
   consumedByPointer: RegionPointer;
   consumedBy: ModuleResolution;
   bundleHref: string;
   range: string;
 }
 
-export interface ResolvedDependency extends ConsumedDependency {
-  obviatedDependencies: { moduleHref: string; pointer: RegionPointer }[];
+export interface ResolvedDeclarationDependency extends DependencyBase {
+  type: "declaration";
+  importedSource?: {
+    pointer: RegionPointer;
+    declaredIn: ModuleResolution;
+  };
+  importedAs: string | NamespaceMarker;
+}
+export interface ResolvedSideEffectDependency extends DependencyBase {
+  type: "side-effect";
 }
 
-type ConsumedDependencies = Map<string, ConsumedDependency[]>; // the key of the map is the pkgHref
+type ConsumedDependencies = Map<string, Map<string, ResolvedDependency[]>>; // the outer key of the map is the pkgHref, the inner key is the bundle version
 
 function gatherDependencies(
   dependencies: Dependencies,
@@ -225,18 +319,11 @@ function gatherDependencies(
     let dependency = dependencies[pkgName];
     if (!dependency) {
       throw new Error(
-        `unable to determine entrypoints.json dependency from the specifier ${specifier} with resolution ${bundleHref} in bundle ${bundle.href}. Are you missing an dependency for '${pkgName}' in your entrypoints.json file?`
-      );
-    }
-    let { pkgURL } = pkgInfoFromCatalogJsURL(new URL(bundleHref)) ?? {};
-    if (!pkgURL) {
-      throw new Error(
-        `cannot derive pkgURL from bundle URL ${bundleHref} (resolved from '${specifier}') when building bundle ${bundle.href}`
+        `unable to determine entrypoints.json dependency from the specifier '${specifier}' with resolution ${bundleHref} in bundle ${bundle.href}. Are you missing a dependency for '${pkgName}' in your entrypoints.json file?`
       );
     }
     for (let { module } of ownAssignments) {
       for (let [pointer, region] of module.desc.regions.entries()) {
-        // TODO don't forget about pure side effect imports...
         if (
           region.type !== "declaration" ||
           region.declaration.type !== "import" ||
@@ -252,23 +339,22 @@ function gatherDependencies(
           ownAssignments
         );
         if (source.type === "resolved") {
-          let consumed = consumedDeps.get(pkgURL.href);
-          if (!consumed) {
-            consumed = [];
-            consumedDeps.set(pkgURL.href, consumed);
-          }
-
-          consumed.push({
-            importedSource: {
-              pointer: source.pointer,
-              declaredIn: makeNonCyclic(source.module),
-            },
+          addResolution(
             bundleHref,
-            consumedBy: module,
-            consumedByPointer: pointer,
-            importedAs: region.declaration.importedName,
-            range: dependency.range,
-          });
+            {
+              type: "declaration",
+              importedSource: {
+                pointer: source.pointer,
+                declaredIn: makeNonCyclic(source.module),
+              },
+              bundleHref,
+              consumedBy: module,
+              consumedByPointer: pointer,
+              importedAs: region.declaration.importedName,
+              range: dependency.range,
+            },
+            consumedDeps
+          );
         }
       }
     }
@@ -283,46 +369,80 @@ function gatherDependencies(
     ) {
       continue;
     }
-    for (let [, { pointer, declaration }] of module.desc.declarations) {
-      if (declaration.type === "import") {
-        continue;
-      }
-      if (declaration.original) {
-        let { pkgURL } =
-          pkgInfoFromCatalogJsURL(new URL(declaration.original.bundleHref)) ??
-          {};
-        if (!pkgURL) {
-          throw new Error(
-            `cannot derive pkgURL from bundle URL ${declaration.original.bundleHref} when building bundle ${bundle.href}`
+    for (let [pointer, region] of module.desc.regions.entries()) {
+      if (region.type !== "declaration" && region.original) {
+        addResolution(
+          region.original.bundleHref,
+          {
+            type: "side-effect",
+            consumedByPointer: pointer,
+            consumedBy: module,
+            range: region.original.range,
+            bundleHref: region.original.bundleHref,
+          },
+          consumedDeps
+        );
+      } else if (region.type === "declaration") {
+        let { declaration } = region;
+        if (declaration.type === "import") {
+          continue;
+        }
+        if (declaration.original) {
+          addResolution(
+            declaration.original.bundleHref,
+            {
+              type: "declaration",
+              consumedByPointer: pointer,
+              consumedBy: module,
+              importedAs: declaration.original.importedAs,
+              range: declaration.original.range,
+              bundleHref: declaration.original.bundleHref,
+            },
+            consumedDeps
           );
         }
-        let consumed = consumedDeps.get(pkgURL.href);
-        if (!consumed) {
-          consumed = [];
-          consumedDeps.set(pkgURL.href, consumed);
-        }
-
-        consumed.push({
-          consumedByPointer: pointer,
-          consumedBy: module,
-          importedAs: declaration.original.importedAs,
-          range: declaration.original.range,
-          bundleHref: declaration.original.bundleHref,
-        });
       }
     }
   }
+
   return consumedDeps;
+}
+
+function addResolution(
+  bundleHref: string,
+  resolution: ResolvedDependency,
+  consumedDeps: ConsumedDependencies
+) {
+  let { pkgURL, version, hash } =
+    pkgInfoFromCatalogJsURL(new URL(bundleHref)) ?? {};
+  if (!pkgURL || !version || !hash) {
+    throw new Error(
+      `cannot derive pkgURL, version, and/or hash from bundle URL ${bundleHref}`
+    );
+  }
+  let bundleVersion = `${version}/${hash}`;
+  let consumedVersions = consumedDeps.get(pkgURL.href);
+  if (!consumedVersions) {
+    consumedVersions = new Map();
+    consumedDeps.set(pkgURL.href, consumedVersions);
+  }
+
+  let consumed = consumedVersions.get(bundleVersion);
+  if (!consumed) {
+    consumed = [];
+    consumedVersions.set(bundleVersion, consumed);
+  }
+  consumed.push(resolution);
 }
 
 export function resolutionForPkgDepDeclaration(
   module: ModuleResolution,
   bindingName: string,
   depResolver: DependencyResolver
-): ResolvedDependency | undefined {
+): ResolvedDeclarationDependency | undefined {
   let { declaration: desc, pointer } =
     module.desc.declarations.get(bindingName) ?? {};
-  if (!desc) {
+  if (!desc || pointer == null) {
     return;
   }
   let pkgURL: URL | undefined;
@@ -334,16 +454,9 @@ export function resolutionForPkgDepDeclaration(
     )?.pkgURL;
   }
   if (pkgURL) {
-    return depResolver
-      .resolutionsForPkg(pkgURL?.href)
-      .find(
-        (r) =>
-          (r.consumedBy.url.href === module!.url.href &&
-            r.consumedByPointer === pointer) ||
-          r.obviatedDependencies.find(
-            (o) => o.moduleHref === module!.url.href && o.pointer === pointer
-          )
-      );
+    return depResolver.resolutionByConsumptionPoint(pkgURL, module, pointer) as
+      | ResolvedDeclarationDependency
+      | undefined;
   }
   return;
 }

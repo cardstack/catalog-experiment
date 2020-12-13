@@ -32,6 +32,7 @@ import {
 import {
   DependencyResolver,
   resolutionForPkgDepDeclaration,
+  ResolvedDeclarationDependency,
 } from "../dependency-resolution";
 import { depAsURL, Dependencies } from "./entrypoint";
 import { setMapping, stringifyReplacer } from "../utils";
@@ -920,7 +921,19 @@ function buildBundleBody(
     if (dep) {
       for (let pointer of moduleRegions[documentPointer].dependsOn) {
         let region = moduleRegions[pointer];
-        if (region.type === "general") {
+        if (region.type === "general" && region.original) {
+          let { pkgURL } = pkgInfoFromCatalogJsURL(
+            new URL(region.original.bundleHref)
+          )!;
+          let resolution = depResolver.resolutionByConsumptionPoint(
+            pkgURL,
+            module,
+            pointer
+          );
+          if (resolution) {
+            region.original.range = resolution.range;
+          }
+        } else if (region.type === "general" && !region.original) {
           region.original = {
             bundleHref: module.url.href,
             range: dep.range,
@@ -976,21 +989,19 @@ function buildBundleBody(
     if (rewriter !== rewriters[0] || prevSibling != null) {
       moduleRegions[documentPointer].start++;
     }
+
     regions.push(...moduleRegions);
 
     // update the declaration "original" property with the resolved dependency
     // info. (consumption ranges may have been narrowed because of collapsed
-    // declaration regions).
+    // declaration regions)
     let pkgURL = pkgInfoFromCatalogJsURL(module.url)?.pkgURL;
     if (pkgURL) {
       let resolutions = depResolver
-        .resolutionsForPkg(pkgURL?.href)
+        .resolutionsByConsumingModule(pkgURL, module)
         .filter(
-          (r) =>
-            (!r.importedSource && r.consumedBy.url.href === module.url.href) ||
-            (r.importedSource &&
-              r.importedSource.declaredIn.url.href === module.url.href)
-        );
+          (r) => r.type === "declaration"
+        ) as ResolvedDeclarationDependency[];
       // we're spinning though all the declarations we have resolutions for in
       // this pkg, not all of them may be used here.
       for (let resolution of resolutions) {
@@ -999,12 +1010,9 @@ function buildBundleBody(
               resolution.importedSource.pointer
             ]
           : resolution.consumedBy.desc.regions[resolution.consumedByPointer];
-        if (
-          region.type !== "declaration" ||
-          region.declaration.type === "import"
-        ) {
+        if (region.type !== "declaration") {
           throw new Error(
-            `expected region for resolved pkg dep '${
+            `expected declaration region for resolved pkg dep '${
               resolution.importedAs
             }' from ${resolution.bundleHref} contained in ${
               resolution.importedSource
@@ -1016,19 +1024,27 @@ function buildBundleBody(
             )}`
           );
         }
-        let declaration = bundleDeclarations.get(
-          region.declaration.declaredName
-        );
-        if (!declaration || declaration.original) {
-          // this particular declaration is not used here or we already
-          // processed it.
+        if (region.declaration.type === "import") {
+          // bundle internal imports won't have "original" properties on them
           continue;
         }
-        declaration.original = {
+        let assignedName = resolution.importedSource
+          ? (resolution.importedSource.declaredIn.desc.regions[
+              resolution.importedSource.pointer
+            ] as DeclarationCodeRegion).declaration.declaredName
+          : region.declaration.declaredName;
+        let declaration = bundleDeclarations.get(assignedName);
+        let original = {
           bundleHref: resolution.bundleHref,
           range: resolution.range,
           importedAs: resolution.importedAs,
         };
+        if (!declaration?.original) {
+          // this particular declaration is not used here or we already
+          // processed it
+          continue;
+        }
+        declaration.original = original;
       }
     }
   }
@@ -1038,7 +1054,9 @@ function buildBundleBody(
     if (region.type !== "declaration") {
       throw new Error(`bug: 'should never get here'`);
     }
-    region.declaration.references = [...references];
+    region.declaration.references = [
+      ...new Set([...region.declaration.references, ...references]),
+    ];
     if (original && region.declaration.type === "local") {
       region.declaration.original = { ...original };
     }

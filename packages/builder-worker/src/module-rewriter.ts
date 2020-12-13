@@ -28,8 +28,8 @@ import {
 } from "./utils";
 import { depAsURL, Dependencies } from "./nodes/entrypoint";
 import {
-  ResolvedDependency,
   DependencyResolver,
+  ResolvedDeclarationDependency,
 } from "./dependency-resolution";
 import { pkgInfoFromCatalogJsURL } from "./resolver";
 import { maybeRelativeURL } from "./path";
@@ -167,11 +167,20 @@ export class ModuleRewriter {
             bundleHref: bundleHref,
             range,
             importedAs,
-          } = declarationOrigin.source;
+          } = declarationOrigin.resolution;
           region.declaration.original = { bundleHref, range, importedAs };
-        } else {
+        } else if (declarationOrigin?.type === "obviated") {
           throw new Error(
             `bug: should never be here--obviated regions should not be included in serialized code region result`
+          );
+        } else {
+          throw new Error(
+            `bug: should never be here--if there is an "original" property on the declaration, then there must be some kind of resolution for that origin. declaration is ${JSON.stringify(
+              region.declaration,
+              stringifyReplacer
+            )} in module ${this.module.url.href} from bundle ${
+              this.bundle.href
+            }`
           );
         }
       }
@@ -199,19 +208,19 @@ export class ModuleRewriter {
           );
           if (declarationOrigin) {
             assignedName = this.maybeAssignImportName(
-              declarationOrigin.source.bundleHref,
-              isNamespaceMarker(declarationOrigin.source.importedAs)
+              declarationOrigin.resolution.bundleHref,
+              isNamespaceMarker(declarationOrigin.resolution.importedAs)
                 ? NamespaceMarker
-                : declarationOrigin.source.importedAs,
+                : declarationOrigin.resolution.importedAs,
               localName
             );
             // we deal with setting the namespace assigned import deps in the
             // makeNamespaceMappings()
-            if (!isNamespaceMarker(declarationOrigin.source.importedAs)) {
+            if (!isNamespaceMarker(declarationOrigin.resolution.importedAs)) {
               this.state.assignedImportedDependencies.set(assignedName, {
-                bundleHref: declarationOrigin.source.bundleHref,
-                range: declarationOrigin.source.range,
-                importedAs: declarationOrigin.source.importedAs,
+                bundleHref: declarationOrigin.resolution.bundleHref,
+                range: declarationOrigin.resolution.range,
+                importedAs: declarationOrigin.resolution.importedAs,
               });
             }
           } else if (localDesc.type === "import") {
@@ -243,17 +252,42 @@ export class ModuleRewriter {
                 localName
               );
             }
+          } else if (localDesc.type === "local" && localDesc.original) {
+            // need to think thru this situation in more detail. I'm worried
+            // we might be fragmenting a package into different versions here
+            // since we have an "original" but bailed out of the
+            // resolveDeclarationOrigin (probably there are multiple bundles
+            // in the package and the "winning" version didn't consume the
+            // bundle that we need)...
+            assignedName = this.maybeAssignImportName(
+              localDesc.original.bundleHref,
+              localDesc.original.importedAs,
+              localName
+            );
           }
         } else {
           // check to see if the binding was actually already assigned by a module
           // that imports it
-          let [exportName, { module: sourceModule }] = [
-            ...getExports(this.module),
-          ].find(
+          let exports = [...getExports(this.module)].filter(
             ([_, { desc }]) => desc.type === "local" && desc.name === localName
           ) ?? [undefined, {}];
-          let suggestedName = localName === "default" ? "_default" : localName;
-          if (exportName && sourceModule) {
+          // if here are multiple exports for this declaration, check all of
+          // them to see if there have been any assignments, and use the existing
+          // name if there has already been an assignment for one of the names
+          let suggestedName: string | undefined;
+          for (let [exportName, { module: sourceModule }] of exports) {
+            if (
+              this.state.assignedImportedNames
+                .get(sourceModule.url.href)
+                ?.get(exportName)
+            ) {
+              suggestedName = exportName;
+              break;
+            }
+          }
+          suggestedName =
+            suggestedName ?? localName === "default" ? "_default" : localName;
+          for (let [exportName, { module: sourceModule }] of exports) {
             assignedName = this.maybeAssignImportName(
               sourceModule.url.href,
               exportName,
@@ -410,12 +444,12 @@ export class ModuleRewriter {
             this.depResolver
           );
           if (declarationOrigin) {
-            if (isNamespaceMarker(declarationOrigin.source.importedAs)) {
+            if (isNamespaceMarker(declarationOrigin.resolution.importedAs)) {
               assignedName = exportedName;
             } else {
               assignedName = this.maybeAssignImportName(
-                declarationOrigin.source.bundleHref,
-                declarationOrigin.source.importedAs,
+                declarationOrigin.resolution.bundleHref,
+                declarationOrigin.resolution.importedAs,
                 suggestedName
               );
             }
@@ -662,12 +696,12 @@ export function resolveDeclaration(
 
 interface IncludedDeclarationOrigin {
   type: "included";
-  source: ResolvedDependency;
+  resolution: ResolvedDeclarationDependency;
 }
 
 interface ObviatedDeclarationOrigin {
   type: "obviated";
-  source: ResolvedDependency;
+  resolution: ResolvedDeclarationDependency;
 }
 
 type DeclarationOrigin = IncludedDeclarationOrigin | ObviatedDeclarationOrigin;
@@ -686,6 +720,10 @@ function resolveDeclarationOrigin(
       );
     }
   } else if (desc.type === "import") {
+    if (isNamespaceMarker(desc.importedName)) {
+      // namespaces are dealt with at the individual binding level
+      return;
+    }
     pkgURL = pkgInfoFromCatalogJsURL(
       consumedByModule.resolvedImports[desc.importIndex].url
     )?.pkgURL;
@@ -695,27 +733,38 @@ function resolveDeclarationOrigin(
   } else {
     return;
   }
-  let resolvedSources = depResolver.resolutionsForPkg(pkgURL.href) ?? [];
-  let obviatedSource = resolvedSources?.find((s) =>
-    s.obviatedDependencies.find(
-      (r) => r.moduleHref === consumedByModule.url.href
-    )
+  let pointer = consumedByModule.desc.regions.findIndex(
+    (r) =>
+      r.type === "declaration" &&
+      ((desc.type === "local" &&
+        r.declaration.declaredName === desc.original?.importedAs) ||
+        (desc.type === "import" &&
+          r.declaration.declaredName === desc.importedName))
   );
-  if (obviatedSource) {
+  if (pointer === -1) {
+    throw new Error(
+      `cannot find region corresponding to the declaration for ${JSON.stringify(
+        desc,
+        stringifyReplacer
+      )} in module ${consumedByModule.url.href}`
+    );
+  }
+  let resolution = depResolver.resolutionByConsumptionPoint(
+    pkgURL,
+    consumedByModule,
+    pointer
+  ) as ResolvedDeclarationDependency | undefined;
+  if (
+    resolution?.consumedBy.url.href === consumedByModule.url.href &&
+    resolution.consumedByPointer === pointer
+  ) {
+    return { type: "included", resolution };
+  } else if (resolution) {
     // this region has been collapsed because it's consumption range
     // overlaps with the same declaration elsewhere
     return {
       type: "obviated",
-      source: obviatedSource,
-    };
-  }
-  let includedSource = resolvedSources.find(
-    (s) => s.consumedBy.url.href === consumedByModule.url.href
-  );
-  if (includedSource) {
-    return {
-      type: "included",
-      source: includedSource,
+      resolution,
     };
   }
 
