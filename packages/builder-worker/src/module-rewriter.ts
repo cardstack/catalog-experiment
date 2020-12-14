@@ -27,10 +27,7 @@ import {
   stringifyReplacer,
 } from "./utils";
 import { depAsURL, Dependencies } from "./nodes/entrypoint";
-import {
-  DependencyResolver,
-  ResolvedDeclarationDependency,
-} from "./dependency-resolution";
+import { DependencyResolver } from "./dependency-resolution";
 import { pkgInfoFromCatalogJsURL } from "./resolver";
 import { maybeRelativeURL } from "./path";
 
@@ -227,12 +224,11 @@ export class ModuleRewriter {
               );
             }
           } else if (localDesc.type === "local" && localDesc.original) {
-            // need to think thru this situation in more detail. I'm worried
-            // we might be fragmenting a package into different versions here
-            // since we have an "original" but bailed out of the
-            // resolveDeclarationOrigin (probably there are multiple bundles
-            // in the package and the "winning" version didn't consume the
-            // bundle that we need)...
+            // need to think thru this situation in more detail. I'm worried we
+            // might be fragmenting a package into different versions here since
+            // we have an "original" but were unable to get a resolution for it
+            // (probably there are multiple bundles in the package and the
+            // "winning" version didn't consume the bundle that we need)...
             assignedName = this.maybeAssignImportName(
               localDesc.original.bundleHref,
               localDesc.original.importedAs,

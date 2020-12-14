@@ -29,6 +29,9 @@ import {
 } from "../../../builder-worker/src/description-encoder";
 import groupBy from "lodash/groupBy";
 import { declarationsMap } from "../../../builder-worker/src/describe-file";
+import { parse } from "@babel/core";
+import { error } from "../../../builder-worker/src/logger";
+import { Program, File } from "@babel/types";
 
 export class MakePackageHashNode implements BuilderNode {
   cacheKey: string;
@@ -280,6 +283,23 @@ class PublishFileNode implements BuilderNode {
 
       desc.declarations = declarationsMap(desc.regions);
       source = addDescriptionToSource(desc, source);
+    }
+
+    // sanity check the js files that we publish to make sure we aren't
+    // publishing invalid js
+    if (this.url.href.split(".").pop() === "js") {
+      let parsed: File | Program | null;
+      try {
+        parsed = parse(source);
+      } catch (e) {
+        error(`Cannot parse file ${this.url.href}`);
+        throw e;
+      }
+      if (!parsed || parsed.type !== "File") {
+        throw new Error(
+          `unexpected result from babel parse: ${parsed?.type} in file ${this.url.href}`
+        );
+      }
     }
 
     return {

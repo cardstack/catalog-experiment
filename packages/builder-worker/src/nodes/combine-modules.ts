@@ -1,4 +1,4 @@
-import { BuilderNode, NextNode, Value } from "./common";
+import { BuilderNode, NextNode } from "./common";
 import { makeNonCyclic, ModuleResolution, Resolution } from "./resolution";
 import { getExportDesc, getExports, ModuleDescription } from "../describe-file";
 import {
@@ -23,13 +23,14 @@ import {
 } from "../dependency-resolution";
 //@ts-ignore
 import { intersect } from "semver-intersect";
-import { GetLockFileNode, LockFile } from "./lock-file";
+import { LockEntries } from "./lock-file";
 
 export class CombineModulesNode implements BuilderNode {
   cacheKey: CombineModulesNode;
   constructor(
     private bundle: URL,
     private dependencies: Dependencies,
+    private lockEntries: LockEntries,
     private bundleAssignmentsNode: BundleAssignmentsNode
   ) {
     this.cacheKey = this;
@@ -37,20 +38,16 @@ export class CombineModulesNode implements BuilderNode {
 
   async deps() {
     return {
-      info: new PrepareCombineModulesNode(
-        this.bundle,
-        this.bundleAssignmentsNode
-      ),
+      info: this.bundleAssignmentsNode,
     };
   }
 
   async run({
-    info: { assignments, resolutionsInDepOrder, lockFile },
+    info: { assignments, resolutionsInDepOrder },
   }: {
     info: {
       assignments: BundleAssignment[];
       resolutionsInDepOrder: ModuleResolution[];
-      lockFile: LockFile | undefined;
     };
   }): Promise<NextNode<{ code: string; desc: ModuleDescription }>> {
     let ownAssignments = assignments.filter(
@@ -59,7 +56,7 @@ export class CombineModulesNode implements BuilderNode {
 
     let depResolver = new DependencyResolver(
       this.dependencies,
-      lockFile,
+      this.lockEntries,
       assignments,
       this.bundle
     );
@@ -147,85 +144,6 @@ export class CombineModulesNode implements BuilderNode {
         this.dependencies,
         depResolver
       ),
-    };
-  }
-}
-
-class PrepareCombineModulesNode implements BuilderNode {
-  cacheKey: PrepareCombineModulesNode;
-  constructor(
-    private bundle: URL,
-    private bundleAssignmentsNode: BundleAssignmentsNode
-  ) {
-    this.cacheKey = this;
-  }
-
-  async deps() {
-    return {
-      bundleAssignments: this.bundleAssignmentsNode,
-    };
-  }
-
-  async run({
-    bundleAssignments: { assignments, resolutionsInDepOrder },
-  }: {
-    bundleAssignments: {
-      assignments: BundleAssignment[];
-      resolutionsInDepOrder: ModuleResolution[];
-    };
-  }): Promise<
-    NextNode<{
-      assignments: BundleAssignment[];
-      resolutionsInDepOrder: ModuleResolution[];
-      lockFile: LockFile | undefined;
-    }>
-  > {
-    return {
-      node: new FinishPrepareCombineModulesNode(
-        this.bundle,
-        assignments,
-        resolutionsInDepOrder
-      ),
-    };
-  }
-}
-class FinishPrepareCombineModulesNode implements BuilderNode {
-  // caching is not ideal here--we are relying on the fact that the nodes that
-  // this builder node depends on are cached
-  cacheKey: FinishPrepareCombineModulesNode;
-  private ownAssignments: BundleAssignment[];
-  constructor(
-    private bundle: URL,
-    private assignments: BundleAssignment[],
-    private resolutionsInDepOrder: ModuleResolution[]
-  ) {
-    this.cacheKey = this;
-    this.ownAssignments = assignments.filter(
-      (a) => a.bundleURL.href === this.bundle.href
-    );
-  }
-  async deps() {
-    return {
-      lockFile: new GetLockFileNode(this.ownAssignments[0].entrypointModuleURL),
-    };
-  }
-  async run({
-    lockFile,
-  }: {
-    lockFile: LockFile | undefined;
-  }): Promise<
-    Value<{
-      assignments: BundleAssignment[];
-      resolutionsInDepOrder: ModuleResolution[];
-      lockFile: LockFile | undefined;
-    }>
-  > {
-    return {
-      value: {
-        lockFile,
-        assignments: this.assignments,
-        resolutionsInDepOrder: this.resolutionsInDepOrder,
-      },
     };
   }
 }

@@ -24,7 +24,6 @@ import {
   LocalExportDescription,
   ModuleDescription,
 } from "../src/describe-file";
-import { extractDescriptionFromSource } from "../src/description-encoder";
 
 Logger.setLogLevel("debug");
 Logger.echoInConsole(true);
@@ -5630,6 +5629,66 @@ QUnit.module("module builder", function (origHooks) {
           );
           assert.equal(puppies.declaration.original?.range, "^7.9.3");
           assert.equal(puppies.declaration.original?.importedAs, "puppies");
+        }
+      });
+
+      test("will throw when there is a direct dependency that is shadowing another dependency's consumption range", async function (assert) {
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["index.js"],
+            "dependencies": {
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "^7.9.3"
+              }
+            }
+          }`,
+          "catalogjs.lock": `{ "puppies": "${puppiesBundle1Href}/index.js" }`, // ver 7.9.4
+          "index.js": `
+            import { puppies } from "puppies";
+            function getPuppies() { return puppies; }
+            function getCats() { return ["jojo"]; }
+            function getRats() { return ["pizza rat"]; }
+            export { getPuppies, getCats, getRats };
+          `,
+        });
+        let bundle1Src = await bundleSource(assert.fs);
+        let lib1BundleHref =
+          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["driver.js"],
+            "dependencies": {
+              "lib1": {
+                "type": "npm",
+                "pkgName": "lib1",
+                "range": "^1.0.0"
+              }
+            }
+          }`,
+          "catalogjs.lock": `{
+            "lib1": "${lib1BundleHref}/lib.js",
+            "puppies": "${puppiesBundle1Href}/index.js"
+          }`,
+          "driver.js": `
+            import { getPuppies } from "lib1";
+            import { puppies } from "puppies";
+            console.log([...puppies, ...getPuppies()]);
+          `,
+          [`${lib1BundleHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
+          [`${lib1BundleHref}/lib.js`]: bundle1Src,
+        });
+        try {
+          await bundle(assert.fs, url("output/driver.js"));
+          throw new Error(`should not have been able to build`);
+        } catch (e) {
+          assert.ok(
+            e.message.match(
+              /Are you missing a dependency for 'puppies' in your entrypoints\.json file/
+            ),
+            "error was thrown"
+          );
         }
       });
 

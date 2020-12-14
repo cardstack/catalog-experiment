@@ -11,7 +11,7 @@ import { pkgInfoFromCatalogJsURL } from "./resolver";
 import { satisfies, coerce, compare, validRange } from "semver";
 //@ts-ignore
 import { intersect } from "semver-intersect";
-import { LockFile } from "./nodes/lock-file";
+import { LockEntries } from "./nodes/lock-file";
 import { setMapping } from "./utils";
 
 export class DependencyResolver {
@@ -23,13 +23,13 @@ export class DependencyResolver {
   >;
   constructor(
     dependencies: Dependencies,
-    lockFile: LockFile | undefined,
+    lockEntries: LockEntries,
     assignments: BundleAssignment[],
     private bundle: URL
   ) {
     this.consumedDeps = gatherDependencies(
       dependencies,
-      lockFile,
+      lockEntries,
       assignments,
       bundle
     );
@@ -288,7 +288,7 @@ type ConsumedDependencies = Map<string, Map<string, ResolvedDependency[]>>; // t
 
 function gatherDependencies(
   dependencies: Dependencies,
-  lockFile: LockFile | undefined,
+  lockEntries: LockEntries,
   assignments: BundleAssignment[],
   bundle: URL
 ): ConsumedDependencies {
@@ -300,15 +300,11 @@ function gatherDependencies(
   // first we gather up all the direct dependencies of the project from the lock
   // file--this has the benefit of listing out all the direct dependencies of
   // the project and their resolutions
-  for (let [specifier, bundleHref] of Object.entries(lockFile ?? {})) {
+  for (let [specifier, bundleURL] of lockEntries) {
+    let bundleHref = bundleURL.href;
     let [pkgName, ...bundleParts] = specifier.split("/");
     if (pkgName.startsWith("@")) {
       pkgName = `${pkgName}/${bundleParts.shift()}`;
-    }
-    if (!bundleHref) {
-      throw new Error(
-        `unable to determine resolution for ${specifier} in bundle ${bundle.href} from lock file.`
-      );
     }
     let pkgAssignment = assignments.find(
       (a) => a.module.url.href === bundleHref
