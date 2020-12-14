@@ -3,16 +3,21 @@ import {
   ModuleResolution,
   Resolution,
 } from "./nodes/resolution";
-import { NamespaceMarker, RegionPointer } from "./code-region";
+import {
+  isNamespaceMarker,
+  NamespaceMarker,
+  RegionPointer,
+} from "./code-region";
 import { BundleAssignment } from "./nodes/bundle";
-import { resolveDeclaration } from "./module-rewriter";
-import { Dependencies } from "./nodes/entrypoint";
+import { resolveDeclaration, UnresolvedResult } from "./module-rewriter";
+import { Dependencies, Dependency } from "./nodes/entrypoint";
 import { pkgInfoFromCatalogJsURL } from "./resolver";
 import { satisfies, coerce, compare, validRange } from "semver";
 //@ts-ignore
 import { intersect } from "semver-intersect";
-import { LockEntries } from "./nodes/lock-file";
+import { LockEntries, LockFile } from "./nodes/lock-file";
 import { setMapping } from "./utils";
+import { getExports } from "./describe-file";
 
 export class DependencyResolver {
   private consumedDeps: ConsumedDependencies;
@@ -23,14 +28,16 @@ export class DependencyResolver {
   >;
   constructor(
     dependencies: Dependencies,
-    lockEntries: LockEntries,
     assignments: BundleAssignment[],
+    lockEntries: LockEntries,
+    lockFile: LockFile | undefined,
     private bundle: URL
   ) {
     this.consumedDeps = gatherDependencies(
       dependencies,
-      lockEntries,
       assignments,
+      lockEntries,
+      lockFile,
       bundle
     );
     this.consumptionCache = new Map();
@@ -288,20 +295,24 @@ type ConsumedDependencies = Map<string, Map<string, ResolvedDependency[]>>; // t
 
 function gatherDependencies(
   dependencies: Dependencies,
-  lockEntries: LockEntries,
   assignments: BundleAssignment[],
+  lockEntries: LockEntries,
+  lockFile: LockFile | undefined,
   bundle: URL
 ): ConsumedDependencies {
   let consumedDeps: ConsumedDependencies = new Map();
   let ownAssignments = assignments.filter(
     (a) => a.bundleURL.href === bundle.href
   );
+  let locks: Map<string, string> = new Map([
+    ...Object.entries(lockFile ?? {}),
+    ...new Map([...lockEntries.entries()].map(([k, v]) => [k, v.href])),
+  ]);
 
   // first we gather up all the direct dependencies of the project from the lock
   // file--this has the benefit of listing out all the direct dependencies of
   // the project and their resolutions
-  for (let [specifier, bundleURL] of lockEntries) {
-    let bundleHref = bundleURL.href;
+  for (let [specifier, bundleHref] of locks) {
     let [pkgName, ...bundleParts] = specifier.split("/");
     if (pkgName.startsWith("@")) {
       pkgName = `${pkgName}/${bundleParts.shift()}`;
@@ -349,6 +360,21 @@ function gatherDependencies(
               importedAs: region.declaration.importedName,
               range: dependency.range,
             },
+            consumedDeps
+          );
+        } else if (
+          isNamespaceMarker(source.importedAs) &&
+          ownAssignments.find(
+            (a) =>
+              a.module.url.href &&
+              (source as UnresolvedResult).importedFromModule.url.href
+          )
+        ) {
+          addResolutionsForNamespace(
+            makeNonCyclic(source.importedFromModule),
+            dependency,
+            bundleHref,
+            ownAssignments,
             consumedDeps
           );
         }
@@ -402,6 +428,62 @@ function gatherDependencies(
   }
 
   return consumedDeps;
+}
+
+function addResolutionsForNamespace(
+  module: ModuleResolution,
+  dependency: Dependency,
+  bundleHref: string,
+  ownAssignments: BundleAssignment[],
+  consumedDeps: ConsumedDependencies
+) {
+  let pkgURL = pkgInfoFromCatalogJsURL(new URL(bundleHref))!.pkgURL!;
+  let exports = getExports(module);
+  for (let [exportName, { module: sourceModule }] of exports.entries()) {
+    let namespaceItemSource = resolveDeclaration(
+      exportName,
+      sourceModule,
+      sourceModule,
+      ownAssignments
+    );
+    if (namespaceItemSource.type === "resolved") {
+      if (!namespaceItemSource.module.url.href.startsWith(pkgURL.href)) {
+        // We have crossed a package boundary when trying to resolve the
+        // individual consumption points for all the items in the
+        // namespace.
+        throw new Error(
+          `unimplemented: crossed pkg boundary when trying to derive all the individual consumption points for the items of a namespace imported from ${module.url.href} of pkg ${pkgURL.href} consumed by bundle ${bundleHref}. The namespace object includes a declaration that originates from '${namespaceItemSource.declaredName}' of ${namespaceItemSource.module}`
+        );
+      }
+      addResolution(
+        bundleHref,
+        {
+          type: "declaration",
+          bundleHref,
+          consumedBy: makeNonCyclic(namespaceItemSource.module),
+          consumedByPointer: namespaceItemSource.pointer,
+          importedAs: exportName,
+          range: dependency.range,
+        },
+        consumedDeps
+      );
+    } else if (
+      isNamespaceMarker(namespaceItemSource.importedAs) &&
+      ownAssignments.find(
+        (a) =>
+          a.module.url.href &&
+          (namespaceItemSource as UnresolvedResult).importedFromModule.url.href
+      )
+    ) {
+      addResolutionsForNamespace(
+        makeNonCyclic(namespaceItemSource.importedFromModule),
+        dependency,
+        bundleHref,
+        ownAssignments,
+        consumedDeps
+      );
+    }
+  }
 }
 
 function addResolution(

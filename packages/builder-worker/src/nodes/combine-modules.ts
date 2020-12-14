@@ -1,4 +1,4 @@
-import { BuilderNode, NextNode } from "./common";
+import { BuilderNode, NextNode, Value } from "./common";
 import { makeNonCyclic, ModuleResolution, Resolution } from "./resolution";
 import { getExportDesc, getExports, ModuleDescription } from "../describe-file";
 import {
@@ -23,7 +23,7 @@ import {
 } from "../dependency-resolution";
 //@ts-ignore
 import { intersect } from "semver-intersect";
-import { LockEntries } from "./lock-file";
+import { GetLockFileNode, LockEntries, LockFile } from "./lock-file";
 
 export class CombineModulesNode implements BuilderNode {
   cacheKey: CombineModulesNode;
@@ -38,16 +38,20 @@ export class CombineModulesNode implements BuilderNode {
 
   async deps() {
     return {
-      info: this.bundleAssignmentsNode,
+      info: new PrepareCombineModulesNode(
+        this.bundle,
+        this.bundleAssignmentsNode
+      ),
     };
   }
 
   async run({
-    info: { assignments, resolutionsInDepOrder },
+    info: { assignments, resolutionsInDepOrder, lockFile },
   }: {
     info: {
       assignments: BundleAssignment[];
       resolutionsInDepOrder: ModuleResolution[];
+      lockFile: LockFile | undefined;
     };
   }): Promise<NextNode<{ code: string; desc: ModuleDescription }>> {
     let ownAssignments = assignments.filter(
@@ -56,8 +60,9 @@ export class CombineModulesNode implements BuilderNode {
 
     let depResolver = new DependencyResolver(
       this.dependencies,
-      this.lockEntries,
       assignments,
+      this.lockEntries,
+      lockFile,
       this.bundle
     );
 
@@ -381,86 +386,6 @@ function discoverIncludedRegions(
   }
 }
 
-function resolveDependency(
-  bundleURL: string,
-  depResolver: DependencyResolver,
-  consumingModule: ModuleResolution,
-  pointer: RegionPointer,
-  region: DeclarationCodeRegion,
-  editor: RegionEditor,
-  editors: { module: ModuleResolution; editor: RegionEditor }[]
-): {
-  isRegionObviated: boolean;
-  module: ModuleResolution;
-  editor: RegionEditor;
-  region: DeclarationCodeRegion;
-  pointer: RegionPointer;
-} {
-  let module: ModuleResolution = consumingModule;
-  let pkgURL = pkgInfoFromCatalogJsURL(new URL(bundleURL))?.pkgURL;
-  let isRegionObviated = false;
-  if (!pkgURL) {
-    // not all modules are packages
-    return {
-      isRegionObviated,
-      module,
-      editor,
-      pointer,
-      region,
-    };
-  }
-  let resolution = depResolver.resolutionByConsumptionPoint(
-    pkgURL,
-    consumingModule,
-    pointer
-  );
-
-  if (!resolution) {
-    // not all modules have dep resolutions
-    return {
-      isRegionObviated,
-      module,
-      editor,
-      pointer,
-      region,
-    };
-  }
-  if (
-    resolution.consumedBy.url.href !== consumingModule.url.href ||
-    resolution.consumedByPointer !== pointer
-  ) {
-    // region we entered this function with is actually obviated by a
-    // different region
-    isRegionObviated = true;
-    if (resolution.type === "declaration" && resolution.importedSource) {
-      editor = addNewEditor(
-        resolution.importedSource.declaredIn,
-        editor,
-        editors
-      );
-      module = resolution.importedSource.declaredIn;
-      region = editor.regions[
-        resolution.importedSource.pointer
-      ] as DeclarationCodeRegion;
-      pointer = resolution.importedSource.pointer;
-    } else {
-      editor = addNewEditor(resolution.consumedBy, editor, editors);
-      module = resolution.consumedBy;
-      region = editor.regions[
-        resolution.consumedByPointer
-      ] as DeclarationCodeRegion;
-      pointer = resolution.consumedByPointer;
-    }
-  }
-  return {
-    isRegionObviated,
-    module,
-    editor,
-    pointer,
-    region,
-  };
-}
-
 function discoverIncludedRegionsForNamespace(
   bundle: URL,
   module: Resolution,
@@ -479,14 +404,26 @@ function discoverIncludedRegionsForNamespace(
       ownAssignments
     );
     if (source.type === "resolved") {
+      let sourceModule: Resolution = source.module;
+      let region: DeclarationCodeRegion = source.region;
+      let pointer: RegionPointer = source.pointer;
+      ({ module: sourceModule, region, pointer, editor } = resolveDependency(
+        module.url.href, // the namespace module being imported is the potential pkg name
+        depResolver,
+        makeNonCyclic(sourceModule),
+        pointer,
+        region,
+        editor,
+        editors
+      ));
       let currentEditor = editor;
-      if (source.module.url.href !== module.url.href) {
-        currentEditor = addNewEditor(source.module, editor, editors);
+      if (sourceModule.url.href !== module.url.href) {
+        currentEditor = addNewEditor(sourceModule, editor, editors);
       }
       discoverIncludedRegions(
         bundle,
-        source.module,
-        source.pointer,
+        sourceModule,
+        pointer,
         currentEditor,
         editors,
         ownAssignments,
@@ -539,6 +476,86 @@ function discoverIncludedRegionsForNamespace(
       }
     }
   }
+}
+
+function resolveDependency(
+  bundleHref: string,
+  depResolver: DependencyResolver,
+  consumingModule: ModuleResolution,
+  pointer: RegionPointer,
+  region: DeclarationCodeRegion,
+  editor: RegionEditor,
+  editors: { module: ModuleResolution; editor: RegionEditor }[]
+): {
+  isRegionObviated: boolean;
+  module: ModuleResolution;
+  editor: RegionEditor;
+  region: DeclarationCodeRegion;
+  pointer: RegionPointer;
+} {
+  let module: ModuleResolution = consumingModule;
+  let pkgURL = pkgInfoFromCatalogJsURL(new URL(bundleHref))?.pkgURL;
+  let isRegionObviated = false;
+  if (!pkgURL) {
+    // not all modules are packages
+    return {
+      isRegionObviated,
+      module,
+      editor,
+      pointer,
+      region,
+    };
+  }
+  let resolution = depResolver.resolutionByConsumptionPoint(
+    pkgURL,
+    consumingModule,
+    pointer
+  );
+
+  if (!resolution) {
+    // not all modules have dep resolutions
+    return {
+      isRegionObviated,
+      module,
+      editor,
+      pointer,
+      region,
+    };
+  }
+  if (
+    resolution.consumedBy.url.href !== consumingModule.url.href ||
+    resolution.consumedByPointer !== pointer
+  ) {
+    // region we entered this function with is actually obviated by a
+    // different region
+    isRegionObviated = true;
+    if (resolution.type === "declaration" && resolution.importedSource) {
+      editor = addNewEditor(
+        resolution.importedSource.declaredIn,
+        editor,
+        editors
+      );
+      module = resolution.importedSource.declaredIn;
+      region = editor.regions[
+        resolution.importedSource.pointer
+      ] as DeclarationCodeRegion;
+      pointer = resolution.importedSource.pointer!;
+    } else {
+      editor = addNewEditor(resolution.consumedBy, editor, editors);
+      module = resolution.consumedBy;
+      region = editor.regions[
+        resolution.consumedByPointer
+      ] as DeclarationCodeRegion;
+      pointer = resolution.consumedByPointer;
+    }
+  }
+  return {
+    isRegionObviated,
+    module,
+    editor,
+    pointer,
+    region,
+  };
 }
 
 function addNewEditor(
@@ -701,4 +718,83 @@ function hasExposedRegionInfo(
         i.exposedAs === info.exposedAs
     )
   );
+}
+
+class PrepareCombineModulesNode implements BuilderNode {
+  cacheKey: PrepareCombineModulesNode;
+  constructor(
+    private bundle: URL,
+    private bundleAssignmentsNode: BundleAssignmentsNode
+  ) {
+    this.cacheKey = this;
+  }
+
+  async deps() {
+    return {
+      bundleAssignments: this.bundleAssignmentsNode,
+    };
+  }
+
+  async run({
+    bundleAssignments: { assignments, resolutionsInDepOrder },
+  }: {
+    bundleAssignments: {
+      assignments: BundleAssignment[];
+      resolutionsInDepOrder: ModuleResolution[];
+    };
+  }): Promise<
+    NextNode<{
+      assignments: BundleAssignment[];
+      resolutionsInDepOrder: ModuleResolution[];
+      lockFile: LockFile | undefined;
+    }>
+  > {
+    return {
+      node: new FinishPrepareCombineModulesNode(
+        this.bundle,
+        assignments,
+        resolutionsInDepOrder
+      ),
+    };
+  }
+}
+class FinishPrepareCombineModulesNode implements BuilderNode {
+  // caching is not ideal here--we are relying on the fact that the nodes that
+  // this builder node depends on are cached
+  cacheKey: FinishPrepareCombineModulesNode;
+  private ownAssignments: BundleAssignment[];
+  constructor(
+    private bundle: URL,
+    private assignments: BundleAssignment[],
+    private resolutionsInDepOrder: ModuleResolution[]
+  ) {
+    this.cacheKey = this;
+    this.ownAssignments = assignments.filter(
+      (a) => a.bundleURL.href === this.bundle.href
+    );
+  }
+  async deps() {
+    return {
+      lockFile: new GetLockFileNode(this.ownAssignments[0].entrypointModuleURL),
+    };
+  }
+  async run({
+    lockFile,
+  }: {
+    lockFile: LockFile | undefined;
+  }): Promise<
+    Value<{
+      assignments: BundleAssignment[];
+      resolutionsInDepOrder: ModuleResolution[];
+      lockFile: LockFile | undefined;
+    }>
+  > {
+    return {
+      value: {
+        lockFile,
+        assignments: this.assignments,
+        resolutionsInDepOrder: this.resolutionsInDepOrder,
+      },
+    };
+  }
 }
