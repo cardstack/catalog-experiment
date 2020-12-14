@@ -155,37 +155,8 @@ export class ModuleRewriter {
         if (consumptionInfo) {
           region.declaration.original = { ...consumptionInfo };
         }
-      } else {
-        // use recalculated/collapsed consumption ranges
-        let declarationOrigin = resolveDeclarationOrigin(
-          region.declaration,
-          this.module,
-          this.depResolver
-        );
-        if (declarationOrigin?.type === "included") {
-          let {
-            bundleHref: bundleHref,
-            range,
-            importedAs,
-          } = declarationOrigin.resolution;
-          region.declaration.original = { bundleHref, range, importedAs };
-        } else if (declarationOrigin?.type === "obviated") {
-          throw new Error(
-            `bug: should never be here--obviated regions should not be included in serialized code region result`
-          );
-        } else {
-          throw new Error(
-            `bug: should never be here--if there is an "original" property on the declaration, then there must be some kind of resolution for that origin. declaration is ${JSON.stringify(
-              region.declaration,
-              stringifyReplacer
-            )} in module ${this.module.url.href} from bundle ${
-              this.bundle.href
-            }`
-          );
-        }
       }
     }
-
     return { code, regions };
   }
 
@@ -194,33 +165,36 @@ export class ModuleRewriter {
     if (declarations) {
       for (let [
         localName,
-        { declaration: localDesc },
+        { pointer, declaration: localDesc },
       ] of declarations.entries()) {
         let assignedName: string | undefined;
         if (
           localDesc.type === "import" ||
           (localDesc.type === "local" && localDesc.original)
         ) {
-          let declarationOrigin = resolveDeclarationOrigin(
-            localDesc,
-            this.module,
-            this.depResolver
-          );
-          if (declarationOrigin) {
+          let depPkgURL = depPkgURLFromDeclaration(localDesc, this.module);
+          let resolution = depPkgURL
+            ? this.depResolver.resolutionByConsumptionPoint(
+                depPkgURL,
+                this.module,
+                pointer
+              )
+            : undefined;
+          if (resolution?.type === "declaration") {
             assignedName = this.maybeAssignImportName(
-              declarationOrigin.resolution.bundleHref,
-              isNamespaceMarker(declarationOrigin.resolution.importedAs)
+              resolution.bundleHref,
+              isNamespaceMarker(resolution.importedAs)
                 ? NamespaceMarker
-                : declarationOrigin.resolution.importedAs,
+                : resolution.importedAs,
               localName
             );
             // we deal with setting the namespace assigned import deps in the
             // makeNamespaceMappings()
-            if (!isNamespaceMarker(declarationOrigin.resolution.importedAs)) {
+            if (!isNamespaceMarker(resolution.importedAs)) {
               this.state.assignedImportedDependencies.set(assignedName, {
-                bundleHref: declarationOrigin.resolution.bundleHref,
-                range: declarationOrigin.resolution.range,
-                importedAs: declarationOrigin.resolution.importedAs,
+                bundleHref: resolution.bundleHref,
+                range: resolution.range,
+                importedAs: resolution.importedAs,
               });
             }
           } else if (localDesc.type === "import") {
@@ -438,18 +412,24 @@ export class ModuleRewriter {
             namespaceItemSource.declaredName === "default"
               ? "_default"
               : namespaceItemSource.declaredName;
-          let declarationOrigin = resolveDeclarationOrigin(
+          let depPkgURL = depPkgURLFromDeclaration(
             namespaceItemSource.declaration,
-            this.module,
-            this.depResolver
+            makeNonCyclic(namespaceItemSource.module)
           );
-          if (declarationOrigin) {
-            if (isNamespaceMarker(declarationOrigin.resolution.importedAs)) {
+          let resolution = depPkgURL
+            ? this.depResolver.resolutionByConsumptionPoint(
+                depPkgURL,
+                this.module,
+                namespaceItemSource.pointer
+              )
+            : undefined;
+          if (resolution?.type === "declaration") {
+            if (isNamespaceMarker(resolution.importedAs)) {
               assignedName = exportedName;
             } else {
               assignedName = this.maybeAssignImportName(
-                declarationOrigin.resolution.bundleHref,
-                declarationOrigin.resolution.importedAs,
+                resolution.bundleHref,
+                resolution.importedAs,
                 suggestedName
               );
             }
@@ -694,80 +674,29 @@ export function resolveDeclaration(
   };
 }
 
-interface IncludedDeclarationOrigin {
-  type: "included";
-  resolution: ResolvedDeclarationDependency;
-}
-
-interface ObviatedDeclarationOrigin {
-  type: "obviated";
-  resolution: ResolvedDeclarationDependency;
-}
-
-type DeclarationOrigin = IncludedDeclarationOrigin | ObviatedDeclarationOrigin;
-
-function resolveDeclarationOrigin(
-  desc: DeclarationDescription,
-  consumedByModule: ModuleResolution,
-  depResolver: DependencyResolver
-): DeclarationOrigin | undefined {
+function depPkgURLFromDeclaration(
+  declaration: DeclarationDescription,
+  module: ModuleResolution
+): URL | undefined {
   let pkgURL: URL | undefined;
-  if (desc.type === "local" && desc.original) {
-    pkgURL = pkgInfoFromCatalogJsURL(new URL(desc.original.bundleHref))?.pkgURL;
+  if (declaration.type === "local" && declaration.original) {
+    pkgURL = pkgInfoFromCatalogJsURL(new URL(declaration.original.bundleHref))
+      ?.pkgURL;
     if (!pkgURL) {
       throw new Error(
-        `Cannot determine pkgURL that corresponds to the bundle URL: ${desc.original.bundleHref}`
+        `Cannot determine pkgURL that corresponds to the bundle URL: ${declaration.original.bundleHref}`
       );
     }
-  } else if (desc.type === "import") {
-    if (isNamespaceMarker(desc.importedName)) {
+    return pkgURL;
+  } else if (declaration.type === "import") {
+    if (isNamespaceMarker(declaration.importedName)) {
       // namespaces are dealt with at the individual binding level
       return;
     }
-    pkgURL = pkgInfoFromCatalogJsURL(
-      consumedByModule.resolvedImports[desc.importIndex].url
+    return pkgInfoFromCatalogJsURL(
+      module.resolvedImports[declaration.importIndex].url
     )?.pkgURL;
-    if (!pkgURL) {
-      return;
-    }
-  } else {
-    return;
   }
-  let pointer = consumedByModule.desc.regions.findIndex(
-    (r) =>
-      r.type === "declaration" &&
-      ((desc.type === "local" &&
-        r.declaration.declaredName === desc.original?.importedAs) ||
-        (desc.type === "import" &&
-          r.declaration.declaredName === desc.importedName))
-  );
-  if (pointer === -1) {
-    throw new Error(
-      `cannot find region corresponding to the declaration for ${JSON.stringify(
-        desc,
-        stringifyReplacer
-      )} in module ${consumedByModule.url.href}`
-    );
-  }
-  let resolution = depResolver.resolutionByConsumptionPoint(
-    pkgURL,
-    consumedByModule,
-    pointer
-  ) as ResolvedDeclarationDependency | undefined;
-  if (
-    resolution?.consumedBy.url.href === consumedByModule.url.href &&
-    resolution.consumedByPointer === pointer
-  ) {
-    return { type: "included", resolution };
-  } else if (resolution) {
-    // this region has been collapsed because it's consumption range
-    // overlaps with the same declaration elsewhere
-    return {
-      type: "obviated",
-      resolution,
-    };
-  }
-
   return;
 }
 

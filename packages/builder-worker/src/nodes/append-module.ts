@@ -995,56 +995,57 @@ function buildBundleBody(
     // update the declaration "original" property with the resolved dependency
     // info. (consumption ranges may have been narrowed because of collapsed
     // declaration regions)
-    let pkgURL = pkgInfoFromCatalogJsURL(module.url)?.pkgURL;
-    if (pkgURL) {
+    let pkgHrefs = new Set(
+      (moduleRegions.filter(
+        (r) =>
+          r.type === "declaration" &&
+          r.declaration.type === "local" &&
+          r.declaration.original
+      ) as DeclarationCodeRegion[])
+        .map(
+          (r) =>
+            r.declaration.type === "local" &&
+            pkgInfoFromCatalogJsURL(new URL(r.declaration.original!.bundleHref))
+              ?.pkgURL.href
+        )
+        .filter(Boolean) as string[]
+    );
+    // we're spinning though all the declarations we have resolutions for in
+    // this pkg that are consumed by this module, not all of them may be used here.
+    for (let pkgHref of pkgHrefs) {
       let resolutions = depResolver
-        .resolutionsByConsumingModule(pkgURL, module)
+        .resolutionsByConsumingModule(new URL(pkgHref), module)
         .filter(
           (r) => r.type === "declaration"
         ) as ResolvedDeclarationDependency[];
-      // we're spinning though all the declarations we have resolutions for in
-      // this pkg, not all of them may be used here.
-      for (let resolution of resolutions) {
-        let region = resolution.importedSource
-          ? resolution.importedSource.declaredIn.desc.regions[
-              resolution.importedSource.pointer
-            ]
-          : resolution.consumedBy.desc.regions[resolution.consumedByPointer];
-        if (region.type !== "declaration") {
+      if (resolutions.length === 0) {
+        // for newly added bindings from other bundles we won't have a
+        // resolution yet--just skip over these as the range being set will be
+        // the original consumed range.
+        continue;
+      }
+      let pointers = moduleRegions
+        .filter(
+          (r) =>
+            r.type === "declaration" &&
+            r.declaration.type === "local" &&
+            r.declaration.original?.bundleHref.startsWith(pkgHref)
+        )
+        .map((r1) => regions.findIndex((r2) => r1 === r2));
+      for (let pointer of pointers) {
+        let region = regions[pointer];
+        if (
+          region.type !== "declaration" ||
+          region.declaration.type !== "local" ||
+          !region.declaration.original
+        ) {
           throw new Error(
-            `expected declaration region for resolved pkg dep '${
-              resolution.importedAs
-            }' from ${resolution.bundleHref} contained in ${
-              resolution.importedSource
-                ? resolution.importedSource.declaredIn.url.href
-                : resolution.consumedBy.url.href
-            } for bundle ${bundle.href}. instead it was ${JSON.stringify(
-              region,
-              stringifyReplacer
-            )}`
+            `should never be here, we expected a local declaration region with an original property when creating region ${pointer} in the bundle ${
+              bundle.href
+            }, but it was ${JSON.stringify(region, stringifyReplacer)}`
           );
         }
-        if (region.declaration.type === "import") {
-          // bundle internal imports won't have "original" properties on them
-          continue;
-        }
-        let assignedName = resolution.importedSource
-          ? (resolution.importedSource.declaredIn.desc.regions[
-              resolution.importedSource.pointer
-            ] as DeclarationCodeRegion).declaration.declaredName
-          : region.declaration.declaredName;
-        let declaration = bundleDeclarations.get(assignedName);
-        let original = {
-          bundleHref: resolution.bundleHref,
-          range: resolution.range,
-          importedAs: resolution.importedAs,
-        };
-        if (!declaration?.original) {
-          // this particular declaration is not used here or we already
-          // processed it
-          continue;
-        }
-        declaration.original = original;
+        region.declaration.original.range = resolutions[0].range;
       }
     }
   }
