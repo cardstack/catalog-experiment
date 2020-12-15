@@ -132,6 +132,16 @@ export class DependencyResolver {
     // bundleHref that is the highest version. The resulting range for each set
     // will be an intersection of all the ranges that correspond to the versions
     // that were satisfied in the group.
+
+    // Concern: the way we are choosing a package is entirely based on the
+    // amount of ranges that a particular pkg version can satisfy. One concern I
+    // have is that if a pkg is combined into a bundle, and unused declarations
+    // are pruned out of the pkg that is combined. If there is another consumer
+    // that is introduced into a subsequent bundle that includes this combined
+    // bundle, and that consumer is actually a namespace import, and the pkg
+    // with the pruned declarations happens to be the selected pkg because it
+    // has the most range satisfications--perhaps we shouldn't choose it because
+    // it is not the complete pkg?
     let resolutionsForPkg: Map<
       string,
       Map<RegionPointer, ResolvedDependency>
@@ -317,6 +327,7 @@ function gatherDependencies(
     if (pkgName.startsWith("@")) {
       pkgName = `${pkgName}/${bundleParts.shift()}`;
     }
+    pkgName = pkgName.replace(/\$cjs\$$/, "");
     let pkgAssignment = assignments.find(
       (a) => a.module.url.href === bundleHref
     );
