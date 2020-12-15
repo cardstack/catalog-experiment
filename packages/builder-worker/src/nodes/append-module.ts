@@ -373,6 +373,7 @@ function buildManufacturedCode(
               declaration: {
                 type: "local",
                 declaredName: assignedName,
+                declaratorOfRegion: declarationPointer,
                 references: [
                   referencePointer,
                   // this will be populated as we build the body for the bundle
@@ -1222,6 +1223,7 @@ function buildNamespaces(
           declaration: {
             type: "local",
             declaredName: assignedName,
+            declaratorOfRegion: declarationPointer,
             references: [
               referencePointer,
               // this will be populated as we build the body for the bundle
@@ -1349,6 +1351,12 @@ function adjustCodeRegionByOffset(regions: CodeRegion[], offset: number) {
       region.declaration.references = region.declaration.references.map(
         (r) => offsetPointer(r, offset)!
       );
+      if (region.declaration.type === "local") {
+        region.declaration.declaratorOfRegion = offsetPointer(
+          region.declaration.declaratorOfRegion,
+          offset
+        );
+      }
     }
   }
 }

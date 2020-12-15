@@ -24,6 +24,7 @@ import {
 //@ts-ignore
 import { intersect } from "semver-intersect";
 import { GetLockFileNode, LockEntries, LockFile } from "./lock-file";
+import { flatMap } from "lodash";
 
 export class CombineModulesNode implements BuilderNode {
   cacheKey: CombineModulesNode;
@@ -115,6 +116,37 @@ export class CombineModulesNode implements BuilderNode {
         visitedRegions
       );
     }
+    // remove declaration regions that have no more declarator regions
+    for (let { editor } of editors) {
+      let flattenedDeclarators = flatMap(editor.regions, (region, pointer) =>
+        region.type === "declaration" &&
+        region.declaration.type === "local" &&
+        region.declaration.declaratorOfRegion != null
+          ? [[region.declaration.declaratorOfRegion, pointer]]
+          : []
+      );
+      let declarations = flattenedDeclarators.reduce(
+        (declarations, [declarationPointer, declaratorPointer]) => {
+          if (editor.dispositions[declarationPointer].state !== "removed") {
+            let declarators = declarations.get(declarationPointer);
+            if (!declarators) {
+              declarators = [];
+              declarations.set(declarationPointer, declarators);
+            }
+            if (editor.dispositions[declaratorPointer].state !== "removed") {
+              declarators.push(declaratorPointer);
+            }
+          }
+          return declarations;
+        },
+        new Map()
+      );
+      for (let [declarationPointer, declarators] of declarations) {
+        if (declarators.length === 0) {
+          editor.removeRegion(declarationPointer);
+        }
+      }
+    }
     // filter out editors that have only retained solely their document regions,
     // these are no-ops
     editors = editors.filter(
@@ -163,6 +195,7 @@ function discoverIncludedRegions(
   depResolver: DependencyResolver,
   visitedRegions: Map<string, Map<RegionPointer, RegionEditor>>
 ) {
+  let region = module.desc.regions[pointer];
   if (visitedRegions.get(module.url.href)?.has(pointer)) {
     let previousEditor = visitedRegions.get(module.url.href)!.get(pointer)!;
     if (previousEditor === editor) {
@@ -173,13 +206,23 @@ function discoverIncludedRegions(
     );
     let currentEditorIndex = editors.findIndex((e) => e.editor === editor);
     if (previousEditorIndex < currentEditorIndex) {
-      return;
+      // the region that we are visiting appears in an editor that is not the
+      // first editor for this module, and whose previous editor is actually
+      // already emitting this exact same region. In this case this is a
+      // particular region that _needs_ to be duplicated in order for the
+      // serialized javascript in our current editor to be correct.
+      if (!editor.isDependentUponRegion(pointer)) {
+        return;
+      }
+    } else {
+      // the region that we are visiting and it's subgraph need to be hoisted to
+      // the current editor so that it is serialized in the correct order. remove
+      // the region from the previous editor and recalculate the region to keep
+      // with the current editor.
+      if (!previousEditor.isDependentUponRegion(pointer)) {
+        previousEditor.removeRegion(pointer);
+      }
     }
-    // the region that we are visiting and it's subgraph need to be hoisted to
-    // the current editor so that it is serialized in the correct order. remove
-    // the region from the previous editor and recalculate the region to keep
-    // with the current editor.
-    previousEditor.removeRegion(pointer);
   }
   let visited = visitedRegions.get(module.url.href);
   if (!visited) {
@@ -188,7 +231,6 @@ function discoverIncludedRegions(
   }
   visited.set(pointer, editor);
 
-  let region = module.desc.regions[pointer];
   // collapse module side effects
   if (region.original) {
     let pkgURL = pkgInfoFromCatalogJsURL(new URL(region.original.bundleHref))

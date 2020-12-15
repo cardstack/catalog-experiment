@@ -576,6 +576,7 @@ export interface BaseDeclarationDescription {
 export interface LocalDeclarationDescription
   extends BaseDeclarationDescription {
   type: "local";
+  declaratorOfRegion: RegionPointer | undefined;
   original?: {
     bundleHref: string;
     range: string;
@@ -794,6 +795,25 @@ export class RegionEditor {
       regions: this.regions,
       dispositions: this.dispositions,
     };
+  }
+
+  // don't get rid of the VariableDeclaration regions that the declarators
+  // need--this is the "const ... ;" ("let" and "var" too) code regions.
+  isDependentUponRegion(pointer: RegionPointer): boolean {
+    if (this.regions[pointer].type !== "general") {
+      return false;
+    }
+    for (let [p, region] of this.regions.entries()) {
+      if (
+        region.type === "declaration" &&
+        region.declaration.type === "local" &&
+        region.declaration.declaratorOfRegion === pointer &&
+        this.dispositions[p].state !== "removed"
+      ) {
+        return true;
+      }
+    }
+    return false;
   }
 
   get regions() {
@@ -1126,6 +1146,7 @@ export class RegionEditor {
       declaration: {
         type: "local",
         declaredName: name,
+        declaratorOfRegion: declarationPointer,
         references: [referencePointer],
       },
     };
@@ -1497,6 +1518,12 @@ function remapRegions(
       region.declaration.references = region.declaration.references
         .map((p) => newPointer(p, outputRegions))
         .filter((p) => p != null) as RegionPointer[];
+      if (region.declaration.type === "local") {
+        region.declaration.declaratorOfRegion = newPointer(
+          region.declaration.declaratorOfRegion,
+          outputRegions
+        );
+      }
     }
     return region;
   });

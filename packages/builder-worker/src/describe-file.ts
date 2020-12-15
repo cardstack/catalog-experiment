@@ -356,13 +356,8 @@ export function describeFile(
         references = referencesForDeclaration(name, identifier, builder);
       }
       let regionDeps: Set<number> = new Set();
-      let sideEffects: RegionPointer | undefined;
-      if (sideEffectsRegion) {
-        sideEffects = builder.createCodeRegion(sideEffectsRegion, undefined);
-        regionDeps.add(sideEffects);
-        desc.regions[documentPointer].dependsOn.add(sideEffects);
-      }
-      let currentDependsOn = [...dependsOnRegion][0]; // this is the declaration region
+      let declaratorOfRegion = [...dependsOnRegion][0]; // this is the declaration region
+      let currentDependsOn = declaratorOfRegion;
       let withinLval = lvalStack.length > 0;
       if (currentDependsOn != null) {
         if (withinLval && declaratorRegion && declaratorRegionPointer != null) {
@@ -378,10 +373,17 @@ export function describeFile(
         }
         regionDeps.add(currentDependsOn);
       }
+      let sideEffects: RegionPointer | undefined;
+      if (sideEffectsRegion) {
+        sideEffects = builder.createCodeRegion(sideEffectsRegion, undefined);
+        regionDeps.add(sideEffects);
+        desc.regions[documentPointer].dependsOn.add(sideEffects);
+      }
       let declarationPointer = builder.createCodeRegion(
         declaration,
         {
           type: "local",
+          declaratorOfRegion,
           references,
           declaredName: name,
         },

@@ -84,6 +84,7 @@ const declarationLegend = [
   "original", // [bundleHref: string, importedAs: string | {n: true }, range: string ] | null
   "importIndex", // number | null
   "importedName", // string | { n: true }
+  "declaratorOfRegion", // number | null
 ];
 
 const importDescLegend = [
