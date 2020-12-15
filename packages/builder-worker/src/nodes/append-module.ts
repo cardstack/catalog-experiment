@@ -913,6 +913,7 @@ function buildBundleBody(
 
     let offset = regions.length;
     let { code: moduleCode, regions: moduleRegions } = rewriter.serialize();
+    adjustCodeRegionByOffset(moduleRegions, offset);
     code.push(moduleCode);
 
     // denote the module side effect regions with consumption info
@@ -921,7 +922,7 @@ function buildBundleBody(
     );
     if (dep) {
       for (let pointer of moduleRegions[documentPointer].dependsOn) {
-        let region = moduleRegions[pointer];
+        let region = moduleRegions[pointer - offset];
         if (region.type === "general" && region.original) {
           let { pkgURL } = pkgInfoFromCatalogJsURL(
             new URL(region.original.bundleHref)
@@ -929,7 +930,7 @@ function buildBundleBody(
           let resolution = depResolver.resolutionByConsumptionPoint(
             pkgURL,
             module,
-            pointer
+            pointer - offset
           );
           if (resolution) {
             region.original.range = resolution.range;
@@ -942,8 +943,6 @@ function buildBundleBody(
         }
       }
     }
-
-    adjustCodeRegionByOffset(moduleRegions, offset);
 
     // hoist the module document's side effect dependOn to the bundle's document region
     regions[documentPointer].dependsOn = new Set([
@@ -1092,7 +1091,7 @@ function discoverReferenceRegions(
     if (region.type !== "reference") {
       continue;
     }
-    let importRegion: CodeRegion;
+    let declarationRegion: CodeRegion;
     // TODO let's get rid of this negative pointer stuff be passing in all the
     // regions that we can constructed so far when we serialize a rewriter,
     // that way we won't have to handle it here
@@ -1114,16 +1113,16 @@ function discoverReferenceRegions(
       );
     }
     if (declarationPointer < 0) {
-      importRegion = module.desc.regions[-1 * declarationPointer];
+      declarationRegion = module.desc.regions[-1 * declarationPointer];
     } else {
-      importRegion = regions[declarationPointer - offset];
+      declarationRegion = regions[declarationPointer - offset];
     }
-    if (importRegion?.type !== "declaration") {
+    if (declarationRegion?.type !== "declaration") {
       continue;
     }
     let resolution = resolutionForPkgDepDeclaration(
       module,
-      importRegion.declaration.declaredName,
+      declarationRegion.declaration.declaredName,
       depResolver
     );
     let assignedName: string | undefined;
@@ -1131,17 +1130,20 @@ function discoverReferenceRegions(
       assignedName = state.assignedImportedNames
         .get(resolution.importedSource.declaredIn.url.href)
         ?.get(resolution.importedAs);
-    } else if (importRegion.declaration.type === "import") {
+    } else if (
+      declarationRegion.declaration.type === "import" ||
+      declarationPointer < 0
+    ) {
       assignedName = state.nameAssignments
         .get(module.url.href)
-        ?.get(importRegion.declaration.declaredName);
+        ?.get(declarationRegion.declaration.declaredName);
     } else {
       continue;
     }
 
     if (!assignedName) {
       throw new Error(
-        `bug: could not find assigned name for import '${importRegion.declaration.declaredName}' in ${module.url.href} from bundle ${bundle.href}`
+        `bug: could not find assigned name for import '${declarationRegion.declaration.declaredName}' in ${module.url.href} from bundle ${bundle.href}`
       );
     }
     let declaration = bundleDeclarations.get(assignedName);

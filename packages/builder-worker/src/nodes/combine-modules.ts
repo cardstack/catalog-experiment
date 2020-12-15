@@ -195,7 +195,6 @@ function discoverIncludedRegions(
   depResolver: DependencyResolver,
   visitedRegions: Map<string, Map<RegionPointer, RegionEditor>>
 ) {
-  let region = module.desc.regions[pointer];
   if (visitedRegions.get(module.url.href)?.has(pointer)) {
     let previousEditor = visitedRegions.get(module.url.href)!.get(pointer)!;
     if (previousEditor === editor) {
@@ -231,6 +230,7 @@ function discoverIncludedRegions(
   }
   visited.set(pointer, editor);
 
+  let region = module.desc.regions[pointer];
   // collapse module side effects
   if (region.original) {
     let pkgURL = pkgInfoFromCatalogJsURL(new URL(region.original.bundleHref))
