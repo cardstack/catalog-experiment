@@ -702,6 +702,36 @@ export function describeFile(
         );
       }
     },
+    BlockStatement(path) {
+      addModuleSideEffect(path as NodePath);
+    },
+    DoWhileStatement(path) {
+      addModuleSideEffect(path as NodePath);
+    },
+    ForStatement(path) {
+      addModuleSideEffect(path as NodePath);
+    },
+    ForInStatement(path) {
+      addModuleSideEffect(path as NodePath);
+    },
+    ForOfStatement(path) {
+      addModuleSideEffect(path as NodePath);
+    },
+    IfStatement(path) {
+      addModuleSideEffect(path as NodePath);
+    },
+    SwitchStatement(path) {
+      addModuleSideEffect(path as NodePath);
+    },
+    ThrowStatement(path) {
+      addModuleSideEffect(path as NodePath);
+    },
+    TryStatement(path) {
+      addModuleSideEffect(path as NodePath);
+    },
+    WhileStatement(path) {
+      addModuleSideEffect(path as NodePath);
+    },
     ExpressionStatement(path) {
       if (
         path.parent.type !== "Program" ||

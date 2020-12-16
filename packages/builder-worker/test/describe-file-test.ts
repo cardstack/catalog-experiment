@@ -236,9 +236,231 @@ QUnit.module("describe-file", function () {
     );
   });
 
-  test("creates a code region for module side effect", function (assert) {
+  test("creates a code region for expression statement module side effect", function (assert) {
     let { desc, editor } = describeESModule(`
       console.log("side effect");
+      export {};
+    `);
+    keepAll(desc, editor);
+
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
+    assert.equal(sideEffects.size, 1);
+    editor.replace([...sideEffects][0], "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+        //CODE_REGION
+        export {};
+        `
+    );
+  });
+
+  test("creates a code region for block statement module side effect", function (assert) {
+    let { desc, editor } = describeESModule(`
+      {
+        console.log("side effect");
+      }
+      export {};
+    `);
+    keepAll(desc, editor);
+
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
+    assert.equal(sideEffects.size, 1);
+    editor.replace([...sideEffects][0], "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+        //CODE_REGION
+        export {};
+        `
+    );
+  });
+
+  test("creates a code region for do-while statement module side effect", function (assert) {
+    let { desc, editor } = describeESModule(`
+      do {
+        console.log("side effect");
+      } while (false);
+      export {};
+    `);
+    keepAll(desc, editor);
+
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
+    assert.equal(sideEffects.size, 1);
+    editor.replace([...sideEffects][0], "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+        //CODE_REGION
+        export {};
+        `
+    );
+  });
+
+  test("creates a code region for 'for' statement module side effect", function (assert) {
+    let { desc, editor } = describeESModule(`
+      for (let i = 0; i < 2; i++) {
+        console.log(i);
+      }
+      export {};
+    `);
+    keepAll(desc, editor);
+
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
+    assert.equal(sideEffects.size, 1);
+    editor.replace([...sideEffects][0], "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+        //CODE_REGION
+        export {};
+        `
+    );
+  });
+
+  test("creates a code region for for-in statement module side effect", function (assert) {
+    let { desc, editor } = describeESModule(`
+      for (let i in { a: 1, b: 2 }) {
+        console.log(i);
+      }
+      export {};
+    `);
+    keepAll(desc, editor);
+
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
+    assert.equal(sideEffects.size, 1);
+    editor.replace([...sideEffects][0], "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+        //CODE_REGION
+        export {};
+        `
+    );
+  });
+
+  test("creates a code region for for-of statement module side effect", function (assert) {
+    let { desc, editor } = describeESModule(`
+      for (let i of [1, 2, 3, 4]) {
+        console.log(i);
+      }
+      export {};
+    `);
+    keepAll(desc, editor);
+
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
+    assert.equal(sideEffects.size, 1);
+    editor.replace([...sideEffects][0], "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+        //CODE_REGION
+        export {};
+        `
+    );
+  });
+
+  test("creates a code region for if statement module side effect", function (assert) {
+    let { desc, editor } = describeESModule(`
+      if (true) {
+        console.log("side effect");
+      }
+      export {};
+    `);
+    keepAll(desc, editor);
+
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
+    assert.equal(sideEffects.size, 1);
+    editor.replace([...sideEffects][0], "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+        //CODE_REGION
+        export {};
+        `
+    );
+  });
+
+  test("creates a code region for switch statement module side effect", function (assert) {
+    let { desc, editor } = describeESModule(`
+      switch (a) {
+        case 'hi':
+        console.log("side effect");
+        break;
+      }
+      export {};
+    `);
+    keepAll(desc, editor);
+
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
+    assert.equal(sideEffects.size, 1);
+    editor.replace([...sideEffects][0], "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+        //CODE_REGION
+        export {};
+        `
+    );
+  });
+
+  test("creates a code region for throw statement module side effect", function (assert) {
+    let { desc, editor } = describeESModule(`
+      throw new Error("side effect");
+      export {};
+    `);
+    keepAll(desc, editor);
+
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
+    assert.equal(sideEffects.size, 1);
+    editor.replace([...sideEffects][0], "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+        //CODE_REGION
+        export {};
+        `
+    );
+  });
+
+  test("creates a code region for try statement module side effect", function (assert) {
+    let { desc, editor } = describeESModule(`
+      try {
+        console.log("side effect");
+      } catch (e) {
+        throw e;
+      }
+      export {};
+    `);
+    keepAll(desc, editor);
+
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
+    assert.equal(sideEffects.size, 1);
+    editor.replace([...sideEffects][0], "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+        //CODE_REGION
+        export {};
+        `
+    );
+  });
+
+  test("creates a code region for while statement module side effect", function (assert) {
+    let { desc, editor } = describeESModule(`
+      while(false) {
+        console.log("side effect");
+      }
       export {};
     `);
     keepAll(desc, editor);
