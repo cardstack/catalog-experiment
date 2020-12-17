@@ -1,3 +1,6 @@
+//@ts-ignore
+import { intersect } from "semver-intersect";
+
 export function setMapping(
   outerKey: unknown,
   innerKey: unknown,
@@ -26,4 +29,14 @@ export function stringifyReplacer(_: string, value: any) {
   } else {
     return value;
   }
+}
+
+export function rangeIntersection(...ranges: string[]): string {
+  // semver-intersect doesn't handle '*'. A wildcard intersects with everything,
+  // so just filter it out.
+  let cleansedRanges = ranges.filter((r) => r !== "*");
+  if (cleansedRanges.length === 0) {
+    return "*";
+  }
+  return intersect(...cleansedRanges);
 }

@@ -21,8 +21,6 @@ import {
   DependencyResolver,
   resolutionForPkgDepDeclaration,
 } from "../dependency-resolution";
-//@ts-ignore
-import { intersect } from "semver-intersect";
 import { GetLockFileNode, LockEntries, LockFile } from "./lock-file";
 import { flatMap } from "lodash";
 

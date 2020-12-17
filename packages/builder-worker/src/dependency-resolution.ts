@@ -13,10 +13,8 @@ import { resolveDeclaration, UnresolvedResult } from "./module-rewriter";
 import { Dependencies, Dependency } from "./nodes/entrypoint";
 import { pkgInfoFromCatalogJsURL } from "./resolver";
 import { satisfies, coerce, compare, validRange } from "semver";
-//@ts-ignore
-import { intersect } from "semver-intersect";
 import { LockEntries, LockFile } from "./nodes/lock-file";
-import { setMapping } from "./utils";
+import { setMapping, rangeIntersection } from "./utils";
 import { getExports } from "./describe-file";
 
 export class DependencyResolver {
@@ -198,8 +196,8 @@ export class DependencyResolver {
       if (invalidSemverRange) {
         range = invalidSemverRange;
       } else {
-        range = intersect(
-          ...[...consumedVersions].map((ver) => pkgVersions?.get(ver)![0].range)
+        range = rangeIntersection(
+          ...[...consumedVersions].map((ver) => pkgVersions!.get(ver)![0].range)
         );
       }
 
@@ -225,7 +223,10 @@ export class DependencyResolver {
               resolution.importedAs === r.importedAs
           );
         if (dupeResolutions.length > 1) {
-          range = intersect(range, ...dupeResolutions.map((r) => r.range));
+          range = rangeIntersection(
+            range,
+            ...dupeResolutions.map((r) => r.range)
+          );
           dupeResolutions.sort(
             ({ consumedBy: consumedByA }, { consumedBy: consumedByB }) =>
               consumedByA.url.href.localeCompare(consumedByB.url.href)
