@@ -79,7 +79,7 @@ class BabelTransformNode implements BuilderNode {
       let { name, version } = this.pkgJSON;
       let { babelPlugins: plugins = [] } =
         (await getRecipe(name, version)) ?? {};
-      let output = transform(src, { plugins });
+      let output = transform(src, { plugins, comments: false });
       if (!output || output.code == null) {
         throw new Error(
           `Empty babel result after babel transform of ${this.url.href}`
