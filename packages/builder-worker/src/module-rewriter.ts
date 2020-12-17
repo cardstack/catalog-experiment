@@ -53,6 +53,14 @@ export class HeadState {
     string,
     { bundleHref: string; range: string; importedAs: string | NamespaceMarker }
   > = new Map();
+  // This is a map of the modules that export a single binding multiple times.
+  // This is important info for the consumers of the exports to understand so that
+  // we don't assign a binding to conflicting names when consumers use different
+  // exports that resolve back to the same binding (since consumers drive the
+  // assigned names for bindings). The outer key is the module that exports the
+  // binding, the inner key is the export name, and the value are all the other
+  // export names associated with the binding
+  readonly multiExportedBindings: Map<string, Map<string, string[]>>;
 
   readonly visited: { module: ModuleResolution; editor: RegionEditor }[] = [];
   private queue: { module: ModuleResolution; editor: RegionEditor }[] = [];
@@ -65,6 +73,7 @@ export class HeadState {
     // dependencies will more likely be renamed. This also means that we'll be
     // writing modules into the bundle in reverse order--from the bottom up.
     this.queue = [...editors].reverse();
+    this.multiExportedBindings = this.discoverMultipleExports();
   }
 
   next(): { module: ModuleResolution; editor: RegionEditor } | undefined {
@@ -113,6 +122,49 @@ export class HeadState {
 
     return md5(str).toString(enc.Base64);
   }
+
+  private discoverMultipleExports() {
+    let multipleExports: Map<string, Map<string, string[]>> = new Map();
+    for (let { module } of this.queue) {
+      let exportedBindings = [...getExports(module)].reduce(
+        (
+          exportedBindings,
+          [
+            exportName,
+            {
+              desc: { name: scopedName },
+            },
+          ]
+        ) => {
+          if (isNamespaceMarker(scopedName)) {
+            return exportedBindings;
+          }
+          let exportedNames = exportedBindings.get(scopedName);
+          if (!exportedNames) {
+            exportedNames = [];
+            exportedBindings.set(scopedName, exportedNames);
+          }
+          exportedNames.push(exportName);
+          return exportedBindings;
+        },
+        new Map<string, string[]>()
+      );
+      for (let exportedNames of exportedBindings.values()) {
+        if (exportedNames.length < 2) {
+          continue;
+        }
+        for (let exportedName of exportedNames) {
+          setMapping(
+            module.url.href,
+            exportedName,
+            exportedNames,
+            multipleExports
+          );
+        }
+      }
+    }
+    return multipleExports;
+  }
 }
 
 export class ModuleRewriter {
@@ -124,7 +176,7 @@ export class ModuleRewriter {
     readonly module: ModuleResolution,
     private state: HeadState,
     private bundleAssignments: BundleAssignment[],
-    private editor: RegionEditor,
+    readonly editor: RegionEditor,
     private dependencies: Dependencies,
     private depResolver: DependencyResolver
   ) {
@@ -210,12 +262,6 @@ export class ModuleRewriter {
                 source.importedAs,
                 localName
               );
-            } else if (isNamespaceMarker(source.importedAs)) {
-              assignedName = this.maybeAssignImportName(
-                source.importedFromModule.url.href,
-                NamespaceMarker,
-                localName
-              );
             } else {
               assignedName = this.maybeAssignImportName(
                 source.importedFromModule.url.href,
@@ -238,26 +284,13 @@ export class ModuleRewriter {
         } else {
           // check to see if the binding was actually already assigned by a module
           // that imports it
-          let exports = [...getExports(this.module)].filter(
+          let [exportName, { module: sourceModule }] = [
+            ...getExports(this.module),
+          ].find(
             ([_, { desc }]) => desc.type === "local" && desc.name === localName
           ) ?? [undefined, {}];
-          // if here are multiple exports for this declaration, check all of
-          // them to see if there have been any assignments, and use the existing
-          // name if there has already been an assignment for one of the names
-          let suggestedName: string | undefined;
-          for (let [exportName, { module: sourceModule }] of exports) {
-            if (
-              this.state.assignedImportedNames
-                .get(sourceModule.url.href)
-                ?.get(exportName)
-            ) {
-              suggestedName = exportName;
-              break;
-            }
-          }
-          suggestedName =
-            suggestedName ?? localName === "default" ? "_default" : localName;
-          for (let [exportName, { module: sourceModule }] of exports) {
+          let suggestedName = localName === "default" ? "_default" : localName;
+          if (exportName && sourceModule) {
             assignedName = this.maybeAssignImportName(
               sourceModule.url.href,
               exportName,
@@ -443,6 +476,13 @@ export class ModuleRewriter {
               });
             }
           }
+          // no need to rename since the namespace hides all that (the actual
+          // rename occurs when the module we namespace import is processed)
+          this.claim(
+            suggestedName,
+            assignedName,
+            namespaceItemSource.module.url.href
+          );
           nameMap.set(exportedName, assignedName);
         } else if (isNamespaceMarker(namespaceItemSource.importedAs)) {
           nameMap.set(exportedName, exportedName);
@@ -461,11 +501,23 @@ export class ModuleRewriter {
     importedAs: string | NamespaceMarker,
     suggestedName: string
   ): string {
-    let alreadyAssignedName = this.state.assignedImportedNames
-      .get(remoteModuleHref)
-      ?.get(importedAs);
-    if (alreadyAssignedName) {
-      return alreadyAssignedName;
+    let exportedNames = new Set([
+      importedAs,
+      ...(!isNamespaceMarker(importedAs)
+        ? this.state.multiExportedBindings
+            .get(remoteModuleHref)
+            ?.get(importedAs) ?? []
+        : []),
+    ]);
+
+    let alreadyAssignedName: string | undefined;
+    for (let name of exportedNames) {
+      alreadyAssignedName = this.state.assignedImportedNames
+        .get(remoteModuleHref)
+        ?.get(name);
+      if (alreadyAssignedName) {
+        return alreadyAssignedName;
+      }
     }
     let assignedName = this.unusedNameLike(suggestedName);
     setMapping(
@@ -492,17 +544,25 @@ export class ModuleRewriter {
     return candidate;
   }
 
-  private claimAndRename(originalName: string, assignedName: string) {
+  private claim(
+    originalName: string,
+    assignedName: string,
+    moduleHref: string
+  ) {
     this.state.usedNames.set(assignedName, {
-      moduleHref: this.module.url.href,
+      moduleHref,
       name: originalName,
     });
     setMapping(
-      this.module.url.href,
+      moduleHref,
       originalName,
       assignedName,
       this.state.nameAssignments
     );
+  }
+
+  private claimAndRename(originalName: string, assignedName: string) {
+    this.claim(originalName, assignedName, this.module.url.href);
     if (originalName !== assignedName) {
       this.editor.rename(originalName, assignedName);
     }

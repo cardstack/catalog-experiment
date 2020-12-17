@@ -272,6 +272,39 @@ QUnit.module("module builder", function (origHooks) {
       );
     });
 
+    test("can combine modules that use multiple names for an exported declaration, where a consumer has already assigned more than one of them", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { a } from './a.js';
+          import { b } from './b.js';
+          console.log(a);
+          b();
+      `,
+        "a.js": `
+          export const A = 'a';
+          export { A as a };
+        `,
+        "b.js": `
+          import { A } from './a.js';
+          export function b() {
+            console.log(A);
+          }
+        `,
+      });
+      assert.codeEqual(
+        await bundleCode(assert.fs),
+        `const a = 'a';
+         function b() {
+            console.log(a);
+         }
+         console.log(a);
+         b();
+         export {};
+        `
+      );
+    });
+
     test("preserves bundle export variable declaration that use a different name on the outside of the bundle from the inside of the bundle", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["index.js"] }`,
@@ -945,6 +978,39 @@ QUnit.module("module builder", function (origHooks) {
         const lib = { konnichiwa: hello0, sayonara: goodbye };
         const hello = 'hi';
         console.log(lib.konnichiwa + lib.sayonara + hello);
+        export {};
+        `
+      );
+    });
+
+    test("can handle collisions with properties of namespaced imports for multiple exports per binding within a bundle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import * as lib from './lib.js';
+          import { hello, goodbye } from './a.js';
+          console.log(lib.konnichiwa + lib.sayonara + hello + goodbye);
+        `,
+        "lib.js": `
+          export const hello = 'hello';
+          export const goodbye = 'goodbye';
+          export { hello as konnichiwa, goodbye as sayonara };
+        `,
+        "a.js": `
+          export const hello = 'hi';
+          export const goodbye = 'bye';
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleCode(assert.fs),
+        `
+        const hello0 = 'hello';
+        const goodbye0 = 'goodbye';
+        const hello = 'hi';
+        const goodbye = 'bye';
+        const lib = { hello: hello0, goodbye: goodbye0, konnichiwa: hello0, sayonara: goodbye0 };
+        console.log(lib.konnichiwa + lib.sayonara + hello + goodbye);
         export {};
         `
       );

@@ -200,11 +200,6 @@ export class FinishAppendModulesNode implements BuilderNode {
 
     assignCodeRegionPositions(regions);
 
-    // HASSAN DONT FORGET ABOUT THIS STUFF!!
-    // TODO need to add module side effect dependencies to all the declarations
-    // TODO review the describe-file region finalization code to make sure we
-    // perform all the same kind of stuff...
-
     let desc: ModuleDescription = {
       regions,
       declarations: declarationsMap(regions),
