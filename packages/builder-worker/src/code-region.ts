@@ -1061,7 +1061,12 @@ export class RegionEditor {
               childDispositions,
               gapIndex
             );
-            if (childOutputPointer != null && !isLastChildGapRemoved) {
+            if (
+              childOutputPointer != null &&
+              !isLastChildGapRemoved &&
+              (region.type === "document" ||
+                (region.type === "general" && region.preserveGaps))
+            ) {
               this.outputRegions[childOutputPointer].region.start += childGap;
             }
             childDispositions.push(disposition);
@@ -1410,11 +1415,14 @@ export class RegionEditor {
     pointer: RegionPointer
   ) {
     let region = this.regions[pointer];
+    let parentRegion = this.regions[parentPointer];
     if (this.pendingStart == null && pointer !== documentPointer) {
       this.pendingStart = { withinParent: parentPointer, start: region.start };
     } else if (
       this.pendingStart &&
-      this.pendingStart.withinParent === parentPointer
+      this.pendingStart.withinParent === parentPointer &&
+      (parentRegion.type === "document" ||
+        (parentRegion.type === "general" && parentRegion.preserveGaps))
     ) {
       this.pendingStart.start += region.start;
     }
