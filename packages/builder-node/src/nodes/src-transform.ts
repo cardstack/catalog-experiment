@@ -85,7 +85,7 @@ class BabelTransformNode implements BuilderNode {
           `Empty babel result after babel transform of ${this.url.href}`
         );
       }
-      code = output.code || "export {};";
+      code = output.code.trim() || "export {};";
     }
     let url = new URL(
       this.url.href.slice(`${this.pkgURL.href}__stage1/`.length),

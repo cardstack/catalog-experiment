@@ -1558,7 +1558,7 @@ function trimLeading(
   if (remainingWhitespaceLength > 0) {
     let region = regions[pointer];
     if (region.start >= remainingWhitespaceLength) {
-      region.start = region.start - remainingWhitespaceLength;
+      region.start -= remainingWhitespaceLength;
       return 0;
     } else {
       remainingWhitespaceLength -= region.start;
@@ -1570,6 +1570,13 @@ function trimLeading(
           region.firstChild,
           remainingWhitespaceLength
         );
+      }
+      if (region.end >= remainingWhitespaceLength) {
+        region.end -= remainingWhitespaceLength;
+        return 0;
+      } else {
+        remainingWhitespaceLength -= region.end;
+        region.end = 0;
       }
       if (region.nextSibling != null) {
         remainingWhitespaceLength = trimLeading(
