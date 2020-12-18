@@ -229,8 +229,14 @@ function discoverIncludedRegions(
   visited.set(pointer, editor);
 
   let region = module.desc.regions[pointer];
-  // collapse module side effects
-  if (region.original) {
+  // collapse module side effects--except for declaration side effects.
+  // declarations cannot be separated from their side effects
+  if (
+    region.original &&
+    ![...region.dependsOn].find(
+      (p) => module.desc.regions[p].type === "declaration"
+    )
+  ) {
     let pkgURL = pkgInfoFromCatalogJsURL(new URL(region.original.bundleHref))
       ?.pkgURL;
     if (!pkgURL) {
