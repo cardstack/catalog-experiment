@@ -1165,6 +1165,11 @@ export class RegionEditor {
       position: 0,
       dependsOn: new Set([declaratorPointer]),
     };
+    let retainedDependsOn = [...region.dependsOn].filter(
+      (p) =>
+        this.regions[p].type === "reference" &&
+        !this.regions[p].dependsOn.has(regionPointer)
+    );
     let sideEffectRegion: GeneralCodeRegion = {
       type: "general",
       start: 4, // " = ("
@@ -1175,6 +1180,7 @@ export class RegionEditor {
       position: 0,
       dependsOn: new Set([
         declaratorPointer,
+        ...retainedDependsOn,
         ...(region.firstChild != null ? [region.firstChild] : []),
       ]),
       preserveGaps: false,
