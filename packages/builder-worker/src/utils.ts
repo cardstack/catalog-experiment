@@ -1,7 +1,7 @@
 //@ts-ignore
 import { intersect } from "semver-intersect";
 
-export function setMapping(
+export function setDoubleNestedMapping(
   outerKey: unknown,
   innerKey: unknown,
   innerValue: unknown,
@@ -13,6 +13,25 @@ export function setMapping(
     map.set(outerKey, mapping);
   }
   mapping.set(innerKey, innerValue);
+}
+export function setTripleNestedMapping(
+  outerMostKey: unknown,
+  innerKey: unknown,
+  innerMostKey: unknown,
+  innerMostValue: unknown,
+  map: Map<unknown, Map<unknown, Map<unknown, unknown>>>
+) {
+  let outerMapping = map.get(outerMostKey);
+  if (!outerMapping) {
+    outerMapping = new Map();
+    map.set(outerMostKey, outerMapping);
+  }
+  let innerMapping = outerMapping.get(innerKey);
+  if (!innerMapping) {
+    innerMapping = new Map();
+    outerMapping.set(innerKey, innerMapping);
+  }
+  innerMapping.set(innerMostKey, innerMostValue);
 }
 
 export function stringifyReplacer(_: string, value: any) {

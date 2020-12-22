@@ -23,19 +23,15 @@ import {
 } from "../code-region";
 import { BundleAssignment } from "./bundle";
 import { maybeRelativeURL } from "../path";
-import {
-  HeadState,
-  ModuleRewriter,
-  resolveDeclaration,
-  UnresolvedResult,
-} from "../module-rewriter";
+import { HeadState, ModuleRewriter } from "../module-rewriter";
 import {
   DependencyResolver,
   resolutionForPkgDepDeclaration,
   ResolvedDeclarationDependency,
+  UnresolvedResult,
 } from "../dependency-resolution";
 import { depAsURL, Dependencies } from "./entrypoint";
-import { setMapping, stringifyReplacer } from "../utils";
+import { setDoubleNestedMapping, stringifyReplacer } from "../utils";
 import { flatMap } from "lodash";
 import { pkgInfoFromCatalogJsURL } from "../resolver";
 
@@ -266,12 +262,11 @@ function buildManufacturedCode(
         if (isNamespaceMarker(outsideName)) {
           continue;
         }
-        let source = resolveDeclaration(
+        let source = depResolver.resolveDeclaration(
           outsideName,
           importedModule,
           module,
-          ownAssignments,
-          depResolver
+          ownAssignments
         );
         if (
           source.type === "unresolved" &&
@@ -281,7 +276,12 @@ function buildManufacturedCode(
               (source as UnresolvedResult).importedFromModule.url.href
           )
         ) {
-          setMapping(namespaceBinding, outsideName, assignedName, declarations);
+          setDoubleNestedMapping(
+            namespaceBinding,
+            outsideName,
+            assignedName,
+            declarations
+          );
         }
       }
     }
@@ -926,7 +926,7 @@ function buildBundleBody(
           let { pkgURL } = pkgInfoFromCatalogJsURL(
             new URL(region.original.bundleHref)
           )!;
-          let resolution = depResolver.resolutionByConsumptionPoint(
+          let resolution = depResolver.resolutionByConsumptionRegion(
             pkgURL,
             module,
             pointer - offset
@@ -1521,12 +1521,11 @@ function assignedExports(
           importedFrom = resolution.importedSource.declaredIn;
         }
       }
-      let source = resolveDeclaration(
+      let source = depResolver.resolveDeclaration(
         original,
         importedFrom,
         module,
-        ownAssignments,
-        depResolver
+        ownAssignments
       );
       if (source.type === "resolved") {
         // this is an export from within our own bundle
@@ -1569,7 +1568,7 @@ function assignedExports(
             );
           }
           if (region.exportType === "reexport") {
-            setMapping(
+            setDoubleNestedMapping(
               assignment.bundleURL.href,
               exposedAs,
               source.importedAs,
@@ -1665,7 +1664,7 @@ function assignedImports(
               `cannot determine the assigned name for the manufactured namespace import that corresponds to the export * from ${importedModule.url.href} in module ${module.url.href} within bundle ${bundle.href}`
             );
           }
-          setMapping(
+          setDoubleNestedMapping(
             assignment.bundleURL.href,
             NamespaceMarker,
             assignedName,
@@ -1719,12 +1718,11 @@ function assignedImports(
       }
 
       let importedModule = module.resolvedImports[desc.importIndex];
-      let source = resolveDeclaration(
+      let source = depResolver.resolveDeclaration(
         desc.importedName,
         importedModule,
         module,
-        ownAssignments,
-        depResolver
+        ownAssignments
       );
       if (source.type === "resolved") {
         continue;

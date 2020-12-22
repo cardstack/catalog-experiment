@@ -4,20 +4,52 @@ import {
   Resolution,
 } from "./nodes/resolution";
 import {
+  CodeRegion,
+  DeclarationCodeRegion,
+  DeclarationDescription,
   isNamespaceMarker,
   NamespaceMarker,
   RegionPointer,
 } from "./code-region";
 import { BundleAssignment } from "./nodes/bundle";
-import { resolveDeclaration, UnresolvedResult } from "./module-rewriter";
 import { Dependencies, Dependency } from "./nodes/entrypoint";
 import { pkgInfoFromCatalogJsURL } from "./resolver";
 import { satisfies, coerce, compare, validRange } from "semver";
 import { LockEntries, LockFile } from "./nodes/lock-file";
-import { setMapping, rangeIntersection } from "./utils";
-import { getExports, isExportAllMarker } from "./describe-file";
+import {
+  setDoubleNestedMapping,
+  rangeIntersection,
+  stringifyReplacer,
+  setTripleNestedMapping,
+} from "./utils";
+import { getExportDesc, getExports, isExportAllMarker } from "./describe-file";
 import { difference, flatMap } from "lodash";
 
+export interface ResolvedResult {
+  type: "resolved";
+  module: Resolution;
+  declaredName: string;
+  importedAs: string;
+  region: DeclarationCodeRegion;
+  pointer: RegionPointer;
+  declaration: DeclarationDescription;
+  resolution?: ResolvedDeclarationDependency;
+}
+
+export interface UnresolvedResult {
+  type: "unresolved";
+  importedFromModule: Resolution;
+  consumingModule: Resolution;
+  importedAs: string | NamespaceMarker;
+  importedRegion: CodeRegion | undefined;
+  importedPointer: RegionPointer | undefined;
+  resolution?: ResolvedDeclarationDependency;
+}
+
+type DeclarationResolutionCache = Map<
+  string,
+  Map<string, Map<string | NamespaceMarker, ResolvedResult | UnresolvedResult>>
+>;
 export class DependencyResolver {
   private consumedDeps: ConsumedDependencies;
   // pkgHref => consumingModuleHref => consumingRegion => ResolvedDependency
@@ -25,6 +57,8 @@ export class DependencyResolver {
     string,
     Map<string, Map<RegionPointer, ResolvedDependency>>
   >;
+  // consumingModuleHref => importedFromModuleHref => importedName => ResolvedResult | UnresolvedResult
+  private declarationResolutionCache: DeclarationResolutionCache = new Map();
   constructor(
     dependencies: Dependencies,
     assignments: BundleAssignment[],
@@ -42,16 +76,33 @@ export class DependencyResolver {
     this.consumptionCache = new Map();
   }
 
-  resolutionsByConsumingModule(
-    pkg: URL,
-    consumedBy: Resolution
-  ): ResolvedDependency[] {
-    let pkgHref = pkg.href;
-    let resolutionsForPkg = this.getResolutionsForPkg(pkgHref);
-    return [...(resolutionsForPkg?.get(consumedBy.url.href)?.values() ?? [])];
+  resolveDeclaration(
+    importedName: string | NamespaceMarker,
+    importedFromModule: Resolution,
+    consumingModule: Resolution,
+    ownAssignments: BundleAssignment[],
+    importedPointer?: RegionPointer // if you have this handy it saves work passing it in--otherwise we'll calculate it
+  ): ResolvedResult | UnresolvedResult {
+    return resolveDeclaration(
+      importedName,
+      importedFromModule,
+      consumingModule,
+      ownAssignments,
+      this.declarationResolutionCache,
+      this,
+      importedPointer
+    );
   }
 
-  resolutionByConsumptionPoint(
+  resolutionByDeclaration(
+    declaration: DeclarationDescription,
+    module: ModuleResolution,
+    pointer: RegionPointer
+  ): ResolvedDeclarationDependency | undefined {
+    return resolutionByDeclaration(declaration, module, pointer, this);
+  }
+
+  resolutionByConsumptionRegion(
     pkg: URL,
     consumedBy: Resolution,
     consumedByPointer: RegionPointer
@@ -59,6 +110,15 @@ export class DependencyResolver {
     let pkgHref = pkg.href;
     let resolutionsForPkg = this.getResolutionsForPkg(pkgHref);
     return resolutionsForPkg?.get(consumedBy.url.href)?.get(consumedByPointer);
+  }
+
+  resolutionsByConsumingModule(
+    pkg: URL,
+    consumedBy: Resolution
+  ): ResolvedDependency[] {
+    let pkgHref = pkg.href;
+    let resolutionsForPkg = this.getResolutionsForPkg(pkgHref);
+    return [...(resolutionsForPkg?.get(consumedBy.url.href)?.values() ?? [])];
   }
 
   private getResolutionsForPkg(
@@ -253,7 +313,7 @@ export class DependencyResolver {
           obviatedResolutions.push(...dupeResolutions);
         }
         let finalResolution = { ...resolution, range };
-        setMapping(
+        setDoubleNestedMapping(
           finalResolution.consumedBy.url.href,
           finalResolution.consumedByPointer,
           finalResolution,
@@ -264,7 +324,7 @@ export class DependencyResolver {
           finalResolution.type === "declaration" &&
           finalResolution.importedSource
         ) {
-          setMapping(
+          setDoubleNestedMapping(
             finalResolution.importedSource.declaredIn.url.href,
             finalResolution.importedSource.pointer,
             {
@@ -275,7 +335,7 @@ export class DependencyResolver {
           );
         }
         for (let obviatedResolution of obviatedResolutions) {
-          setMapping(
+          setDoubleNestedMapping(
             obviatedResolution.consumedBy.url.href,
             obviatedResolution.consumedByPointer,
             finalResolution,
@@ -291,6 +351,325 @@ export class DependencyResolver {
 
     this.consumptionCache.set(pkgHref, resolutionsForPkg);
   }
+}
+
+// In this function, there are scenarios that it will not always fully resolve
+// the import, and when it does not we return the imported name of the module
+// that we stopped at. Otherwise we return the local declaration name (the
+// inside name) of the module we resolved. The goal is that the return value is
+// transparent about how fully it was able to perform the resolution so that
+// callers can reason more clearly around how to handle the results instead of
+// having to reconcile an ambiguous situation (i.e. local names will never be
+// NamespaceMarkers, or you may resolve to a module that is not even in this
+// bundle).
+function resolveDeclaration(
+  importedName: string | NamespaceMarker,
+  importedFromModule: Resolution,
+  consumingModule: Resolution,
+  ownAssignments: BundleAssignment[],
+  declarationResolutionCache: DeclarationResolutionCache,
+  depResolver: DependencyResolver | undefined,
+  importedPointer?: RegionPointer // if you have this handy it saves work passing it in--otherwise we'll calculate it
+): ResolvedResult | UnresolvedResult {
+  let cacheKey = {
+    importedName,
+    importedFromModule: importedFromModule.url.href,
+    consumingModule: consumingModule.url.href,
+  };
+  let cachedResult = declarationResolutionCache
+    .get(cacheKey.consumingModule)
+    ?.get(cacheKey.importedFromModule)
+    ?.get(cacheKey.importedName);
+  if (cachedResult) {
+    return cachedResult;
+  }
+
+  function cacheResult(result: ResolvedResult | UnresolvedResult) {
+    setTripleNestedMapping(
+      cacheKey.consumingModule,
+      cacheKey.importedFromModule,
+      cacheKey.importedName,
+      result,
+      declarationResolutionCache
+    );
+  }
+
+  let bundle = ownAssignments[0].bundleURL;
+  importedPointer =
+    importedPointer ??
+    pointerForImport(
+      importedName,
+      importedFromModule,
+      makeNonCyclic(consumingModule)
+    );
+  let resolution: ResolvedDeclarationDependency | undefined;
+  if (importedPointer != null) {
+    let pkgURL = pkgInfoFromCatalogJsURL(importedFromModule.url)?.pkgURL;
+    if (pkgURL && depResolver) {
+      let _resolution = depResolver.resolutionByConsumptionRegion(
+        pkgURL,
+        consumingModule,
+        importedPointer
+      );
+      if (_resolution?.type === "side-effect") {
+        throw new Error(
+          `the dependency resolution for ${JSON.stringify(
+            importedName
+          )}' in the module ${
+            importedFromModule.url.href
+          } was a "side-effect" type of resolution. Was expecting a "declaration" type of resolution. while building bundle ${
+            bundle.href
+          }`
+        );
+      }
+      resolution = _resolution as ResolvedDeclarationDependency | undefined;
+      if (resolution?.importedSource) {
+        ({
+          importedSource: { declaredIn: importedFromModule },
+        } = resolution);
+      } else if (resolution) {
+        let pointer = resolution.consumedByPointer;
+        let region = resolution.consumedBy.desc.regions[pointer];
+        if (
+          region.type !== "declaration" ||
+          region.declaration.type !== "local"
+        ) {
+          throw new Error(
+            `expected region to be a local declaration region for ${JSON.stringify(
+              resolution.importedAs
+            )} from module ${resolution?.consumedBy.url.href} region pointer ${
+              resolution?.consumedByPointer
+            } in bundle ${bundle.href}, but it was ${JSON.stringify(
+              region,
+              stringifyReplacer
+            )}`
+          );
+        }
+        let declaration = region.declaration;
+        let declaredName = declaration.declaredName;
+        if (isNamespaceMarker(resolution.importedAs)) {
+          throw new Error("unimplemented");
+        }
+        let result: ResolvedResult = {
+          type: "resolved",
+          module: resolution.consumedBy,
+          importedAs: resolution.importedAs,
+          declaredName,
+          region,
+          declaration,
+          pointer,
+          resolution,
+        };
+        cacheResult(result);
+        return result;
+      }
+    }
+  }
+
+  if (isNamespaceMarker(importedName)) {
+    let result: UnresolvedResult = {
+      type: "unresolved",
+      importedAs: importedName,
+      importedFromModule: importedFromModule,
+      consumingModule,
+      importedPointer,
+      importedRegion:
+        importedPointer != null
+          ? consumingModule.desc.regions[importedPointer]
+          : undefined,
+      resolution,
+    };
+    cacheResult(result);
+    return result;
+  }
+  if (
+    !ownAssignments.find(
+      (a) => a.module.url.href === importedFromModule.url.href
+    )
+  ) {
+    let result: UnresolvedResult = {
+      type: "unresolved",
+      importedAs: importedName,
+      importedFromModule: importedFromModule,
+      consumingModule,
+      importedPointer,
+      importedRegion:
+        importedPointer != null
+          ? consumingModule.desc.regions[importedPointer]
+          : undefined,
+      resolution,
+    };
+    cacheResult(result);
+    return result;
+  }
+
+  let { module: sourceModule, desc: exportDesc } =
+    getExportDesc(importedFromModule, importedName) ?? {};
+  if (!sourceModule || !exportDesc) {
+    throw new Error(
+      `The module ${importedFromModule.url.href} has no export '${importedName}' while building bundle ${bundle.href}`
+    );
+  }
+  if (
+    !ownAssignments.find((a) => a.module.url.href === sourceModule!.url.href)
+  ) {
+    // TODO we could do better here at figuring out the consuming module--in
+    // this case we only look one level deep in the "export *"" chain. this should
+    // really be a stack...
+    consumingModule =
+      importedFromModule.url.href !== sourceModule.url.href
+        ? importedFromModule
+        : consumingModule;
+    let importedPointer = pointerForImport(
+      importedName,
+      sourceModule,
+      makeNonCyclic(consumingModule)
+    );
+    let result: UnresolvedResult = {
+      type: "unresolved",
+      importedAs: importedName,
+      importedFromModule: sourceModule,
+      consumingModule,
+      importedPointer,
+      importedRegion:
+        importedPointer != null
+          ? consumingModule.desc.regions[importedPointer]
+          : undefined,
+      resolution,
+    };
+    cacheResult(result);
+    return result;
+  }
+
+  let { declarations } = sourceModule.desc;
+  if (
+    exportDesc?.type === "reexport" ||
+    (exportDesc?.type === "local" &&
+      declarations.get(exportDesc.name)?.declaration.type === "import")
+  ) {
+    if (exportDesc.type === "reexport") {
+      return resolveDeclaration(
+        exportDesc.name,
+        sourceModule!.resolvedImports[exportDesc.importIndex],
+        sourceModule,
+        ownAssignments,
+        declarationResolutionCache,
+        depResolver,
+        exportDesc.exportRegion
+      );
+    } else {
+      let { declaration, pointer } = declarations.get(exportDesc.name)!;
+      if (declaration.type === "local") {
+        throw new Error(
+          `bug: should never get here, the only declaration descriptions left are imports that are manually exported, in bundle ${bundle.href}`
+        );
+      }
+      return resolveDeclaration(
+        declaration.importedName,
+        sourceModule!.resolvedImports[declaration.importIndex],
+        sourceModule,
+        ownAssignments,
+        declarationResolutionCache,
+        depResolver,
+        pointer
+      );
+    }
+  }
+  let { pointer, declaration } = declarations.get(exportDesc.name) ?? {};
+  if (!declaration || pointer == null) {
+    throw new Error(
+      `The module ${sourceModule.url.href} exports '${importedName}' but there is no declaration region for the declaration of this export '${exportDesc.name}' in bundle ${bundle.href}`
+    );
+  }
+
+  if (depResolver && declaration.type === "local" && declaration.original) {
+    resolution = resolutionByDeclaration(
+      declaration,
+      sourceModule,
+      pointer,
+      depResolver
+    )!; // this function will actually throw when a local desc that has an "original" is missing a resolution
+    if (resolution.importedSource) {
+      throw new Error(
+        `was expecting the resolution for '${declaration.declaredName}' in the module ${sourceModule.url.href} while building bundle ${bundle.href} to _not_ have a "importedSource" property but it did.`
+      );
+    }
+    let _module: Resolution;
+    ({ consumedBy: _module, consumedByPointer: pointer } = resolution);
+    sourceModule = makeNonCyclic(_module);
+  }
+
+  let region = sourceModule.desc.regions[pointer];
+  if (region.type !== "declaration") {
+    throw new Error(
+      `bug: the resolved declaration for '${importedName}' from ${importedFromModule} in ${consumingModule} resulted in a non-declaration type code region: ${region.type} in bundle ${bundle.href}`
+    );
+  }
+  let result: ResolvedResult = {
+    type: "resolved",
+    module: sourceModule,
+    importedAs: importedName,
+    declaredName: exportDesc.name,
+    region,
+    declaration,
+    pointer,
+    resolution,
+  };
+  cacheResult(result);
+  return result;
+}
+
+function resolutionByDeclaration(
+  declaration: DeclarationDescription,
+  module: ModuleResolution,
+  pointer: RegionPointer,
+  depResolver: DependencyResolver
+): ResolvedDeclarationDependency | undefined {
+  let pkgURL: URL | undefined;
+  if (declaration.type === "local" && declaration.original) {
+    pkgURL = pkgInfoFromCatalogJsURL(new URL(declaration.original.bundleHref))
+      ?.pkgURL;
+    if (!pkgURL) {
+      throw new Error(
+        `Cannot determine pkgURL that corresponds to the bundle URL: ${declaration.original.bundleHref}`
+      );
+    }
+  } else if (declaration.type === "import") {
+    if (isNamespaceMarker(declaration.importedName)) {
+      // namespaces are dealt with at the individual binding level
+      return;
+    }
+    pkgURL = pkgInfoFromCatalogJsURL(
+      module.resolvedImports[declaration.importIndex].url
+    )?.pkgURL;
+  }
+  if (!pkgURL) {
+    return undefined;
+  }
+
+  let resolution = depResolver.resolutionByConsumptionRegion(
+    pkgURL,
+    module,
+    pointer
+  );
+  if (resolution?.type !== "declaration") {
+    throw new Error(
+      `the dependency resolution for ${declaration.declaredName}' in the module ${module.url.href} was a "side-effect" type of resolution. Was expecting a "declaration" type of resolution.`
+    );
+  }
+  if (!resolution && declaration.type === "local" && declaration.original) {
+    throw new Error(
+      `cannot resolve "original" property of the declaration '${
+        declaration.declaredName
+      }' in the module ${
+        module.url.href
+      } to a dependency for a declaration (that is not imported), this should never happen. The "original" property is ${JSON.stringify(
+        declaration.original
+      )}`
+    );
+  }
+
+  return resolution;
 }
 
 export type ResolvedDependency =
@@ -315,7 +694,8 @@ export interface ResolvedSideEffectDependency extends DependencyBase {
   type: "side-effect";
 }
 
-type ConsumedDependencies = Map<string, Map<string, ResolvedDependency[]>>; // the outer key of the map is the pkgHref, the inner key is the bundle version
+// the outer key of the map is the pkgHref, the inner key is the bundle version
+type ConsumedDependencies = Map<string, Map<string, ResolvedDependency[]>>;
 
 function gatherDependencies(
   dependencies: Dependencies,
@@ -324,6 +704,10 @@ function gatherDependencies(
   lockFile: LockFile | undefined,
   bundle: URL
 ): ConsumedDependencies {
+  // we use a separate cache here because we have not yet setup the dependency
+  // resolution (that is actually the purpose of this function), so these
+  // answers will be different than after the dependency resolution is ready
+  let declarationResolutionCache: DeclarationResolutionCache = new Map();
   let consumedDeps: ConsumedDependencies = new Map();
   let ownAssignments = assignments.filter(
     (a) => a.bundleURL.href === bundle.href
@@ -377,7 +761,8 @@ function gatherDependencies(
             dependency,
             bundleHref,
             ownAssignments,
-            consumedDeps
+            consumedDeps,
+            declarationResolutionCache
           );
         } else {
           let source = resolveDeclaration(
@@ -385,6 +770,7 @@ function gatherDependencies(
             pkgModule,
             module,
             ownAssignments,
+            declarationResolutionCache,
             undefined
           );
           if (source.type === "unresolved") {
@@ -437,6 +823,7 @@ function gatherDependencies(
           module.resolvedImports[region.declaration.importIndex],
           module,
           ownAssignments,
+          declarationResolutionCache,
           undefined
         );
         if (source.type === "resolved") {
@@ -469,7 +856,8 @@ function gatherDependencies(
             dependency,
             bundleHref,
             ownAssignments,
-            consumedDeps
+            consumedDeps,
+            declarationResolutionCache
           );
         }
       }
@@ -529,7 +917,8 @@ function addResolutionsForNamespace(
   dependency: Dependency,
   bundleHref: string,
   ownAssignments: BundleAssignment[],
-  consumedDeps: ConsumedDependencies
+  consumedDeps: ConsumedDependencies,
+  declarationResolutionCache: DeclarationResolutionCache
 ) {
   let pkgURL = pkgInfoFromCatalogJsURL(new URL(bundleHref))!.pkgURL!;
   let exports = getExports(module);
@@ -539,6 +928,7 @@ function addResolutionsForNamespace(
       sourceModule,
       sourceModule,
       ownAssignments,
+      declarationResolutionCache,
       undefined
     );
     if (namespaceItemSource.type === "resolved") {
@@ -575,7 +965,8 @@ function addResolutionsForNamespace(
         dependency,
         bundleHref,
         ownAssignments,
-        consumedDeps
+        consumedDeps,
+        declarationResolutionCache
       );
     }
   }
@@ -627,9 +1018,38 @@ export function resolutionForPkgDepDeclaration(
     )?.pkgURL;
   }
   if (pkgURL) {
-    return depResolver.resolutionByConsumptionPoint(pkgURL, module, pointer) as
-      | ResolvedDeclarationDependency
-      | undefined;
+    return depResolver.resolutionByConsumptionRegion(
+      pkgURL,
+      module,
+      pointer
+    ) as ResolvedDeclarationDependency | undefined;
   }
   return;
+}
+
+function pointerForImport(
+  importedAs: string | NamespaceMarker,
+  importedFromModule: Resolution,
+  consumingModule: ModuleResolution
+): RegionPointer | undefined {
+  let { declarations } = consumingModule.desc;
+  let { pointer } =
+    [...declarations.values()].find(
+      ({ declaration }) =>
+        declaration.type === "import" &&
+        declaration.importedName === importedAs &&
+        consumingModule.resolvedImports[declaration.importIndex].url.href ===
+          importedFromModule.url.href
+    ) ?? {};
+  if (pointer == null) {
+    ({ exportRegion: pointer } =
+      [...consumingModule.desc.exports.values()].find(
+        (e) =>
+          ((e.type === "reexport" && e.name === importedAs) ||
+            e.type === "export-all") &&
+          consumingModule.resolvedImports[e.importIndex].url.href ===
+            importedFromModule.url.href
+      ) ?? {});
+  }
+  return pointer;
 }

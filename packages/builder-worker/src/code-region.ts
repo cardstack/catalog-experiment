@@ -595,7 +595,6 @@ export interface ImportedDeclarationDescription
   extends BaseDeclarationDescription {
   type: "import";
   importIndex: number;
-  // TODO change to "exportedName: string"
   importedName: string | NamespaceMarker;
 }
 

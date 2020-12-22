@@ -9,17 +9,14 @@ import {
   RegionPointer,
 } from "../code-region";
 import { BundleAssignment, BundleAssignmentsNode } from "./bundle";
-import {
-  HeadState,
-  resolveDeclaration,
-  UnresolvedResult,
-} from "../module-rewriter";
+import { HeadState } from "../module-rewriter";
 import { AppendModuleNode, FinishAppendModulesNode } from "./append-module";
 import { Dependencies } from "./entrypoint";
 import { pkgInfoFromCatalogJsURL } from "../resolver";
 import {
   DependencyResolver,
   resolutionForPkgDepDeclaration,
+  UnresolvedResult,
 } from "../dependency-resolution";
 import { GetLockFileNode, LockEntries, LockFile } from "./lock-file";
 import { flatMap } from "lodash";
@@ -244,7 +241,7 @@ function discoverIncludedRegions(
         `Cannot determine pkgURL that corresponds to the bundle URL: ${region.original.bundleHref}`
       );
     }
-    let resolution = depResolver.resolutionByConsumptionPoint(
+    let resolution = depResolver.resolutionByConsumptionRegion(
       pkgURL,
       module,
       pointer
@@ -260,12 +257,11 @@ function discoverIncludedRegions(
       localDesc.importIndex
     ];
     let importedName = localDesc.importedName;
-    let source = resolveDeclaration(
+    let source = depResolver.resolveDeclaration(
       importedName,
       importedModule,
       module,
-      ownAssignments,
-      depResolver
+      ownAssignments
     );
     if (source.type === "resolved") {
       if (source.module.url.href !== module.url.href) {
@@ -422,12 +418,11 @@ function discoverIncludedRegionsForNamespace(
 ) {
   let exports = getExports(module);
   for (let [exportName, { module: sourceModule }] of exports.entries()) {
-    let source = resolveDeclaration(
+    let source = depResolver.resolveDeclaration(
       exportName,
       sourceModule,
       module,
-      ownAssignments,
-      depResolver
+      ownAssignments
     );
     if (source.type === "resolved") {
       let sourceModule: Resolution = source.module;
@@ -522,7 +517,7 @@ function resolveDependency(
       region,
     };
   }
-  let resolution = depResolver.resolutionByConsumptionPoint(
+  let resolution = depResolver.resolutionByConsumptionRegion(
     pkgURL,
     consumingModule,
     pointer
@@ -671,12 +666,11 @@ function exposedRegions(
         }
       }
 
-      let source = resolveDeclaration(
+      let source = depResolver.resolveDeclaration(
         original,
         importedFrom,
         sourceModule,
-        ownAssignments,
-        depResolver
+        ownAssignments
       );
       if (source.type === "resolved") {
         let exposedInfo = {
