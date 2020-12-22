@@ -260,20 +260,23 @@ function discoverIncludedRegions(
       localDesc.importIndex
     ];
     let importedName = localDesc.importedName;
-    ({ module, region, pointer, editor } = resolveDependency(
-      importedModule.url.href,
-      depResolver,
-      makeNonCyclic(module),
-      pointer,
-      region,
-      editor,
-      editors
-    ));
-    if (region.declaration.type === "local") {
+    let source = resolveDeclaration(
+      importedName,
+      importedModule,
+      module,
+      ownAssignments,
+      depResolver
+    );
+    if (source.type === "resolved") {
+      if (source.module.url.href !== module.url.href) {
+        editor = addNewEditor(source.module, editor, editors);
+        module = source.module;
+        region = editor.regions[source.pointer];
+      }
       discoverIncludedRegions(
         bundle,
-        module,
-        pointer,
+        source.module,
+        source.pointer,
         editor,
         editors,
         ownAssignments,
@@ -281,83 +284,59 @@ function discoverIncludedRegions(
         visitedRegions
       );
     } else {
-      let source = resolveDeclaration(
-        importedName,
-        importedModule,
-        module,
-        ownAssignments
-      );
-      if (source.type === "resolved") {
-        if (source.module.url.href !== module.url.href) {
-          editor = addNewEditor(source.module, editor, editors);
-          module = source.module;
-          region = editor.regions[source.pointer];
+      let consumingModule = makeNonCyclic(source.consumingModule);
+      let { importedPointer } = source;
+      if (importedPointer == null) {
+        throw new Error(
+          `bug: could not determine code region pointer for import of ${JSON.stringify(
+            source.importedAs
+          )} from ${source.importedFromModule.url.href} in module ${
+            consumingModule.url.href
+          }`
+        );
+      }
+      if (source.consumingModule.url.href !== module.url.href) {
+        editor = addNewEditor(source.consumingModule, editor, editors);
+      }
+      if (
+        ownAssignments.find(
+          (a) =>
+            a.module.url.href ===
+            (source as UnresolvedResult).importedFromModule.url.href
+        ) &&
+        isNamespaceMarker(source.importedAs)
+      ) {
+        // we mark the namespace import region as something we want to keep as a
+        // signal to the Append nodes to manufacture a namespace object for this
+        // consumed import--ultimately, though, we will not include this region.
+        if (source.importedPointer == null) {
+          throw new Error(
+            `unable to determine the region for a namespace import '${region.declaration.declaredName}' of ${source.importedFromModule.url.href} from the consuming module ${source.consumingModule.url.href} in bundle ${bundle.href}`
+          );
         }
-        discoverIncludedRegions(
-          bundle,
-          source.module,
-          source.pointer,
+        editor.keepRegion(source.importedPointer);
+
+        let newEditor = addNewEditor(
+          source.importedFromModule,
           editor,
+          editors
+        );
+        discoverIncludedRegionsForNamespace(
+          bundle,
+          source.importedFromModule,
+          newEditor,
           editors,
           ownAssignments,
           depResolver,
           visitedRegions
         );
+        return; // don't include the dependsOn in this signal
       } else {
-        let consumingModule = makeNonCyclic(source.consumingModule);
-        let { importedPointer } = source;
-        if (importedPointer == null) {
-          throw new Error(
-            `bug: could not determine code region pointer for import of ${JSON.stringify(
-              source.importedAs
-            )} from ${source.importedFromModule.url.href} in module ${
-              consumingModule.url.href
-            }`
-          );
-        }
-        if (source.consumingModule.url.href !== module.url.href) {
-          editor = addNewEditor(source.consumingModule, editor, editors);
-        }
-        if (
-          ownAssignments.find(
-            (a) =>
-              a.module.url.href ===
-              (source as UnresolvedResult).importedFromModule.url.href
-          ) &&
-          isNamespaceMarker(source.importedAs)
-        ) {
-          // we mark the namespace import region as something we want to keep as a
-          // signal to the Append nodes to manufacture a namespace object for this
-          // consumed import--ultimately, though, we will not include this region.
-          if (source.importedPointer == null) {
-            throw new Error(
-              `unable to determine the region for a namespace import '${region.declaration.declaredName}' of ${source.importedFromModule.url.href} from the consuming module ${source.consumingModule.url.href} in bundle ${bundle.href}`
-            );
-          }
-          editor.keepRegion(source.importedPointer);
-
-          let newEditor = addNewEditor(
-            source.importedFromModule,
-            editor,
-            editors
-          );
-          discoverIncludedRegionsForNamespace(
-            bundle,
-            source.importedFromModule,
-            newEditor,
-            editors,
-            ownAssignments,
-            depResolver,
-            visitedRegions
-          );
-          return; // don't include the dependsOn in this signal
-        } else {
-          // we mark the external bundle import region as something we want to keep
-          // as a signal to the Append nodes that this import is consumed and to
-          // include this region in the resulting bundle.
-          editor.keepRegion(importedPointer);
-          return; // don't include the dependsOn in this signal
-        }
+        // we mark the external bundle import region as something we want to keep
+        // as a signal to the Append nodes that this import is consumed and to
+        // include this region in the resulting bundle.
+        editor.keepRegion(importedPointer);
+        return; // don't include the dependsOn in this signal
       }
     }
   } else if (
@@ -447,21 +426,12 @@ function discoverIncludedRegionsForNamespace(
       exportName,
       sourceModule,
       module,
-      ownAssignments
+      ownAssignments,
+      depResolver
     );
     if (source.type === "resolved") {
       let sourceModule: Resolution = source.module;
-      let region: DeclarationCodeRegion = source.region;
       let pointer: RegionPointer = source.pointer;
-      ({ module: sourceModule, region, pointer, editor } = resolveDependency(
-        module.url.href, // the namespace module being imported is the potential pkg name
-        depResolver,
-        makeNonCyclic(sourceModule),
-        pointer,
-        region,
-        editor,
-        editors
-      ));
       let currentEditor = editor;
       if (sourceModule.url.href !== module.url.href) {
         currentEditor = addNewEditor(sourceModule, editor, editors);
@@ -705,7 +675,8 @@ function exposedRegions(
         original,
         importedFrom,
         sourceModule,
-        ownAssignments
+        ownAssignments,
+        depResolver
       );
       if (source.type === "resolved") {
         let exposedInfo = {

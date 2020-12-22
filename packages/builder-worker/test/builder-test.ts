@@ -4561,6 +4561,54 @@ QUnit.module("module builder", function (origHooks) {
         }
       });
 
+      test("the module description for a bundle has an original property for an import via an internal reexport from a dependency", async function (assert) {
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["index.js"],
+            "dependencies": {
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "^7.9.0"
+              }
+            }
+          }`,
+          "catalogjs.lock": `{ "puppies": "${puppiesBundle1Href}/index.js" }`,
+          "index.js": `
+            import { doggies } from "./a.js";
+            function getPuppies() { return doggies; }
+            function getCats() { return ["jojo"]; }
+            function getRats() { return ["pizza rat"]; }
+            export { getPuppies, getCats, getRats };
+          `,
+          "a.js": `
+            export { puppies as doggies } from "puppies";
+          `,
+        });
+        let { source, desc } = await bundle(assert.fs);
+        assert.codeEqual(
+          source,
+          `
+          const doggies = ["mango", "van gogh"];
+          function getPuppies() { return doggies; }
+          function getCats() { return ["jojo"]; }
+          function getRats() { return ["pizza rat"]; }
+          export { getPuppies, getCats, getRats };
+          `
+        );
+
+        let doggies = desc!.declarations.get("doggies");
+        assert.equal(doggies?.declaration.type, "local");
+        if (doggies?.declaration.type === "local") {
+          assert.equal(
+            doggies.declaration.original?.bundleHref,
+            `${puppiesBundle1Href}/index.js`
+          );
+          assert.equal(doggies.declaration.original?.range, "^7.9.0");
+          assert.equal(doggies.declaration.original?.importedAs, "puppies");
+        }
+      });
+
       test("the module descriptions for a bundle that have an 'original' property are carried forward in subsequent builds that include that bundle", async function (assert) {
         await assert.setupFiles({
           "entrypoints.json": `{
@@ -5292,6 +5340,89 @@ QUnit.module("module builder", function (origHooks) {
         );
       });
 
+      test("does not collapse otherwise overlapping consumed semver ranges if needed bindings have been pruned out of the bundle", async function (assert) {
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["index.js"],
+            "dependencies": {
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "^7.9.2"
+              }
+            }
+          }`,
+          "catalogjs.lock": `{
+            "puppies": "${puppiesBundle2Href}/index.js",
+            "puppies/toys": "${puppiesBundle2Href}/toys.js"
+          }`, // ver 7.9.2
+          // this bundle needs "puppies", which is not available in the other bundle for this pkg
+          "index.js": `
+            import { puppies } from "puppies";
+            import { toys } from "puppies/toys";
+            function getPuppies() { return puppies; }
+            function getToys() { return toys; }
+            export { getPuppies, getToys };
+          `,
+        });
+        let bundle1Src = await bundleSource(assert.fs);
+        let lib1BundleHref =
+          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["driver.js"],
+            "dependencies": {
+              "lib1": {
+                "type": "npm",
+                "pkgName": "lib1",
+                "range": "^1.0.0"
+              },
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "^7.9.3"
+              }
+            }
+          }`,
+          // puppies dep is ver 7.9.4 and is satisfied by both consumption
+          // ranges (so we choose it)
+          "catalogjs.lock": `{
+            "lib1": "${lib1BundleHref}/lib.js",
+            "puppies/toys": "${puppiesBundle1Href}/toys.js"
+          }`,
+          "driver.js": `
+            import { getToys } from "lib1";
+            import { toys } from "puppies/toys";
+            console.log([...toys, ...getToys()]);
+          `,
+          [`${lib1BundleHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
+          [`${lib1BundleHref}/lib.js`]: bundle1Src,
+        });
+        let { source, desc } = await bundle(assert.fs, url("output/driver.js"));
+
+        assert.codeEqual(
+          source,
+          `
+          const toys = ["poopkin pie", "turkey hat"];
+          const toys0 = ["poopkin pie", "turkey hat"];
+          function getToys() { return toys0; }
+          console.log([...toys, ...getToys()]);
+          export {};
+          `
+        );
+
+        let puppies = desc!.declarations.get("toys");
+        assert.equal(puppies?.declaration.type, "local");
+        if (puppies?.declaration.type === "local") {
+          assert.equal(
+            puppies.declaration.original?.bundleHref,
+            `${puppiesBundle1Href}/toys.js`
+          );
+          assert.equal(puppies.declaration.original?.range, "^7.9.3");
+          assert.equal(puppies.declaration.original?.importedAs, "toys");
+        }
+      });
+
       test("can prevent collision of consumed dependencies from same package when they have non-overlapping consumed semver ranges", async function (assert) {
         await assert.setupFiles({
           "entrypoints.json": `{
@@ -5851,15 +5982,12 @@ QUnit.module("module builder", function (origHooks) {
             }
           }`,
           "catalogjs.lock": `{
-            "puppies": "${puppiesBundle2Href}/index.js",
             "puppies/toys": "${puppiesBundle2Href}/toys.js"
           }`, // ver 7.9.2
           "index.js": `
-            import { puppies } from "puppies";
             import { toys } from "puppies/toys";
-            function getPuppies() { return puppies; }
             function getToys() { return toys; }
-            export { getPuppies, getToys };
+            export { getToys };
           `,
         });
         let bundle1Src = await bundleSource(assert.fs);

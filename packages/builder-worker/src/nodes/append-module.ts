@@ -149,7 +149,8 @@ export class FinishAppendModulesNode implements BuilderNode {
     let importAssignments = assignedImports(
       this.bundle,
       this.bundleAssignments,
-      this.state
+      this.state,
+      this.depResolver
     );
     let exportAssignments = assignedExports(
       this.bundle,
@@ -171,6 +172,7 @@ export class FinishAppendModulesNode implements BuilderNode {
       this.state,
       this.bundleAssignments,
       bundleDeclarations,
+      this.depResolver,
       this.bundle
     );
     prevSibling = buildBundleBody(
@@ -229,6 +231,7 @@ function buildManufacturedCode(
   state: HeadState,
   assignments: BundleAssignment[],
   bundleDeclarations: DeclarationRegionMap,
+  depResolver: DependencyResolver,
   bundle: URL
 ): RegionPointer | undefined {
   let ownAssignments = assignments.filter(
@@ -267,7 +270,8 @@ function buildManufacturedCode(
           outsideName,
           importedModule,
           module,
-          ownAssignments
+          ownAssignments,
+          depResolver
         );
         if (
           source.type === "unresolved" &&
@@ -1521,7 +1525,8 @@ function assignedExports(
         original,
         importedFrom,
         module,
-        ownAssignments
+        ownAssignments,
+        depResolver
       );
       if (source.type === "resolved") {
         // this is an export from within our own bundle
@@ -1614,7 +1619,8 @@ function isSideEffectMarker(value: any): value is SideEffectMarker {
 function assignedImports(
   bundle: URL,
   assignments: BundleAssignment[],
-  state: HeadState
+  state: HeadState,
+  depResolver: DependencyResolver
 ): Map<
   string,
   Map<string | NamespaceMarker | SideEffectMarker, string | null>
@@ -1717,7 +1723,8 @@ function assignedImports(
         desc.importedName,
         importedModule,
         module,
-        ownAssignments
+        ownAssignments,
+        depResolver
       );
       if (source.type === "resolved") {
         continue;

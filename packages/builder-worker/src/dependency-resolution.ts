@@ -15,7 +15,8 @@ import { pkgInfoFromCatalogJsURL } from "./resolver";
 import { satisfies, coerce, compare, validRange } from "semver";
 import { LockEntries, LockFile } from "./nodes/lock-file";
 import { setMapping, rangeIntersection } from "./utils";
-import { getExports } from "./describe-file";
+import { getExports, isExportAllMarker } from "./describe-file";
+import { difference, flatMap } from "lodash";
 
 export class DependencyResolver {
   private consumedDeps: ConsumedDependencies;
@@ -90,6 +91,13 @@ export class DependencyResolver {
           `the version ${ver} for the bundle ${pkgHref}/${bundleVersion} is not a valid version, while processing bundle ${this.bundle.href}`
         );
       }
+      let bindings = flatMap(pkgVersions.get(bundleVersion)!, (r) =>
+        r.type === "declaration"
+          ? !isNamespaceMarker(r.importedAs)
+            ? [r.importedAs]
+            : ["{NamespaceMarker}"]
+          : []
+      );
       let satisfiedVersions = rangeSatisfications.get(bundleVersion);
       if (!satisfiedVersions) {
         satisfiedVersions = new Set();
@@ -115,7 +123,22 @@ export class DependencyResolver {
         }
 
         if (satisfies(version, range)) {
-          satisfiedVersions.add(otherBundleVersion);
+          // in additional to ensuring that the version is satisfied by the
+          // range, we also need to check if the all of the resolutions'
+          // bindings are available (in the process of rolling up pkgs, we may
+          // have pruned unconsumed bindings)
+          let otherBundleBindings = flatMap(
+            pkgVersions.get(otherBundleVersion)!,
+            (r) =>
+              r.type === "declaration"
+                ? !isNamespaceMarker(r.importedAs)
+                  ? [r.importedAs]
+                  : ["{NamespaceMarker}"]
+                : []
+          );
+          if (difference(otherBundleBindings, bindings).length === 0) {
+            satisfiedVersions.add(otherBundleVersion);
+          }
         }
       }
     }
@@ -130,16 +153,6 @@ export class DependencyResolver {
     // bundleHref that is the highest version. The resulting range for each set
     // will be an intersection of all the ranges that correspond to the versions
     // that were satisfied in the group.
-
-    // Concern: the way we are choosing a package is entirely based on the
-    // amount of ranges that a particular pkg version can satisfy. One concern I
-    // have is that if a pkg is combined into a bundle, and unused declarations
-    // are pruned out of the pkg that is combined. If there is another consumer
-    // that is introduced into a subsequent bundle that includes this combined
-    // bundle, and that consumer is actually a namespace import, and the pkg
-    // with the pruned declarations happens to be the selected pkg because it
-    // has the most range satisfications--perhaps we shouldn't choose it because
-    // it is not the complete pkg?
     let resolutionsForPkg: Map<
       string,
       Map<RegionPointer, ResolvedDependency>
@@ -342,6 +355,74 @@ function gatherDependencies(
       );
     }
     for (let { module } of ownAssignments) {
+      for (let [exportName, exportDesc] of module.desc.exports) {
+        if (exportDesc.type !== "reexport" || isExportAllMarker(exportName)) {
+          continue;
+        }
+        // reexports are a form of consumption point for deps which you will not
+        // find by scanning for declaration regions since reexported bindings
+        // are not scoped to the module so we'll look in the export desc
+        // specifically for them
+        if (
+          module.resolvedImports[exportDesc.importIndex].url.href !== bundleHref
+        ) {
+          continue;
+        }
+        let pkgModule = makeNonCyclic(
+          module.resolvedImports[exportDesc.importIndex]
+        );
+        if (isNamespaceMarker(exportDesc.name)) {
+          addResolutionsForNamespace(
+            pkgModule,
+            dependency,
+            bundleHref,
+            ownAssignments,
+            consumedDeps
+          );
+        } else {
+          let source = resolveDeclaration(
+            exportDesc.name,
+            pkgModule,
+            module,
+            ownAssignments,
+            undefined
+          );
+          if (source.type === "unresolved") {
+            throw new Error(
+              `could not resolve declaration ${JSON.stringify(
+                exportDesc.name
+              )} in ${pkgModule.url.href} while assembling bundle ${
+                bundle.href
+              }`
+            );
+          }
+          if (source.module.url.href !== pkgModule.url.href) {
+            throw new Error(
+              `the declaration ${JSON.stringify(exportDesc.name)} from ${
+                pkgModule.url.href
+              } resolved to an unexpected module ${
+                source.module.url
+              }. Expected this be declared in the module ${pkgModule.url.href}`
+            );
+          }
+          addResolution(
+            bundleHref,
+            {
+              type: "declaration",
+              importedSource: {
+                pointer: source.pointer,
+                declaredIn: pkgModule,
+              },
+              bundleHref,
+              consumedBy: module,
+              consumedByPointer: exportDesc.exportRegion,
+              importedAs: exportDesc.name,
+              range: dependency.range,
+            },
+            consumedDeps
+          );
+        }
+      }
       for (let [pointer, region] of module.desc.regions.entries()) {
         if (
           region.type !== "declaration" ||
@@ -355,7 +436,8 @@ function gatherDependencies(
           region.declaration.importedName,
           module.resolvedImports[region.declaration.importIndex],
           module,
-          ownAssignments
+          ownAssignments,
+          undefined
         );
         if (source.type === "resolved") {
           addResolution(
@@ -456,7 +538,8 @@ function addResolutionsForNamespace(
       exportName,
       sourceModule,
       sourceModule,
-      ownAssignments
+      ownAssignments,
+      undefined
     );
     if (namespaceItemSource.type === "resolved") {
       if (!namespaceItemSource.module.url.href.startsWith(pkgURL.href)) {
