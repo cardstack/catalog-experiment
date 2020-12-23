@@ -992,7 +992,7 @@ export class RegionEditor {
       }
       case "replaced": {
         let outputRegion = cloneDeep(region);
-        this.absorbPendingGap(outputRegion);
+        this.absorbPendingGap(outputRegion, true);
         gap = this.absorbPendingStart(outputRegion);
         let outputPointer = this.outputRegions.length;
         this.handleReplace(
@@ -1036,7 +1036,7 @@ export class RegionEditor {
         if (maybeNextSibling != null) {
           outputRegion.nextSibling = maybeNextSibling;
         }
-        this.absorbPendingGap(outputRegion);
+        this.absorbPendingGap(outputRegion, true);
         gap = this.absorbPendingStart(outputRegion);
         if (region.firstChild != null) {
           let childRegion: CodeRegion;
@@ -1279,34 +1279,35 @@ export class RegionEditor {
       return;
     }
     let original = this.src.slice(this.cursor, this.cursor + region.end);
-    let gap: number;
     switch (region.shorthand) {
       case "import":
-        gap = 4;
+        outputRegion.start += 4 + original.length; // "original as "
         this.outputCode.push(original);
         this.outputCode.push(" as ");
         this.outputCode.push(replacement);
         break;
       case "object":
-        gap = 2;
+        outputRegion.start += 2 + original.length; // "original: "
         this.outputCode.push(original);
         this.outputCode.push(": ");
         this.outputCode.push(replacement);
         break;
       case "export":
-        gap = 4;
         this.outputCode.push(replacement);
         this.outputCode.push(" as ");
         this.outputCode.push(original);
+        // when we add a new gap, then the next region that is output will
+        // have it's start adjusted by this amount
+        this.emitPendingGap(
+          parentPointer,
+          4 + original.length /* " as original" */
+        );
         break;
       default:
         throw assertNever(region.shorthand);
     }
     outputRegion.end = replacement.length;
     outputRegion.shorthand = false;
-    // when we add a new gap, then the next region that is output will
-    // have it's start adjusted by this amount
-    this.emitPendingGap(parentPointer, gap + original.length);
     this.outputRegions.push({
       originalPointer: regionPointer,
       region: outputRegion,
@@ -1359,9 +1360,12 @@ export class RegionEditor {
     };
   }
 
-  private absorbPendingGap(region: CodeRegion) {
-    if (this.pendingGap) {
+  private absorbPendingGap(region: CodeRegion, insertBeforeRegion = false) {
+    if (this.pendingGap && !insertBeforeRegion) {
       region.end += this.pendingGap.gap;
+      this.pendingGap = undefined;
+    } else if (this.pendingGap && insertBeforeRegion) {
+      region.start += this.pendingGap.gap;
       this.pendingGap = undefined;
     }
   }

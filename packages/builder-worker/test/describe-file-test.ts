@@ -1,10 +1,13 @@
 import { describeESModule, describeCJSFile } from "./helpers/file-description";
 import {
+  declarationsMap,
   FileDescription,
   LocalExportDescription,
+  ModuleDescription,
   ReexportExportDescription,
 } from "../src/describe-file";
 import {
+  CodeRegion,
   documentPointer,
   NamespaceMarker,
   notFoundPointer,
@@ -17,6 +20,15 @@ function keepAll(desc: FileDescription, editor: RegionEditor) {
   for (let i = 0; i < desc.regions.length; i++) {
     editor.keepRegion(i);
   }
+}
+
+function makeDescFromRegions(regions: CodeRegion[]): ModuleDescription {
+  return {
+    regions,
+    declarations: declarationsMap(regions),
+    exports: new Map(),
+    imports: [],
+  };
 }
 
 QUnit.module("describe-file", function () {
@@ -704,15 +716,34 @@ QUnit.module("describe-file", function () {
   test("renaming local side of export", function (assert) {
     let { desc, editor } = describeESModule(`
       function x() {}
-      export { x };
+      function z() {}
+      export { x, z };
     `);
     keepAll(desc, editor);
     editor.rename("x", "y");
+    editor.rename("z", "a");
+    let { code, regions } = editor.serialize();
     assert.codeEqual(
-      editor.serialize().code,
+      code,
       `
       function y() {}
-      export { y as x };
+      function a() {}
+      export { y as x, a as z };
+    `
+    );
+
+    let newDesc = makeDescFromRegions(regions);
+    let newEditor = new RegionEditor(code, newDesc);
+    keepAll(newDesc, newEditor);
+    newEditor.rename("y", "bob");
+    newEditor.rename("a", "charlie");
+    code = newEditor.serialize().code;
+    assert.codeEqual(
+      code,
+      `
+      function bob() {}
+      function charlie() {}
+      export { bob as x, charlie as z };
     `
     );
   });
@@ -881,24 +912,46 @@ QUnit.module("describe-file", function () {
 
   test("code regions for an imported name can be used to replace it", function (assert) {
     let { desc, editor } = describeESModule(`
-      import { a, b as c, d as d } from "lib";
+      import { a, a1, b as c, b1, d as d } from "lib";
       export default function(a) {
         console.log(a);
       }
-      console.log(a, c, d);
+      console.log(a, a1, c, b1, d);
     `);
     keepAll(desc, editor);
     editor.rename("a", "alpha");
+    editor.rename("a1", "alpha1");
+    editor.rename("b1", "bravo1");
     editor.rename("c", "charlie");
     editor.rename("d", "delta");
+    let { code, regions } = editor.serialize();
     assert.codeEqual(
-      editor.serialize().code,
+      code,
       `
-      import { a as alpha, b as charlie, d as delta } from "lib";
+      import { a as alpha, a1 as alpha1, b as charlie, b1 as bravo1, d as delta } from "lib";
       export default function(a) {
         console.log(a);
       }
-      console.log(alpha, charlie, delta);
+      console.log(alpha, alpha1, charlie, bravo1, delta);
+    `
+    );
+
+    let newDesc = makeDescFromRegions(regions);
+    let newEditor = new RegionEditor(code, newDesc);
+    keepAll(newDesc, newEditor);
+    newEditor.rename("alpha", "renamedAlpha");
+    newEditor.rename("alpha1", "renamedAlpha1");
+    newEditor.rename("bravo1", "renamedBravo1");
+    newEditor.rename("charlie", "renamedCharlie");
+    newEditor.rename("delta", "renamedDelta");
+    assert.codeEqual(
+      newEditor.serialize().code,
+      `
+      import { a as renamedAlpha, a1 as renamedAlpha1, b as renamedCharlie, b1 as renamedBravo1, d as renamedDelta } from "lib";
+      export default function(a) {
+        console.log(a);
+      }
+      console.log(renamedAlpha, renamedAlpha1, renamedCharlie, renamedBravo1, renamedDelta);
     `
     );
   });
@@ -934,11 +987,26 @@ QUnit.module("describe-file", function () {
     keepAll(desc, editor);
     editor.rename("a", "alpha");
     editor.rename("c", "charlie");
+    let { code, regions } = editor.serialize();
     assert.codeEqual(
-      editor.serialize().code,
+      code,
       `
       const { a: alpha, b: charlie } = foo();
       console.log(alpha, charlie);
+      export {};
+    `
+    );
+
+    let newDesc = makeDescFromRegions(regions);
+    let newEditor = new RegionEditor(code, newDesc);
+    keepAll(newDesc, newEditor);
+    newEditor.rename("alpha", "renamedAlpha");
+    newEditor.rename("charlie", "renamedCharlie");
+    assert.codeEqual(
+      newEditor.serialize().code,
+      `
+      const { a: renamedAlpha, b: renamedCharlie } = foo();
+      console.log(renamedAlpha, renamedCharlie);
       export {};
     `
     );
