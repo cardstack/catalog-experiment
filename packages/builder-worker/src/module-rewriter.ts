@@ -37,6 +37,13 @@ export class HeadState {
     string,
     Map<string | NamespaceMarker, string>
   > = new Map();
+  // because module regions may be splatted across a bundle due to the way we
+  // discover and assign editors for regions a local declaration may be
+  // separated from its reference in multiple editors for the same module. To
+  // make sure everything lines up, we track local declarations in the same way
+  // that we track imported declarations. This structure is moduleHref =>
+  // originalName => assignedName
+  readonly assignedLocalNames: Map<string, Map<string, string>> = new Map();
   // this is a map of manufactured namespace objects' assigned names to their a
   // map of the keys in the namespace object (the outside name) with values that
   // are the inside names for the corresponding keys
@@ -81,6 +88,7 @@ export class HeadState {
       usedNames,
       assignedImportedNames,
       assignedImportedDependencies,
+      assignedLocalNames,
       visited,
       assignedNamespaces,
       queue,
@@ -103,6 +111,7 @@ export class HeadState {
         usedNames,
         assignedImportedNames,
         assignedImportedDependencies,
+        assignedLocalNames,
         visitedSummary,
         assignedNamespaces,
         queueSummary,
@@ -207,7 +216,7 @@ export class ModuleRewriter {
       for (let [
         localName,
         { pointer, declaration: localDesc },
-      ] of declarations.entries()) {
+      ] of declarations) {
         let assignedName: string | undefined;
         if (
           localDesc.type === "import" ||
@@ -242,6 +251,10 @@ export class ModuleRewriter {
                 localName
               );
             }
+            // TODO if we allow NamespaceMappings here, then we could use the
+            // value to help set the "original" property on namespace object
+            // declarations (needs to also be paired with resolution entries
+            // that contain a NamespaceMarker consumption points)
             if (
               source.resolution &&
               assignedName &&
@@ -284,7 +297,14 @@ export class ModuleRewriter {
               suggestedName
             );
           }
-          assignedName = assignedName ?? this.unusedNameLike(suggestedName);
+          if (!assignedName) {
+            // this is just a plain jane local internal declaration. it may or
+            // may not actually be a region that we keep, as there could be
+            // multiple module rewriters for the same module. To keep everything
+            // straight, check our state to see if we have already assigned a
+            // name for this binding.
+            assignedName = this.maybeAssignLocalName(localName);
+          }
         }
         if (!assignedName) {
           throw new Error(
@@ -506,6 +526,23 @@ export class ModuleRewriter {
       importedAs,
       assignedName,
       this.state.assignedImportedNames
+    );
+    return assignedName;
+  }
+
+  private maybeAssignLocalName(name: string): string {
+    let alreadyAssignedName = this.state.assignedLocalNames
+      .get(this.module.url.href)
+      ?.get(name);
+    if (alreadyAssignedName) {
+      return alreadyAssignedName;
+    }
+    let assignedName = this.unusedNameLike(name);
+    setDoubleNestedMapping(
+      this.module.url.href,
+      name,
+      assignedName,
+      this.state.assignedLocalNames
     );
     return assignedName;
   }

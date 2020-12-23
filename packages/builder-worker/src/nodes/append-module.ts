@@ -20,6 +20,7 @@ import {
   documentPointer,
   ImportCodeRegion,
   LocalDeclarationDescription,
+  DeclarationDescription,
 } from "../code-region";
 import { BundleAssignment } from "./bundle";
 import { maybeRelativeURL } from "../path";
@@ -108,6 +109,11 @@ type DeclarationRegionMap = Map<
   }
 >;
 
+type ReferenceMappings = Map<
+  RegionPointer,
+  { declaration: DeclarationDescription; module: ModuleResolution }
+>;
+
 export class FinishAppendModulesNode implements BuilderNode {
   cacheKey: string;
   constructor(
@@ -127,6 +133,7 @@ export class FinishAppendModulesNode implements BuilderNode {
 
   async run(): Promise<Value<{ code: string; desc: ModuleDescription }>> {
     let bundleDeclarations: DeclarationRegionMap = new Map();
+    let referenceMappings: ReferenceMappings = new Map();
     let code: string[] = [];
     let regions: CodeRegion[] = [
       // document region for the bundle itself
@@ -177,10 +184,19 @@ export class FinishAppendModulesNode implements BuilderNode {
       prevSibling,
       this.rewriters,
       bundleDeclarations,
+      referenceMappings,
       this.bundle,
       this.state,
       this.dependencies,
       this.depResolver
+    );
+    setReferences(
+      regions,
+      referenceMappings,
+      bundleDeclarations,
+      this.state,
+      this.depResolver,
+      this.bundle
     );
     let { exportRegions, exportSpecifierRegions } = buildExports(
       code,
@@ -866,6 +882,7 @@ function buildBundleBody(
   prevSibling: RegionPointer | undefined,
   rewriters: ModuleRewriter[],
   bundleDeclarations: DeclarationRegionMap,
+  referenceMappings: ReferenceMappings,
   bundle: URL,
   state: HeadState,
   dependencies: Dependencies,
@@ -966,13 +983,12 @@ function buildBundleBody(
       }
     }
 
-    discoverReferenceRegions(
+    setReferenceMappings(
       moduleRegions,
       offset,
       bundleDeclarations,
+      referenceMappings,
       module,
-      state,
-      depResolver,
       bundle
     );
 
@@ -1049,29 +1065,15 @@ function buildBundleBody(
     }
   }
 
-  for (let { pointer, references, original } of bundleDeclarations.values()) {
-    let region = regions[pointer];
-    if (region.type !== "declaration") {
-      throw new Error(`bug: 'should never get here'`);
-    }
-    region.declaration.references = [
-      ...new Set([...region.declaration.references, ...references]),
-    ];
-    if (original && region.declaration.type === "local") {
-      region.declaration.original = { ...original };
-    }
-  }
-
   return prevModuleStartPointer;
 }
 
-function discoverReferenceRegions(
+function setReferenceMappings(
   regions: CodeRegion[],
   offset: number,
   bundleDeclarations: DeclarationRegionMap,
+  referenceMappings: ReferenceMappings,
   module: ModuleResolution,
-  state: HeadState,
-  depResolver: DependencyResolver,
   bundle: URL
 ) {
   for (let region of regions.filter(
@@ -1119,9 +1121,34 @@ function discoverReferenceRegions(
     if (declarationRegion?.type !== "declaration") {
       continue;
     }
+    referenceMappings.set(pointer + offset, {
+      declaration: declarationRegion.declaration,
+      module,
+    });
+  }
+}
+
+function setReferences(
+  regions: CodeRegion[],
+  referenceMappings: ReferenceMappings,
+  bundleDeclarations: DeclarationRegionMap,
+  state: HeadState,
+  depResolver: DependencyResolver,
+  bundle: URL
+) {
+  for (let [pointer, { module, declaration }] of referenceMappings) {
+    let region = regions[pointer];
+    if (region.type !== "reference") {
+      throw new Error(
+        `bug: should never be here--only reference regions exist within the referenceMapping. bad region is ${pointer} in bundle ${
+          bundle.href
+        }: ${JSON.stringify(region, stringifyReplacer)}`
+      );
+    }
+    let declarationPointer = [...region.dependsOn][0]; // a reference region should always depend on just it's declaration region
     let resolution = resolutionForPkgDepDeclaration(
       module,
-      declarationRegion.declaration.declaredName,
+      declaration.declaredName,
       depResolver
     );
     let assignedName: string | undefined;
@@ -1129,31 +1156,41 @@ function discoverReferenceRegions(
       assignedName = state.assignedImportedNames
         .get(resolution.importedSource.declaredIn.url.href)
         ?.get(resolution.importedAs);
-    } else if (
-      declarationRegion.declaration.type === "import" ||
-      declarationPointer < 0
-    ) {
+    } else if (declaration.type === "import" || declarationPointer < 0) {
       assignedName = state.nameAssignments
         .get(module.url.href)
-        ?.get(declarationRegion.declaration.declaredName);
+        ?.get(declaration.declaredName);
     } else {
       continue;
     }
 
     if (!assignedName) {
       throw new Error(
-        `bug: could not find assigned name for import '${declarationRegion.declaration.declaredName}' in ${module.url.href} from bundle ${bundle.href}`
+        `bug: could not find assigned name for import '${declaration.declaredName}' in ${module.url.href} from bundle ${bundle.href}`
       );
     }
-    let declaration = bundleDeclarations.get(assignedName);
-    if (!declaration) {
+    let bundleDeclaration = bundleDeclarations.get(assignedName);
+    if (!bundleDeclaration) {
       throw new Error(
         `bug: could not find declaration region for the assigned name '${assignedName}' in bundle ${bundle.href}`
       );
     }
-    declaration.references.add(pointer + offset);
+    bundleDeclaration.references.add(pointer);
     if (declarationPointer < 0) {
-      region.dependsOn = new Set([declaration.pointer]);
+      region.dependsOn = new Set([bundleDeclaration.pointer]);
+    }
+  }
+
+  for (let { pointer, references, original } of bundleDeclarations.values()) {
+    let region = regions[pointer];
+    if (region.type !== "declaration") {
+      throw new Error(`bug: 'should never get here'`);
+    }
+    region.declaration.references = [
+      ...new Set([...region.declaration.references, ...references]),
+    ];
+    if (original && region.declaration.type === "local") {
+      region.declaration.original = { ...original };
     }
   }
 }
