@@ -16,6 +16,8 @@ import { pkgInfoFromCatalogJsURL } from "../resolver";
 import {
   DependencyResolver,
   resolutionForPkgDepDeclaration,
+  ResolvedDependency,
+  ResolvedDeclarationDependency,
   UnresolvedResult,
 } from "../dependency-resolution";
 import { GetLockFileNode, LockEntries, LockFile } from "./lock-file";
@@ -190,6 +192,7 @@ function discoverIncludedRegions(
   depResolver: DependencyResolver,
   visitedRegions: Map<string, Map<RegionPointer, RegionEditor>>
 ) {
+  let region = module.desc.regions[pointer];
   if (visitedRegions.get(module.url.href)?.has(pointer)) {
     let previousEditor = visitedRegions.get(module.url.href)!.get(pointer)!;
     if (previousEditor === editor) {
@@ -225,7 +228,6 @@ function discoverIncludedRegions(
   }
   visited.set(pointer, editor);
 
-  let region = module.desc.regions[pointer];
   // collapse module side effects--except for declaration side effects.
   // declarations cannot be separated from their side effects
   if (
@@ -352,7 +354,7 @@ function discoverIncludedRegions(
       editors
     ));
     if (!isRegionObviated) {
-      // the region we entered this function with is the region that we actually
+      // the region for the consumption point is actually the region we
       // want to keep.
       editor.keepRegion(pointer);
     }
@@ -503,7 +505,9 @@ function resolveDependency(
   editor: RegionEditor;
   region: DeclarationCodeRegion;
   pointer: RegionPointer;
+  resolution: ResolvedDependency | undefined;
 } {
+  let resolution: ResolvedDependency | undefined;
   let module: ModuleResolution = consumingModule;
   let pkgURL = pkgInfoFromCatalogJsURL(new URL(bundleHref))?.pkgURL;
   let isRegionObviated = false;
@@ -515,9 +519,10 @@ function resolveDependency(
       editor,
       pointer,
       region,
+      resolution,
     };
   }
-  let resolution = depResolver.resolutionByConsumptionRegion(
+  resolution = depResolver.resolutionByConsumptionRegion(
     pkgURL,
     consumingModule,
     pointer
@@ -531,6 +536,7 @@ function resolveDependency(
       editor,
       pointer,
       region,
+      resolution,
     };
   }
   if (
@@ -566,6 +572,7 @@ function resolveDependency(
     editor,
     pointer,
     region,
+    resolution,
   };
 }
 
@@ -598,6 +605,19 @@ function addNewEditor(
     }
   );
   return newEditor;
+}
+export function assertDeclarationResolution(
+  resolution: ResolvedDependency,
+  pkgURL: URL,
+  module: Resolution,
+  pointer: RegionPointer,
+  bundle: URL
+): asserts resolution is ResolvedDeclarationDependency {
+  if (resolution.type !== "declaration") {
+    throw new Error(
+      `the dependency resolution for the pkg ${pkgURL.href} consumed in the module ${module.url.href} at region ${pointer} was a "side-effect" type of resolution. Was expecting a "declaration" type of resolution while building bundle ${bundle.href}`
+    );
+  }
 }
 
 export interface ExposedRegionInfo {

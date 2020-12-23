@@ -8,6 +8,7 @@ import {
   DeclarationCodeRegion,
   DeclarationDescription,
   isNamespaceMarker,
+  LocalDeclarationDescription,
   NamespaceMarker,
   RegionPointer,
 } from "./code-region";
@@ -50,6 +51,7 @@ type DeclarationResolutionCache = Map<
   string,
   Map<string, Map<string | NamespaceMarker, ResolvedResult | UnresolvedResult>>
 >;
+
 export class DependencyResolver {
   private consumedDeps: ConsumedDependencies;
   // pkgHref => consumingModuleHref => consumingRegion => ResolvedDependency
@@ -143,61 +145,66 @@ export class DependencyResolver {
     // satisfications.
     let rangeSatisfications = new Map<string, Set<string>>();
 
-    for (let bundleVersion of pkgVersions.keys()) {
-      let [ver] = bundleVersion.split("/");
-      let version = coerce(ver);
-      if (!version) {
-        throw new Error(
-          `the version ${ver} for the bundle ${pkgHref}/${bundleVersion} is not a valid version, while processing bundle ${this.bundle.href}`
+    let bundleVersions = [...pkgVersions.keys()];
+    if (bundleVersions.length === 1) {
+      rangeSatisfications.set(bundleVersions[0], new Set([bundleVersions[0]]));
+    } else {
+      for (let bundleVersion of bundleVersions) {
+        let [ver] = bundleVersion.split("/");
+        let version = coerce(ver);
+        if (!version) {
+          throw new Error(
+            `the version ${ver} for the bundle ${pkgHref}/${bundleVersion} is not a valid version, while processing bundle ${this.bundle.href}`
+          );
+        }
+        let bindings = flatMap(pkgVersions.get(bundleVersion)!, (r) =>
+          r.type === "declaration"
+            ? !isNamespaceMarker(r.importedAs)
+              ? [r.importedAs]
+              : ["{NamespaceMarker}"]
+            : []
         );
-      }
-      let bindings = flatMap(pkgVersions.get(bundleVersion)!, (r) =>
-        r.type === "declaration"
-          ? !isNamespaceMarker(r.importedAs)
-            ? [r.importedAs]
-            : ["{NamespaceMarker}"]
-          : []
-      );
-      let satisfiedVersions = rangeSatisfications.get(bundleVersion);
-      if (!satisfiedVersions) {
-        satisfiedVersions = new Set();
-        rangeSatisfications.set(bundleVersion, satisfiedVersions);
-      }
-      for (let [otherBundleVersion, resolutions] of pkgVersions.entries()) {
-        let { range } = resolutions[0]; // the resolutions all come from the same version, so just grab the first one
-        // the version used for a declaration should always match its own consumption range
-        if (bundleVersion === otherBundleVersion) {
-          // npm allows non-semver range strings in the right hand side of the
-          // dependency (e.g. URLs, tags, branches, etc)
-          if (!validRange(range)) {
+        let satisfiedVersions = rangeSatisfications.get(bundleVersion);
+        if (!satisfiedVersions) {
+          satisfiedVersions = new Set();
+          rangeSatisfications.set(bundleVersion, satisfiedVersions);
+        }
+        for (let [otherBundleVersion, resolutions] of pkgVersions.entries()) {
+          let { range } = resolutions[0]; // the resolutions all come from the same version, so just grab the first one
+          // the version used for a declaration should always match its own consumption range
+          if (bundleVersion === otherBundleVersion) {
+            // npm allows non-semver range strings in the right hand side of the
+            // dependency (e.g. URLs, tags, branches, etc)
+            if (!validRange(range)) {
+              satisfiedVersions.add(otherBundleVersion);
+              continue;
+            }
+            if (!satisfies(version, range)) {
+              throw new Error(
+                `The version of the package ${pkgHref}/${bundleVersion} does not satisfy it's own consumer's specified range: ${range}. Are you specifying a custom "dependency" recipe? If so, check to make sure the range you are specifying satisfies the version of the package that is actually consumed (as denoted in the catalogjs.lock file).`
+              );
+            }
             satisfiedVersions.add(otherBundleVersion);
             continue;
           }
-          if (!satisfies(version, range)) {
-            throw new Error(
-              `The version of the package ${pkgHref}/${bundleVersion} does not satisfy it's own consumer's specified range: ${range}. Are you specifying a custom "dependency" recipe? If so, check to make sure the range you are specifying satisfies the version of the package that is actually consumed (as denoted in the catalogjs.lock file).`
-            );
-          }
-          satisfiedVersions.add(otherBundleVersion);
-          continue;
-        }
 
-        if (satisfies(version, range)) {
-          // in additional to ensuring that the version is satisfied by the
-          // range, we also need to check if the all of the resolutions'
-          // bindings are available (in the process of rolling up pkgs, we may
-          // have pruned unconsumed bindings)
-          let otherBundleBindings = flatMap(
-            pkgVersions.get(otherBundleVersion)!,
-            (r) =>
-              r.type === "declaration"
-                ? !isNamespaceMarker(r.importedAs)
-                  ? [r.importedAs]
-                  : ["{NamespaceMarker}"]
-                : []
-          );
-          if (difference(otherBundleBindings, bindings).length === 0) {
-            satisfiedVersions.add(otherBundleVersion);
+          if (satisfies(version, range)) {
+            // in additional to ensuring that the version is satisfied by the
+            // range, we also need to check if the all of the resolutions'
+            // bindings are available (in the process of rolling up pkgs, we may
+            // have pruned unconsumed bindings)
+            let otherBundleBindings = flatMap(
+              pkgVersions.get(otherBundleVersion)!,
+              (r) =>
+                r.type === "declaration"
+                  ? !isNamespaceMarker(r.importedAs)
+                    ? [r.importedAs]
+                    : ["{NamespaceMarker}"]
+                  : []
+            );
+            if (difference(otherBundleBindings, bindings).length === 0) {
+              satisfiedVersions.add(otherBundleVersion);
+            }
           }
         }
       }
@@ -300,13 +307,20 @@ export class DependencyResolver {
             range,
             ...dupeResolutions.map((r) => r.range)
           );
-          dupeResolutions.sort(
-            ({ consumedBy: consumedByA }, { consumedBy: consumedByB }) =>
-              consumedByA.url.href.localeCompare(consumedByB.url.href)
+          // when there are duplicate resolutions, first we try to find the
+          // resolution whose consumedBy is actually the bundleHref, if there
+          // are none, then first one alphabetically by consumer href wins
+          let winningResolution = dupeResolutions.find(
+            (r) => r.bundleHref === r.consumedBy.url.href
           );
-          // when there are duplicate resolutions, the first one
-          // alphabetically by consumer href wins
-          if (resolution !== dupeResolutions.shift()) {
+          if (!winningResolution) {
+            dupeResolutions.sort(
+              ({ consumedBy: consumedByA }, { consumedBy: consumedByB }) =>
+                consumedByA.url.href.localeCompare(consumedByB.url.href)
+            );
+            winningResolution = dupeResolutions.shift()!;
+          }
+          if (resolution !== winningResolution) {
             // you lost, we'll add you to the obviatedResolutions handle you there
             continue;
           }
@@ -404,6 +418,8 @@ function resolveDeclaration(
     );
   let resolution: ResolvedDeclarationDependency | undefined;
   if (importedPointer != null) {
+    // if an import is performed, try to resolve the imported module to the
+    // preferred pkg dep version
     let pkgURL = pkgInfoFromCatalogJsURL(importedFromModule.url)?.pkgURL;
     if (pkgURL && depResolver) {
       let _resolution = depResolver.resolutionByConsumptionRegion(
@@ -411,40 +427,25 @@ function resolveDeclaration(
         consumingModule,
         importedPointer
       );
-      if (_resolution?.type === "side-effect") {
-        throw new Error(
-          `the dependency resolution for ${JSON.stringify(
-            importedName
-          )}' in the module ${
-            importedFromModule.url.href
-          } was a "side-effect" type of resolution. Was expecting a "declaration" type of resolution. while building bundle ${
-            bundle.href
-          }`
-        );
-      }
+      assertDeclarationResolution(
+        _resolution,
+        importedName,
+        importedFromModule,
+        bundle
+      );
       resolution = _resolution as ResolvedDeclarationDependency | undefined;
       if (resolution?.importedSource) {
+        // the resolution is an import of a specific pkg version, use that
+        // module as the basis for the importFrom module in the subsequent logic
         ({
           importedSource: { declaredIn: importedFromModule },
         } = resolution);
       } else if (resolution) {
+        // the resolution is a local declaration from an incorporated bundle
+        // (the actual import is the preferred pkg ver)
         let pointer = resolution.consumedByPointer;
         let region = resolution.consumedBy.desc.regions[pointer];
-        if (
-          region.type !== "declaration" ||
-          region.declaration.type !== "local"
-        ) {
-          throw new Error(
-            `expected region to be a local declaration region for ${JSON.stringify(
-              resolution.importedAs
-            )} from module ${resolution?.consumedBy.url.href} region pointer ${
-              resolution?.consumedByPointer
-            } in bundle ${bundle.href}, but it was ${JSON.stringify(
-              region,
-              stringifyReplacer
-            )}`
-          );
-        }
+        assertLocalDeclarationRegion(region, resolution, bundle);
         let declaration = region.declaration;
         let declaredName = declaration.declaredName;
         if (isNamespaceMarker(resolution.importedAs)) {
@@ -467,6 +468,7 @@ function resolveDeclaration(
   }
 
   if (isNamespaceMarker(importedName)) {
+    // if the import is a namespace, we stop and return what we have
     let result: UnresolvedResult = {
       type: "unresolved",
       importedAs: importedName,
@@ -487,6 +489,8 @@ function resolveDeclaration(
       (a) => a.module.url.href === importedFromModule.url.href
     )
   ) {
+    // if the import comes from another bundle, then stop and return what we
+    // have, we are not crossing bundle boundaries
     let result: UnresolvedResult = {
       type: "unresolved",
       importedAs: importedName,
@@ -503,6 +507,7 @@ function resolveDeclaration(
     return result;
   }
 
+  // follow the imported binding in its imported module
   let { module: sourceModule, desc: exportDesc } =
     getExportDesc(importedFromModule, importedName) ?? {};
   if (!sourceModule || !exportDesc) {
@@ -513,6 +518,10 @@ function resolveDeclaration(
   if (
     !ownAssignments.find((a) => a.module.url.href === sourceModule!.url.href)
   ) {
+    // In this case the imported module is actually in a different bundle.
+    // because of export-all, we were not able to realize that until we tried to
+    // resolve the export-all specifiers in getExportDesc().
+
     // TODO we could do better here at figuring out the consuming module--in
     // this case we only look one level deep in the "export *"" chain. this should
     // really be a stack...
@@ -541,6 +550,63 @@ function resolveDeclaration(
     return result;
   }
 
+  // check for pkg resolution as a merit of performing a reexport. reexports are
+  // kind special because they have no local module scope--but we do capture
+  // these code regions as possible consumption points for pkgs.
+  if (depResolver && exportDesc.type === "reexport") {
+    let pkgURL = pkgInfoFromCatalogJsURL(
+      sourceModule.resolvedImports[exportDesc.importIndex].url
+    )?.pkgURL;
+    if (pkgURL) {
+      let resolution = depResolver.resolutionByConsumptionRegion(
+        pkgURL,
+        sourceModule,
+        exportDesc.exportRegion
+      );
+      assertDeclarationResolution(
+        resolution,
+        importedName,
+        importedFromModule,
+        bundle
+      );
+      if (resolution?.importedSource) {
+        return resolveDeclaration(
+          resolution.importedAs,
+          resolution.importedSource.declaredIn,
+          sourceModule,
+          ownAssignments,
+          declarationResolutionCache,
+          depResolver,
+          resolution.consumedByPointer
+        );
+      } else if (resolution) {
+        let pointer = resolution.consumedByPointer;
+        let region = resolution.consumedBy.desc.regions[pointer];
+        assertLocalDeclarationRegion(region, resolution, bundle);
+        let declaration = region.declaration;
+        let declaredName = declaration.declaredName;
+        if (isNamespaceMarker(resolution.importedAs)) {
+          throw new Error("unimplemented");
+        }
+        let result: ResolvedResult = {
+          type: "resolved",
+          module: resolution.consumedBy,
+          importedAs: resolution.importedAs,
+          declaredName,
+          region,
+          declaration,
+          pointer,
+          resolution,
+        };
+        cacheResult(result);
+        return result;
+      }
+    }
+  }
+
+  // Follow the reexports. we follow both the "export blah from x" and a more
+  // verbose "import blah from x; export blah;" that introduces the binding into
+  // the module scope.
   let { declarations } = sourceModule.desc;
   if (
     exportDesc?.type === "reexport" ||
@@ -575,6 +641,8 @@ function resolveDeclaration(
       );
     }
   }
+
+  // At this point we are narrowing in on a module's local declaration
   let { pointer, declaration } = declarations.get(exportDesc.name) ?? {};
   if (!declaration || pointer == null) {
     throw new Error(
@@ -583,6 +651,9 @@ function resolveDeclaration(
   }
 
   if (depResolver && declaration.type === "local" && declaration.original) {
+    // if the local declaration has an original property, then there _must_ be a
+    // pkg resolution for this declaration, so look it up and use the pkg
+    // resolution for the results
     resolution = resolutionByDeclaration(
       declaration,
       sourceModule,
@@ -597,8 +668,28 @@ function resolveDeclaration(
     let _module: Resolution;
     ({ consumedBy: _module, consumedByPointer: pointer } = resolution);
     sourceModule = makeNonCyclic(_module);
+  } else if (depResolver) {
+    // otherwise check to see if this consumption point has a pkg declaration
+    let pkgURL = pkgInfoFromCatalogJsURL(sourceModule.url)?.pkgURL;
+    if (pkgURL) {
+      let maybeResolution = depResolver.resolutionByConsumptionRegion(
+        pkgURL,
+        sourceModule,
+        pointer
+      );
+      assertDeclarationResolution(
+        maybeResolution,
+        exportDesc.name,
+        sourceModule,
+        bundle
+      );
+      if (maybeResolution) {
+        resolution = maybeResolution;
+      }
+    }
   }
 
+  // finally we can return the module's local declaration
   let region = sourceModule.desc.regions[pointer];
   if (region.type !== "declaration") {
     throw new Error(
@@ -652,11 +743,7 @@ function resolutionByDeclaration(
     module,
     pointer
   );
-  if (resolution?.type !== "declaration") {
-    throw new Error(
-      `the dependency resolution for ${declaration.declaredName}' in the module ${module.url.href} was a "side-effect" type of resolution. Was expecting a "declaration" type of resolution.`
-    );
-  }
+  assertDeclarationResolution(resolution, declaration.declaredName, module);
   if (!resolution && declaration.type === "local" && declaration.original) {
     throw new Error(
       `cannot resolve "original" property of the declaration '${
@@ -1052,4 +1139,86 @@ function pointerForImport(
       ) ?? {});
   }
   return pointer;
+}
+
+export function assertDeclarationResolution(
+  resolution:
+    | ResolvedSideEffectDependency
+    | ResolvedDeclarationDependency
+    | undefined,
+  name: string | NamespaceMarker,
+  module: Resolution
+): asserts resolution is ResolvedDeclarationDependency | undefined;
+export function assertDeclarationResolution(
+  resolution:
+    | ResolvedSideEffectDependency
+    | ResolvedDeclarationDependency
+    | undefined,
+  name: string | NamespaceMarker,
+  module: Resolution,
+  bundle?: URL
+): asserts resolution is ResolvedDeclarationDependency | undefined;
+export function assertDeclarationResolution(
+  resolution:
+    | ResolvedSideEffectDependency
+    | ResolvedDeclarationDependency
+    | undefined,
+  name: string | NamespaceMarker,
+  module: Resolution,
+  bundle?: URL
+): asserts resolution is ResolvedDeclarationDependency | undefined {
+  if (resolution?.type === "side-effect") {
+    throw new Error(
+      `the dependency resolution for ${JSON.stringify(name)}' in the module ${
+        module.url.href
+      } was a "side-effect" type of resolution. Was expecting a "declaration" type of resolution.${
+        bundle ? " while building bundle " + bundle.href : ""
+      }`
+    );
+  }
+}
+
+function assertLocalDeclarationRegion(
+  region: CodeRegion,
+  resolution: ResolvedDeclarationDependency,
+  bundle: URL
+): asserts region is DeclarationCodeRegion {
+  if (region.type !== "declaration") {
+    throw new Error(
+      `expected region to be a declaration region for ${JSON.stringify(
+        resolution.importedAs
+      )} from module ${resolution?.consumedBy.url.href} region pointer ${
+        resolution?.consumedByPointer
+      } in bundle ${bundle.href}, but it was ${JSON.stringify(
+        region,
+        stringifyReplacer
+      )}`
+    );
+  }
+  assertLocalDeclarationDescription(
+    region.declaration,
+    region,
+    resolution,
+    bundle
+  );
+}
+
+function assertLocalDeclarationDescription(
+  desc: DeclarationDescription,
+  region: CodeRegion,
+  resolution: ResolvedDeclarationDependency,
+  bundle: URL
+): asserts desc is LocalDeclarationDescription {
+  if (desc.type !== "local") {
+    throw new Error(
+      `expected declaration region to has a local declaration type for ${JSON.stringify(
+        resolution.importedAs
+      )} from module ${resolution?.consumedBy.url.href} region pointer ${
+        resolution?.consumedByPointer
+      } in bundle ${bundle.href}, but it was ${JSON.stringify(
+        region,
+        stringifyReplacer
+      )}`
+    );
+  }
 }
