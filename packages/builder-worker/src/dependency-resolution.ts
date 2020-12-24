@@ -7,6 +7,7 @@ import {
   CodeRegion,
   DeclarationCodeRegion,
   DeclarationDescription,
+  documentPointer,
   isNamespaceMarker,
   LocalDeclarationDescription,
   NamespaceMarker,
@@ -24,7 +25,7 @@ import {
   setTripleNestedMapping,
 } from "./utils";
 import { getExportDesc, getExports, isExportAllMarker } from "./describe-file";
-import { difference, flatMap } from "lodash";
+import { difference, flatMap, groupBy } from "lodash";
 
 export interface ResolvedResult {
   type: "resolved";
@@ -280,6 +281,33 @@ export class DependencyResolver {
           ...[...consumedVersions].map((ver) => pkgVersions!.get(ver)![0].range)
         );
       }
+      let bundleHref = pkgVersions.get(selectedBundleVer)![0].bundleHref;
+      let dupeSideEffectResolutions = groupBy(
+        pkgVersions
+          .get(selectedBundleVer)!
+          .filter(
+            (r) => r.type === "side-effect"
+          ) as ResolvedSideEffectDependency[],
+        (r) => r.consumedBy.url.href
+      );
+      // when there are duplicate resolutions, first we try to find the
+      // resolution whose consumedBy is actually the bundleHref, if there
+      // are none, then first one alphabetically by consumer href wins
+      let winningSideEffectConsumer: string | undefined;
+      let consumerHrefs = Object.keys(dupeSideEffectResolutions);
+      if (consumerHrefs.length > 1) {
+        winningSideEffectConsumer = consumerHrefs.find(
+          (consumerHref) => consumerHref === bundleHref
+        );
+        // our own bundle as a consumer has the lowest priority
+        consumerHrefs = consumerHrefs.filter((h) => h !== this.bundle.href);
+        if (!winningSideEffectConsumer) {
+          consumerHrefs.sort((a, b) => a.localeCompare(b));
+          winningSideEffectConsumer = consumerHrefs.shift()!;
+        }
+      } else {
+        winningSideEffectConsumer = consumerHrefs[0];
+      }
 
       for (let resolution of pkgVersions.get(selectedBundleVer)!) {
         let obviatedResolutions = obviatedVersions
@@ -325,6 +353,14 @@ export class DependencyResolver {
             continue;
           }
           obviatedResolutions.push(...dupeResolutions);
+        }
+        if (
+          resolution.type === "side-effect" &&
+          resolution.consumedBy.url.href !== winningSideEffectConsumer
+        ) {
+          // you lost, we only keep track of the winning side effect resolutions
+          // (there is no identity map for side effects)
+          continue;
         }
         let finalResolution = { ...resolution, range };
         setDoubleNestedMapping(
@@ -826,6 +862,22 @@ function gatherDependencies(
       );
     }
     for (let { module } of ownAssignments) {
+      for (let pointer of module.desc.regions[documentPointer].dependsOn) {
+        let region = module.desc.regions[pointer];
+        if (region.type === "general") {
+          addResolution(
+            bundleHref,
+            {
+              type: "side-effect",
+              consumedByPointer: pointer,
+              consumedBy: module,
+              range: dependency.range,
+              bundleHref: bundleHref,
+            },
+            consumedDeps
+          );
+        }
+      }
       for (let [exportName, exportDesc] of module.desc.exports) {
         if (exportDesc.type !== "reexport" || isExportAllMarker(exportName)) {
           continue;
@@ -938,6 +990,7 @@ function gatherDependencies(
               (source as UnresolvedResult).importedFromModule.url.href
           )
         ) {
+          // TODO add resolution for the namespace marker
           addResolutionsForNamespace(
             makeNonCyclic(source.importedFromModule),
             dependency,
@@ -1211,7 +1264,7 @@ function assertLocalDeclarationDescription(
 ): asserts desc is LocalDeclarationDescription {
   if (desc.type !== "local") {
     throw new Error(
-      `expected declaration region to has a local declaration type for ${JSON.stringify(
+      `expected declaration region to have a local declaration type for ${JSON.stringify(
         resolution.importedAs
       )} from module ${resolution?.consumedBy.url.href} region pointer ${
         resolution?.consumedByPointer

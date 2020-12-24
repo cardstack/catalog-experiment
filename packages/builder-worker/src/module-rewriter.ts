@@ -10,6 +10,8 @@ import {
   RegionEditor,
   DeclarationCodeRegion,
   CodeRegion,
+  RegionPointer,
+  DeclarationDescription,
 } from "./code-region";
 import { BundleAssignment } from "./nodes/bundle";
 import stringify from "json-stable-stringify";
@@ -22,6 +24,12 @@ import {
 import { depAsURL, Dependencies } from "./nodes/entrypoint";
 import { DependencyResolver } from "./dependency-resolution";
 import { maybeRelativeURL } from "./path";
+
+export interface Editor {
+  editor: RegionEditor;
+  module: ModuleResolution;
+  sideEffectDeclarations: Set<RegionPointer>;
+}
 
 export class HeadState {
   readonly usedNames: Map<
@@ -61,10 +69,10 @@ export class HeadState {
   // export names associated with the binding
   readonly multiExportedBindings: Map<string, Map<string, string[]>>;
 
-  readonly visited: { module: ModuleResolution; editor: RegionEditor }[] = [];
-  private queue: { module: ModuleResolution; editor: RegionEditor }[] = [];
+  readonly visited: Editor[] = [];
+  private queue: Editor[] = [];
 
-  constructor(editors: { module: ModuleResolution; editor: RegionEditor }[]) {
+  constructor(editors: Editor[]) {
     // we reverse the order of the modules to append such that we first emit the
     // modules that are closest to the entrypoint and work our way towards the
     // deps. This way the bindings that are closest to the entrypoints have the
@@ -75,7 +83,7 @@ export class HeadState {
     this.multiExportedBindings = this.discoverMultipleExports();
   }
 
-  next(): { module: ModuleResolution; editor: RegionEditor } | undefined {
+  next(): Editor | undefined {
     let next = this.queue.shift();
     if (next) {
       this.visited.unshift(next);
@@ -176,6 +184,7 @@ export class ModuleRewriter {
     private bundle: URL,
     readonly module: ModuleResolution,
     private state: HeadState,
+    private sideEffectDeclarations: Set<RegionPointer>,
     private bundleAssignments: BundleAssignment[],
     readonly editor: RegionEditor,
     private dependencies: Dependencies,
@@ -298,12 +307,22 @@ export class ModuleRewriter {
             );
           }
           if (!assignedName) {
-            // this is just a plain jane local internal declaration. it may or
-            // may not actually be a region that we keep, as there could be
-            // multiple module rewriters for the same module. To keep everything
-            // straight, check our state to see if we have already assigned a
-            // name for this binding.
-            assignedName = this.maybeAssignLocalName(localName);
+            if (
+              this.sideEffectDeclarations.has(pointer) &&
+              this.isUnconsumed(localDesc, pointer)
+            ) {
+              assignedName = this.maybeAssignLocalName(
+                localName,
+                `unused_${localName}`
+              );
+            } else {
+              // this is just a plain jane local internal declaration. it may or
+              // may not actually be a region that we keep, as there could be
+              // multiple module rewriters for the same module. To keep everything
+              // straight, check our state to see if we have already assigned a
+              // name for this binding.
+              assignedName = this.maybeAssignLocalName(localName);
+            }
           }
         }
         if (!assignedName) {
@@ -530,14 +549,17 @@ export class ModuleRewriter {
     return assignedName;
   }
 
-  private maybeAssignLocalName(name: string): string {
+  private maybeAssignLocalName(
+    name: string,
+    suggestedName: string = name
+  ): string {
     let alreadyAssignedName = this.state.assignedLocalNames
       .get(this.module.url.href)
       ?.get(name);
     if (alreadyAssignedName) {
       return alreadyAssignedName;
     }
-    let assignedName = this.unusedNameLike(name);
+    let assignedName = this.unusedNameLike(suggestedName);
     setDoubleNestedMapping(
       this.module.url.href,
       name,
@@ -584,5 +606,24 @@ export class ModuleRewriter {
     if (originalName !== assignedName) {
       this.editor.rename(originalName, assignedName);
     }
+  }
+
+  private isUnconsumed(
+    desc: DeclarationDescription,
+    pointer: RegionPointer
+  ): boolean {
+    let references = [...desc.references];
+    let { dependsOn } = this.module.desc.regions[pointer];
+    // remove the self-reference
+    for (let p of dependsOn) {
+      let i = references.findIndex((r) => r === p);
+      if (i > -1) {
+        references.splice(i, 1);
+        break; // only remove the first one, so we don't mess up recursive functions
+      }
+    }
+    return references.every(
+      (p) => this.editor.dispositions[p].state === "removed"
+    );
   }
 }

@@ -2,6 +2,7 @@ import { BuilderNode, NextNode, Value } from "./common";
 import { makeNonCyclic, ModuleResolution, Resolution } from "./resolution";
 import { getExportDesc, getExports, ModuleDescription } from "../describe-file";
 import {
+  CodeRegion,
   DeclarationCodeRegion,
   documentPointer,
   isNamespaceMarker,
@@ -9,7 +10,7 @@ import {
   RegionPointer,
 } from "../code-region";
 import { BundleAssignment, BundleAssignmentsNode } from "./bundle";
-import { HeadState } from "../module-rewriter";
+import { HeadState, Editor } from "../module-rewriter";
 import { AppendModuleNode, FinishAppendModulesNode } from "./append-module";
 import { Dependencies } from "./entrypoint";
 import { pkgInfoFromCatalogJsURL } from "../resolver";
@@ -66,7 +67,7 @@ export class CombineModulesNode implements BuilderNode {
 
     let exposed = exposedRegions(this.bundle, assignments, depResolver);
 
-    let editors: { module: ModuleResolution; editor: RegionEditor }[] = [];
+    let editors: Editor[] = [];
     let visitedRegions: Map<
       string,
       Map<RegionPointer, RegionEditor>
@@ -100,6 +101,7 @@ export class CombineModulesNode implements BuilderNode {
         editors.splice(index, 0, {
           module,
           editor,
+          sideEffectDeclarations: new Set(),
         });
       }
       discoverIncludedRegions(
@@ -154,7 +156,7 @@ export class CombineModulesNode implements BuilderNode {
     );
 
     let headState = new HeadState(editors);
-    let { module, editor } = headState.next() ?? {};
+    let { module, editor, sideEffectDeclarations } = headState.next() ?? {};
     if (!module || !editor) {
       // this is an empty module, like just "export{};"
       return {
@@ -174,6 +176,7 @@ export class CombineModulesNode implements BuilderNode {
         module,
         this.bundle,
         editor,
+        sideEffectDeclarations ?? new Set(),
         assignments,
         this.dependencies,
         depResolver
@@ -187,10 +190,15 @@ function discoverIncludedRegions(
   module: Resolution,
   pointer: RegionPointer,
   editor: RegionEditor,
-  editors: { module: ModuleResolution; editor: RegionEditor }[],
+  editors: Editor[],
   ownAssignments: BundleAssignment[],
   depResolver: DependencyResolver,
-  visitedRegions: Map<string, Map<RegionPointer, RegionEditor>>
+  visitedRegions: Map<string, Map<RegionPointer, RegionEditor>>,
+  stack: {
+    module: Resolution;
+    pointer: RegionPointer;
+    region: CodeRegion;
+  }[] = [{ module, pointer, region: module.desc.regions[pointer] }]
 ) {
   let region = module.desc.regions[pointer];
   if (visitedRegions.get(module.url.href)?.has(pointer)) {
@@ -228,14 +236,8 @@ function discoverIncludedRegions(
   }
   visited.set(pointer, editor);
 
-  // collapse module side effects--except for declaration side effects.
-  // declarations cannot be separated from their side effects
-  if (
-    region.original &&
-    ![...region.dependsOn].find(
-      (p) => module.desc.regions[p].type === "declaration"
-    )
-  ) {
+  // collapse module side effects
+  if (region.original) {
     let pkgURL = pkgInfoFromCatalogJsURL(new URL(region.original.bundleHref))
       ?.pkgURL;
     if (!pkgURL) {
@@ -249,7 +251,30 @@ function discoverIncludedRegions(
       pointer
     );
     if (!resolution) {
-      return; // this region has been collapsed
+      // this side effect can be collapsed--the pkg's resolved module (which is
+      // not this module) should already be including all the necessary side
+      // effects
+      let declarationPointer = [...region.dependsOn].find(
+        (p) => module.desc.regions[p].type === "declaration"
+      );
+      if (declarationPointer != null) {
+        // collapse the declaration for this side effect too
+        editor.removeRegion(declarationPointer);
+        let declarationRegion = module.desc.regions[
+          declarationPointer
+        ] as DeclarationCodeRegion;
+        if (declarationRegion.declaration.type === "import") {
+          throw new Error(
+            `expected region ${declarationPointer} of ${module.url.href} to be local declaration while building bundle ${bundle.href}`
+          );
+        }
+        let declaratorOfPointer =
+          declarationRegion.declaration.declaratorOfRegion;
+        if (declaratorOfPointer != null) {
+          editor.removeRegion(declaratorOfPointer);
+        }
+      }
+      return;
     }
   }
 
@@ -270,6 +295,16 @@ function discoverIncludedRegions(
         editor = addNewEditor(source.module, editor, editors);
         module = source.module;
         region = editor.regions[source.pointer];
+        discoverSideEffects(
+          bundle,
+          module,
+          editor,
+          editors,
+          ownAssignments,
+          depResolver,
+          visitedRegions,
+          stack
+        );
       }
       discoverIncludedRegions(
         bundle,
@@ -279,7 +314,15 @@ function discoverIncludedRegions(
         editors,
         ownAssignments,
         depResolver,
-        visitedRegions
+        visitedRegions,
+        [
+          {
+            module: source.module,
+            pointer: source.pointer,
+            region: editor.regions[source.pointer],
+          },
+          ...stack,
+        ]
       );
     } else {
       let consumingModule = makeNonCyclic(source.consumingModule);
@@ -295,6 +338,16 @@ function discoverIncludedRegions(
       }
       if (source.consumingModule.url.href !== module.url.href) {
         editor = addNewEditor(source.consumingModule, editor, editors);
+        discoverSideEffects(
+          bundle,
+          source.consumingModule,
+          editor,
+          editors,
+          ownAssignments,
+          depResolver,
+          visitedRegions,
+          stack
+        );
       }
       if (
         ownAssignments.find(
@@ -319,6 +372,16 @@ function discoverIncludedRegions(
           editor,
           editors
         );
+        discoverSideEffects(
+          bundle,
+          source.importedFromModule,
+          newEditor,
+          editors,
+          ownAssignments,
+          depResolver,
+          visitedRegions,
+          stack
+        );
         discoverIncludedRegionsForNamespace(
           bundle,
           source.importedFromModule,
@@ -326,7 +389,8 @@ function discoverIncludedRegions(
           editors,
           ownAssignments,
           depResolver,
-          visitedRegions
+          visitedRegions,
+          stack
         );
         return; // don't include the dependsOn in this signal
       } else {
@@ -351,7 +415,11 @@ function discoverIncludedRegions(
       pointer,
       region,
       editor,
-      editors
+      editors,
+      bundle,
+      ownAssignments,
+      visitedRegions,
+      stack
     ));
     if (!isRegionObviated) {
       // the region for the consumption point is actually the region we
@@ -366,7 +434,8 @@ function discoverIncludedRegions(
       editors,
       ownAssignments,
       depResolver,
-      visitedRegions
+      visitedRegions,
+      [{ module, pointer, region }, ...stack]
     );
   } else if (region.type === "import" && !region.isDynamic) {
     // we mark the external bundle import region as something we want to keep
@@ -380,19 +449,24 @@ function discoverIncludedRegions(
       ownAssignments.find((a) => a.module.url.href === importedModule.url.href)
     ) {
       let newEditor = addNewEditor(importedModule, editor, editors);
-      discoverIncludedRegions(
+      discoverSideEffects(
         bundle,
         importedModule,
-        documentPointer,
         newEditor,
         editors,
         ownAssignments,
         depResolver,
-        visitedRegions
+        visitedRegions,
+        stack
       );
     }
     return; // don't include the dependsOn in this signal
   } else {
+    if (hasModuleDeclarationWithSideEffectSignature(stack)) {
+      editors
+        .find(({ editor: e }) => e === editor)!
+        .sideEffectDeclarations.add(pointer);
+    }
     editor.keepRegion(pointer);
   }
   for (let depPointer of region.dependsOn) {
@@ -404,19 +478,62 @@ function discoverIncludedRegions(
       editors,
       ownAssignments,
       depResolver,
-      visitedRegions
+      visitedRegions,
+      [
+        { module, pointer: depPointer, region: editor.regions[depPointer] },
+        ...stack,
+      ]
     );
   }
+}
+
+function discoverSideEffects(
+  bundle: URL,
+  module: Resolution,
+  editor: RegionEditor,
+  editors: Editor[],
+  ownAssignments: BundleAssignment[],
+  depResolver: DependencyResolver,
+  visitedRegions: Map<string, Map<RegionPointer, RegionEditor>>,
+  stack: {
+    module: Resolution;
+    pointer: RegionPointer;
+    region: CodeRegion;
+  }[]
+) {
+  discoverIncludedRegions(
+    bundle,
+    module,
+    documentPointer,
+    editor,
+    editors,
+    ownAssignments,
+    depResolver,
+    visitedRegions,
+    [
+      {
+        module,
+        pointer: documentPointer,
+        region: editor.regions[documentPointer],
+      },
+      ...stack,
+    ]
+  );
 }
 
 function discoverIncludedRegionsForNamespace(
   bundle: URL,
   module: Resolution,
   editor: RegionEditor,
-  editors: { module: ModuleResolution; editor: RegionEditor }[],
+  editors: Editor[],
   ownAssignments: BundleAssignment[],
   depResolver: DependencyResolver,
-  visitedRegions: Map<string, Map<RegionPointer, RegionEditor>>
+  visitedRegions: Map<string, Map<RegionPointer, RegionEditor>>,
+  stack: {
+    module: Resolution;
+    pointer: RegionPointer;
+    region: CodeRegion;
+  }[]
 ) {
   let exports = getExports(module);
   for (let [exportName, { module: sourceModule }] of exports.entries()) {
@@ -432,6 +549,16 @@ function discoverIncludedRegionsForNamespace(
       let currentEditor = editor;
       if (sourceModule.url.href !== module.url.href) {
         currentEditor = addNewEditor(sourceModule, editor, editors);
+        discoverSideEffects(
+          bundle,
+          sourceModule,
+          currentEditor,
+          editors,
+          ownAssignments,
+          depResolver,
+          visitedRegions,
+          stack
+        );
       }
       discoverIncludedRegions(
         bundle,
@@ -441,7 +568,15 @@ function discoverIncludedRegionsForNamespace(
         editors,
         ownAssignments,
         depResolver,
-        visitedRegions
+        visitedRegions,
+        [
+          {
+            module: sourceModule,
+            pointer,
+            region: currentEditor.regions[pointer],
+          },
+          ...stack,
+        ]
       );
     } else {
       // we mark the namespace import region as something we want to keep as a
@@ -460,6 +595,16 @@ function discoverIncludedRegionsForNamespace(
       if (isNamespaceMarker(source.importedAs)) {
         if (source.consumingModule.url.href !== module.url.href) {
           editor = addNewEditor(source.consumingModule, editor, editors);
+          discoverSideEffects(
+            bundle,
+            source.consumingModule,
+            editor,
+            editors,
+            ownAssignments,
+            depResolver,
+            visitedRegions,
+            stack
+          );
         }
         if (source.importedPointer == null) {
           throw new Error(
@@ -472,6 +617,16 @@ function discoverIncludedRegionsForNamespace(
           editor,
           editors
         );
+        discoverSideEffects(
+          bundle,
+          source.importedFromModule,
+          newEditor,
+          editors,
+          ownAssignments,
+          depResolver,
+          visitedRegions,
+          stack
+        );
         discoverIncludedRegionsForNamespace(
           bundle,
           source.importedFromModule,
@@ -479,7 +634,8 @@ function discoverIncludedRegionsForNamespace(
           editors,
           ownAssignments,
           depResolver,
-          visitedRegions
+          visitedRegions,
+          stack
         );
       } else {
         // we mark the external bundle import region as something we want to keep
@@ -492,13 +648,21 @@ function discoverIncludedRegionsForNamespace(
 }
 
 function resolveDependency(
-  bundleHref: string,
+  pkgBundleHref: string,
   depResolver: DependencyResolver,
   consumingModule: ModuleResolution,
   pointer: RegionPointer,
   region: DeclarationCodeRegion,
   editor: RegionEditor,
-  editors: { module: ModuleResolution; editor: RegionEditor }[]
+  editors: Editor[],
+  bundle: URL,
+  ownAssignments: BundleAssignment[],
+  visitedRegions: Map<string, Map<RegionPointer, RegionEditor>>,
+  stack: {
+    module: Resolution;
+    pointer: RegionPointer;
+    region: CodeRegion;
+  }[]
 ): {
   isRegionObviated: boolean;
   module: ModuleResolution;
@@ -509,7 +673,7 @@ function resolveDependency(
 } {
   let resolution: ResolvedDependency | undefined;
   let module: ModuleResolution = consumingModule;
-  let pkgURL = pkgInfoFromCatalogJsURL(new URL(bundleHref))?.pkgURL;
+  let pkgURL = pkgInfoFromCatalogJsURL(new URL(pkgBundleHref))?.pkgURL;
   let isRegionObviated = false;
   if (!pkgURL) {
     // not all modules are packages
@@ -539,6 +703,7 @@ function resolveDependency(
       resolution,
     };
   }
+  let editorChanged = false;
   if (
     resolution.consumedBy.url.href !== consumingModule.url.href ||
     resolution.consumedByPointer !== pointer
@@ -552,6 +717,7 @@ function resolveDependency(
         editor,
         editors
       );
+      editorChanged = true;
       module = resolution.importedSource.declaredIn;
       region = editor.regions[
         resolution.importedSource.pointer
@@ -559,12 +725,25 @@ function resolveDependency(
       pointer = resolution.importedSource.pointer!;
     } else {
       editor = addNewEditor(resolution.consumedBy, editor, editors);
+      editorChanged = true;
       module = resolution.consumedBy;
       region = editor.regions[
         resolution.consumedByPointer
       ] as DeclarationCodeRegion;
       pointer = resolution.consumedByPointer;
     }
+  }
+  if (editorChanged) {
+    discoverSideEffects(
+      bundle,
+      module,
+      editor,
+      editors,
+      ownAssignments,
+      depResolver,
+      visitedRegions,
+      stack
+    );
   }
   return {
     isRegionObviated,
@@ -579,7 +758,7 @@ function resolveDependency(
 function addNewEditor(
   moduleForNewEditor: Resolution,
   insertBefore: RegionEditor,
-  editors: { module: ModuleResolution; editor: RegionEditor }[]
+  editors: Editor[]
 ): RegionEditor {
   let nonCyclicModule = makeNonCyclic(moduleForNewEditor);
   let newEditor = new RegionEditor(
@@ -602,6 +781,7 @@ function addNewEditor(
     {
       module: nonCyclicModule,
       editor: newEditor,
+      sideEffectDeclarations: new Set(),
     }
   );
   return newEditor;
@@ -617,6 +797,32 @@ export function assertDeclarationResolution(
     throw new Error(
       `the dependency resolution for the pkg ${pkgURL.href} consumed in the module ${module.url.href} at region ${pointer} was a "side-effect" type of resolution. Was expecting a "declaration" type of resolution while building bundle ${bundle.href}`
     );
+  }
+}
+
+// the way we got to this region is unique to a side effect that is part of a
+// module declaration
+function hasModuleDeclarationWithSideEffectSignature(
+  stack: { module: Resolution; pointer: RegionPointer; region: CodeRegion }[]
+): boolean {
+  let stackSizeAtLeast2Signature =
+    stack.length >= 2 &&
+    stack[0].module.url.href === stack[1].module.url.href &&
+    stack[0].region.dependsOn.has(stack[1].pointer) &&
+    stack[1].region.dependsOn.has(stack[0].pointer) &&
+    stack[1].region.type === "general" &&
+    stack[0].region.type === "declaration" &&
+    stack[1].module.desc.regions[documentPointer].dependsOn.has(
+      stack[1].pointer
+    );
+  if (stack.length > 2) {
+    return (
+      stackSizeAtLeast2Signature &&
+      stack[2].module.url.href === stack[0].module.url.href &&
+      stack[2].pointer === documentPointer
+    );
+  } else {
+    return stackSizeAtLeast2Signature;
   }
 }
 

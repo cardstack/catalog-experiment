@@ -17,6 +17,7 @@ import {
   isMemberExpression,
   isObjectExpression,
   isObjectProperty,
+  SpreadElement,
   isLVal,
 } from "@babel/types";
 import { assertNever } from "@catalogjs/shared/util";
@@ -378,6 +379,9 @@ export function describeFile(
         sideEffects = builder.createCodeRegion(sideEffectsRegion, undefined);
         regionDeps.add(sideEffects);
         desc.regions[documentPointer].dependsOn.add(sideEffects);
+      }
+      if (references[0] != null) {
+        regionDeps.add(references[0]); // the first reference is the self-reference in the declaration
       }
       let declarationPointer = builder.createCodeRegion(
         declaration,
@@ -1150,7 +1154,7 @@ function declarationForIdentifier(
   }
 }
 
-function isSideEffectFree(node: Expression): boolean {
+function isSideEffectFree(node: Expression | SpreadElement): boolean {
   switch (node.type) {
     case "BooleanLiteral":
     case "NumericLiteral":
@@ -1160,14 +1164,21 @@ function isSideEffectFree(node: Expression): boolean {
     case "FunctionExpression":
     case "ClassExpression":
       return true;
+    case "MemberExpression":
+      return isSideEffectFree(node.property);
     case "ArrayExpression":
       return node.elements.every((e) => isSideEffectFree(e as Expression));
+    case "SpreadElement":
+      return isSideEffectFree(node.argument);
     case "ObjectExpression":
       return node.properties.every(
         (p) =>
           p.type === "ObjectMethod" ||
-          p.type === "SpreadElement" ||
-          isSideEffectFree(p.value as Expression)
+          isSideEffectFree(
+            p.type === "SpreadElement"
+              ? (p.argument as Expression)
+              : (p.value as Expression)
+          )
       );
     default:
       return false;

@@ -1087,6 +1087,24 @@ QUnit.module("describe-file", function () {
     );
   });
 
+  test("code regions for an ArrayPattern can be used to replace it", function (assert) {
+    let { desc, editor } = describeESModule(`
+      let [ x, y ] = bar();
+      console.log(y);
+      export {};
+    `);
+    keepAll(desc, editor);
+    editor.rename("y", "yas");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+      let [ x, yas ] = bar();
+      console.log(yas);
+      export {};
+    `
+    );
+  });
+
   test("rename an exported const", async function (assert) {
     let { desc, editor } = describeESModule(`export const a = 'a';`);
     keepAll(desc, editor);

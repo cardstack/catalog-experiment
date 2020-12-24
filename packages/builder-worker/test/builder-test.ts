@@ -1725,7 +1725,7 @@ QUnit.module("module builder", function (origHooks) {
         await bundleCode(assert.fs),
         `
         function i() { return 1; }
-        let a = initCache();
+        let unused_a = initCache();
         console.log(i());
         export {};
         `
@@ -1804,7 +1804,7 @@ QUnit.module("module builder", function (origHooks) {
           }
         }
         let b = 'foo';
-        let a = new Cache(b);
+        let unused_a = new Cache(b);
         console.log(i());
         export {};
         `
@@ -2239,7 +2239,7 @@ QUnit.module("module builder", function (origHooks) {
       assert.codeEqual(
         await bundleCode(assert.fs),
         `
-        let a = initCache();
+        let unused_a = initCache();
         export {};
         `
       );
@@ -2257,7 +2257,7 @@ QUnit.module("module builder", function (origHooks) {
       assert.codeEqual(
         await bundleCode(assert.fs),
         `
-        let a = initCache();
+        let unused_a = initCache();
         export {};
         `
       );
@@ -2275,7 +2275,7 @@ QUnit.module("module builder", function (origHooks) {
       assert.codeEqual(
         await bundleCode(assert.fs),
         `
-        let a = initCache();
+        let unused_a = initCache();
         export {};
         `
       );
@@ -2293,7 +2293,7 @@ QUnit.module("module builder", function (origHooks) {
       assert.codeEqual(
         await bundleCode(assert.fs),
         `
-        let a = initACache(), e = initECache();
+        let unused_a = initACache(), unused_e = initECache();
         export {};
         `
       );
@@ -2310,7 +2310,7 @@ QUnit.module("module builder", function (origHooks) {
       assert.codeEqual(
         await bundleCode(assert.fs),
         `
-        let a = initCache();
+        let unused_a = initCache();
         export {};
         `
       );
@@ -2328,7 +2328,7 @@ QUnit.module("module builder", function (origHooks) {
       assert.codeEqual(
         await bundleCode(assert.fs),
         `
-        let { x } = initCache();
+        let { x: unused_x } = initCache();
         export {};
         `
       );
@@ -2345,7 +2345,7 @@ QUnit.module("module builder", function (origHooks) {
       assert.codeEqual(
         await bundleCode(assert.fs),
         `
-        let [ x ] = initCache();
+        let [ unused_x ] = initCache();
         export {};
         `
       );
@@ -2362,7 +2362,7 @@ QUnit.module("module builder", function (origHooks) {
       assert.codeEqual(
         await bundleCode(assert.fs),
         `
-        let { a: [ ...x ] } = initCache();
+        let { a: [ ...unused_x ] } = initCache();
         export {};
         `
       );
@@ -2379,7 +2379,7 @@ QUnit.module("module builder", function (origHooks) {
       assert.codeEqual(
         await bundleCode(assert.fs),
         `
-        let { x, y } = initCache();
+        let { x: unused_x, y: unused_y } = initCache();
         export {};
         `
       );
@@ -2397,7 +2397,7 @@ QUnit.module("module builder", function (origHooks) {
       assert.codeEqual(
         await bundleCode(assert.fs),
         `
-        let { x = initCache() } = foo;
+        let { x: unused_x = initCache() } = foo;
         export {};
         `
       );
@@ -2415,7 +2415,7 @@ QUnit.module("module builder", function (origHooks) {
       assert.codeEqual(
         await bundleCode(assert.fs),
         `
-        let { x = initCache() } = foo, z = initZCache();
+        let { x: unused_x = initCache() } = foo, unused_z = initZCache();
         export {};
         `
       );

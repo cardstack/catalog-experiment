@@ -518,7 +518,28 @@ export class RegionBuilder {
       // we say the ObjectProperty is "around" the Identifier and not "within".
       let newType = this.types.get(newRegion.index);
       let otherType = this.types.get(other);
-      if (newType === otherType) {
+      let otherRegion = this.getRegion(other);
+      let declarationReferenceTypes = ["declaration", "reference"];
+      let needsDeclarationReferenceTieBreak =
+        declarationReferenceTypes.includes(newRegion.type) &&
+        declarationReferenceTypes.includes(otherRegion.type) &&
+        newType === otherType;
+      if (
+        needsDeclarationReferenceTieBreak &&
+        newRegion.type === otherRegion.type
+      ) {
+        return "same";
+      } else if (
+        needsDeclarationReferenceTieBreak &&
+        newRegion.type === "reference"
+      ) {
+        return "within";
+      } else if (
+        needsDeclarationReferenceTieBreak &&
+        otherRegion.type === "reference"
+      ) {
+        return "around";
+      } else if (newType === otherType) {
         return "same";
       } else if (newType === "Identifier") {
         return "within";
