@@ -40,7 +40,7 @@ interface DependencyBase {
 export interface ResolvedDeclarationDependency extends DependencyBase {
   type: "declaration";
   importedSource?: {
-    pointer: RegionPointer;
+    pointer: RegionPointer | undefined;
     declaredIn: ModuleResolution;
   };
   importedAs: string | NamespaceMarker;
@@ -541,13 +541,13 @@ function resolveDeclaration(
         assertLocalDeclarationRegion(region, resolution, bundle);
         let declaration = region.declaration;
         let declaredName = declaration.declaredName;
-        if (isNamespaceMarker(resolution.importedAs)) {
-          throw new Error("unimplemented");
-        }
+        let bindingName = isNamespaceMarker(resolution.importedAs)
+          ? declaredName
+          : resolution.importedAs;
         let result: ResolvedResult = {
           type: "resolved",
           module: resolution.consumedBy,
-          importedAs: resolution.importedAs,
+          importedAs: bindingName,
           declaredName,
           region,
           declaration,
@@ -930,6 +930,23 @@ function gatherDependencies(
           module.resolvedImports[exportDesc.importIndex]
         );
         if (isNamespaceMarker(exportDesc.name)) {
+          addResolution(
+            bundleHref,
+            {
+              type: "declaration",
+              importedSource: {
+                pointer: undefined,
+                declaredIn: pkgModule,
+              },
+              bundleHref,
+              consumedBy: module,
+              consumedByPointer: exportDesc.exportRegion,
+              importedAs: NamespaceMarker,
+              source: pkgModule.url.href,
+              range: dependency.range,
+            },
+            consumedDeps
+          );
           addResolutionsForNamespace(
             pkgModule,
             dependency,
@@ -1055,9 +1072,26 @@ function gatherDependencies(
                 (source as UnresolvedResult).importedFromModule.url.href
             )
           ) {
-            // TODO add resolution for the namespace marker
+            let importedFrom = makeNonCyclic(source.importedFromModule);
+            addResolution(
+              bundleHref,
+              {
+                type: "declaration",
+                importedSource: {
+                  pointer: undefined,
+                  declaredIn: importedFrom,
+                },
+                bundleHref,
+                consumedBy: module,
+                consumedByPointer: pointer,
+                importedAs: NamespaceMarker,
+                range: dependency.range,
+                source: importedFrom.url.href,
+              },
+              consumedDeps
+            );
             addResolutionsForNamespace(
-              makeNonCyclic(source.importedFromModule),
+              importedFrom,
               dependency,
               bundleHref,
               ownAssignments,

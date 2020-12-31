@@ -1218,8 +1218,9 @@ function buildNamespaces(
         namespacesRegions.reduce((sum, regions) => (sum += regions.length), 0);
       let declarationRegion: GeneralCodeRegion | undefined;
       let regions: CodeRegion[] = [];
-      let nameMap = state.assignedNamespaces.get(assignedName);
-      if (nameMap && nameMap?.size > 0) {
+      let { nameMap, importedModule, resolution } =
+        state.assignedNamespaces.get(assignedName) ?? {};
+      if (nameMap && nameMap?.size > 0 && importedModule) {
         let declarationCode: string[] = [`const ${assignedName} = {`];
         declarationCode.push(
           [...nameMap]
@@ -1263,7 +1264,7 @@ function buildNamespaces(
           preserveGaps: false,
           declaration: {
             type: "local",
-            source: bundle.href,
+            source: importedModule.url.href,
             declaredName: assignedName,
             declaratorOfRegion: declarationPointer,
             references: [
@@ -1272,6 +1273,13 @@ function buildNamespaces(
             ],
           },
         };
+        if (resolution && declaratorRegion.declaration.type === "local") {
+          declaratorRegion.declaration.original = {
+            bundleHref: resolution.bundleHref,
+            range: resolution.range,
+            importedAs: NamespaceMarker,
+          };
+        }
         let referenceRegion: ReferenceCodeRegion = {
           type: "reference",
           start: 0, // the reference starts at the same location as its declarator

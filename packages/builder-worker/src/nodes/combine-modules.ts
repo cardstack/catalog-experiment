@@ -337,8 +337,44 @@ function discoverIncludedRegions(
         ]
       );
     } else {
-      let consumingModule = makeNonCyclic(source.consumingModule);
-      let { importedPointer } = source;
+      if (
+        source.resolution &&
+        source.resolution.type === "declaration" &&
+        !source.resolution.importedSource
+      ) {
+        // This is the scenario where the resolution resolves to an
+        // already fashioned namespace object declaration
+        let newEditor = addNewEditor(
+          source.resolution.consumedBy,
+          editor,
+          editors,
+          bundle
+        );
+        discoverIncludedRegions(
+          bundle,
+          source.resolution.consumedBy,
+          source.resolution.consumedByPointer,
+          newEditor,
+          editors,
+          ownAssignments,
+          depResolver,
+          visitedRegions,
+          [
+            {
+              module: source.resolution.consumedBy,
+              pointer: source.resolution.consumedByPointer,
+              region: newEditor.regions[source.resolution.consumedByPointer],
+            },
+            ...stack,
+          ]
+        );
+        return; // no need to process any of the original namespace import's dependencies, we've moved on...
+      }
+      let consumingModule = makeNonCyclic(
+        source.resolution?.consumedBy ?? source.consumingModule
+      );
+      let importedPointer =
+        source.resolution?.consumedByPointer ?? source.importedPointer;
       if (importedPointer == null) {
         throw new Error(
           `bug: could not determine code region pointer for import of ${JSON.stringify(
@@ -348,8 +384,8 @@ function discoverIncludedRegions(
           }`
         );
       }
-      if (source.consumingModule.url.href !== module.url.href) {
-        editor = addNewEditor(source.consumingModule, editor, editors, bundle);
+      if (consumingModule.url.href !== module.url.href) {
+        editor = addNewEditor(consumingModule, editor, editors, bundle);
       }
       if (
         ownAssignments.find(
@@ -357,27 +393,29 @@ function discoverIncludedRegions(
             a.module.url.href ===
             (source as UnresolvedResult).importedFromModule.url.href
         ) &&
-        isNamespaceMarker(source.importedAs)
+        isNamespaceMarker(source.resolution?.importedAs ?? source.importedAs)
       ) {
         // we mark the namespace import region as something we want to keep as a
         // signal to the Append nodes to manufacture a namespace object for this
         // consumed import--ultimately, though, we will not include this region.
-        if (source.importedPointer == null) {
+        if (importedPointer == null) {
           throw new Error(
             `unable to determine the region for a namespace import '${region.declaration.declaredName}' of ${source.importedFromModule.url.href} from the consuming module ${source.consumingModule.url.href} in bundle ${bundle.href}`
           );
         }
-        editor.keepRegion(source.importedPointer);
+        editor.keepRegion(importedPointer);
 
         let newEditor = addNewEditor(
-          source.importedFromModule,
+          source.resolution?.importedSource?.declaredIn ??
+            source.importedFromModule,
           editor,
           editors,
           bundle
         );
         discoverIncludedRegionsForNamespace(
           bundle,
-          source.importedFromModule,
+          source.resolution?.importedSource?.declaredIn ??
+            source.importedFromModule,
           newEditor,
           editors,
           ownAssignments,
@@ -403,7 +441,15 @@ function discoverIncludedRegions(
     let isRegionObviated: boolean;
     let originalEditor = editor;
     let originalPointer = pointer;
-    ({ module, region, pointer, editor, isRegionObviated } = resolveDependency(
+    let resolution: ResolvedDependency | undefined;
+    ({
+      module,
+      region,
+      pointer,
+      editor,
+      isRegionObviated,
+      resolution,
+    } = resolveDependency(
       bundleHref,
       depResolver,
       makeNonCyclic(module),
@@ -421,6 +467,35 @@ function discoverIncludedRegions(
       // we don't want any dangling side effects. we'll recreate all the regions
       // for this declaration in the resolved module's editor
       originalEditor.removeRegionAndItsChildren(originalPointer);
+    }
+    if (
+      resolution?.type === "declaration" &&
+      isNamespaceMarker(resolution?.importedAs) &&
+      resolution.importedSource?.declaredIn
+    ) {
+      // in this case we are replacing a local namespace object declaration with
+      // a namespace import (because it's resolution won), meaning that we'll
+      // re-derive the namespace object. In order to do that we keep the
+      // namespace import, which is our signal to the downstream processes that
+      // we want a namespace object manufactured here.
+      editor.keepRegion(pointer);
+      let newEditor = addNewEditor(
+        resolution.importedSource.declaredIn,
+        editor,
+        editors,
+        bundle
+      );
+      discoverIncludedRegionsForNamespace(
+        bundle,
+        resolution.importedSource.declaredIn,
+        newEditor,
+        editors,
+        ownAssignments,
+        depResolver,
+        visitedRegions,
+        stack
+      );
+      return; // don't include the dependsOn in this namespace import signal
     }
     discoverIncludedRegions(
       bundle,
@@ -649,7 +724,11 @@ function resolveDependency(
     // region we entered this function with is actually obviated by a
     // different region
     isRegionObviated = true;
-    if (resolution.type === "declaration" && resolution.importedSource) {
+    if (
+      resolution.type === "declaration" &&
+      resolution.importedSource &&
+      resolution.importedSource.pointer != null
+    ) {
       editor = addNewEditor(
         resolution.importedSource.declaredIn,
         editor,
@@ -661,6 +740,19 @@ function resolveDependency(
         resolution.importedSource.pointer
       ] as DeclarationCodeRegion;
       pointer = resolution.importedSource.pointer!;
+    } else if (
+      resolution.type === "declaration" &&
+      resolution.importedSource &&
+      resolution.importedSource.pointer != null &&
+      isNamespaceMarker(resolution.importedAs)
+    ) {
+      editor = addNewEditor(
+        resolution.importedSource.declaredIn,
+        editor,
+        editors,
+        bundle
+      );
+      module = resolution.importedSource.declaredIn;
     } else {
       editor = addNewEditor(resolution.consumedBy, editor, editors, bundle);
       module = resolution.consumedBy;

@@ -5199,6 +5199,258 @@ QUnit.module("module builder", function (origHooks) {
         }
       });
 
+      test("use collapsed namespace object", async function (assert) {
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["index.js"],
+            "dependencies": {
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "^7.9.0"
+              }
+            }
+          }`,
+          "catalogjs.lock": `{ "puppies": "${puppiesBundle1Href}/index.js" }`,
+          "index.js": `
+            import * as babies from "puppies";
+            export function getPuppies() { return babies.puppies; }
+          `,
+        });
+        let bundle1Src = await bundleSource(assert.fs);
+
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["index.js"],
+            "dependencies": {
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "^7.9.2"
+              }
+            }
+          }`,
+          "catalogjs.lock": `{ "puppies": "${puppiesBundle2Href}/index.js" }`,
+          "index.js": `
+            import * as pets from "puppies";
+            export function myPuppies() { return pets.puppies; }
+          `,
+        });
+        let bundle2Src = await bundleSource(assert.fs);
+
+        let lib1BundleHref =
+          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+        let lib2BundleHref =
+          "https://catalogjs.com/pkgs/npm/lib2/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["driver.js"],
+            "dependencies": {
+              "lib1": {
+                "type": "npm",
+                "pkgName": "lib1",
+                "range": "^1.0.0"
+              },
+              "lib2": {
+                "type": "npm",
+                "pkgName": "lib2",
+                "range": "^1.0.0"
+              }
+            }
+          }`,
+          "catalogjs.lock": `{
+            "lib1": "${lib1BundleHref}/lib.js",
+            "lib2": "${lib2BundleHref}/lib.js"
+          }`,
+          "driver.js": `
+            import { getPuppies } from "lib1";
+            import { myPuppies } from "lib2";
+            let jojo = 'Jojo';
+            console.log([jojo, ...getPuppies(), ...myPuppies()]);
+            `,
+          [`${lib1BundleHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
+          [`${lib1BundleHref}/lib.js`]: bundle1Src,
+          [`${lib2BundleHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
+          [`${lib2BundleHref}/lib.js`]: bundle2Src,
+        });
+        let { source, desc } = await bundle(assert.fs, url("output/driver.js"));
+
+        assert.codeEqual(
+          source,
+          `
+          const puppies = ["mango", "van gogh"];
+          const pets = { puppies };
+          function getPuppies() { return pets.puppies; }
+          function myPuppies() { return pets.puppies; }
+          let jojo = 'Jojo';
+          console.log([jojo, ...getPuppies(), ...myPuppies()]);
+          export {};
+          `
+        );
+        let puppies = desc!.declarations.get("puppies");
+        assert.equal(puppies?.declaration.type, "local");
+        if (puppies?.declaration.type === "local") {
+          assert.equal(
+            puppies.declaration.original?.bundleHref,
+            `${puppiesBundle1Href}/index.js`
+          );
+          assert.equal(puppies.declaration.original?.range, "^7.9.2");
+          assert.equal(puppies.declaration.original?.importedAs, "puppies");
+        }
+      });
+
+      test("collapsed a built namespace object and replace with namespace import of direct dependency", async function (assert) {
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["index.js"],
+            "dependencies": {
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "^7.9.0"
+              }
+            }
+          }`,
+          "catalogjs.lock": `{ "puppies": "${puppiesBundle2Href}/index.js" }`,
+          "index.js": `
+            import * as babies from "puppies";
+            export function getPuppies() { return babies.puppies; }
+          `,
+        });
+        let bundle1Src = await bundleSource(assert.fs);
+
+        let lib1BundleHref =
+          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["driver.js"],
+            "dependencies": {
+              "lib1": {
+                "type": "npm",
+                "pkgName": "lib1",
+                "range": "^1.0.0"
+              },
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "^7.9.2"
+              }
+            }
+          }`,
+          "catalogjs.lock": `{
+            "lib1": "${lib1BundleHref}/lib.js",
+            "puppies": "${puppiesBundle1Href}/index.js"
+          }`,
+          "driver.js": `
+            import { getPuppies } from "lib1";
+            import * as pets from "puppies";
+            let jojo = 'Jojo';
+            console.log([jojo, ...getPuppies(), pets.puppies]);
+            `,
+          [`${lib1BundleHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
+          [`${lib1BundleHref}/lib.js`]: bundle1Src,
+        });
+        let { source, desc } = await bundle(assert.fs, url("output/driver.js"));
+
+        assert.codeEqual(
+          source,
+          `
+          const puppies = ["mango", "van gogh"];
+          const pets = { puppies };
+          function getPuppies() { return pets.puppies; }
+          let jojo = 'Jojo';
+          console.log([jojo, ...getPuppies(), pets.puppies]);
+          export {};
+          `
+        );
+        let puppies = desc!.declarations.get("puppies");
+        assert.equal(puppies?.declaration.type, "local");
+        if (puppies?.declaration.type === "local") {
+          assert.equal(
+            puppies.declaration.original?.bundleHref,
+            `${puppiesBundle1Href}/index.js`
+          );
+          assert.equal(puppies.declaration.original?.range, "^7.9.2");
+          assert.equal(puppies.declaration.original?.importedAs, "puppies");
+        }
+      });
+
+      test("collapsed a namespace import of direct dependency and replace with an already manufactured namespace object in a consumed bundle", async function (assert) {
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["index.js"],
+            "dependencies": {
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "^7.9.0"
+              }
+            }
+          }`,
+          "catalogjs.lock": `{ "puppies": "${puppiesBundle1Href}/index.js" }`,
+          "index.js": `
+            import * as babies from "puppies";
+            export function getPuppies() { return babies.puppies; }
+          `,
+        });
+        let bundle1Src = await bundleSource(assert.fs);
+
+        let lib1BundleHref =
+          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["driver.js"],
+            "dependencies": {
+              "lib1": {
+                "type": "npm",
+                "pkgName": "lib1",
+                "range": "^1.0.0"
+              },
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "^7.9.2"
+              }
+            }
+          }`,
+          "catalogjs.lock": `{
+            "lib1": "${lib1BundleHref}/lib.js",
+            "puppies": "${puppiesBundle2Href}/index.js"
+          }`,
+          "driver.js": `
+            import { getPuppies } from "lib1";
+            import * as pets from "puppies";
+            let jojo = 'Jojo';
+            console.log([jojo, ...getPuppies(), pets.puppies]);
+            `,
+          [`${lib1BundleHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
+          [`${lib1BundleHref}/lib.js`]: bundle1Src,
+        });
+        let { source, desc } = await bundle(assert.fs, url("output/driver.js"));
+
+        assert.codeEqual(
+          source,
+          `
+          const puppies = ["mango", "van gogh"];
+          const pets = { puppies };
+          function getPuppies() { return pets.puppies; }
+          let jojo = 'Jojo';
+          console.log([jojo, ...getPuppies(), pets.puppies]);
+          export {};
+          `
+        );
+        let puppies = desc!.declarations.get("puppies");
+        assert.equal(puppies?.declaration.type, "local");
+        if (puppies?.declaration.type === "local") {
+          assert.equal(
+            puppies.declaration.original?.bundleHref,
+            `${puppiesBundle1Href}/index.js`
+          );
+          assert.equal(puppies.declaration.original?.range, "^7.9.2");
+          assert.equal(puppies.declaration.original?.importedAs, "puppies");
+        }
+      });
+
       test("chooses among identical pkg versions when collapsing consumed pkgs", async function (assert) {
         await assert.setupFiles({
           "entrypoints.json": `{

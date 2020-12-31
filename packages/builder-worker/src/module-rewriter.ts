@@ -1,4 +1,8 @@
-import { makeNonCyclic, ModuleResolution } from "./nodes/resolution";
+import {
+  makeNonCyclic,
+  ModuleResolution,
+  Resolution,
+} from "./nodes/resolution";
 import {
   getExports,
   isExportAllMarker,
@@ -22,7 +26,10 @@ import {
   stringifyReplacer,
 } from "./utils";
 import { depAsURL, Dependencies } from "./nodes/entrypoint";
-import { DependencyResolver } from "./dependency-resolution";
+import {
+  DependencyResolver,
+  ResolvedDeclarationDependency,
+} from "./dependency-resolution";
 import { maybeRelativeURL } from "./path";
 import { pkgInfoFromCatalogJsURL } from "./resolver";
 
@@ -56,7 +63,14 @@ export class HeadState {
   // this is a map of manufactured namespace objects' assigned names to their a
   // map of the keys in the namespace object (the outside name) with values that
   // are the inside names for the corresponding keys
-  readonly assignedNamespaces: Map<string, Map<string, string>> = new Map();
+  readonly assignedNamespaces: Map<
+    string,
+    {
+      nameMap: Map<string, string>;
+      importedModule: Resolution;
+      resolution: ResolvedDeclarationDependency | undefined;
+    }
+  > = new Map();
   readonly assignedDependencyBindings: Map<
     string,
     {
@@ -493,6 +507,18 @@ export class ModuleRewriter {
       let dep = Object.values(this.dependencies).find((dep) =>
         importedModule.url.href.includes(depAsURL(dep).href)
       );
+      let resolution: ResolvedDeclarationDependency | undefined;
+      let pkgURL = pkgInfoFromCatalogJsURL(importedModule.url)?.pkgURL;
+      if (pkgURL) {
+        let _resolution = this.depResolver.resolutionByConsumptionRegion(
+          this.module,
+          pointer,
+          pkgURL
+        );
+        if (_resolution?.type === "declaration") {
+          resolution = _resolution;
+        }
+      }
       for (let [
         exportedName,
         { desc: exportDesc, module: sourceModule },
@@ -555,7 +581,11 @@ export class ModuleRewriter {
         }
       }
       this.namespacesAssignments.push(assignedName);
-      this.state.assignedNamespaces.set(assignedName, nameMap);
+      this.state.assignedNamespaces.set(assignedName, {
+        nameMap,
+        importedModule,
+        resolution,
+      });
     }
   }
 
