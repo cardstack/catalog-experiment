@@ -598,6 +598,7 @@ export interface LocalDeclarationDescription
   extends BaseDeclarationDescription {
   type: "local";
   declaratorOfRegion: RegionPointer | undefined;
+  source: string;
   original?: {
     bundleHref: string;
     range: string;
@@ -801,7 +802,11 @@ export class RegionEditor {
     originalPointer: RegionPointer | undefined;
   }[] = [];
 
-  constructor(private src: string, private desc: FileDescription) {
+  constructor(
+    private src: string,
+    private desc: FileDescription,
+    private bundle: URL
+  ) {
     // Regions are assumed to be removed unless .keepRegion() is explicitly
     // called for a region.
     this.dispositions = [...desc.regions.entries()].map(([index]) => ({
@@ -1170,6 +1175,7 @@ export class RegionEditor {
       preserveGaps: false,
       declaration: {
         type: "local",
+        source: this.bundle.href,
         declaredName: name,
         declaratorOfRegion: declarationPointer,
         references: [referencePointer],

@@ -240,14 +240,7 @@ interface DuckPath {
   isIdentifier(): this is NodePath<Identifier>;
 }
 
-export function describeFile(
-  ast: File,
-  {
-    filename,
-  }: {
-    filename?: string;
-  } = {}
-): FileDescription {
+export function describeFile(ast: File, filename: string): FileDescription {
   let isES6Module = false;
   let builder: RegionBuilder;
   let desc: ModuleDescription & CJSDescription;
@@ -387,6 +380,7 @@ export function describeFile(
         declaration,
         {
           type: "local",
+          source: filename,
           declaratorOfRegion,
           references,
           declaredName: name,
@@ -1159,6 +1153,7 @@ function isSideEffectFree(node: Expression | SpreadElement): boolean {
     case "BooleanLiteral":
     case "NumericLiteral":
     case "StringLiteral":
+    case "RegExpLiteral":
     case "NullLiteral":
     case "Identifier":
     case "FunctionExpression":

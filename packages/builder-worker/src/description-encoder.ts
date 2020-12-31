@@ -41,6 +41,8 @@ const regionTypeShorthand = {
   document: "o",
 };
 
+// TODO need to make a shorthand for URLs, all of our URLs start with https://catalogjs.com/pkgs/
+
 const moduleDescLegend = [
   "imports", // array of import descriptions
   "exports", // [name: string]: array of export descriptions
@@ -85,6 +87,7 @@ const declarationLegend = [
   "importIndex", // number | null
   "importedName", // string | { n: true }
   "declaratorOfRegion", // number | null
+  "source", // string | null
 ];
 
 const importDescLegend = [

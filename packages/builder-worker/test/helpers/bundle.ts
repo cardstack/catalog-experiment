@@ -5,6 +5,8 @@ import { recipesURL } from "../../src/recipes";
 import { extractDescriptionFromSource } from "../../src/description-encoder";
 import { Options } from "../../src/nodes/project";
 import { FileDescriptor } from "../../src/filesystem-drivers/filesystem-driver";
+import { FileDescription } from "../../src/describe-file";
+import { RegionEditor } from "../../src/code-region";
 
 export const outputOrigin = `http://output`;
 
@@ -71,4 +73,12 @@ export function makeRebuilder(
   outputURL = new URL("/output/", outputOrigin)
 ) {
   return Rebuilder.forProjects(fs, [[new URL(origin), outputURL]], recipesURL);
+}
+
+export function makeEditor(
+  source: string,
+  desc: FileDescription,
+  bundle: URL = url("output/index.js")
+) {
+  return new RegionEditor(source, desc, bundle);
 }

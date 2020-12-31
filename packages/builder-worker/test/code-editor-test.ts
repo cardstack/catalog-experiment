@@ -1,5 +1,6 @@
 import "./helpers/code-equality-assertions";
 import { describeESModule } from "./helpers/file-description";
+import { makeEditor } from "./helpers/bundle";
 import {
   declarationsMap,
   FileDescription,
@@ -60,7 +61,7 @@ QUnit.module("module code-editor", function () {
 
     // rename using the new code regions to prove they are correct
     let newDesc = makeDescFromRegions(regions);
-    let newEditor = new RegionEditor(code, newDesc);
+    let newEditor = makeEditor(code, newDesc);
     keepAll(newDesc, newEditor);
     newEditor.rename("a", "renamedA");
     newEditor.rename("b", "renamedB");
@@ -115,7 +116,7 @@ QUnit.module("module code-editor", function () {
 
     // rename using the new code regions to prove they are correct
     let newDesc = makeDescFromRegions(regions);
-    let newEditor = new RegionEditor(code, newDesc);
+    let newEditor = makeEditor(code, newDesc);
     keepAll(newDesc, newEditor);
     newEditor.rename("renamedA", "alpha");
     newEditor.rename("renamedB", "beta");
@@ -157,7 +158,7 @@ QUnit.module("module code-editor", function () {
     );
     // replace using the new code regions to prove they are correct
     let newDesc = makeDescFromRegions(regions);
-    let newEditor = new RegionEditor(code, newDesc);
+    let newEditor = makeEditor(code, newDesc);
     keepAll(newDesc, newEditor);
     newEditor.rename("_default", "d");
     newEditor.replace(
@@ -219,7 +220,7 @@ QUnit.module("module code-editor", function () {
 
     // replace using the new code regions to prove they are correct
     let newDesc = makeDescFromRegions(regions);
-    let newEditor = new RegionEditor(code, newDesc);
+    let newEditor = makeEditor(code, newDesc);
     keepAll(newDesc, newEditor);
     newEditor.rename("a", "renamedA");
     newEditor.rename("c", "renamedC");
@@ -264,7 +265,7 @@ QUnit.module("module code-editor", function () {
 
     // replace using the new code regions to prove they are correct
     let newDesc = makeDescFromRegions(regions);
-    let newEditor = new RegionEditor(code, newDesc);
+    let newEditor = makeEditor(code, newDesc);
     keepAll(newDesc, newEditor);
     newEditor.rename("alpha", "renamedA");
     newEditor.rename("c", "renamedC");
@@ -315,7 +316,7 @@ QUnit.module("module code-editor", function () {
 
     // replace using the new code regions to prove they are correct
     let newDesc = makeDescFromRegions(regions);
-    let newEditor = new RegionEditor(code, newDesc);
+    let newEditor = makeEditor(code, newDesc);
     keepAll(newDesc, newEditor);
     newEditor.rename("a", "renamedA");
     newEditor.rename("charlie", "renamedC");
@@ -366,7 +367,7 @@ QUnit.module("module code-editor", function () {
 
     // replace using the new code regions to prove they are correct
     let newDesc = makeDescFromRegions(regions);
-    let newEditor = new RegionEditor(code, newDesc);
+    let newEditor = makeEditor(code, newDesc);
     keepAll(newDesc, newEditor);
     newEditor.rename("a", "renamedA");
     newEditor.rename("bravo", "renamedB");
@@ -417,7 +418,7 @@ QUnit.module("module code-editor", function () {
     );
     // replace using the new code regions to prove they are correct
     let newDesc = makeDescFromRegions(regions);
-    let newEditor = new RegionEditor(code, newDesc);
+    let newEditor = makeEditor(code, newDesc);
     keepAll(newDesc, newEditor);
     newEditor.rename("_default", "d");
     newEditor.rename("alpha", "renamedA");

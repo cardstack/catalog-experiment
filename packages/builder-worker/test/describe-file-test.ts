@@ -1,4 +1,5 @@
 import { describeESModule, describeCJSFile } from "./helpers/file-description";
+import { makeEditor } from "./helpers/bundle";
 import {
   declarationsMap,
   FileDescription,
@@ -733,7 +734,7 @@ QUnit.module("describe-file", function () {
     );
 
     let newDesc = makeDescFromRegions(regions);
-    let newEditor = new RegionEditor(code, newDesc);
+    let newEditor = makeEditor(code, newDesc);
     keepAll(newDesc, newEditor);
     newEditor.rename("y", "bob");
     newEditor.rename("a", "charlie");
@@ -937,7 +938,7 @@ QUnit.module("describe-file", function () {
     );
 
     let newDesc = makeDescFromRegions(regions);
-    let newEditor = new RegionEditor(code, newDesc);
+    let newEditor = makeEditor(code, newDesc);
     keepAll(newDesc, newEditor);
     newEditor.rename("alpha", "renamedAlpha");
     newEditor.rename("alpha1", "renamedAlpha1");
@@ -998,7 +999,7 @@ QUnit.module("describe-file", function () {
     );
 
     let newDesc = makeDescFromRegions(regions);
-    let newEditor = new RegionEditor(code, newDesc);
+    let newEditor = makeEditor(code, newDesc);
     keepAll(newDesc, newEditor);
     newEditor.rename("alpha", "renamedAlpha");
     newEditor.rename("charlie", "renamedCharlie");

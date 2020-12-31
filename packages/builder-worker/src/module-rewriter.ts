@@ -24,6 +24,7 @@ import {
 import { depAsURL, Dependencies } from "./nodes/entrypoint";
 import { DependencyResolver } from "./dependency-resolution";
 import { maybeRelativeURL } from "./path";
+import { pkgInfoFromCatalogJsURL } from "./resolver";
 
 export interface Editor {
   editor: RegionEditor;
@@ -56,9 +57,13 @@ export class HeadState {
   // map of the keys in the namespace object (the outside name) with values that
   // are the inside names for the corresponding keys
   readonly assignedNamespaces: Map<string, Map<string, string>> = new Map();
-  readonly assignedImportedDependencies: Map<
+  readonly assignedDependencyBindings: Map<
     string,
-    { bundleHref: string; range: string; importedAs: string | NamespaceMarker }
+    {
+      bundleHref: string;
+      range: string;
+      importedAs: string | NamespaceMarker;
+    }
   > = new Map();
   // This is a map of the modules that export a single binding multiple times.
   // This is important info for the consumers of the exports to understand so that
@@ -95,7 +100,7 @@ export class HeadState {
     let {
       usedNames,
       assignedImportedNames,
-      assignedImportedDependencies,
+      assignedDependencyBindings,
       assignedLocalNames,
       visited,
       assignedNamespaces,
@@ -118,7 +123,7 @@ export class HeadState {
       {
         usedNames,
         assignedImportedNames,
-        assignedImportedDependencies,
+        assignedDependencyBindings,
         assignedLocalNames,
         visitedSummary,
         assignedNamespaces,
@@ -208,7 +213,7 @@ export class ModuleRewriter {
       if (!region.declaration.original) {
         // initialize the declaration origin from the entrypoints.json
         // dependencies
-        let consumptionInfo = this.state.assignedImportedDependencies.get(
+        let consumptionInfo = this.state.assignedDependencyBindings.get(
           region.declaration.declaredName
         );
         if (consumptionInfo) {
@@ -232,9 +237,20 @@ export class ModuleRewriter {
           (localDesc.type === "local" && localDesc.original)
         ) {
           if (localDesc.type === "import") {
+            let importedModule = makeNonCyclic(this.module).resolvedImports[
+              localDesc.importIndex
+            ];
+            let pkgURL = pkgInfoFromCatalogJsURL(importedModule.url)?.pkgURL;
+            let outerResolution = pkgURL
+              ? this.depResolver.resolutionByConsumptionRegion(
+                  this.module,
+                  pointer,
+                  pkgURL
+                )
+              : undefined;
             let source = this.depResolver.resolveDeclaration(
               localDesc.importedName,
-              makeNonCyclic(this.module).resolvedImports[localDesc.importIndex],
+              importedModule,
               this.module,
               this.ownAssignments,
               pointer
@@ -242,17 +258,25 @@ export class ModuleRewriter {
             if (source.type === "resolved") {
               assignedName = this.maybeAssignImportName(
                 source.resolution
-                  ? source.resolution.bundleHref
+                  ? source.resolution.source
                   : source.module.url.href,
                 source.resolution
                   ? source.resolution.importedAs
                   : source.importedAs,
                 localName
               );
+              if (outerResolution?.type === "declaration") {
+                setDoubleNestedMapping(
+                  outerResolution.source,
+                  outerResolution.importedAs,
+                  assignedName,
+                  this.state.assignedImportedNames
+                );
+              }
             } else {
               assignedName = this.maybeAssignImportName(
                 source.resolution
-                  ? source.resolution.bundleHref
+                  ? source.resolution.source
                   : source.importedFromModule.url.href,
                 source.resolution
                   ? source.resolution.importedAs
@@ -272,7 +296,7 @@ export class ModuleRewriter {
             ) {
               // we deal with setting the namespace assigned import deps in the
               // makeNamespaceMappings()
-              this.state.assignedImportedDependencies.set(assignedName, {
+              this.state.assignedDependencyBindings.set(assignedName, {
                 bundleHref: source.resolution.bundleHref,
                 range: source.resolution.range,
                 importedAs: source.resolution.importedAs,
@@ -285,7 +309,7 @@ export class ModuleRewriter {
               pointer
             )!; // this function actually throws when a local desc with an original does not have a resolution
             assignedName = this.maybeAssignImportName(
-              resolution.bundleHref,
+              resolution.source,
               resolution.importedAs,
               localName
             );
@@ -293,35 +317,59 @@ export class ModuleRewriter {
         } else {
           // check to see if the binding was actually already assigned by a module
           // that imports it
-          let [exportName, { module: sourceModule }] = [
-            ...getExports(this.module),
-          ].find(
-            ([_, { desc }]) => desc.type === "local" && desc.name === localName
-          ) ?? [undefined, {}];
-          let suggestedName = localName === "default" ? "_default" : localName;
-          if (exportName && sourceModule) {
+          let resolution = this.depResolver.resolutionByConsumptionRegion(
+            this.module,
+            pointer
+          );
+          if (
+            resolution &&
+            resolution.type === "declaration" &&
+            !isNamespaceMarker(resolution.importedAs)
+          ) {
+            let { bundleHref, range, importedAs, source } = resolution;
             assignedName = this.maybeAssignImportName(
-              sourceModule.url.href,
-              exportName,
-              suggestedName
+              source,
+              importedAs,
+              localName
             );
-          }
-          if (!assignedName) {
-            if (
-              this.sideEffectDeclarations.has(pointer) &&
-              this.isUnconsumed(localDesc, pointer)
-            ) {
-              assignedName = this.maybeAssignLocalName(
-                localName,
-                `unused_${localName}`
+            this.state.assignedDependencyBindings.set(assignedName, {
+              bundleHref,
+              range,
+              importedAs,
+            });
+          } else {
+            let [exportName, { module: sourceModule }] = [
+              ...getExports(this.module),
+            ].find(
+              ([_, { desc }]) =>
+                desc.type === "local" && desc.name === localName
+            ) ?? [undefined, {}];
+            let suggestedName =
+              localName === "default" ? "_default" : localName;
+            if (exportName && sourceModule) {
+              assignedName = this.maybeAssignImportName(
+                sourceModule.url.href,
+                exportName,
+                suggestedName
               );
-            } else {
-              // this is just a plain jane local internal declaration. it may or
-              // may not actually be a region that we keep, as there could be
-              // multiple module rewriters for the same module. To keep everything
-              // straight, check our state to see if we have already assigned a
-              // name for this binding.
-              assignedName = this.maybeAssignLocalName(localName);
+            }
+            if (!assignedName) {
+              if (
+                this.sideEffectDeclarations.has(pointer) &&
+                this.isUnconsumed(localDesc, pointer)
+              ) {
+                assignedName = this.maybeAssignLocalName(
+                  localName,
+                  `unused_${localName}`
+                );
+              } else {
+                // this is just a plain jane local internal declaration. it may or
+                // may not actually be a region that we keep, as there could be
+                // multiple module rewriters for the same module. To keep everything
+                // straight, check our state to see if we have already assigned a
+                // name for this binding.
+                assignedName = this.maybeAssignLocalName(localName);
+              }
             }
           }
         }
@@ -467,18 +515,13 @@ export class ModuleRewriter {
             namespaceItemSource.declaredName === "default"
               ? "_default"
               : namespaceItemSource.declaredName;
-          let resolution = this.depResolver.resolutionByDeclaration(
-            namespaceItemSource.declaration,
-            makeNonCyclic(namespaceItemSource.module),
-            namespaceItemSource.pointer
-          );
-          if (resolution?.type === "declaration") {
-            if (isNamespaceMarker(resolution.importedAs)) {
+          if (namespaceItemSource.resolution?.type === "declaration") {
+            if (isNamespaceMarker(namespaceItemSource.resolution.importedAs)) {
               assignedName = exportedName;
             } else {
               assignedName = this.maybeAssignImportName(
-                resolution.bundleHref,
-                resolution.importedAs,
+                namespaceItemSource.resolution.source,
+                namespaceItemSource.resolution.importedAs,
                 suggestedName
               );
             }
@@ -489,7 +532,7 @@ export class ModuleRewriter {
               suggestedName
             );
             if (dep) {
-              this.state.assignedImportedDependencies.set(assignedName, {
+              this.state.assignedDependencyBindings.set(assignedName, {
                 bundleHref: namespaceItemSource.module.url.href,
                 range: dep.range,
                 importedAs: namespaceItemSource.importedAs,

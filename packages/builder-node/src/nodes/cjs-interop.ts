@@ -125,7 +125,7 @@ class IntrospectSrcNode implements BuilderNode {
           region.isDynamic &&
           region.specifierForDynamicImport == null
         ) {
-          editor = editor ?? new RegionEditor(src, desc!);
+          editor = editor ?? new RegionEditor(src, desc!, url);
           for (let [p] of editor.regions.entries()) {
             editor.keepRegion(p);
           }
@@ -209,9 +209,10 @@ class ESInteropNode implements BuilderNode {
 function remapRequires(
   origSrc: string,
   desc: CJSDescription,
-  depBindingName: string
+  depBindingName: string,
+  url: URL
 ): string {
-  let editor = new RegionEditor(origSrc, desc);
+  let editor = new RegionEditor(origSrc, desc, url);
   for (let [pointer] of editor.regions.entries()) {
     editor.keepRegion(pointer);
   }
@@ -309,7 +310,7 @@ function implementation() {
       "module",
       "exports",
       "${depBindingName}",
-      \`${remapRequires(this.src, this.desc, depBindingName)
+      \`${remapRequires(this.src, this.desc, depBindingName, this.outputURL)
         .replace(/\\/g, "\\\\")
         .replace(/`/g, "\\`")
         .replace(/\$/g, "\\$")}\`
@@ -440,6 +441,6 @@ class AnalyzeFileNode implements BuilderNode {
   }
 
   async run({ parsed }: { parsed: File }): Promise<Value<FileDescription>> {
-    return { value: describeFile(parsed, { filename: this.url.href }) };
+    return { value: describeFile(parsed, this.url.href) };
   }
 }

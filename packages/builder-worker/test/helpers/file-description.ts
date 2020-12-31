@@ -7,19 +7,21 @@ import {
 } from "../../src/describe-file";
 import { RegionEditor } from "../../src/code-region";
 import { parse } from "@babel/core";
+import { url } from "./file-assertions";
 
 export function describeFile(
-  js: string
+  js: string,
+  filename: string = url("index.js").href
 ): { desc: FileDescription; editor: RegionEditor } {
   js = js.trim();
   let parsed = parse(js);
   if (parsed?.type !== "File") {
     throw new Error(`unexpected babel output`);
   }
-  let desc = astDescribeFile(parsed);
+  let desc = astDescribeFile(parsed, filename);
   return {
     desc,
-    editor: new RegionEditor(js, desc),
+    editor: new RegionEditor(js, desc, url("output/index.js")),
   };
 }
 

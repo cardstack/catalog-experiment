@@ -142,7 +142,7 @@ export class ModuleDescriptionNode implements BuilderNode {
     source: string;
     parsed: File;
   }): Promise<Value<{ desc: ModuleDescription; source: string }>> {
-    let desc = describeFile(parsed, { filename: this.fileNode.url.href });
+    let desc = describeFile(parsed, this.fileNode.url.href);
     if (!isModuleDescription(desc)) {
       throw Error(
         `cannot build module description for CJS file ${this.fileNode.url.href}`

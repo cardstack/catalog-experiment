@@ -7,6 +7,7 @@ import {
   outputOrigin,
   bundle,
   bundleSource,
+  makeEditor,
 } from "./helpers/bundle";
 import { Builder, Rebuilder, explainAsDot } from "../src/builder";
 import { FileSystem } from "../src/filesystem";
@@ -38,6 +39,7 @@ QUnit.module("module builder", function (origHooks) {
       editor.keepRegion(i);
     }
   }
+
   async function etags(
     fs: FileSystem,
     origin: string
@@ -2473,7 +2475,7 @@ QUnit.module("module builder", function (origHooks) {
           "export region exists"
         );
 
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("a", "renamedA");
         editor.rename("b", "renamedB");
@@ -2541,7 +2543,7 @@ QUnit.module("module builder", function (origHooks) {
           "export region exists"
         );
 
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("alpha", "renamedA");
         editor.rename("beta", "renamedB");
@@ -2610,7 +2612,7 @@ QUnit.module("module builder", function (origHooks) {
           "export region exists"
         );
 
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("a", "renamedA");
         editor.rename("b", "renamedB");
@@ -2671,7 +2673,7 @@ QUnit.module("module builder", function (origHooks) {
         assert.equal(_default.declaration.declaredName, "_default");
         assert.equal(_default.declaration.type, "local");
 
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("doSomething", "renamedSomething");
         editor.rename("_default", "renamedDefault");
@@ -2737,7 +2739,7 @@ QUnit.module("module builder", function (origHooks) {
         assert.equal(bleep.declaration.declaredName, "bleep");
         assert.equal(bleep.declaration.type, "local");
 
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("a", "renamedA");
         editor.rename("b", "renamedB");
@@ -2805,7 +2807,7 @@ QUnit.module("module builder", function (origHooks) {
           assert.equal(isNamespaceMarker(b.declaration.importedName), true);
         }
 
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("a", "renamedA");
         editor.rename("b", "renamedB");
@@ -2859,7 +2861,7 @@ QUnit.module("module builder", function (origHooks) {
           assert.equal(defaultExport.name, "bar");
           assert.ok(defaultExport.exportRegion != null);
         }
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("foo", "renamedFoo");
         editor.rename("bar", "renamedBar");
@@ -2915,7 +2917,7 @@ QUnit.module("module builder", function (origHooks) {
           assert.equal(defaultExport.name, "_default");
           assert.ok(defaultExport.exportRegion != null);
         }
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("foo", "renamedFoo");
         editor.rename("_default", "renamedDefault");
@@ -2974,7 +2976,7 @@ QUnit.module("module builder", function (origHooks) {
           assert.equal(bleep.name, "bleep");
           assert.ok(bleep.exportRegion != null);
         }
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("foo", "renamedFoo");
         editor.rename("bar", "renamedBar");
@@ -3040,7 +3042,7 @@ QUnit.module("module builder", function (origHooks) {
           assert.equal(bleep.name, "bleep");
           assert.ok(bleep.exportRegion != null);
         }
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("foo", "renamedFoo");
         editor.rename("_default", "renamedDefault");
@@ -3123,7 +3125,7 @@ QUnit.module("module builder", function (origHooks) {
           assert.ok(exportB.exportRegion != null, "export region exists");
         }
 
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("a", "renamedA");
         editor.rename("b", "renamedB");
@@ -3204,7 +3206,7 @@ QUnit.module("module builder", function (origHooks) {
           assert.ok(exportB.exportRegion != null, "export region exists");
         }
 
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("a", "renamedA");
         editor.rename("b", "renamedB");
@@ -3262,7 +3264,7 @@ QUnit.module("module builder", function (origHooks) {
           assert.equal(b2.name, "bleep");
           assert.ok(b2.exportRegion != null);
         }
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("foo", "renamedFoo");
         editor.rename("bar", "renamedBar");
@@ -3357,7 +3359,7 @@ QUnit.module("module builder", function (origHooks) {
           );
         }
 
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("bar", "renamedBar");
         assert.codeEqual(
@@ -3444,7 +3446,7 @@ QUnit.module("module builder", function (origHooks) {
           assert.ok(fleep.exportRegion != null, "export region exists in desc");
         }
 
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("foo", "renamedFoo");
         editor.rename("fleep", "renamedFleep");
@@ -3525,7 +3527,7 @@ QUnit.module("module builder", function (origHooks) {
           );
         }
 
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("bar", "renamedBar");
         assert.codeEqual(
@@ -3598,7 +3600,7 @@ QUnit.module("module builder", function (origHooks) {
           );
         }
 
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("bar", "renamedBar");
         assert.codeEqual(
@@ -3662,7 +3664,7 @@ QUnit.module("module builder", function (origHooks) {
           assert.ok(foo.exportRegion != null, "export region exists in desc");
         }
 
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("bar", "renamedBar");
         assert.codeEqual(
@@ -3712,7 +3714,7 @@ QUnit.module("module builder", function (origHooks) {
         assert.equal(bar.declaration.declaredName, "bar");
         assert.equal(bar.declaration.type, "local");
 
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("foo", "renamedFoo");
         editor.rename("bar", "renamedBar");
@@ -3787,7 +3789,7 @@ QUnit.module("module builder", function (origHooks) {
           );
         }
 
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("foo", "renamedFoo");
         editor.rename("_default", "renamedDefault");
@@ -3864,7 +3866,7 @@ QUnit.module("module builder", function (origHooks) {
           );
         }
 
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("foo", "renamedFoo");
         editor.rename("_default", "renamedDefault");
@@ -3933,7 +3935,7 @@ QUnit.module("module builder", function (origHooks) {
           );
         }
 
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("bar", "renamedBar");
         assert.codeEqual(
@@ -3996,7 +3998,7 @@ QUnit.module("module builder", function (origHooks) {
         }
 
         assert.equal(desc.exports.size, 0);
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("_namespace0", "renamedNamespace");
         editor.rename("foo", "renamedFoo");
@@ -4075,7 +4077,7 @@ QUnit.module("module builder", function (origHooks) {
           }
         }
 
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("a", "renamedA");
         editor.rename("b", "renamedB");
@@ -4141,7 +4143,7 @@ QUnit.module("module builder", function (origHooks) {
           }
         }
 
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("foo", "renamedFoo");
         editor.rename("bar", "renamedBar");
@@ -4213,7 +4215,7 @@ QUnit.module("module builder", function (origHooks) {
           }
         }
 
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("foo", "renamedFoo");
         editor.rename("fleep", "renamedFleep");
@@ -4286,7 +4288,7 @@ QUnit.module("module builder", function (origHooks) {
           }
         }
 
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("foo", "renamedFoo");
         editor.rename("fleep", "renamedFleep");
@@ -4351,7 +4353,7 @@ QUnit.module("module builder", function (origHooks) {
           assert.equal(dynamicImportFoo.specifier, "./dist/0.js");
           assert.equal(dynamicImportBleep.specifier, "./dist/1.js");
 
-          let editor = new RegionEditor(source, desc);
+          let editor = makeEditor(source, desc);
           keepAll(desc, editor);
           editor.rename("bar", "renamedBar");
           editor.rename("getFoo", "renamedGetFoo");
@@ -4413,7 +4415,7 @@ QUnit.module("module builder", function (origHooks) {
         assert.equal(desc.exports.size, 0);
         assert.equal(desc.imports.length, 0);
 
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         assert.codeEqual(editor.serialize().code, `export {};`);
       }
@@ -4447,7 +4449,7 @@ QUnit.module("module builder", function (origHooks) {
         assert.equal(alpha.declaration.declaredName, "alpha");
         assert.equal(alpha.declaration.type, "local");
 
-        let editor = new RegionEditor(source, desc);
+        let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("alpha", "renamedA");
         assert.codeEqual(
@@ -6851,7 +6853,7 @@ QUnit.module("module builder", function (origHooks) {
             );
           }
 
-          let editor = new RegionEditor(source, desc);
+          let editor = makeEditor(source, desc);
           keepAll(desc, editor);
           editor.rename("puppies", "renamedPuppies");
           editor.rename("getPuppies", "renamedGetPuppies");
@@ -6957,7 +6959,7 @@ QUnit.module("module builder", function (origHooks) {
             );
           }
 
-          let editor = new RegionEditor(source, desc);
+          let editor = makeEditor(source, desc);
           keepAll(desc, editor);
           editor.rename("puppies", "renamedPuppies");
           editor.rename("getPuppies", "renamedGetPuppies");

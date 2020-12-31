@@ -947,9 +947,9 @@ function buildBundleBody(
             new URL(region.original.bundleHref)
           )!;
           let resolution = depResolver.resolutionByConsumptionRegion(
-            pkgURL,
             module,
-            pointer - offset
+            pointer - offset,
+            pkgURL
           );
           if (resolution) {
             region.original.range = resolution.range;
@@ -1157,7 +1157,7 @@ function setReferences(
     let assignedName: string | undefined;
     if (resolution?.importedSource) {
       assignedName = state.assignedImportedNames
-        .get(resolution.importedSource.declaredIn.url.href)
+        .get(resolution.source)
         ?.get(resolution.importedAs);
     } else if (declaration.type === "import" || declarationPointer < 0) {
       assignedName = state.nameAssignments
@@ -1263,6 +1263,7 @@ function buildNamespaces(
           preserveGaps: false,
           declaration: {
             type: "local",
+            source: bundle.href,
             declaredName: assignedName,
             declaratorOfRegion: declarationPointer,
             references: [
@@ -1585,8 +1586,14 @@ function assignedExports(
             (source as UnresolvedResult).importedFromModule.url.href
         )!;
         let assignedName = state.assignedImportedNames
-          .get(source.importedFromModule.url.href)
-          ?.get(source.importedAs);
+          .get(
+            source.resolution
+              ? source.resolution.source
+              : source.importedFromModule.url.href
+          )
+          ?.get(
+            source.resolution ? source.resolution.importedAs : source.importedAs
+          );
         if (!assignedName) {
           if (source.importedPointer == null) {
             throw new Error(
