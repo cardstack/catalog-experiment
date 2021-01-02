@@ -1305,7 +1305,9 @@ function buildNamespaces(
               type: "reference",
               start:
                 index === 0
-                  ? 5 /* " = { " */
+                  ? outsideName === insideName
+                    ? 5 /* " = { " */
+                    : outsideName.length + 7 /* " = { outsideName: " */
                   : outsideName === insideName
                   ? 2 /* ", "*/
                   : outsideName.length + 4 /* ", outsideName: " */,

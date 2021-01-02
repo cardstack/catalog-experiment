@@ -40,6 +40,37 @@ interface NewRegion {
 
 type Position = "before" | "within" | "around" | "after" | "same";
 
+export function traverseCodeRegions(
+  regions: CodeRegion[],
+  onRegionVisit: (region: CodeRegion, pointer: RegionPointer) => void,
+  start: RegionPointer = documentPointer
+) {
+  let stack: RegionPointer[] = [];
+  let currentPointer: RegionPointer | undefined = start;
+  while (currentPointer != null || stack.length > 0) {
+    while (currentPointer != null) {
+      if (stack.includes(currentPointer)) {
+        throw new Error(
+          `Cycle detected while traversing code regions, the code region pointer ${currentPointer} forms a cycle in the stack. Stack is ${JSON.stringify(
+            stack
+          )}`
+        );
+      }
+      stack.unshift(currentPointer);
+      currentPointer = regions[currentPointer].firstChild;
+    }
+    currentPointer = stack.shift()!;
+
+    onRegionVisit(regions[currentPointer], currentPointer);
+
+    if (currentPointer !== start) {
+      currentPointer = regions[currentPointer].nextSibling;
+    } else {
+      currentPointer = undefined;
+    }
+  }
+}
+
 export class RegionBuilder {
   regions: CodeRegion[] = [];
   private absoluteRanges: Map<
@@ -856,22 +887,7 @@ export class RegionEditor {
   }
 
   removeRegionAndItsChildren(pointer: RegionPointer) {
-    this.removeRegion(pointer);
-    let region = this.regions[pointer];
-    if (region.firstChild != null) {
-      this.removeRegionAndItsChildrenAndSiblings(region.firstChild);
-    }
-  }
-
-  private removeRegionAndItsChildrenAndSiblings(pointer: RegionPointer) {
-    this.removeRegion(pointer);
-    let region = this.regions[pointer];
-    if (region.firstChild != null) {
-      this.removeRegionAndItsChildrenAndSiblings(region.firstChild);
-    }
-    if (region.nextSibling != null) {
-      this.removeRegionAndItsChildrenAndSiblings(region.nextSibling);
-    }
+    traverseCodeRegions(this.regions, (_, p) => this.removeRegion(p), pointer);
   }
 
   keepRegion(pointer: RegionPointer) {
@@ -881,26 +897,15 @@ export class RegionEditor {
   }
 
   private keepRegionAndItsChildren(pointer: RegionPointer) {
-    if (this.dispositions[pointer].state === "removed") {
-      this.dispositions[pointer] = { state: "unchanged", region: pointer };
-    }
-    let region = this.regions[pointer];
-    if (region.firstChild != null) {
-      this.keepRegionAndItsChildrenAndSiblings(region.firstChild);
-    }
-  }
-
-  private keepRegionAndItsChildrenAndSiblings(pointer: RegionPointer) {
-    if (this.dispositions[pointer].state === "removed") {
-      this.dispositions[pointer] = { state: "unchanged", region: pointer };
-    }
-    let region = this.regions[pointer];
-    if (region.firstChild != null) {
-      this.keepRegionAndItsChildrenAndSiblings(region.firstChild);
-    }
-    if (region.nextSibling != null) {
-      this.keepRegionAndItsChildrenAndSiblings(region.nextSibling);
-    }
+    traverseCodeRegions(
+      this.regions,
+      (_, p) => {
+        if (this.dispositions[p].state === "removed") {
+          this.dispositions[p] = { state: "unchanged", region: p };
+        }
+      },
+      pointer
+    );
   }
 
   wrapWithDeclaration(pointer: RegionPointer, name: string) {

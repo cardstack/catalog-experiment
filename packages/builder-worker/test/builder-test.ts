@@ -398,9 +398,9 @@ QUnit.module("module builder", function (origHooks) {
       assert.codeEqual(
         await bundleCode(assert.fs),
         `
-        const greeting = (function(msg) { console.log(msg); });
         const hello = 'hello';
         const goodbye = 'goodbye';
+        const greeting = (function(msg) { console.log(msg); });
         greeting(hello + goodbye);
         export {};
         `
@@ -432,11 +432,11 @@ QUnit.module("module builder", function (origHooks) {
       assert.codeEqual(
         await bundleCode(assert.fs),
         `
-        const greeting = (function(msg) { console.log(msg); });
-        const hello = 'hello';
-        const goodbye = 'goodbye';
         const konnichiwa = 'konnichiwa';
         const sayonara = 'sayonara';
+        const hello = 'hello';
+        const goodbye = 'goodbye';
+        const greeting = (function(msg) { console.log(msg); });
         greeting(hello + goodbye + konnichiwa + sayonara);
         export {};
         `
@@ -3698,8 +3698,8 @@ QUnit.module("module builder", function (origHooks) {
       assert.codeEqual(
         source,
         `
-        const bar = (function() { return 'bar'; });
         function foo() { return 'foo'; }
+        const bar = (function() { return 'bar'; });
         console.log(bar() + foo());
         export {};
         `
@@ -3721,8 +3721,8 @@ QUnit.module("module builder", function (origHooks) {
         assert.codeEqual(
           editor.serialize().code,
           `
-          const renamedBar = (function() { return 'bar'; });
           function renamedFoo() { return 'foo'; }
+          const renamedBar = (function() { return 'bar'; });
           console.log(renamedBar() + renamedFoo());
           export {};
           `
@@ -4879,12 +4879,12 @@ QUnit.module("module builder", function (origHooks) {
             "lib1": "${lib1BundleHref}/lib.js",
             "lib2": "${lib2BundleHref}/lib.js"
           }`,
-          // we consume myPuppies() before getPuppies(), which is transposed from the previous test
+          // we import myPuppies() before getPuppies(), which is transposed from the previous test
           "driver.js": `
-            import { getPuppies } from "lib1";
             import { myPuppies } from "lib2";
+            import { getPuppies } from "lib1";
             let jojo = 'Jojo';
-            console.log([jojo, ...myPuppies(), ...getPuppies()]);
+            console.log([jojo, ...getPuppies(), ...myPuppies()]);
             `,
           [`${lib1BundleHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
           [`${lib1BundleHref}/lib.js`]: bundle1Src,
@@ -4897,10 +4897,10 @@ QUnit.module("module builder", function (origHooks) {
           source,
           `
           const puppies = ["mango", "van gogh"];
-          function myPuppies() { return puppies; }
           function getPuppies() { return puppies; }
+          function myPuppies() { return puppies; }
           let jojo = 'Jojo';
-          console.log([jojo, ...myPuppies(), ...getPuppies()]);
+          console.log([jojo, ...getPuppies(), ...myPuppies()]);
           export {};
           `
         );
@@ -5733,9 +5733,9 @@ QUnit.module("module builder", function (origHooks) {
         assert.codeEqual(
           source,
           `
-          const toys = ["poopkin pie", "turkey hat"];
           const toys0 = ["poopkin pie", "turkey hat"];
           function getToys() { return toys0; }
+          const toys = ["poopkin pie", "turkey hat"];
           console.log([...toys, ...getToys()]);
           export {};
           `
@@ -6600,9 +6600,9 @@ QUnit.module("module builder", function (origHooks) {
         assert.codeEqual(
           source,
           `
-          const puppies = ["mango", "van gogh"];
           const puppies0 = ["mango", "van gogh"];
           function getPuppies() { return puppies0; }
+          const puppies = ["mango", "van gogh"];
           console.log([...puppies, ...getPuppies()]);
           export {};
           `
@@ -6982,9 +6982,9 @@ QUnit.module("module builder", function (origHooks) {
         assert.codeEqual(
           source,
           `
-          const puppies = ["mango", "van gogh"];
           const puppies0 = ["mango", "van gogh"];
           function getPuppies() { return puppies0; }
+          const puppies = ["mango", "van gogh"];
           console.log([...puppies, ...getPuppies()]);
           export {};
           `
