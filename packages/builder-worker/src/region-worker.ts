@@ -1,5 +1,6 @@
 import { RegionEditor, RegionPointer } from "./code-region";
 import { DependencyResolver } from "./dependency-resolution";
+import { log } from "./logger";
 import { Editor } from "./module-rewriter";
 import { BundleAssignment } from "./nodes/bundle";
 import {
@@ -83,7 +84,13 @@ export class CodeRegionWorker {
   }
 
   performWork() {
+    let count = 0;
     while (this.stack.length > 0) {
+      if (typeof process?.stdout?.write === "function") {
+        process.stdout.write(
+          `  discovered ${++count} regions for bundle ${this.bundle.href}\r`
+        );
+      }
       let { module, pointer, editor } = this.stack.shift()!;
 
       this.task(
@@ -100,6 +107,11 @@ export class CodeRegionWorker {
         },
         this.addNewEditor.bind(this)
       );
+    }
+    if (typeof process?.stdout?.write === "function") {
+      console.log();
+    } else {
+      log(`  discovered ${count} regions for bundle ${this.bundle.href}`);
     }
   }
 

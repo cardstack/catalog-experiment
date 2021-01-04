@@ -24,6 +24,7 @@ import {
 import { GetLockFileNode, LockEntries, LockFile } from "./lock-file";
 import { flatMap } from "lodash";
 import { CodeRegionWorker, TaskAdder, EditorAdder } from "../region-worker";
+import { log } from "../logger";
 
 export class CombineModulesNode implements BuilderNode {
   cacheKey: CombineModulesNode;
@@ -117,12 +118,43 @@ export class CombineModulesNode implements BuilderNode {
     }
     // filter out editors that have only retained solely their document regions,
     // these are no-ops
-    let editors = worker.editors.filter(
+    let _editors = worker.editors.filter(
       (e) =>
         !e.editor
           .includedRegions()
           .every((p) => e.editor.regions[p].type === "document")
     );
+    // collapse contiguous editors
+    let merges = _editors.reduce((merges, item, index, source) => {
+      if (index === 0) {
+        merges.push([item]);
+      } else {
+        let previousModuleHref = source[index - 1].module.url.href;
+        if (item.module.url.href === previousModuleHref) {
+          merges[merges.length - 1].push(item);
+        } else {
+          merges.push([item]);
+        }
+      }
+      return merges;
+    }, [] as Editor[][]);
+    let editors: Editor[] = [];
+    for (let [item, ...rest] of merges) {
+      if (rest.length > 0) {
+        item.editor.mergeWith(...rest.map(({ editor }) => editor));
+      }
+      editors.push(item);
+    }
+
+    if (editors.length > 10) {
+      let modules: Set<string> = new Set();
+      for (let { module } of editors) {
+        modules.add(module.url.href);
+      }
+      log(
+        `  using ${editors.length} editors (${modules.size} unique modules) for bundle ${this.bundle.href}`
+      );
+    }
 
     let headState = new HeadState(editors);
     let { module, editor, sideEffectDeclarations } = headState.next() ?? {};
@@ -261,6 +293,7 @@ function discoverIncludedRegions(
         // effects
         editor.removeRegionAndItsChildren(pointer);
         visitRegionAndItsChildren(pointer, module, editor, visitedRegions);
+        removeDeclaratorOf(pointer, module, editor, visitedRegions);
         return;
       }
     }
@@ -369,6 +402,7 @@ function discoverIncludedRegions(
     let isRegionObviated: boolean;
     let originalEditor = editor;
     let originalPointer = pointer;
+    let originalModule = module;
     let resolution: ResolvedDependency | undefined;
     ({
       module,
@@ -394,6 +428,12 @@ function discoverIncludedRegions(
       // we don't want any dangling side effects. we'll recreate all the regions
       // for this declaration in the resolved module's editor
       originalEditor.removeRegionAndItsChildren(originalPointer);
+      removeDeclaratorOf(
+        originalPointer,
+        originalModule,
+        originalEditor,
+        visitedRegions
+      );
     }
     if (
       resolution?.type === "declaration" &&
@@ -515,6 +555,38 @@ function discoverIncludedRegionsForNamespace(
         // include this region in the resulting bundle.
         editor.keepRegion(importedPointer);
       }
+    }
+  }
+}
+
+function removeDeclaratorOf(
+  pointer: RegionPointer,
+  module: Resolution,
+  editor: RegionEditor,
+  visitedRegions: Map<string, Map<RegionPointer, RegionEditor>>
+) {
+  let region = editor.regions[pointer];
+  if (region.type !== "declaration" || region.declaration.type !== "local") {
+    return;
+  }
+  let declaratorOf = region.declaration.declaratorOfRegion;
+  if (declaratorOf != null) {
+    let siblingDeclarations = flatMap(editor.regions, (r, p) =>
+      r.type === "declaration" &&
+      r.declaration.type === "local" &&
+      r.declaration.declaratorOfRegion === declaratorOf &&
+      p !== pointer
+        ? [p]
+        : []
+    );
+    if (
+      siblingDeclarations.length === 0 ||
+      siblingDeclarations.every(
+        (p) => editor.dispositions[p].state === "removed"
+      )
+    ) {
+      editor.removeRegionAndItsChildren(declaratorOf);
+      visitRegionAndItsChildren(pointer, module, editor, visitedRegions);
     }
   }
 }

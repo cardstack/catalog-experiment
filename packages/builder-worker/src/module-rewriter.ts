@@ -19,7 +19,8 @@ import {
 } from "./code-region";
 import { BundleAssignment } from "./nodes/bundle";
 import stringify from "json-stable-stringify";
-import { MD5 as md5, enc } from "crypto-js";
+// @ts-ignore
+import fastStringify from "fast-stable-stringify";
 import {
   setDoubleNestedMapping,
   stringifyReplacer as replacer,
@@ -32,6 +33,7 @@ import {
 } from "./dependency-resolution";
 import { maybeRelativeURL } from "./path";
 import { pkgInfoFromCatalogJsURL } from "./resolver";
+import MurmurHash from "imurmurhash";
 
 export interface Editor {
   editor: RegionEditor;
@@ -88,8 +90,14 @@ export class HeadState {
   // export names associated with the binding
   readonly multiExportedBindings: Map<string, Map<string, string[]>>;
 
+  // Because there can be multiple editors per module, we really only want to
+  // perform name assignment just once per module, so we use this set to keep
+  // track of the modules that have already had name assignment performed.
+  readonly assignedModules: Set<string> = new Set();
+
   readonly visited: Editor[] = [];
   private queue: Editor[] = [];
+  readonly editorCount: number;
 
   constructor(editors: Editor[]) {
     // we reverse the order of the modules to append such that we first emit the
@@ -100,6 +108,7 @@ export class HeadState {
     // writing modules into the bundle in reverse order--from the bottom up.
     this.queue = [...editors].reverse();
     this.multiExportedBindings = this.discoverMultipleExports();
+    this.editorCount = editors.length;
   }
 
   next(): Editor | undefined {
@@ -118,21 +127,46 @@ export class HeadState {
       assignedLocalNames,
       visited,
       assignedNamespaces,
+      assignedModules,
       queue,
     } = this;
-    // creating summary objects, as otherwise the nesting nature of
+    // Creating summary objects, as otherwise the nesting nature of
     // ModuleResolutions makes the resulting object too large to stringify in V8
-    // for big packages like lodash, resulting in memory issues
+    // for big packages like lodash, resulting in memory issues.
+    // fast-stable-stringify is much faster than stable-stringify, however, it
+    // has no replacer capability. So we use fast-stable-stringify to stringify
+    // the largest part of the state (CodeRegions), which fortunately have no
+    // crucial state that needs stringify replacers. We also hash as we go,
+    // since there are issues when you try to hash too large of an object--we
+    // are using the fastest hashing algorithm available--it's 32 bytes, which
+    // should be adequate for our needs. For everything else, the replacers are
+    // crucial in order to represent the state, so we use the slower stable
+    // stringify.
+    //
     let visitedSummary = visited.map(({ module, editor }) => ({
       url: module.url.href,
-      desc: module.desc,
+      regions: module.desc.regions
+        .reduce(
+          (hashState, r) => hashState.hash(fastStringify(r)),
+          MurmurHash()
+        )
+        .result(),
       dispositions: editor.dispositions,
     }));
     let queueSummary = queue.map(({ module, editor }) => ({
       url: module.url.href,
-      desc: module.desc,
+      regions: module.desc.regions
+        .reduce(
+          (hashState, r) => hashState.hash(fastStringify(r)),
+          MurmurHash()
+        )
+        .result(),
       dispositions: editor.dispositions,
     }));
+    let assignedNamespacesSummary = [...assignedNamespaces].map(([k, v]) => [
+      k,
+      v.nameMap,
+    ]);
     let str = stringify(
       {
         usedNames,
@@ -140,7 +174,8 @@ export class HeadState {
         assignedDependencyBindings,
         assignedLocalNames,
         visitedSummary,
-        assignedNamespaces,
+        assignedNamespacesSummary,
+        assignedModules,
         queueSummary,
       },
       {
@@ -148,7 +183,8 @@ export class HeadState {
       }
     );
 
-    return md5(str).toString(enc.Base64);
+    let hash = MurmurHash(str).result().toString();
+    return hash;
   }
 
   private discoverMultipleExports() {
@@ -212,8 +248,19 @@ export class ModuleRewriter {
     this.ownAssignments = bundleAssignments.filter(
       (a) => a.bundleURL.href === this.bundle.href
     );
-    this.rewriteScope();
+
+    if (!this.state.assignedModules.has(this.module.url.href)) {
+      this.rewriteScope();
+      this.assignInternalExportAllNames();
+      this.state.assignedModules.add(this.module.url.href);
+    } else {
+      this.setAssignedNames();
+    }
+
+    // This is based on included regions in the editor, so we need to always
+    // invoke this even if names for this module have been assigned.
     this.makeNamespaceMappings();
+    this.assignSpecifiersForDynamicImports();
   }
 
   serialize(): { code: string; regions: CodeRegion[] } {
@@ -238,165 +285,195 @@ export class ModuleRewriter {
     return { code, regions };
   }
 
-  rewriteScope(): void {
-    let { declarations } = this.module.desc;
-    if (declarations) {
-      for (let [
-        localName,
-        { pointer, declaration: localDesc },
-      ] of declarations) {
-        let assignedName: string | undefined;
-        if (
-          localDesc.type === "import" ||
-          (localDesc.type === "local" && localDesc.original)
-        ) {
-          if (localDesc.type === "import") {
-            let importedModule = makeNonCyclic(this.module).resolvedImports[
-              localDesc.importIndex
-            ];
-            let pkgURL = pkgInfoFromCatalogJsURL(importedModule.url)?.pkgURL;
-            let outerResolution = pkgURL
-              ? this.depResolver.resolutionByConsumptionRegion(
-                  this.module,
-                  pointer,
-                  pkgURL
-                )
-              : undefined;
-            let source = this.depResolver.resolveDeclaration(
-              localDesc.importedName,
-              importedModule,
-              this.module,
-              this.ownAssignments,
-              pointer
-            );
-            if (source.type === "resolved") {
-              assignedName = this.maybeAssignImportName(
-                source.resolution
-                  ? source.resolution.source
-                  : source.module.url.href,
-                source.resolution
-                  ? source.resolution.importedAs
-                  : source.importedAs,
-                localName
-              );
-              if (outerResolution?.type === "declaration") {
-                setDoubleNestedMapping(
-                  outerResolution.source,
-                  outerResolution.importedAs,
-                  assignedName,
-                  this.state.assignedImportedNames
-                );
-              }
-            } else {
-              assignedName = this.maybeAssignImportName(
-                source.resolution
-                  ? source.resolution.source
-                  : source.importedFromModule.url.href,
-                source.resolution
-                  ? source.resolution.importedAs
-                  : source.importedAs,
-                localName
-              );
-            }
-            // TODO if we allow NamespaceMappings here, then we could use the
-            // value to help set the "original" property on namespace object
-            // declarations (needs to also be paired with resolution entries
-            // that contain a NamespaceMarker consumption points)
-            if (
-              source.resolution &&
-              assignedName &&
-              source.resolution.type === "declaration" &&
-              !isNamespaceMarker(source.resolution.importedAs)
-            ) {
-              // we deal with setting the namespace assigned import deps in the
-              // makeNamespaceMappings()
-              this.state.assignedDependencyBindings.set(assignedName, {
-                bundleHref: source.resolution.bundleHref,
-                range: source.resolution.range,
-                importedAs: source.resolution.importedAs,
-              });
-            }
-          } else if (localDesc.type === "local" && localDesc.original) {
-            let resolution = this.depResolver.resolutionByDeclaration(
-              localDesc,
-              this.module,
-              pointer
-            )!; // this function actually throws when a local desc with an original does not have a resolution
-            assignedName = this.maybeAssignImportName(
-              resolution.source,
-              resolution.importedAs,
-              localName
-            );
-          }
-        } else {
-          // check to see if the binding was actually already assigned by a module
-          // that imports it
-          let resolution = this.depResolver.resolutionByConsumptionRegion(
-            this.module,
-            pointer
-          );
-          if (
-            resolution &&
-            resolution.type === "declaration" &&
-            !isNamespaceMarker(resolution.importedAs)
-          ) {
-            let { bundleHref, range, importedAs, source } = resolution;
-            assignedName = this.maybeAssignImportName(
-              source,
-              importedAs,
-              localName
-            );
-            this.state.assignedDependencyBindings.set(assignedName, {
-              bundleHref,
-              range,
-              importedAs,
-            });
-          } else {
-            let [exportName, { module: sourceModule }] = [
-              ...getExports(this.module),
-            ].find(
-              ([_, { desc }]) =>
-                desc.type === "local" && desc.name === localName
-            ) ?? [undefined, {}];
-            let suggestedName =
-              localName === "default" ? "_default" : localName;
-            if (exportName && sourceModule) {
-              assignedName = this.maybeAssignImportName(
-                sourceModule.url.href,
-                exportName,
-                suggestedName
-              );
-            }
-            if (!assignedName) {
-              if (
-                this.sideEffectDeclarations.has(pointer) &&
-                this.isUnconsumed(localDesc, pointer)
-              ) {
-                assignedName = this.maybeAssignLocalName(
-                  localName,
-                  `unused_${localName}`
-                );
-              } else {
-                // this is just a plain jane local internal declaration. it may or
-                // may not actually be a region that we keep, as there could be
-                // multiple module rewriters for the same module. To keep everything
-                // straight, check our state to see if we have already assigned a
-                // name for this binding.
-                assignedName = this.maybeAssignLocalName(localName);
-              }
-            }
-          }
-        }
-        if (!assignedName) {
-          throw new Error(
-            `unable to assign name to the binding '${localName}' in module ${this.module.url.href} when constructing bundle ${this.bundle.href}`
-          );
-        }
-        this.claimAndRename(localName, assignedName);
-      }
+  setAssignedNames(): void {
+    if (!this.state.assignedModules.has(this.module.url.href)) {
+      throw new Error(
+        `cannot set assigned names for a module if rewriteScope() has not yet been invoked for this module, ${this.module.url.href} in the bundle ${this.bundle.href}`
+      );
     }
 
-    // rewrite dynamic imports to use bundle specifiers
+    let assignments = this.state.nameAssignments.get(this.module.url.href);
+    if (assignments?.size === 0) {
+      return;
+    }
+
+    for (let pointer of this.editor.includedRegions()) {
+      let region = this.module.desc.regions[pointer];
+      if (region.type !== "declaration") {
+        continue;
+      }
+      let {
+        declaration: { declaredName: originalName },
+      } = region;
+      let assignedName = assignments?.get(originalName);
+      if (!assignedName) {
+        throw new Error(
+          `name assignment has already been performed for this module, but can not find name assignment for ${JSON.stringify(
+            originalName
+          )} in module ${this.module.url.href} for bundle ${this.bundle.href}`
+        );
+      }
+      this.editor.rename(originalName, assignedName);
+    }
+  }
+
+  rewriteScope(): void {
+    let { declarations } = this.module.desc;
+    if (!declarations) {
+      return;
+    }
+
+    for (let [localName, { pointer, declaration: localDesc }] of declarations) {
+      let assignedName: string | undefined;
+      if (
+        localDesc.type === "import" ||
+        (localDesc.type === "local" && localDesc.original)
+      ) {
+        if (localDesc.type === "import") {
+          let importedModule = makeNonCyclic(this.module).resolvedImports[
+            localDesc.importIndex
+          ];
+          let pkgURL = pkgInfoFromCatalogJsURL(importedModule.url)?.pkgURL;
+          let outerResolution = pkgURL
+            ? this.depResolver.resolutionByConsumptionRegion(
+                this.module,
+                pointer,
+                pkgURL
+              )
+            : undefined;
+          let source = this.depResolver.resolveDeclaration(
+            localDesc.importedName,
+            importedModule,
+            this.module,
+            this.ownAssignments,
+            pointer
+          );
+          if (source.type === "resolved") {
+            assignedName = this.maybeAssignImportName(
+              source.resolution
+                ? source.resolution.source
+                : source.module.url.href,
+              source.resolution
+                ? source.resolution.importedAs
+                : source.importedAs,
+              localName
+            );
+            if (outerResolution?.type === "declaration") {
+              setDoubleNestedMapping(
+                outerResolution.source,
+                outerResolution.importedAs,
+                assignedName,
+                this.state.assignedImportedNames
+              );
+            }
+          } else {
+            assignedName = this.maybeAssignImportName(
+              source.resolution
+                ? source.resolution.source
+                : source.importedFromModule.url.href,
+              source.resolution
+                ? source.resolution.importedAs
+                : source.importedAs,
+              localName
+            );
+          }
+          // TODO if we allow NamespaceMappings here, then we could use the
+          // value to help set the "original" property on namespace object
+          // declarations (needs to also be paired with resolution entries
+          // that contain a NamespaceMarker consumption points)
+          if (
+            source.resolution &&
+            assignedName &&
+            source.resolution.type === "declaration" &&
+            !isNamespaceMarker(source.resolution.importedAs)
+          ) {
+            // we deal with setting the namespace assigned import deps in the
+            // makeNamespaceMappings()
+            this.state.assignedDependencyBindings.set(assignedName, {
+              bundleHref: source.resolution.bundleHref,
+              range: source.resolution.range,
+              importedAs: source.resolution.importedAs,
+            });
+          }
+        } else if (localDesc.type === "local" && localDesc.original) {
+          let resolution = this.depResolver.resolutionByDeclaration(
+            localDesc,
+            this.module,
+            pointer
+          )!; // this function actually throws when a local desc with an original does not have a resolution
+          assignedName = this.maybeAssignImportName(
+            resolution.source,
+            resolution.importedAs,
+            localName
+          );
+        }
+      } else {
+        // check to see if the binding was actually already assigned by a module
+        // that imports it
+        let resolution = this.depResolver.resolutionByConsumptionRegion(
+          this.module,
+          pointer
+        );
+        if (
+          resolution &&
+          resolution.type === "declaration" &&
+          !isNamespaceMarker(resolution.importedAs)
+        ) {
+          let { bundleHref, range, importedAs, source } = resolution;
+          assignedName = this.maybeAssignImportName(
+            source,
+            importedAs,
+            localName
+          );
+          this.state.assignedDependencyBindings.set(assignedName, {
+            bundleHref,
+            range,
+            importedAs,
+          });
+        } else {
+          let [exportName, { module: sourceModule }] = [
+            ...getExports(this.module),
+          ].find(
+            ([_, { desc }]) => desc.type === "local" && desc.name === localName
+          ) ?? [undefined, {}];
+          let suggestedName = localName === "default" ? "_default" : localName;
+          if (exportName && sourceModule) {
+            assignedName = this.maybeAssignImportName(
+              sourceModule.url.href,
+              exportName,
+              suggestedName
+            );
+          }
+          if (!assignedName) {
+            if (
+              this.sideEffectDeclarations.has(pointer) &&
+              this.isUnconsumed(localDesc, pointer)
+            ) {
+              assignedName = this.maybeAssignLocalName(
+                localName,
+                `unused_${localName}`
+              );
+            } else {
+              // this is just a plain jane local internal declaration. it may or
+              // may not actually be a region that we keep, as there could be
+              // multiple module rewriters for the same module. To keep everything
+              // straight, check our state to see if we have already assigned a
+              // name for this binding.
+              assignedName = this.maybeAssignLocalName(localName);
+            }
+          }
+        }
+      }
+      if (!assignedName) {
+        throw new Error(
+          `unable to assign name to the binding '${localName}' in module ${this.module.url.href} when constructing bundle ${this.bundle.href}`
+        );
+      }
+      this.claimAndRename(localName, assignedName);
+    }
+  }
+
+  private assignSpecifiersForDynamicImports() {
     let myAssignment = this.ownAssignments.find(
       (a) => a.module.url.href === this.module.url.href
     )!;
@@ -432,10 +509,10 @@ export class ModuleRewriter {
     }
   }
 
-  private makeNamespaceMappings() {
-    // assign names for "export *" of external bundles that need to be converted
-    // into namespace imports so as not to alter the bundle's API, which we only
-    // consider in non-entrypoint modules
+  // assign names for "export *" of external bundles that need to be converted
+  // into namespace imports so as not to alter the bundle's API, which we only
+  // consider in non-entrypoint modules
+  private assignInternalExportAllNames() {
     if (
       this.ownAssignments[0].entrypointModuleURL.href !== this.module.url.href
     ) {
@@ -460,8 +537,9 @@ export class ModuleRewriter {
         );
       }
     }
+  }
 
-    // deal with bundle-internal namespace imports
+  private makeNamespaceMappings() {
     for (let pointer of this.editor.includedRegions()) {
       let region = this.module.desc.regions[pointer];
       if (

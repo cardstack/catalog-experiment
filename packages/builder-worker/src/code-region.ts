@@ -853,6 +853,22 @@ export class RegionEditor {
     };
   }
 
+  mergeWith(...editors: RegionEditor[]) {
+    if (
+      editors.some((e) => e.dispositions.length !== this.dispositions.length)
+    ) {
+      throw new Error(`cannot merge editors that have different regions`);
+    }
+    for (let [pointer] of this.regions.entries()) {
+      let dispositions = editors.map((e) => e.dispositions[pointer]);
+      if (dispositions.every((d) => d.state === "removed")) {
+        continue;
+      }
+      let disposition = dispositions.find((d) => d.state !== "removed")!;
+      this.dispositions[pointer] = { ...disposition };
+    }
+  }
+
   // don't get rid of the VariableDeclaration regions that the declarators
   // need--this is the "const ... ;" ("let" and "var" too) code regions.
   isDependentUponRegion(pointer: RegionPointer): boolean {

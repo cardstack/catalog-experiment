@@ -1165,6 +1165,15 @@ function isSideEffectFree(node: Expression | SpreadElement): boolean {
       return node.elements.every((e) => isSideEffectFree(e as Expression));
     case "SpreadElement":
       return isSideEffectFree(node.argument);
+    case "ConditionalExpression":
+      return (
+        isSideEffectFree(node.test) &&
+        isSideEffectFree(node.consequent) &&
+        isSideEffectFree(node.alternate)
+      );
+    case "LogicalExpression":
+    case "BinaryExpression":
+      return isSideEffectFree(node.left) && isSideEffectFree(node.right);
     case "ObjectExpression":
       return node.properties.every(
         (p) =>
