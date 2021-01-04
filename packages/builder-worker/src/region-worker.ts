@@ -8,6 +8,7 @@ import {
   ModuleResolution,
   Resolution,
 } from "./nodes/resolution";
+import { setDoubleNestedMapping } from "./utils";
 
 export type CodeRegionTask = (
   bundle: URL,
@@ -19,7 +20,8 @@ export type CodeRegionTask = (
   depResolver: DependencyResolver,
   visitedRegions: Map<string, Map<RegionPointer, RegionEditor>>,
   addTask: TaskAdder,
-  addNewEditor: EditorAdder
+  addNewEditor: EditorAdder,
+  watchDog: Map<string, Map<RegionPointer, number>>
 ) => void;
 
 export type TaskAdder = (
@@ -39,8 +41,10 @@ interface Work {
 }
 
 export class CodeRegionWorker {
-  readonly editors: Editor[] = [];
+  readonly editors: Editor[];
   private stack: Work[] = [];
+  private stackIndex: Map<string, Map<RegionPointer, RegionEditor>> = new Map();
+  private watchDog: Map<string, Map<RegionPointer, number>> = new Map();
   private visitedRegions: Map<
     string,
     Map<RegionPointer, RegionEditor>
@@ -51,7 +55,13 @@ export class CodeRegionWorker {
     private resolutionsInDepOrder: Resolution[],
     private depResolver: DependencyResolver,
     private task: CodeRegionTask
-  ) {}
+  ) {
+    this.editors = resolutionsInDepOrder.map((m) => ({
+      module: makeNonCyclic(m),
+      editor: new RegionEditor(makeNonCyclic(m).source, m.desc, this.bundle),
+      sideEffectDeclarations: new Set(),
+    }));
+  }
 
   addWork(module: ModuleResolution, pointer: RegionPointer) {
     // use an existing editor if there is one
@@ -86,12 +96,30 @@ export class CodeRegionWorker {
   performWork() {
     let count = 0;
     while (this.stack.length > 0) {
+      let { module, pointer, editor } = this.stack.shift()!;
+      this.stackIndex.get(module.url.href)?.delete(pointer);
+      let watchDogCount = this.watchDog.get(module.url.href)?.get(pointer) ?? 0;
       if (typeof process?.stdout?.write === "function") {
         process.stdout.write(
-          `  discovered ${++count} regions for bundle ${this.bundle.href}\r`
+          `  visited ${++count} regions, editors size: ${
+            this.editors.length
+          }, stack size: ${String(this.stack.length).padStart(
+            8,
+            " "
+          )}, revisit count ${String(watchDogCount).padStart(
+            6,
+            " "
+          )} for bundle ${this.bundle.href}\r`
         );
       }
-      let { module, pointer, editor } = this.stack.shift()!;
+      if (watchDogCount > 0) {
+        setDoubleNestedMapping(
+          module.url.href,
+          pointer,
+          --watchDogCount,
+          this.watchDog
+        );
+      }
 
       this.task(
         this.bundle,
@@ -102,16 +130,54 @@ export class CodeRegionWorker {
         this.ownAssignments,
         this.depResolver,
         this.visitedRegions,
-        (module, pointer, editor) => {
-          this.stack.unshift({ module, pointer, editor });
-        },
-        this.addNewEditor.bind(this)
+        this.addTask.bind(this),
+        this.addNewEditor.bind(this),
+        this.watchDog
       );
     }
     if (typeof process?.stdout?.write === "function") {
       console.log();
     } else {
-      log(`  discovered ${count} regions for bundle ${this.bundle.href}`);
+      log(`  visited ${count} regions for bundle ${this.bundle.href}`);
+    }
+  }
+
+  private addTask(
+    module: Resolution,
+    pointer: RegionPointer,
+    editor: RegionEditor
+  ) {
+    // coalesce work in the stack so that if there is already work for
+    // this consumption point, we only retain the one with the earliest editor
+    let pendingWorkEditor = this.stackIndex.get(module.url.href)?.get(pointer);
+    if (pendingWorkEditor) {
+      let pendingEditorIndex = this.editors.findIndex(
+        ({ editor: e }) => e === pendingWorkEditor
+      );
+      let newWorkEditorIndex = this.editors.findIndex(
+        ({ editor: e }) => e === editor
+      );
+      if (pendingEditorIndex === newWorkEditorIndex) {
+        return;
+      } else if (pendingEditorIndex < newWorkEditorIndex) {
+        pendingWorkEditor.mergeWith(editor);
+        return;
+      } else {
+        let stackIndex = this.stack.findIndex(
+          ({ editor: e }) => pendingWorkEditor === e
+        );
+        editor.mergeWith(pendingWorkEditor);
+        this.stack[stackIndex].editor = editor;
+        setDoubleNestedMapping(
+          module.url.href,
+          pointer,
+          editor,
+          this.stackIndex
+        );
+      }
+    } else {
+      this.stack.unshift({ module, pointer, editor });
+      setDoubleNestedMapping(module.url.href, pointer, editor, this.stackIndex);
     }
   }
 
