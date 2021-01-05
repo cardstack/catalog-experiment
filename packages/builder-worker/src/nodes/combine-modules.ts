@@ -1,11 +1,7 @@
 import { BuilderNode, NextNode, Value } from "./common";
 import { makeNonCyclic, ModuleResolution, Resolution } from "./resolution";
 import { getExportDesc, ModuleDescription } from "../describe-file";
-import {
-  documentPointer,
-  isNamespaceMarker,
-  RegionPointer,
-} from "../code-region";
+import { isNamespaceMarker, RegionPointer } from "../code-region";
 import { BundleAssignment, BundleAssignmentsNode } from "./bundle";
 import { HeadState } from "../module-rewriter";
 import { AppendModuleNode, FinishAppendModulesNode } from "./append-module";
@@ -124,27 +120,6 @@ export function assertDeclarationResolution(
       `the dependency resolution for the pkg ${pkgURL.href} consumed in the module ${module.url.href} at region ${pointer} was a "side-effect" type of resolution. Was expecting a "declaration" type of resolution while building bundle ${bundle.href}`
     );
   }
-}
-
-// the way we got to this region is unique to a side effect that is part of a
-// module declaration
-function hasModuleDeclarationWithSideEffectSignature(
-  pointer: RegionPointer,
-  module: Resolution
-): boolean {
-  let region = module.desc.regions[pointer];
-  if (region.type !== "declaration") {
-    return false;
-  }
-  let sideEffectCandidates = [...region.dependsOn].filter(
-    (p) => module.desc.regions[p].type === "general"
-  );
-  if (sideEffectCandidates.length === 0) {
-    return false;
-  }
-  return [...module.desc.regions[documentPointer].dependsOn].some((p) =>
-    sideEffectCandidates.includes(p)
-  );
 }
 
 export interface ExposedRegionInfo {

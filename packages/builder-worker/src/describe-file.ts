@@ -39,6 +39,7 @@ import {
   makeNonCyclic,
 } from "./nodes/resolution";
 import { NamespaceMarker, assignCodeRegionPositions } from "./code-region";
+import { flatMap } from "lodash";
 
 export interface ExportAllMarker {
   exportAllFrom: string;
@@ -501,15 +502,51 @@ export function describeFile(ast: File, filename: string): FileDescription {
       },
       exit() {
         let document = builder.regions[documentPointer];
-        for (let name of consumedByModule) {
-          let declarationPointer = builder.regions.findIndex(
+        // sort the consumedByModule declarations in the order they are imported
+        // (for the ones that are imported)
+        const aFirst = -1,
+          bFirst = 1,
+          same = 0;
+        let consumed = flatMap([...consumedByModule], (name) => {
+          let pointer = builder.regions.findIndex(
             (r) =>
               r.type === "declaration" && r.declaration.declaredName === name
           );
-          if (declarationPointer !== notFoundPointer) {
-            document.dependsOn.add(declarationPointer);
+          return pointer !== notFoundPointer ? [pointer] : [];
+        }).sort((a, b) => {
+          // import declarations go before local declarations
+          let aRegion = builder.regions[a] as DeclarationCodeRegion;
+          let bRegion = builder.regions[b] as DeclarationCodeRegion;
+          if (
+            aRegion.declaration.type === "import" &&
+            bRegion.declaration.type === "local"
+          ) {
+            return aFirst;
           }
-        }
+          if (
+            aRegion.declaration.type === "local" &&
+            bRegion.declaration.type === "import"
+          ) {
+            return bFirst;
+          }
+          // finally sort based on import position (importIndex)
+          if (
+            aRegion.declaration.type === "import" &&
+            bRegion.declaration.type === "import"
+          ) {
+            return (
+              aRegion.declaration.importIndex - bRegion.declaration.importIndex
+            );
+          }
+          return same;
+        });
+        document.dependsOn = new Set([
+          // we reverse this because when we perform the editor assignment for
+          // code regions we perform it in consumer first order (backwards from
+          // how we serialize it)
+          ...consumed.reverse(),
+          ...document.dependsOn,
+        ]);
       },
     },
     FunctionDeclaration: {

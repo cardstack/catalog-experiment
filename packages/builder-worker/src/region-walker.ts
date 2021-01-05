@@ -1,4 +1,4 @@
-import { flatMap } from "lodash";
+import { flatMap, intersection } from "lodash";
 import {
   documentPointer,
   isNamespaceMarker,
@@ -31,8 +31,10 @@ interface EditorAssignment {
 
 export class RegionWalker {
   readonly keptRegions: RegionGraph = new Map();
+  private resolvedRegions: Map<string, string> = new Map();
   readonly seenRegions: Set<string> = new Set();
   private assigner: EditorAssigner;
+  private declarationsWithSideEffects: Set<string> = new Set();
   constructor(
     exposed: ExposedRegionInfo[],
     private bundle: URL,
@@ -40,8 +42,11 @@ export class RegionWalker {
     resolutionsInDepOrder: ModuleResolution[],
     private depResolver: DependencyResolver
   ) {
+    let ownResolutions = resolutionsInDepOrder.filter((m) =>
+      ownAssignments.find(({ module }) => module.url.href === m.url.href)
+    );
     // marry up the document regions to the exposed regions in dependency order
-    for (let module of resolutionsInDepOrder) {
+    for (let module of ownResolutions) {
       // walks all the module side effects
       this.walk(module, documentPointer);
 
@@ -54,8 +59,9 @@ export class RegionWalker {
     }
     this.assigner = new EditorAssigner(
       this.keptRegions,
+      this.declarationsWithSideEffects,
       this.ownAssignments,
-      resolutionsInDepOrder,
+      ownResolutions,
       this.bundle,
       exposed
     );
@@ -65,12 +71,19 @@ export class RegionWalker {
     return this.assigner.editors;
   }
 
-  private walk(module: Resolution, pointer: RegionPointer): string | undefined {
+  private walk(
+    module: Resolution,
+    pointer: RegionPointer,
+    originalId = regionId(module, pointer)
+  ): string | undefined {
     let id = regionId(module, pointer);
     let region = module.desc.regions[pointer];
 
-    if (this.seenRegions.has(id) || this.keptRegions.has(id)) {
-      return;
+    if (this.keptRegions.has(id)) {
+      return id;
+    }
+    if (this.seenRegions.has(id)) {
+      return this.resolvedRegions.get(id);
     }
 
     this.seenRegions.add(id);
@@ -158,7 +171,7 @@ export class RegionWalker {
         this.ownAssignments
       );
       if (source.type === "resolved") {
-        return this.walk(source.module, source.pointer);
+        return this.walk(source.module, source.pointer, originalId);
       } else {
         // declarations that are "unresolved" are either namespace imports
         // (internal or external) or external imports
@@ -171,7 +184,8 @@ export class RegionWalker {
           // already fashioned namespace object declaration
           return this.walk(
             source.resolution.consumedBy,
-            source.resolution.consumedByPointer
+            source.resolution.consumedByPointer,
+            originalId
           );
         }
         let consumingModule = makeNonCyclic(
@@ -188,9 +202,9 @@ export class RegionWalker {
             }`
           );
         }
-        // the region we want to memorialize for this step in our "walk" is
-        // probably different than the region that we entered this method with
-        // due to how the declaration was resolved.
+        // the region we want to memorialize for this step in our "walk" might
+        // be different than the region that we entered this method with due to
+        // how the declaration was resolved.
         id = regionId(consumingModule, importedPointer);
         if (
           this.moduleInOurBundle(source.importedFromModule) &&
@@ -204,20 +218,17 @@ export class RegionWalker {
               `unable to determine the region for a namespace import '${region.declaration.declaredName}' of ${source.importedFromModule.url.href} from the consuming module ${source.consumingModule.url.href} in bundle ${this.bundle.href}`
             );
           }
-          this.keptRegions.set(id, new Set());
           let items = this.visitNamespace(
             source.resolution?.importedSource?.declaredIn ??
               source.importedFromModule
           );
-          for (let item in items) {
-            this.keptRegions.get(id)!.add(item);
-          }
+          this.keepRegion(originalId, id, new Set(items));
           return id;
         } else {
           // we mark the external bundle import region as something we want to keep
           // as a signal to the Append nodes that this import is consumed and to
           // include this region in the resulting bundle.
-          this.keptRegions.set(id, new Set());
+          this.keepRegion(originalId, id, new Set());
           return id;
         }
       }
@@ -250,7 +261,11 @@ export class RegionWalker {
       // be responsible for this declaration and any side effects it was
       if (isRegionObviated) {
         this.backOff(module, pointer);
-        return this.walk(resolvedConsumingModule, resolvedConsumingPointer);
+        return this.walk(
+          resolvedConsumingModule,
+          resolvedConsumingPointer,
+          originalId
+        );
       }
 
       // in this case we are replacing a local namespace object declaration with
@@ -263,24 +278,22 @@ export class RegionWalker {
         isNamespaceMarker(resolution?.importedAs) &&
         resolution.importedSource?.declaredIn
       ) {
-        this.keptRegions.set(id, new Set());
         let items = this.visitNamespace(resolution.importedSource.declaredIn);
-        for (let item in items) {
-          this.keptRegions.get(id)!.add(item);
-        }
+        this.keepRegion(originalId, id, new Set(items));
         return id;
       }
 
       // In this case the region that we entered our walk with is actually the
       // winning resolution, so we keep this region and continue our journey.
       else {
-        this.keptRegions.set(id, new Set());
+        let deps: Set<string> = new Set();
         for (let depId of region.dependsOn) {
           let resolvedDepId = this.walk(module, depId);
           if (resolvedDepId != null) {
-            this.keptRegions.get(id)!.add(resolvedDepId);
+            deps.add(resolvedDepId);
           }
         }
+        this.keepRegion(originalId, id, deps);
         return id;
       }
     }
@@ -291,12 +304,12 @@ export class RegionWalker {
         region.importIndex
       ];
       if (this.moduleInOurBundle(importedModule)) {
-        return this.walk(importedModule, documentPointer);
+        return this.walk(importedModule, documentPointer, originalId);
       } else {
         // we mark the external bundle import region as something we want to keep
         // as a signal to the Append nodes that this import is consumed and to
         // include this region in the resulting bundle.
-        this.keptRegions.set(id, new Set());
+        this.keepRegion(originalId, id, new Set());
         return id;
       }
     }
@@ -304,25 +317,16 @@ export class RegionWalker {
     // This is a plain jane region that has no pkg resolutions that we just want
     // to keep, and continue our journey for its deps
     else {
-      this.keptRegions.set(id, new Set());
-
-      // overlay our module resolutions on top of the code regions, such that
-      // a document pointer region depends on the document pointers of the
-      // modules reflected in its module resolution
-      if (pointer === documentPointer) {
-        let moduleDocumentDeps = makeNonCyclic(
-          module
-        ).resolvedImports.map((m) => regionId(m, documentPointer));
-        for (let depId of moduleDocumentDeps) {
-          this.keptRegions.get(id)?.add(depId);
-        }
-      }
-
+      let deps: Set<string> = new Set();
       for (let depId of region.dependsOn) {
         let resolvedDepId = this.walk(module, depId);
         if (resolvedDepId != null) {
-          this.keptRegions.get(id)!.add(resolvedDepId);
+          deps.add(resolvedDepId);
         }
+      }
+      this.keepRegion(originalId, id, deps);
+      if (this.isDeclarationWithSideEffect(id)) {
+        this.declarationsWithSideEffects.add(id);
       }
       return id;
     }
@@ -344,11 +348,9 @@ export class RegionWalker {
       if (source.type === "resolved") {
         let sourceModule: Resolution = source.module;
         let pointer: RegionPointer = source.pointer;
-        if (sourceModule.url.href !== module.url.href) {
-          let itemId = this.walk(sourceModule, pointer);
-          if (itemId) {
-            namespaceItemIds.push(itemId);
-          }
+        let itemId = this.walk(sourceModule, pointer);
+        if (itemId) {
+          namespaceItemIds.push(itemId);
         }
       }
 
@@ -375,21 +377,41 @@ export class RegionWalker {
             );
           }
           let itemId = regionId(source.consumingModule, source.importedPointer);
-          this.keptRegions.set(itemId, new Set());
           let items = this.visitNamespace(source.importedFromModule);
-          for (let item in items) {
-            this.keptRegions.get(itemId)!.add(item);
-          }
+          this.keepRegion(itemId, itemId, new Set(items));
           namespaceItemIds.push(itemId);
         } else {
           let itemId = regionId(module, importedPointer);
-          this.keptRegions.set(itemId, new Set());
+          this.keepRegion(itemId, itemId, new Set());
           namespaceItemIds.push(itemId);
         }
       }
     }
 
     return namespaceItemIds;
+  }
+
+  private keepRegion(
+    originalId: string,
+    resolvedId: string,
+    deps: Set<string>
+  ) {
+    this.keptRegions.set(resolvedId, deps);
+    this.resolvedRegions.set(originalId, resolvedId);
+  }
+
+  private isDeclarationWithSideEffect(id: string): boolean {
+    let { module, pointer } = getRegionFromId(id, this.ownAssignments);
+    let region = module.desc.regions[pointer];
+    if (region.type !== "declaration" || region.declaration.type !== "local") {
+      return false;
+    }
+
+    let sideEffectRegions = intersection(
+      [...region.dependsOn],
+      [...module.desc.regions[documentPointer].dependsOn]
+    );
+    return sideEffectRegions.length > 0;
   }
 
   // There are situations where we visit a region (e.g., a side effect), before
@@ -516,18 +538,12 @@ export class RegionWalker {
 
 class EditorAssigner {
   private assignmentMap: Map<string, EditorAssignment> = new Map();
-  private editorMap: Map<
-    string,
-    {
-      editor: RegionEditor;
-      module: ModuleResolution;
-      sideEffectDeclarations: Set<RegionPointer>;
-    }
-  > = new Map();
+  private editorMap: Map<string, Editor> = new Map();
   private dependenciesOf: RegionGraph;
   private exposedIds: string[];
   constructor(
     private keptRegions: RegionGraph,
+    private declarationsWithSideEffects: Set<string>,
     private ownAssignments: BundleAssignment[],
     resolutionsInDepOrder: ModuleResolution[],
     private bundle: URL,
@@ -548,22 +564,39 @@ class EditorAssigner {
     }
     let { dependenciesOf, leaves } = this.invertCodeRegions(this.exposedIds);
     this.dependenciesOf = dependenciesOf;
-    for (let leaf of leaves) {
+
+    let leavesInDepOrder: string[] = [];
+    for (let module of resolutionsInDepOrder) {
+      let moduleLeaves = [...leaves].filter(
+        (leaf) => idParts(leaf).moduleHref === module.url.href
+      );
+      leavesInDepOrder.push(...moduleLeaves);
+    }
+    for (let leaf of leavesInDepOrder.reverse()) {
       this.assignEditor(leaf);
     }
 
     for (let [regionId, { enclosingEditors }] of this.assignmentMap) {
       let { pointer } = idParts(regionId);
       for (let editorId of enclosingEditors) {
-        let { editor } = this.editorMap.get(editorId) ?? {};
-        if (!editor) {
+        let item = this.editorMap.get(editorId);
+        if (!item) {
           let { module } = getRegionFromId(regionId, this.ownAssignments);
-          editor = new RegionEditor(module.source, module.desc, this.bundle);
-          this.editorMap.set(editorId, {
+          let editor = new RegionEditor(
+            module.source,
+            module.desc,
+            this.bundle
+          );
+          item = {
             editor,
             module,
-            sideEffectDeclarations: new Set(), // TODO
-          });
+            sideEffectDeclarations: new Set(),
+          };
+          this.editorMap.set(editorId, item);
+        }
+        let { editor } = item;
+        if (this.declarationsWithSideEffects.has(regionId)) {
+          item.sideEffectDeclarations.add(idParts(regionId).pointer);
         }
         editor.keepRegion(pointer);
       }
@@ -573,7 +606,11 @@ class EditorAssigner {
   }
 
   get editors(): Editor[] {
-    return [...this.editorMap.values()];
+    // these editors are organized in consumer-first order because we recurse
+    // from the leafs to the entrypoints, and then start doing editor assignment
+    // on the exit of the recursion. We reverse it so that we can serialize
+    // the dependencies first
+    return [...this.editorMap.values()].reverse();
   }
 
   private assignEditor(id: string): EditorAssignment {
@@ -602,47 +639,21 @@ class EditorAssigner {
       })
     );
 
-    // test the things that depend on us to see if it can use the same editor
+    // test the regions that depend on us to see if it can use the same editor
     for (let depender of dependers) {
       if (
+        !depender.assignment.enclosingEditors.has(
+          regionId(moduleHref, documentPointer)
+        ) &&
+        depender.moduleHref === moduleHref &&
         dependers.every(
           (otherDepender) => otherDepender.moduleHref === depender.moduleHref
-        ) &&
-        depender.moduleHref === moduleHref
+        )
       ) {
         // we can merge with this consumer
         let assignment: EditorAssignment = {
           moduleHref,
           enclosingEditors: depender.assignment.enclosingEditors,
-        };
-        this.assignmentMap.set(id, assignment);
-        return assignment;
-      }
-
-      // If we have a depender that in turn depends on our module's document
-      // pointer, when we can merge into the editor for our module's document
-      // pointer
-      else if (
-        dependers.find((depender) =>
-          [...depender.assignment.enclosingEditors].find((id) =>
-            this.keptRegions.get(id)?.has(regionId(moduleHref, documentPointer))
-          )
-        )
-      ) {
-        let ourModuleDocumentAssignment = this.assignmentMap.get(
-          regionId(moduleHref, documentPointer)
-        );
-        if (!ourModuleDocumentAssignment) {
-          throw new Error(
-            `we don't have an editor assignment for the region id ${regionId(
-              moduleHref,
-              documentPointer
-            )} in the bundle ${this.bundle.href}`
-          );
-        }
-        let assignment: EditorAssignment = {
-          moduleHref,
-          enclosingEditors: ourModuleDocumentAssignment.enclosingEditors,
         };
         this.assignmentMap.set(id, assignment);
         return assignment;
@@ -717,11 +728,16 @@ class EditorAssigner {
         }
       }
       return merges;
-    }, [] as [string, { editor: RegionEditor; module: ModuleResolution }][][]);
+    }, [] as [string, Editor][][]);
 
-    for (let [[, { editor }], ...rest] of merges) {
+    for (let [[, item], ...rest] of merges) {
+      let { editor } = item;
       if (rest.length > 0) {
         editor.mergeWith(...rest.map(([, { editor }]) => editor));
+        item.sideEffectDeclarations = new Set([
+          ...item.sideEffectDeclarations,
+          ...flatMap(rest, ([, e]) => [...e.sideEffectDeclarations]),
+        ]);
         for (let [mergedId] of rest) {
           this.editorMap.delete(mergedId);
         }

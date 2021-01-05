@@ -729,6 +729,11 @@ QUnit.module("module builder", function (origHooks) {
       );
     });
 
+    // note how the fact that lib.js is side effect free the builder takes more
+    // latitude with the positioning of the declarations from that module. When
+    // lib.js has side effects that entangle its consumed exports, then the
+    // builder orders the side effects (and the declaration it pulls in) in a
+    // manner that follows the module dependencies, as seen in the next test.
     test("prevents collisions with reexports", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["index.js"] }`,
@@ -761,6 +766,41 @@ QUnit.module("module builder", function (origHooks) {
       );
     });
 
+    test("when declarations have side effects, the serialized order follows the module dependencies", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { b } from './b.js';
+          const hello = 'hi';
+          console.log(hello + b);
+        `,
+        "lib.js": `
+          export const hello = 'hello';
+          console.log(hello);
+        `,
+        "b.js": `
+          export { c as b } from './c.js';
+          const b = 1;
+          console.log(b);
+        `,
+        "c.js": `
+          export { hello as c } from './lib.js';
+        `,
+      });
+
+      assert.codeEqual(
+        await bundleCode(assert.fs),
+        `
+        const b = 'hello';
+        console.log(b);
+        const b0 = 1;
+        console.log(b0);
+        const hello = 'hi';
+        console.log(hello + b);
+        export {};
+        `
+      );
+    });
     test("can collapse a reexport that projects a default export to a named export", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["index.js"] }`,
@@ -4897,8 +4937,8 @@ QUnit.module("module builder", function (origHooks) {
           source,
           `
           const puppies = ["mango", "van gogh"];
-          function getPuppies() { return puppies; }
           function myPuppies() { return puppies; }
+          function getPuppies() { return puppies; }
           let jojo = 'Jojo';
           console.log([jojo, ...getPuppies(), ...myPuppies()]);
           export {};
@@ -6746,8 +6786,8 @@ QUnit.module("module builder", function (origHooks) {
           source,
           `
           const puppies = ["mango", "van gogh"];
-          function getPuppies() { return puppies; }
           function myPuppies() { return puppies; }
+          function getPuppies() { return puppies; }
           function cutestPuppies() { return puppies; }
 
           let jojo = 'Jojo';
@@ -6883,11 +6923,11 @@ QUnit.module("module builder", function (origHooks) {
         assert.codeEqual(
           source,
           `
-          const puppies = ["mango", "van gogh"];
-          function getPuppies() { return puppies; }
-
           const puppies0 = ["mango", "van gogh"];
           function myPuppies() { return puppies0; }
+
+          const puppies = ["mango", "van gogh"];
+          function getPuppies() { return puppies; }
 
           function cutestPuppies() { return puppies; }
 
