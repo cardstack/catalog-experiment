@@ -40,7 +40,7 @@ interface NewRegion {
 
 type Position = "before" | "within" | "around" | "after" | "same";
 
-export function traverseCodeRegions(
+export function visitCodeRegions(
   regions: CodeRegion[],
   onRegionVisit: (region: CodeRegion, pointer: RegionPointer) => void,
   start: RegionPointer = documentPointer
@@ -903,7 +903,7 @@ export class RegionEditor {
   }
 
   removeRegionAndItsChildren(pointer: RegionPointer) {
-    traverseCodeRegions(this.regions, (_, p) => this.removeRegion(p), pointer);
+    visitCodeRegions(this.regions, (_, p) => this.removeRegion(p), pointer);
   }
 
   keepRegion(pointer: RegionPointer) {
@@ -913,7 +913,7 @@ export class RegionEditor {
   }
 
   private keepRegionAndItsChildren(pointer: RegionPointer) {
-    traverseCodeRegions(
+    visitCodeRegions(
       this.regions,
       (_, p) => {
         if (this.dispositions[p].state === "removed") {
