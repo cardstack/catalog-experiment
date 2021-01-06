@@ -3126,8 +3126,8 @@ QUnit.module("module builder", function (origHooks) {
         `
         const foo = 'foo';
         const b0 = 'bar';
-        const bleep = 'bleep';
         const a = { foo, bar: b0 };
+        const bleep = 'bleep';
         const b = { bleep };
         export { a, b };
         `
@@ -3177,8 +3177,8 @@ QUnit.module("module builder", function (origHooks) {
           `
           const renamedFoo = 'foo';
           const renamedB0 = 'bar';
-          const renamedBleep = 'bleep';
           const renamedA = { foo: renamedFoo, bar: renamedB0 };
+          const renamedBleep = 'bleep';
           const renamedB = { bleep: renamedBleep };
           export { renamedA as a, renamedB as b };
           `

@@ -4,7 +4,6 @@ import {
   isNamespaceMarker,
   RegionEditor,
   RegionPointer,
-  visitCodeRegions,
 } from "./code-region";
 import {
   DependencyResolver,
@@ -32,7 +31,7 @@ interface EditorAssignment {
 export class RegionWalker {
   readonly keptRegions: RegionGraph = new Map();
   private resolvedRegions: Map<string, string> = new Map();
-  readonly seenRegions: Set<string> = new Set();
+  private seenRegions: Set<string> = new Set();
   private assigner: EditorAssigner;
   private declarationsWithSideEffects: Set<string> = new Set();
   constructor(
@@ -422,38 +421,38 @@ export class RegionWalker {
   // for this declaration, so we need to unwind the step that we initially took
   // when we visited the side effect. These become "forbidden regions".
   private backOff(module: Resolution, pointer: RegionPointer) {
-    let region = module.desc.regions[pointer];
-    let declaratorOf: RegionPointer | undefined;
-    let canRemoveDeclaratorOf = false;
-    if (region.type === "declaration" && region.declaration.type === "local") {
-      declaratorOf = region.declaration.declaratorOfRegion;
-      if (declaratorOf != null) {
-        let siblingDeclarations = flatMap(module.desc.regions, (r, p) =>
-          r.type === "declaration" &&
-          r.declaration.type === "local" &&
-          r.declaration.declaratorOfRegion === declaratorOf &&
-          p !== pointer
-            ? [p]
-            : []
-        );
-        canRemoveDeclaratorOf =
-          siblingDeclarations.length === 0 ||
-          siblingDeclarations.every(
-            (p) =>
-              this.seenRegions.has(regionId(module, p)) &&
-              !this.keptRegions.has(regionId(module, p))
-          );
-      }
-    }
-    visitCodeRegions(
-      module.desc.regions,
-      (_, p) => {
-        let id = regionId(module, p);
-        this.seenRegions.add(id);
-        this.keptRegions.delete(id);
-      },
-      declaratorOf && canRemoveDeclaratorOf ? declaratorOf : pointer
-    );
+    // let region = module.desc.regions[pointer];
+    // let declaratorOf: RegionPointer | undefined;
+    // let canRemoveDeclaratorOf = false;
+    // if (region.type === "declaration" && region.declaration.type === "local") {
+    //   declaratorOf = region.declaration.declaratorOfRegion;
+    //   if (declaratorOf != null) {
+    //     let siblingDeclarations = flatMap(module.desc.regions, (r, p) =>
+    //       r.type === "declaration" &&
+    //       r.declaration.type === "local" &&
+    //       r.declaration.declaratorOfRegion === declaratorOf &&
+    //       p !== pointer
+    //         ? [p]
+    //         : []
+    //     );
+    //     canRemoveDeclaratorOf =
+    //       siblingDeclarations.length === 0 ||
+    //       siblingDeclarations.every(
+    //         (p) =>
+    //           this.seenRegions.has(regionId(module, p)) &&
+    //           !this.keptRegions.has(regionId(module, p))
+    //       );
+    //   }
+    // }
+    // visitCodeRegions(
+    //   module.desc.regions,
+    //   (_, p) => {
+    //     let id = regionId(module, p);
+    //     this.seenRegions.add(id);
+    //     this.keptRegions.delete(id);
+    //   },
+    //   declaratorOf && canRemoveDeclaratorOf ? declaratorOf : pointer
+    // );
   }
 
   private resolvePkgDependency(
@@ -621,6 +620,13 @@ class EditorAssigner {
 
     let { moduleHref } = idParts(id);
 
+    let dependers = [...(this.dependenciesOf.get(id) ?? [])].map(
+      (depender) => ({
+        moduleHref: idParts(depender).moduleHref,
+        assignment: this.assignEditor(depender),
+      })
+    );
+
     // base case: region has no regions that depend on it--its an exposed region
     if (this.exposedIds.includes(id)) {
       let assignment: EditorAssignment = {
@@ -631,13 +637,6 @@ class EditorAssigner {
       this.assignmentMap.set(id, assignment);
       return assignment;
     }
-
-    let dependers = [...(this.dependenciesOf.get(id) ?? [])].map(
-      (depender) => ({
-        moduleHref: idParts(depender).moduleHref,
-        assignment: this.assignEditor(depender),
-      })
-    );
 
     // test the regions that depend on us to see if it can use the same editor
     for (let depender of dependers) {
