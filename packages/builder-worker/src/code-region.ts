@@ -753,19 +753,13 @@ export function isImportCodeRegion(region: any): region is ImportCodeRegion {
   );
 }
 
-export function assignCodeRegionPositions(
-  regions: CodeRegion[],
-  pointer: RegionPointer = documentPointer,
-  index = 0
-) {
-  let region = regions[pointer];
-  region.position = index++;
-  if (region.firstChild != null) {
-    assignCodeRegionPositions(regions, region.firstChild, index);
-  }
-  if (region.nextSibling != null) {
-    assignCodeRegionPositions(regions, region.nextSibling, index);
-  }
+export function assignCodeRegionPositions(regions: CodeRegion[]) {
+  let index = 0;
+  visitCodeRegions(
+    regions,
+    (region) => (region.position = index++),
+    documentPointer
+  );
 }
 
 // When a reference region is inserted, or another region is inserted around a
@@ -985,13 +979,12 @@ export class RegionEditor {
     let newRegions = remapRegions(this.outputRegions);
     let newCode = this.outputCode.join("");
     assignCodeRegionPositions(newRegions);
-    // it's easy to trim leading whitespace, but it's difficult to deal with
-    // trailing whitespace since we don't have backwards pointers in our code
-    // regions.
     trimLeading(newRegions, newCode);
-
+    let leftOver = trimTrailing(newRegions, newCode);
     return {
-      code: newCode.replace(/^\s*/, ""),
+      // ideally leftOver should always be zero--but handling the scenario where it
+      // might be non-zero just in case, as a discrepancy will result in gibberish
+      code: newCode.trim() + "".padEnd(leftOver, " "),
       regions: newRegions,
     };
   }
@@ -1648,6 +1641,53 @@ function trimLeading(
           regions,
           code,
           region.nextSibling,
+          remainingWhitespaceLength
+        );
+      }
+    }
+  }
+  return remainingWhitespaceLength;
+}
+
+function trimTrailing(
+  regions: CodeRegion[],
+  code: string,
+  pointer: RegionPointer = documentPointer,
+  remainingWhitespaceLength = code.match(/\s*$/)![0].length
+): number {
+  if (remainingWhitespaceLength === code.length) {
+    // collapse this to an empty doc
+    regions.splice(0, regions.length, {
+      type: "document",
+      start: 0,
+      end: 0,
+      firstChild: undefined,
+      nextSibling: undefined,
+      shorthand: false,
+      dependsOn: new Set(),
+      position: 0,
+    });
+    return 0;
+  }
+  // the rule is that you start at the documentPointer, then descend to the last
+  // sibling of your children on each recurse thru this function.
+  if (remainingWhitespaceLength > 0) {
+    let region = regions[pointer];
+    if (region.end >= remainingWhitespaceLength) {
+      region.end -= remainingWhitespaceLength;
+      return 0;
+    } else {
+      remainingWhitespaceLength -= region.end;
+      region.end = 0;
+      if (region.firstChild != null) {
+        let currentPointer = region.firstChild;
+        while (regions[currentPointer].nextSibling != null) {
+          currentPointer = regions[currentPointer].nextSibling!;
+        }
+        remainingWhitespaceLength = trimTrailing(
+          regions,
+          code,
+          currentPointer,
           remainingWhitespaceLength
         );
       }

@@ -13,7 +13,6 @@ export function describeFile(
   js: string,
   filename: string = url("index.js").href
 ): { desc: FileDescription; editor: RegionEditor } {
-  js = js.trim();
   let parsed = parse(js);
   if (parsed?.type !== "File") {
     throw new Error(`unexpected babel output`);
