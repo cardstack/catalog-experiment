@@ -1,9 +1,10 @@
-import { flatMap, intersection } from "lodash";
+import { difference, flatMap, intersection } from "lodash";
 import {
   documentPointer,
   isNamespaceMarker,
   RegionEditor,
   RegionPointer,
+  visitCodeRegions,
 } from "./code-region";
 import {
   DependencyResolver,
@@ -56,6 +57,9 @@ export class RegionWalker {
         this.walk(module, pointer);
       }
     }
+    if (typeof process?.stdout?.write === "function") {
+      console.log();
+    }
     this.assigner = new EditorAssigner(
       this.keptRegions,
       this.declarationsWithSideEffects,
@@ -86,6 +90,11 @@ export class RegionWalker {
     }
 
     this.seenRegions.add(id);
+    if (typeof process?.stdout?.write === "function") {
+      process.stdout.write(
+        `  visited ${this.seenRegions.size} regions for bundle ${this.bundle.href}\r`
+      );
+    }
 
     // consider a side effect that comes from a rolled-up package. If the
     // package that this side effect comes from is actually not the "winning"
@@ -259,7 +268,7 @@ export class RegionWalker {
       // region and all of its children, since the "winning" resolution will
       // be responsible for this declaration and any side effects it was
       if (isRegionObviated) {
-        this.backOff(module, pointer);
+        this.backOff(module, pointer, originalId);
         return this.walk(
           resolvedConsumingModule,
           resolvedConsumingPointer,
@@ -420,39 +429,43 @@ export class RegionWalker {
   // declaration that we realize that we actually want to use a different module
   // for this declaration, so we need to unwind the step that we initially took
   // when we visited the side effect. These become "forbidden regions".
-  private backOff(module: Resolution, pointer: RegionPointer) {
-    // let region = module.desc.regions[pointer];
-    // let declaratorOf: RegionPointer | undefined;
-    // let canRemoveDeclaratorOf = false;
-    // if (region.type === "declaration" && region.declaration.type === "local") {
-    //   declaratorOf = region.declaration.declaratorOfRegion;
-    //   if (declaratorOf != null) {
-    //     let siblingDeclarations = flatMap(module.desc.regions, (r, p) =>
-    //       r.type === "declaration" &&
-    //       r.declaration.type === "local" &&
-    //       r.declaration.declaratorOfRegion === declaratorOf &&
-    //       p !== pointer
-    //         ? [p]
-    //         : []
-    //     );
-    //     canRemoveDeclaratorOf =
-    //       siblingDeclarations.length === 0 ||
-    //       siblingDeclarations.every(
-    //         (p) =>
-    //           this.seenRegions.has(regionId(module, p)) &&
-    //           !this.keptRegions.has(regionId(module, p))
-    //       );
-    //   }
-    // }
-    // visitCodeRegions(
-    //   module.desc.regions,
-    //   (_, p) => {
-    //     let id = regionId(module, p);
-    //     this.seenRegions.add(id);
-    //     this.keptRegions.delete(id);
-    //   },
-    //   declaratorOf && canRemoveDeclaratorOf ? declaratorOf : pointer
-    // );
+  private backOff(module: Resolution, pointer: RegionPointer, retain?: string) {
+    let region = module.desc.regions[pointer];
+    let declaratorOf: RegionPointer | undefined;
+    let canRemoveDeclaratorOf = false;
+    if (region.type === "declaration" && region.declaration.type === "local") {
+      declaratorOf = region.declaration.declaratorOfRegion;
+      if (declaratorOf != null) {
+        let siblingDeclarations = flatMap(module.desc.regions, (r, p) =>
+          r.type === "declaration" &&
+          r.declaration.type === "local" &&
+          r.declaration.declaratorOfRegion === declaratorOf &&
+          p !== pointer
+            ? [p]
+            : []
+        );
+        canRemoveDeclaratorOf =
+          siblingDeclarations.length === 0 ||
+          siblingDeclarations.every(
+            (p) =>
+              this.seenRegions.has(regionId(module, p)) &&
+              !this.keptRegions.has(regionId(module, p))
+          );
+      }
+    }
+    visitCodeRegions(
+      module.desc.regions,
+      (_, p) => {
+        if (retain && idParts(retain).pointer === p) {
+          return;
+        }
+        let id = regionId(module, p);
+        this.seenRegions.add(id);
+        this.keptRegions.delete(id);
+        this.resolvedRegions.delete(id);
+      },
+      declaratorOf && canRemoveDeclaratorOf ? declaratorOf : pointer
+    );
   }
 
   private resolvePkgDependency(
@@ -561,6 +574,9 @@ class EditorAssigner {
         )
       );
     }
+    if (typeof process?.stdout?.write === "function") {
+      console.log(`  inverting code regions for bundle ${this.bundle.href}`);
+    }
     let { dependenciesOf, leaves } = this.invertCodeRegions(this.exposedIds);
     this.dependenciesOf = dependenciesOf;
 
@@ -573,6 +589,9 @@ class EditorAssigner {
     }
     for (let leaf of leavesInDepOrder.reverse()) {
       this.assignEditor(leaf);
+    }
+    if (typeof process?.stdout?.write === "function") {
+      console.log();
     }
 
     for (let [regionId, { enclosingEditors }] of this.assignmentMap) {
@@ -626,6 +645,11 @@ class EditorAssigner {
         assignment: this.assignEditor(depender),
       })
     );
+    if (typeof process?.stdout?.write === "function") {
+      process.stdout.write(
+        `  assigning ${id} for bundle ${this.bundle.href}\r`.padEnd(200, " ")
+      );
+    }
 
     // base case: region has no regions that depend on it--its an exposed region
     if (this.exposedIds.includes(id)) {
@@ -747,12 +771,21 @@ class EditorAssigner {
   private invertCodeRegions(
     regionIds: string[],
     dependenciesOf: RegionGraph = new Map(),
-    leaves: Set<string> = new Set()
+    leaves: Set<string> = new Set(),
+    seen: Set<string> = new Set()
   ): { dependenciesOf: RegionGraph; leaves: Set<string> } {
+    for (let depender of regionIds) {
+      seen.add(depender);
+    }
     for (let depender of regionIds) {
       let dependsOn = [...(this.keptRegions.get(depender) ?? [])];
       if (dependsOn.length > 0) {
-        this.invertCodeRegions(dependsOn, dependenciesOf, leaves);
+        this.invertCodeRegions(
+          difference(dependsOn, [...seen]),
+          dependenciesOf,
+          leaves,
+          seen
+        );
         // since we are handling this on the exit of the recursion, all your deps
         // will have entries in the identity map
         for (let depId of dependsOn) {

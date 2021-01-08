@@ -6786,8 +6786,8 @@ QUnit.module("module builder", function (origHooks) {
           source,
           `
           const puppies = ["mango", "van gogh"];
-          function myPuppies() { return puppies; }
           function getPuppies() { return puppies; }
+          function myPuppies() { return puppies; }
           function cutestPuppies() { return puppies; }
 
           let jojo = 'Jojo';

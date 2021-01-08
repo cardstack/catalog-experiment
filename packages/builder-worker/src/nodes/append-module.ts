@@ -75,19 +75,27 @@ export class AppendModuleNode implements BuilderNode {
     let rewriters = [rewriter, ...this.rewriters];
     let { module, editor, sideEffectDeclarations } = this.state.next() ?? {};
     if (module && editor) {
-      return {
-        node: new AppendModuleNode(
-          this.state,
-          module,
-          this.bundle,
-          editor,
-          sideEffectDeclarations ?? new Set(),
-          this.bundleAssignments,
-          this.dependencies,
-          this.depResolver,
-          rewriters
-        ),
-      };
+      let node = new AppendModuleNode(
+        this.state,
+        module,
+        this.bundle,
+        editor,
+        sideEffectDeclarations ?? new Set(),
+        this.bundleAssignments,
+        this.dependencies,
+        this.depResolver,
+        rewriters
+      );
+
+      if (typeof process?.stdout?.write === "function") {
+        process.stdout.write(
+          `  creating append builder node for module ${this.state.visited.length} for bundle ${this.bundle.href}\r`
+        );
+        if (this.state.visited.length === this.state.editorCount) {
+          console.log();
+        }
+      }
+      return { node };
     } else {
       return {
         node: new FinishAppendModulesNode(
@@ -932,14 +940,25 @@ function buildBundleBody(
 
     let offset = regions.length;
     let { code: moduleCode, regions: moduleRegions } = rewriter.serialize();
-    if (
-      moduleRegions.length === 1 &&
-      moduleRegions[0].end === moduleRegions[0].start &&
-      moduleRegions[0].start === 0 &&
-      namespacesRegions.length > 0
-    ) {
-      moduleRegions[0].end = 1; // account for newline
+
+    // if the serialized output is empty but we have a namespace object, we need
+    // to stitch that in place of the document region that we would have
+    // otherwise used.
+    if (moduleRegions.length === 0) {
+      if (namespacesRegions.length > 0) {
+        if (prevModuleStartPointer != null) {
+          regions[
+            prevModuleStartPointer
+          ].nextSibling = namespaceDeclarationPointer;
+        } else {
+          regions[documentPointer].firstChild = namespaceDeclarationPointer;
+        }
+        prevModuleStartPointer = namespaceDeclarationPointer;
+        regions[namespaceDeclarationPointer].start++; // account for prev newline
+      }
+      continue;
     }
+
     adjustCodeRegionByOffset(moduleRegions, offset);
     code.push(moduleCode);
 

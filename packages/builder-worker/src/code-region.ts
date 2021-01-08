@@ -45,6 +45,9 @@ export function visitCodeRegions(
   onRegionVisit: (region: CodeRegion, pointer: RegionPointer) => void,
   start: RegionPointer = documentPointer
 ) {
+  if (regions.length === 0) {
+    return;
+  }
   let stack: RegionPointer[] = [];
   let currentPointer: RegionPointer | undefined = start;
   while (currentPointer != null || stack.length > 0) {
@@ -805,6 +808,11 @@ type Disposition =
       declarationName: string;
     };
 
+interface OutputRegion {
+  region: CodeRegion;
+  originalPointer: RegionPointer | undefined;
+}
+
 export class RegionEditor {
   readonly dispositions: Disposition[];
 
@@ -976,17 +984,89 @@ export class RegionEditor {
     this.outputRegions = [];
     this.innerSerialize(documentPointer);
 
-    let newRegions = remapRegions(this.outputRegions);
-    let newCode = this.outputCode.join("");
-    assignCodeRegionPositions(newRegions);
-    trimLeading(newRegions, newCode);
-    let leftOver = trimTrailing(newRegions, newCode);
+    let newRegions = remapRegions([...this.outputRegions]);
+    let newCode: string;
+    if (newRegions.length === 0) {
+      newCode = "";
+    } else {
+      newCode = this.outputCode.join("");
+      assignCodeRegionPositions(newRegions);
+      trimLeading(newRegions, newCode);
+      // ideally leftOver should always be zero--but just in case we are
+      // handling the scenario where it might be non-zero, as a discrepancy will
+      // result in gibberish. TODO throw an error here and debug if non-zero...
+      let leftOver = trimTrailing(newRegions, newCode);
+      newCode = newCode.trim() + "".padEnd(leftOver, " ");
+      let pruneList = this.preparePrunableRegions(newRegions);
+      for (let pointer of pruneList.sort((a, b) => b - a)) {
+        newRegions.splice(pointer, 1);
+        for (let region of newRegions) {
+          decrementRegionsPointers(region, pointer);
+        }
+      }
+    }
+
     return {
-      // ideally leftOver should always be zero--but handling the scenario where it
-      // might be non-zero just in case, as a discrepancy will result in gibberish
-      code: newCode.trim() + "".padEnd(leftOver, " "),
+      code: newCode,
       regions: newRegions,
     };
+  }
+
+  private preparePrunableRegions(
+    regions: CodeRegion[],
+    pointer: RegionPointer = documentPointer,
+    pruneList: RegionPointer[] = []
+  ): RegionPointer[] {
+    if (regions.length === 0) {
+      return [];
+    }
+    let region = regions[pointer];
+    if (region.type === "document" && region.firstChild != null) {
+      pruneList = this.preparePrunableRegions(
+        regions,
+        region.firstChild,
+        pruneList
+      );
+    }
+    if (region.type === "document" && region.nextSibling != null) {
+      pruneList = this.preparePrunableRegions(
+        regions,
+        region.nextSibling,
+        pruneList
+      );
+    }
+    region = regions[pointer]; // region might have been mutated, get it again
+    if (
+      region.type === "document" &&
+      region.start === 0 &&
+      region.end === 0 &&
+      region.firstChild == null
+    ) {
+      let prevSibling: RegionPointer | undefined;
+      let parent: RegionPointer | undefined = regions.findIndex(
+        (r) => r.firstChild === pointer
+      );
+      parent = parent !== -1 ? parent : undefined;
+      if (parent == null) {
+        prevSibling = regions.findIndex((r) => r.nextSibling === pointer);
+      }
+      prevSibling = prevSibling !== -1 ? prevSibling : undefined;
+      if (region.nextSibling == null) {
+        if (parent == null) {
+          regions[prevSibling!].nextSibling = undefined;
+        } else {
+          regions[parent].firstChild = undefined;
+        }
+      } else {
+        if (parent == null) {
+          regions[prevSibling!].nextSibling = region.nextSibling;
+        } else {
+          regions[parent].firstChild = region.nextSibling;
+        }
+      }
+      pruneList = [...pruneList, pointer];
+    }
+    return pruneList;
   }
 
   private innerSerialize(
@@ -1363,9 +1443,7 @@ export class RegionEditor {
     outputPointer: RegionPointer;
     isFirstChild: boolean;
   } {
-    let output:
-      | { region: CodeRegion; originalPointer: RegionPointer | undefined }
-      | undefined;
+    let output: OutputRegion | undefined;
     let prevPointer: RegionPointer | undefined;
     let currentPointer = pointer;
     let isFirstChild = false;
@@ -1553,12 +1631,7 @@ function shorthandMode(path: NodePath): PathFacts["shorthand"] {
   return false;
 }
 
-function remapRegions(
-  outputRegions: {
-    originalPointer: RegionPointer | undefined;
-    region: CodeRegion;
-  }[]
-): CodeRegion[] {
+function remapRegions(outputRegions: OutputRegion[]): CodeRegion[] {
   let regions = outputRegions.map(({ region }, index) => {
     region.firstChild = newPointer(region.firstChild, outputRegions);
     let maybeNextSibling = newPointer(region.nextSibling, outputRegions);
@@ -1585,7 +1658,7 @@ function remapRegions(
     }
     return region;
   });
-  if (regions[documentPointer].firstChild != null) {
+  if (regions[documentPointer]?.firstChild != null) {
     regions[documentPointer].firstChild = 1;
   }
 
@@ -1598,18 +1671,13 @@ function trimLeading(
   pointer: RegionPointer = documentPointer,
   remainingWhitespaceLength = code.match(/^\s*/)![0].length
 ): number {
+  if (regions.length === 0) {
+    return 0;
+  }
+
   if (remainingWhitespaceLength === code.length) {
     // collapse this to an empty doc
-    regions.splice(0, regions.length, {
-      type: "document",
-      start: 0,
-      end: 0,
-      firstChild: undefined,
-      nextSibling: undefined,
-      shorthand: false,
-      dependsOn: new Set(),
-      position: 0,
-    });
+    regions.splice(0, regions.length);
     return 0;
   }
 
@@ -1648,48 +1716,52 @@ function trimLeading(
   }
   return remainingWhitespaceLength;
 }
-
 function trimTrailing(
   regions: CodeRegion[],
   code: string,
   pointer: RegionPointer = documentPointer,
   remainingWhitespaceLength = code.match(/\s*$/)![0].length
 ): number {
-  if (remainingWhitespaceLength === code.length) {
-    // collapse this to an empty doc
-    regions.splice(0, regions.length, {
-      type: "document",
-      start: 0,
-      end: 0,
-      firstChild: undefined,
-      nextSibling: undefined,
-      shorthand: false,
-      dependsOn: new Set(),
-      position: 0,
-    });
+  if (regions.length === 0) {
     return 0;
   }
-  // the rule is that you start at the documentPointer, then descend to the last
-  // sibling of your children on each recurse thru this function.
-  if (remainingWhitespaceLength > 0) {
-    let region = regions[pointer];
-    if (region.end >= remainingWhitespaceLength) {
-      region.end -= remainingWhitespaceLength;
-      return 0;
-    } else {
-      remainingWhitespaceLength -= region.end;
-      region.end = 0;
-      if (region.firstChild != null) {
-        let currentPointer = region.firstChild;
-        while (regions[currentPointer].nextSibling != null) {
-          currentPointer = regions[currentPointer].nextSibling!;
+  let region = regions[pointer];
+  if (remainingWhitespaceLength > 0 && region.type === "document") {
+    if (region.nextSibling != null) {
+      remainingWhitespaceLength = trimTrailing(
+        regions,
+        code,
+        region.nextSibling,
+        remainingWhitespaceLength
+      );
+    }
+    if (remainingWhitespaceLength > 0) {
+      if (
+        region.type === "document" &&
+        region.end >= remainingWhitespaceLength
+      ) {
+        region.end -= remainingWhitespaceLength;
+        return 0;
+      } else {
+        remainingWhitespaceLength -= region.end;
+        region.end = 0;
+        if (region.type === "document" && region.firstChild != null) {
+          remainingWhitespaceLength = trimTrailing(
+            regions,
+            code,
+            region.firstChild,
+            remainingWhitespaceLength
+          );
         }
-        remainingWhitespaceLength = trimTrailing(
-          regions,
-          code,
-          currentPointer,
-          remainingWhitespaceLength
-        );
+        if (remainingWhitespaceLength > 0) {
+          if (region.start >= remainingWhitespaceLength) {
+            region.start -= remainingWhitespaceLength;
+            return 0;
+          } else {
+            remainingWhitespaceLength -= region.start;
+            region.start = 0;
+          }
+        }
       }
     }
   }
@@ -1702,10 +1774,7 @@ function trimTrailing(
 // have to fix up the regions after they leave this module.
 function newPointer(
   originalPointer: RegionPointer | undefined,
-  outputRegions: {
-    originalPointer: RegionPointer | undefined;
-    region: CodeRegion;
-  }[],
+  outputRegions: OutputRegion[],
   allowOriginalRegionIndicators = false
 ): RegionPointer | undefined {
   if (originalPointer == null) {
@@ -1729,4 +1798,39 @@ function newPointer(
     return;
   }
   return index;
+}
+
+function decrementRegionsPointers(
+  region: CodeRegion,
+  decrementAfter: RegionPointer
+) {
+  region.firstChild = maybeAdjustPointer(region.firstChild, decrementAfter);
+  region.nextSibling = maybeAdjustPointer(region.nextSibling, decrementAfter);
+  region.dependsOn = new Set(
+    [...region.dependsOn].map((r) => maybeAdjustPointer(r, decrementAfter)!)
+  );
+  if (region.type === "declaration") {
+    region.declaration.references = region.declaration.references.map(
+      (r) => maybeAdjustPointer(r, decrementAfter)!
+    );
+    if (region.declaration.type === "local") {
+      region.declaration.declaratorOfRegion = maybeAdjustPointer(
+        region.declaration.declaratorOfRegion,
+        decrementAfter
+      );
+    }
+  }
+}
+
+function maybeAdjustPointer(
+  pointer: RegionPointer | undefined,
+  decrementAfter: RegionPointer
+): RegionPointer | undefined {
+  if (pointer == null) {
+    return;
+  }
+  if (pointer > decrementAfter) {
+    return pointer - 1;
+  }
+  return pointer;
 }

@@ -97,6 +97,7 @@ export class HeadState {
 
   readonly visited: Editor[] = [];
   private queue: Editor[] = [];
+  private regionHashes: Map<string, number> = new Map();
   readonly editorCount: number;
 
   constructor(editors: Editor[]) {
@@ -145,23 +146,13 @@ export class HeadState {
     //
     let visitedSummary = visited.map(({ module, editor }) => ({
       url: module.url.href,
-      regions: module.desc.regions
-        .reduce(
-          (hashState, r) => hashState.hash(fastStringify(r)),
-          MurmurHash()
-        )
-        .result(),
-      dispositions: editor.dispositions,
+      regions: this.getRegionsHash(module),
+      dispositions: MurmurHash(fastStringify(editor.dispositions)).result(),
     }));
     let queueSummary = queue.map(({ module, editor }) => ({
       url: module.url.href,
-      regions: module.desc.regions
-        .reduce(
-          (hashState, r) => hashState.hash(fastStringify(r)),
-          MurmurHash()
-        )
-        .result(),
-      dispositions: editor.dispositions,
+      regions: this.getRegionsHash(module),
+      dispositions: MurmurHash(fastStringify(editor.dispositions)).result(),
     }));
     let assignedNamespacesSummary = [...assignedNamespaces].map(([k, v]) => [
       k,
@@ -184,6 +175,18 @@ export class HeadState {
     );
 
     let hash = MurmurHash(str).result().toString();
+    return hash;
+  }
+
+  private getRegionsHash(module: ModuleResolution): number {
+    let hash = this.regionHashes.get(module.url.href);
+    if (hash != null) {
+      return hash;
+    }
+    hash = module.desc.regions
+      .reduce((hashState, r) => hashState.hash(fastStringify(r)), MurmurHash())
+      .result();
+    this.regionHashes.set(module.url.href, hash);
     return hash;
   }
 
