@@ -1,4 +1,4 @@
-import { difference, flatMap, intersection } from "lodash";
+import { difference, flatMap } from "lodash";
 import {
   documentPointer,
   isNamespaceMarker,
@@ -367,12 +367,7 @@ export class RegionWalker {
     if (region.type !== "declaration" || region.declaration.type !== "local") {
       return false;
     }
-
-    let sideEffectRegions = intersection(
-      [...region.dependsOn],
-      [...module.desc.regions[documentPointer].dependsOn]
-    );
-    return sideEffectRegions.length > 0;
+    return module.desc.regions[documentPointer].dependsOn.has(pointer);
   }
 
   private resolvePkgDependency(
