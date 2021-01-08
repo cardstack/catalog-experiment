@@ -871,25 +871,6 @@ export class RegionEditor {
     }
   }
 
-  // don't get rid of the VariableDeclaration regions that the declarators
-  // need--this is the "const ... ;" ("let" and "var" too) code regions.
-  isDependentUponRegion(pointer: RegionPointer): boolean {
-    if (this.regions[pointer].type !== "general") {
-      return false;
-    }
-    for (let [p, region] of this.regions.entries()) {
-      if (
-        region.type === "declaration" &&
-        region.declaration.type === "local" &&
-        region.declaration.declaratorOfRegion === pointer &&
-        this.dispositions[p].state !== "removed"
-      ) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   get regions() {
     return this.desc.regions;
   }

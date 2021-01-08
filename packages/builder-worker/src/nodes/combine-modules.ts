@@ -79,7 +79,7 @@ export class CombineModulesNode implements BuilderNode {
     }
 
     let headState = new HeadState(editors);
-    let { module, editor, sideEffectDeclarations } = headState.next() ?? {};
+    let { module, editor } = headState.next() ?? {};
     if (!module || !editor) {
       // this is an empty module, like just "export{};"
       return {
@@ -99,7 +99,6 @@ export class CombineModulesNode implements BuilderNode {
         module,
         this.bundle,
         editor,
-        sideEffectDeclarations ?? new Set(),
         assignments,
         this.dependencies,
         depResolver

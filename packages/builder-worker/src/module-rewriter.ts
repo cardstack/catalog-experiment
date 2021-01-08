@@ -16,6 +16,7 @@ import {
   CodeRegion,
   RegionPointer,
   DeclarationDescription,
+  documentPointer,
 } from "./code-region";
 import { BundleAssignment } from "./nodes/bundle";
 import stringify from "json-stable-stringify";
@@ -38,7 +39,6 @@ import MurmurHash from "imurmurhash";
 export interface Editor {
   editor: RegionEditor;
   module: ModuleResolution;
-  sideEffectDeclarations: Set<RegionPointer>;
 }
 
 export class HeadState {
@@ -242,7 +242,6 @@ export class ModuleRewriter {
     private bundle: URL,
     readonly module: ModuleResolution,
     private state: HeadState,
-    private sideEffectDeclarations: Set<RegionPointer>,
     private bundleAssignments: BundleAssignment[],
     readonly editor: RegionEditor,
     private dependencies: Dependencies,
@@ -449,7 +448,9 @@ export class ModuleRewriter {
           }
           if (!assignedName) {
             if (
-              this.sideEffectDeclarations.has(pointer) &&
+              this.module.desc.regions[documentPointer].dependsOn.has(
+                pointer
+              ) &&
               this.isUnconsumed(localDesc, pointer)
             ) {
               assignedName = this.maybeAssignLocalName(

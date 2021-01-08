@@ -43,7 +43,6 @@ export class AppendModuleNode implements BuilderNode {
     private module: ModuleResolution,
     private bundle: URL,
     private editor: RegionEditor,
-    private sideEffectDeclarations: Set<RegionPointer>,
     private bundleAssignments: BundleAssignment[],
     private dependencies: Dependencies,
     private depResolver: DependencyResolver,
@@ -61,7 +60,6 @@ export class AppendModuleNode implements BuilderNode {
       this.bundle,
       this.module,
       this.state,
-      this.sideEffectDeclarations,
       this.bundleAssignments,
       this.editor,
       this.dependencies,
@@ -73,14 +71,13 @@ export class AppendModuleNode implements BuilderNode {
     // into the list of rewriters so they go back into the order that they
     // should be emitted when serializing the bundle.
     let rewriters = [rewriter, ...this.rewriters];
-    let { module, editor, sideEffectDeclarations } = this.state.next() ?? {};
+    let { module, editor } = this.state.next() ?? {};
     if (module && editor) {
       let node = new AppendModuleNode(
         this.state,
         module,
         this.bundle,
         editor,
-        sideEffectDeclarations ?? new Set(),
         this.bundleAssignments,
         this.dependencies,
         this.depResolver,

@@ -25,7 +25,7 @@ export type RegionGraph = Map<string, Set<string>>;
 
 interface EditorAssignment {
   moduleHref: string;
-  enclosingEditors: Set<string>;
+  editors: Set<string>;
 }
 
 export class RegionWalker {
@@ -33,7 +33,6 @@ export class RegionWalker {
   private resolvedRegions: Map<string, string> = new Map();
   private seenRegions: Set<string> = new Set();
   private assigner: EditorAssigner;
-  private declarationsWithSideEffects: Set<string> = new Set();
   constructor(
     exposed: ExposedRegionInfo[],
     private bundle: URL,
@@ -61,7 +60,6 @@ export class RegionWalker {
     }
     this.assigner = new EditorAssigner(
       this.keptRegions,
-      this.declarationsWithSideEffects,
       this.ownAssignments,
       ownResolutions,
       this.bundle,
@@ -286,9 +284,6 @@ export class RegionWalker {
         }
       }
       this.keepRegion(originalId, id, deps);
-      if (this.isDeclarationWithSideEffect(id)) {
-        this.declarationsWithSideEffects.add(id);
-      }
       return id;
     }
   }
@@ -359,15 +354,6 @@ export class RegionWalker {
   ) {
     this.keptRegions.set(resolvedId, deps);
     this.resolvedRegions.set(originalId, resolvedId);
-  }
-
-  private isDeclarationWithSideEffect(id: string): boolean {
-    let { module, pointer } = getRegionFromId(id, this.ownAssignments);
-    let region = module.desc.regions[pointer];
-    if (region.type !== "declaration" || region.declaration.type !== "local") {
-      return false;
-    }
-    return module.desc.regions[documentPointer].dependsOn.has(pointer);
   }
 
   private resolvePkgDependency(
@@ -457,7 +443,6 @@ class EditorAssigner {
   private exposedIds: string[];
   constructor(
     private keptRegions: RegionGraph,
-    private declarationsWithSideEffects: Set<string>,
     private ownAssignments: BundleAssignment[],
     resolutionsInDepOrder: ModuleResolution[],
     private bundle: URL,
@@ -493,9 +478,9 @@ class EditorAssigner {
       this.assignEditor(leaf);
     }
 
-    for (let [regionId, { enclosingEditors }] of this.assignmentMap) {
+    for (let [regionId, { editors: editors }] of this.assignmentMap) {
       let { pointer } = idParts(regionId);
-      for (let editorId of enclosingEditors) {
+      for (let editorId of editors) {
         let item = this.editorMap.get(editorId);
         if (!item) {
           let { module } = getRegionFromId(regionId, this.ownAssignments);
@@ -507,14 +492,10 @@ class EditorAssigner {
           item = {
             editor,
             module,
-            sideEffectDeclarations: new Set(),
           };
           this.editorMap.set(editorId, item);
         }
         let { editor } = item;
-        if (this.declarationsWithSideEffects.has(regionId)) {
-          item.sideEffectDeclarations.add(idParts(regionId).pointer);
-        }
         editor.keepRegion(pointer);
       }
     }
@@ -536,12 +517,12 @@ class EditorAssigner {
       return alreadyAssigned;
     }
 
-    let { moduleHref } = idParts(id);
+    let { moduleHref, pointer } = idParts(id);
 
-    let dependers = [...(this.dependenciesOf.get(id) ?? [])].map(
-      (depender) => ({
-        moduleHref: idParts(depender).moduleHref,
-        assignment: this.assignEditor(depender),
+    let consumers = [...(this.dependenciesOf.get(id) ?? [])].map(
+      (consumer) => ({
+        moduleHref: idParts(consumer).moduleHref,
+        assignment: this.assignEditor(consumer),
       })
     );
 
@@ -550,37 +531,64 @@ class EditorAssigner {
       let assignment: EditorAssignment = {
         moduleHref,
         // we name our editors after the ID of the initial region it encloses
-        enclosingEditors: new Set([id]),
+        editors: new Set([id]),
       };
       this.assignmentMap.set(id, assignment);
       return assignment;
     }
 
     // test the regions that depend on us to see if it can use the same editor
-    for (let depender of dependers) {
+    let declarationAssignment: EditorAssignment | undefined;
+    let hasDeclarators = Boolean(
+      getRegionFromId(id, this.ownAssignments).module.desc.regions.find(
+        (r) =>
+          r.type === "declaration" &&
+          r.declaration.type === "local" &&
+          r.declaration.declaratorOfRegion === pointer
+      )
+    );
+    for (let consumer of consumers) {
       if (
-        !depender.assignment.enclosingEditors.has(
+        !consumer.assignment.editors.has(
           regionId(moduleHref, documentPointer)
         ) &&
-        depender.moduleHref === moduleHref &&
-        dependers.every(
-          (otherDepender) => otherDepender.moduleHref === depender.moduleHref
+        consumer.moduleHref === moduleHref &&
+        consumers.every(
+          (otherDepender) => otherDepender.moduleHref === consumer.moduleHref
         )
       ) {
         // we can merge with this consumer
-        let assignment: EditorAssignment = {
-          moduleHref,
-          enclosingEditors: depender.assignment.enclosingEditors,
-        };
-        this.assignmentMap.set(id, assignment);
-        return assignment;
+        if (!hasDeclarators) {
+          let assignment: EditorAssignment = {
+            moduleHref,
+            editors: consumer.assignment.editors,
+          };
+          this.assignmentMap.set(id, assignment);
+          return assignment;
+        }
+        // We can't separate a declaration from a declarator, so we merge
+        // declarations for declarators into _all_ of their consumer's editors
+        if (!declarationAssignment) {
+          declarationAssignment = {
+            moduleHref,
+            editors: new Set([...consumer.assignment.editors]),
+          };
+        } else {
+          for (let editor of consumer.assignment.editors) {
+            declarationAssignment.editors.add(editor);
+          }
+        }
       }
+    }
+    if (hasDeclarators && declarationAssignment) {
+      this.assignmentMap.set(id, declarationAssignment);
+      return declarationAssignment;
     }
 
     // we need to have our own editor
     let assignment: EditorAssignment = {
       moduleHref,
-      enclosingEditors: new Set([id]),
+      editors: new Set([id]),
     };
     this.assignmentMap.set(id, assignment);
     return assignment;
@@ -651,10 +659,6 @@ class EditorAssigner {
       let { editor } = item;
       if (rest.length > 0) {
         editor.mergeWith(...rest.map(([, { editor }]) => editor));
-        item.sideEffectDeclarations = new Set([
-          ...item.sideEffectDeclarations,
-          ...flatMap(rest, ([, e]) => [...e.sideEffectDeclarations]),
-        ]);
         for (let [mergedId] of rest) {
           this.editorMap.delete(mergedId);
         }
