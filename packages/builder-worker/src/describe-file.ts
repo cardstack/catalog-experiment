@@ -372,7 +372,6 @@ export function describeFile(ast: File, filename: string): FileDescription {
       if (sideEffectsRegion) {
         sideEffects = builder.createCodeRegion(sideEffectsRegion, undefined);
         regionDeps.add(sideEffects);
-        desc.regions[documentPointer].dependsOn.add(sideEffects);
       }
       if (references[0] != null) {
         regionDeps.add(references[0]); // the first reference is the self-reference in the declaration
@@ -396,6 +395,7 @@ export function describeFile(ast: File, filename: string): FileDescription {
       }
       if (sideEffects) {
         desc.regions[sideEffects].dependsOn.add(declarationPointer);
+        desc.regions[documentPointer].dependsOn.add(declarationPointer);
       }
       dependsOn.set(builder.regions[declarationPointer], consumes);
     }

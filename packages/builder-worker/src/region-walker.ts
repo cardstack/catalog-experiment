@@ -4,7 +4,6 @@ import {
   isNamespaceMarker,
   RegionEditor,
   RegionPointer,
-  visitCodeRegions,
 } from "./code-region";
 import {
   DependencyResolver,
@@ -117,48 +116,7 @@ export class RegionWalker {
 
       // another version of this pkg is responsible for the side effects, not this version
       if (!resolution) {
-        // check to see if there is a declaration that uses this side effect (we
-        // don't want to handle those here).
-        let declarationPointer = [...region.dependsOn].find(
-          (p) => module.desc.regions[p].type === "declaration"
-        );
-        let declarationInDifferentModule = false;
-        if (declarationPointer != null) {
-          let declarationRegion = module.desc.regions[declarationPointer];
-          if (
-            declarationRegion.type === "declaration" &&
-            declarationRegion.declaration.type === "local" &&
-            declarationRegion.declaration.original
-          ) {
-            let pkgURL = pkgInfoFromCatalogJsURL(
-              new URL(declarationRegion.declaration.original.bundleHref)
-            )?.pkgURL;
-            let resolution = pkgURL
-              ? this.depResolver.resolutionByConsumptionRegion(
-                  makeNonCyclic(module),
-                  declarationPointer,
-                  pkgURL
-                )
-              : undefined;
-            if (resolution?.type === "declaration") {
-              declarationInDifferentModule = resolution.importedSource
-                ? resolution.importedSource.declaredIn.url.href !==
-                  module.url.href
-                : resolution.consumedBy.url.href !== module.url.href;
-            }
-          }
-        }
-
-        // don't manipulate side effects within a declaration. we can use more
-        // sophisticated resolution for bindings, and if they are indeed unused,
-        // we'll rename them thusly
-        if (declarationPointer == null || declarationInDifferentModule) {
-          // this side effect can be collapsed--the pkg's resolved module (which is
-          // not this module) should already be including all the necessary side
-          // effects
-          this.backOff(module, pointer);
-          return;
-        }
+        return;
       }
     }
 
@@ -263,12 +221,7 @@ export class RegionWalker {
       // due to how the declaration was resolved.
       id = regionId(resolvedConsumingModule, resolvedConsumingPointer);
 
-      // we may have already walked over side effects for this region before
-      // we walked over the declaration--in that case we want to "unwalk" this
-      // region and all of its children, since the "winning" resolution will
-      // be responsible for this declaration and any side effects it was
       if (isRegionObviated) {
-        this.backOff(module, pointer, originalId);
         return this.walk(
           resolvedConsumingModule,
           resolvedConsumingPointer,
@@ -422,52 +375,6 @@ export class RegionWalker {
     return sideEffectRegions.length > 0;
   }
 
-  // There are situations where we visit a region (e.g., a side effect), before
-  // we visit the declaration that uses the side effect (because the side effect
-  // is depended upon by a module--and that's the path we took to get to the
-  // side effect). It's only after we have performed a pkg resolution on the
-  // declaration that we realize that we actually want to use a different module
-  // for this declaration, so we need to unwind the step that we initially took
-  // when we visited the side effect. These become "forbidden regions".
-  private backOff(module: Resolution, pointer: RegionPointer, retain?: string) {
-    let region = module.desc.regions[pointer];
-    let declaratorOf: RegionPointer | undefined;
-    let canRemoveDeclaratorOf = false;
-    if (region.type === "declaration" && region.declaration.type === "local") {
-      declaratorOf = region.declaration.declaratorOfRegion;
-      if (declaratorOf != null) {
-        let siblingDeclarations = flatMap(module.desc.regions, (r, p) =>
-          r.type === "declaration" &&
-          r.declaration.type === "local" &&
-          r.declaration.declaratorOfRegion === declaratorOf &&
-          p !== pointer
-            ? [p]
-            : []
-        );
-        canRemoveDeclaratorOf =
-          siblingDeclarations.length === 0 ||
-          siblingDeclarations.every(
-            (p) =>
-              this.seenRegions.has(regionId(module, p)) &&
-              !this.keptRegions.has(regionId(module, p))
-          );
-      }
-    }
-    visitCodeRegions(
-      module.desc.regions,
-      (_, p) => {
-        if (retain && idParts(retain).pointer === p) {
-          return;
-        }
-        let id = regionId(module, p);
-        this.seenRegions.add(id);
-        this.keptRegions.delete(id);
-        this.resolvedRegions.delete(id);
-      },
-      declaratorOf && canRemoveDeclaratorOf ? declaratorOf : pointer
-    );
-  }
-
   private resolvePkgDependency(
     pkgBundleHref: string,
     consumingModule: Resolution,
@@ -590,9 +497,6 @@ class EditorAssigner {
     for (let leaf of leavesInDepOrder.reverse()) {
       this.assignEditor(leaf);
     }
-    if (typeof process?.stdout?.write === "function") {
-      console.log();
-    }
 
     for (let [regionId, { enclosingEditors }] of this.assignmentMap) {
       let { pointer } = idParts(regionId);
@@ -645,11 +549,6 @@ class EditorAssigner {
         assignment: this.assignEditor(depender),
       })
     );
-    if (typeof process?.stdout?.write === "function") {
-      process.stdout.write(
-        `  assigning ${id} for bundle ${this.bundle.href}\r`.padEnd(200, " ")
-      );
-    }
 
     // base case: region has no regions that depend on it--its an exposed region
     if (this.exposedIds.includes(id)) {
