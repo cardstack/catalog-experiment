@@ -20,6 +20,9 @@ export const documentPointer = 0;
 export const notFoundPointer = -1;
 const lvalTypes = ["ObjectProperty", "ArrayPattern", "RestElement"];
 
+// TODO in the interest of making annotation smaller for code regions, let's
+// only include the shorthand property for reference regions.
+
 // the parts of a CodeRegion that we can determine independent of its location,
 // based only on its own NodePath.
 type PathFacts = Pick<GeneralCodeRegion, "shorthand" | "preserveGaps">;
@@ -963,91 +966,62 @@ export class RegionEditor {
     this.pendingStart = undefined;
     this.outputCode = [];
     this.outputRegions = [];
+    this.pruneRegions();
     this.innerSerialize(documentPointer);
 
     let newRegions = remapRegions([...this.outputRegions]);
-    let newCode: string;
     if (newRegions.length === 0) {
-      newCode = "";
+      return { code: "", regions: [] };
     } else {
-      newCode = this.outputCode.join("");
+      let newCode = this.outputCode.join("");
       assignCodeRegionPositions(newRegions);
       trimLeading(newRegions, newCode);
-      // ideally leftOver should always be zero--but just in case we are
-      // handling the scenario where it might be non-zero, as a discrepancy will
-      // result in gibberish. TODO throw an error here and debug if non-zero...
-      let leftOver = trimTrailing(newRegions, newCode);
-      newCode = newCode.trim() + "".padEnd(leftOver, " ");
-      let pruneList = this.preparePrunableRegions(newRegions);
-      for (let pointer of pruneList.sort((a, b) => b - a)) {
-        newRegions.splice(pointer, 1);
-        for (let region of newRegions) {
-          decrementRegionsPointers(region, pointer);
-        }
-      }
+      trimTrailing(newRegions, newCode);
+      return {
+        code: newCode.trim(),
+        regions: newRegions,
+      };
     }
-
-    return {
-      code: newCode,
-      regions: newRegions,
-    };
   }
 
-  private preparePrunableRegions(
-    regions: CodeRegion[],
+  // document regions act as "glue" so that they can establish a structure for
+  // their child regions such that when we start removing regions we aren't left
+  // with ambiguous relationships and order amongst the remaining children.
+  // However, if the document region has no children, then there is no reason
+  // for it to exist any longer.
+  private pruneRegions(
     pointer: RegionPointer = documentPointer,
-    pruneList: RegionPointer[] = []
+    retainedNonDocumentRegions: RegionPointer[] = []
   ): RegionPointer[] {
-    if (regions.length === 0) {
-      return [];
+    let region = this.regions[pointer];
+    if (
+      region.type !== "document" &&
+      this.dispositions[pointer].state !== "removed"
+    ) {
+      retainedNonDocumentRegions = [...retainedNonDocumentRegions, pointer];
+    } else if (region.type === "document") {
+      retainedNonDocumentRegions = [];
     }
-    let region = regions[pointer];
-    if (region.type === "document" && region.firstChild != null) {
-      pruneList = this.preparePrunableRegions(
-        regions,
-        region.firstChild,
-        pruneList
-      );
+
+    if (region.firstChild != null) {
+      retainedNonDocumentRegions = [
+        ...this.pruneRegions(region.firstChild, retainedNonDocumentRegions),
+      ];
     }
-    if (region.type === "document" && region.nextSibling != null) {
-      pruneList = this.preparePrunableRegions(
-        regions,
-        region.nextSibling,
-        pruneList
-      );
-    }
-    region = regions[pointer]; // region might have been mutated, get it again
     if (
       region.type === "document" &&
-      region.start === 0 &&
-      region.end === 0 &&
-      region.firstChild == null
+      retainedNonDocumentRegions.length === 0 &&
+      pointer !== documentPointer
     ) {
-      let prevSibling: RegionPointer | undefined;
-      let parent: RegionPointer | undefined = regions.findIndex(
-        (r) => r.firstChild === pointer
-      );
-      parent = parent !== -1 ? parent : undefined;
-      if (parent == null) {
-        prevSibling = regions.findIndex((r) => r.nextSibling === pointer);
-      }
-      prevSibling = prevSibling !== -1 ? prevSibling : undefined;
-      if (region.nextSibling == null) {
-        if (parent == null) {
-          regions[prevSibling!].nextSibling = undefined;
-        } else {
-          regions[parent].firstChild = undefined;
-        }
-      } else {
-        if (parent == null) {
-          regions[prevSibling!].nextSibling = region.nextSibling;
-        } else {
-          regions[parent].firstChild = region.nextSibling;
-        }
-      }
-      pruneList = [...pruneList, pointer];
+      this.dispositions[pointer] = { state: "removed", region: pointer };
     }
-    return pruneList;
+    if (region.nextSibling != null) {
+      retainedNonDocumentRegions = [
+        ...retainedNonDocumentRegions,
+        ...this.pruneRegions(region.nextSibling),
+      ];
+    }
+    return retainedNonDocumentRegions;
   }
 
   private innerSerialize(
@@ -1446,9 +1420,7 @@ export class RegionEditor {
     }
     if (!output) {
       throw new Error(
-        `cannot find predecessor for the region pointer ${pointer} from regions ${JSON.stringify(
-          this.regions
-        )} with dispositions: ${JSON.stringify(this.dispositions)}`
+        `cannot find output predecessor for the region pointer ${pointer}`
       );
     }
 
@@ -1779,39 +1751,4 @@ function newPointer(
     return;
   }
   return index;
-}
-
-function decrementRegionsPointers(
-  region: CodeRegion,
-  decrementAfter: RegionPointer
-) {
-  region.firstChild = maybeAdjustPointer(region.firstChild, decrementAfter);
-  region.nextSibling = maybeAdjustPointer(region.nextSibling, decrementAfter);
-  region.dependsOn = new Set(
-    [...region.dependsOn].map((r) => maybeAdjustPointer(r, decrementAfter)!)
-  );
-  if (region.type === "declaration") {
-    region.declaration.references = region.declaration.references.map(
-      (r) => maybeAdjustPointer(r, decrementAfter)!
-    );
-    if (region.declaration.type === "local") {
-      region.declaration.declaratorOfRegion = maybeAdjustPointer(
-        region.declaration.declaratorOfRegion,
-        decrementAfter
-      );
-    }
-  }
-}
-
-function maybeAdjustPointer(
-  pointer: RegionPointer | undefined,
-  decrementAfter: RegionPointer
-): RegionPointer | undefined {
-  if (pointer == null) {
-    return;
-  }
-  if (pointer > decrementAfter) {
-    return pointer - 1;
-  }
-  return pointer;
 }

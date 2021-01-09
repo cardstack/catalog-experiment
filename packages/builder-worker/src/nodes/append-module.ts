@@ -21,6 +21,7 @@ import {
   ImportCodeRegion,
   LocalDeclarationDescription,
   DeclarationDescription,
+  DocumentCodeRegion,
 } from "../code-region";
 import { BundleAssignment } from "./bundle";
 import { maybeRelativeURL } from "../path";
@@ -939,25 +940,28 @@ function buildBundleBody(
     let { code: moduleCode, regions: moduleRegions } = rewriter.serialize();
 
     // if the serialized output is empty but we have a namespace object, we need
-    // to stitch that in place of the document region that we would have
-    // otherwise used.
+    // to make a document region that would have otherwise been returned
     if (moduleRegions.length === 0) {
       if (namespacesRegions.length > 0) {
-        if (prevModuleStartPointer != null) {
-          regions[
-            prevModuleStartPointer
-          ].nextSibling = namespaceDeclarationPointer;
-        } else {
-          regions[documentPointer].firstChild = namespaceDeclarationPointer;
-        }
-        prevModuleStartPointer = namespaceDeclarationPointer;
-        regions[namespaceDeclarationPointer].start++; // account for prev newline
+        moduleRegions = [
+          {
+            position: 0,
+            type: "document",
+            start: 0,
+            end: 0,
+            firstChild: undefined,
+            nextSibling: undefined,
+            dependsOn: new Set(),
+            shorthand: false,
+          } as DocumentCodeRegion,
+        ];
+      } else {
+        continue;
       }
-      continue;
+    } else {
+      adjustCodeRegionByOffset(moduleRegions, offset);
+      code.push(moduleCode);
     }
-
-    adjustCodeRegionByOffset(moduleRegions, offset);
-    code.push(moduleCode);
 
     // denote the module side effect regions with consumption info
     let dep = Object.values(dependencies).find((dep) =>
@@ -1233,10 +1237,8 @@ function buildNamespaces(
   let namespacesRegions: CodeRegion[][] = [];
   if (rewriter.namespacesAssignments.length > 0) {
     let previousDeclarationRegion: GeneralCodeRegion | undefined;
-    for (let [
-      index,
-      assignedName,
-    ] of rewriter.namespacesAssignments.entries()) {
+    let count = 0;
+    for (let assignedName of rewriter.namespacesAssignments) {
       let declarationPointer: RegionPointer =
         offset +
         namespacesRegions.reduce((sum, regions) => (sum += regions.length), 0);
@@ -1261,7 +1263,7 @@ function buildNamespaces(
         let referencePointer = declaratorPointer + 1;
         declarationRegion = {
           type: "general",
-          start: index > 0 ? 1 : 0, // the first newline is accounted for by the parent region, otherwise add a newline
+          start: count++ > 0 ? 1 : 0, // the first newline is accounted for by the parent region, otherwise add a newline
           end: 1, // trailing semicolon
           firstChild: declaratorPointer,
           nextSibling: undefined,
