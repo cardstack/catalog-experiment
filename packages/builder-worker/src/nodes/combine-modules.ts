@@ -1,4 +1,4 @@
-import { BuilderNode, NextNode, Value } from "./common";
+import { BuilderNode, NextNode, RecipeGetter, Value } from "./common";
 import { makeNonCyclic, ModuleResolution, Resolution } from "./resolution";
 import { getExportDesc, ModuleDescription } from "../describe-file";
 import { isNamespaceMarker, RegionPointer } from "../code-region";
@@ -15,6 +15,7 @@ import {
 import { GetLockFileNode, LockEntries, LockFile } from "./lock-file";
 import { log } from "../logger";
 import { RegionWalker } from "../region-walker";
+import { pkgInfoFromCatalogJsURL } from "../resolver";
 
 export class CombineModulesNode implements BuilderNode {
   cacheKey: CombineModulesNode;
@@ -36,24 +37,34 @@ export class CombineModulesNode implements BuilderNode {
     };
   }
 
-  async run({
-    info: { assignments, resolutionsInDepOrder, lockFile },
-  }: {
-    info: {
-      assignments: BundleAssignment[];
-      resolutionsInDepOrder: ModuleResolution[];
-      lockFile: LockFile | undefined;
-    };
-  }): Promise<NextNode<{ code: string; desc: ModuleDescription }>> {
+  async run(
+    {
+      info: { assignments, resolutionsInDepOrder, lockFile },
+    }: {
+      info: {
+        assignments: BundleAssignment[];
+        resolutionsInDepOrder: ModuleResolution[];
+        lockFile: LockFile | undefined;
+      };
+    },
+    getRecipe: RecipeGetter
+  ): Promise<NextNode<{ code: string; desc: ModuleDescription }>> {
     let ownAssignments = assignments.filter(
       (a) => a.bundleURL.href === this.bundle.href
     );
-
+    let resolutionRecipes: { [specifier: string]: string } | undefined;
+    let { pkgName: sourcePkgName, version: sourcePkgVersion } =
+      pkgInfoFromCatalogJsURL(this.bundle) ?? {};
+    if (sourcePkgName && sourcePkgVersion) {
+      resolutionRecipes = (await getRecipe(sourcePkgName, sourcePkgVersion))
+        ?.resolutions;
+    }
     let depResolver = new DependencyResolver(
       this.dependencies,
       assignments,
       this.lockEntries,
       lockFile,
+      resolutionRecipes,
       this.bundle
     );
 

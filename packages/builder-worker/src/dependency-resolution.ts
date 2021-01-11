@@ -91,6 +91,11 @@ export class DependencyResolver {
     assignments: BundleAssignment[],
     lockEntries: LockEntries,
     lockFile: LockFile | undefined,
+    resolutionRecipes:
+      | {
+          [specifier: string]: string;
+        }
+      | undefined,
     private bundle: URL
   ) {
     this.consumedDeps = gatherDependencies(
@@ -98,6 +103,7 @@ export class DependencyResolver {
       assignments,
       lockEntries,
       lockFile,
+      resolutionRecipes,
       bundle
     );
     this.pkgHrefs = [...this.consumedDeps.keys()];
@@ -600,6 +606,19 @@ function resolveDeclaration(
     return result;
   }
 
+  if (resolution?.importedSource && resolution.importedSource.pointer != null) {
+    let { declaration } = resolution.importedSource.declaredIn.desc.regions[
+      resolution.importedSource.pointer
+    ] as DeclarationCodeRegion;
+    let exports = getExports(resolution.importedSource.declaredIn);
+    for (let [exportName, { desc: exportDesc }] of exports.entries()) {
+      if (exportDesc?.name === declaration.declaredName) {
+        importedName = exportName;
+        break;
+      }
+    }
+  }
+
   // follow the imported binding in its imported module
   let { module: sourceModule, desc: exportDesc } =
     getExportDesc(importedFromModule, importedName) ?? {};
@@ -860,6 +879,11 @@ function gatherDependencies(
   assignments: BundleAssignment[],
   lockEntries: LockEntries,
   lockFile: LockFile | undefined,
+  resolutionRecipes:
+    | {
+        [specifier: string]: string;
+      }
+    | undefined,
   bundle: URL
 ): ConsumedDependencies {
   // we use a separate cache here because we have not yet setup the dependency
@@ -873,6 +897,7 @@ function gatherDependencies(
   let locks: Map<string, string> = new Map([
     ...Object.entries(lockFile ?? {}),
     ...new Map([...lockEntries.entries()].map(([k, v]) => [k, v.href])),
+    ...Object.entries(resolutionRecipes ?? {}),
   ]);
 
   // first we gather up all the direct dependencies of the project from the lock
@@ -892,9 +917,15 @@ function gatherDependencies(
     }
     let dependency = dependencies[pkgName];
     if (!dependency) {
-      throw new Error(
-        `unable to determine entrypoints.json dependency from the specifier '${specifier}' with resolution ${bundleHref} in bundle ${bundle.href}. Are you missing a dependency for '${pkgName}' in your entrypoints.json file?`
-      );
+      let maybePkgName = pkgInfoFromCatalogJsURL(new URL(bundleHref))?.pkgName;
+      if (maybePkgName) {
+        dependency = dependencies[maybePkgName];
+      }
+      if (!dependency) {
+        throw new Error(
+          `unable to determine entrypoints.json dependency from the specifier '${specifier}' with resolution ${bundleHref} in bundle ${bundle.href}. Are you missing a dependency for '${pkgName}' in your entrypoints.json file?`
+        );
+      }
     }
     for (let { module } of ownAssignments) {
       for (let pointer of module.desc.regions[documentPointer].dependsOn) {

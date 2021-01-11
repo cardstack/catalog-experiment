@@ -31,6 +31,8 @@ import { depAsURL, Dependencies } from "./nodes/entrypoint";
 import {
   DependencyResolver,
   ResolvedDeclarationDependency,
+  ResolvedResult,
+  UnresolvedResult,
 } from "./dependency-resolution";
 import { maybeRelativeURL } from "./path";
 import { pkgInfoFromCatalogJsURL } from "./resolver";
@@ -350,39 +352,21 @@ export class ModuleRewriter {
             this.ownAssignments,
             pointer
           );
-          if (source.type === "resolved") {
-            assignedName = this.maybeAssignImportName(
-              source.resolution
-                ? source.resolution.source
-                : source.module.url.href,
-              source.resolution
-                ? source.resolution.importedAs
-                : source.importedAs,
-              localName
-            );
-            if (outerResolution?.type === "declaration") {
-              setDoubleNestedMapping(
-                outerResolution.source,
-                outerResolution.importedAs,
-                assignedName,
-                this.state.assignedImportedNames
-              );
-            }
-          } else {
-            assignedName = this.maybeAssignImportName(
-              source.resolution
-                ? source.resolution.source
-                : source.importedFromModule.url.href,
-              source.resolution
-                ? source.resolution.importedAs
-                : source.importedAs,
-              localName
+          assignedName = this.maybeAssignImportNameFromResolution(
+            source,
+            localName
+          );
+          if (
+            source.type === "resolved" &&
+            outerResolution?.type === "declaration"
+          ) {
+            setDoubleNestedMapping(
+              outerResolution.source,
+              outerResolution.importedAs,
+              assignedName,
+              this.state.assignedImportedNames
             );
           }
-          // TODO if we allow NamespaceMappings here, then we could use the
-          // value to help set the "original" property on namespace object
-          // declarations (needs to also be paired with resolution entries
-          // that contain a NamespaceMarker consumption points)
           if (
             source.resolution &&
             assignedName &&
@@ -424,7 +408,7 @@ export class ModuleRewriter {
           let { bundleHref, range, importedAs, source } = resolution;
           assignedName = this.maybeAssignImportName(
             source,
-            importedAs,
+            this.resolvedBindingName(resolution),
             localName
           );
           this.state.assignedDependencyBindings.set(assignedName, {
@@ -669,6 +653,76 @@ export class ModuleRewriter {
         resolution,
       });
     }
+  }
+
+  private maybeAssignImportNameFromResolution(
+    source: ResolvedResult | UnresolvedResult,
+    suggestedName: string
+  ): string {
+    if (source.type === "resolved") {
+      if (!source.resolution) {
+        return this.maybeAssignImportName(
+          source.module.url.href,
+          source.importedAs,
+          suggestedName
+        );
+      }
+      return this.maybeAssignImportName(
+        source.resolution.source,
+        this.resolvedBindingName(source.resolution),
+        suggestedName
+      );
+    } else {
+      if (!source.resolution) {
+        return this.maybeAssignImportName(
+          source.importedFromModule.url.href,
+          source.importedAs,
+          suggestedName
+        );
+      }
+      return this.maybeAssignImportName(
+        source.resolution.source,
+        this.resolvedBindingName(source.resolution),
+        suggestedName
+      );
+    }
+  }
+
+  // TODO this is a band-aid to deal with an issue that we really should
+  // addressed in the dependency-resolution module when we assign names to our
+  // resolved bindings. let's address that issue there.
+  private resolvedBindingName(
+    resolution: ResolvedDeclarationDependency
+  ): string | NamespaceMarker {
+    if (resolution.importedSource) {
+      return resolution.importedAs;
+    }
+    if (isNamespaceMarker(resolution.importedAs)) {
+      return NamespaceMarker;
+    }
+    let name = resolution.importedAs;
+    let { declaration } = resolution.consumedBy.desc.regions[
+      resolution.consumedByPointer
+    ] as DeclarationCodeRegion;
+    let exports = getExports(resolution.consumedBy);
+    for (let exportName of new Set([
+      ...(this.state.multiExportedBindings
+        .get(resolution.consumedBy.url.href)
+        ?.get(name) ?? []),
+      name,
+    ])) {
+      let { desc: exportDesc } = exports.get(exportName) ?? {};
+      if (exportDesc && exportDesc.name !== declaration.declaredName) {
+        let [maybeName] =
+          [...exports].find(
+            ([, { desc }]) => desc.name === declaration.declaredName
+          ) ?? [];
+        if (maybeName) {
+          return maybeName;
+        }
+      }
+    }
+    return name;
   }
 
   private maybeAssignImportName(

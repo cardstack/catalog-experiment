@@ -19,6 +19,9 @@
       "macros": {
         "process\\.env\\.NODE_ENV": "'production'"
       },
+      "dependencies": {
+        "@catalogjs/polyfills": "^0.0.1"
+      },
       "babelPlugins": [
         "@babel/plugin-transform-flow-strip-types",
         [

@@ -13,7 +13,13 @@
       ],
       "resolutions": {
         "assert": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/assert.js",
-        "path": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/path.js"
+        "buffer": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/buffer.js",
+        "process": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/process.js",
+        "util": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/util.js",
+        "inherits": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/inherits.js"
+      },
+      "dependencies": {
+        "@catalogjs/polyfills": "^0.0.1"
       },
       "babelPlugins": [
         "@babel/plugin-transform-flow-strip-types",
