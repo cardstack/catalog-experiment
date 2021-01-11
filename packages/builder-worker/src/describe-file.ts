@@ -609,6 +609,12 @@ export function describeFile(ast: File, filename: string): FileDescription {
       }
     },
     CallExpression(path) {
+      // If there are signals that we are actually in an ES6 module, then we can
+      // bail. all the logic below is for CJS files.
+      if (isES6Module) {
+        return;
+      }
+
       let callee = path.get("callee");
       let calleeNode = callee.node;
       let argumentsPaths = path.get("arguments");
