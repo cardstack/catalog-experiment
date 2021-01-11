@@ -88,7 +88,7 @@ export class NpmImportPackageNode implements BuilderNode {
 
   async deps() {
     log(
-      `entering package dependency: ${this.pkgJSON.name} ${this.pkgJSON.version}`
+      `entering package dependency: ${this.pkgJSON.name} ${this.pkgJSON.version} (${this.pkgPath})`
     );
     return {
       workingPkgURL: new PreparePackageNode(
@@ -158,7 +158,16 @@ class CoreBuildNode implements BuilderNode {
       lockEntries: new MakeProjectNode(
         new URL(buildSrcDir, this.pkgWorkingURL),
         new URL(buildOutputDir, this.pkgWorkingURL),
-        this.resolver
+        this.resolver,
+        {
+          // all node builds should have resolutions for the runtime loader
+          // available, so that runtime loading situations (e.g. a dynamic
+          // require specifier) can be handled if they arise
+          resolutions: {
+            "@catalogjs/loader":
+              "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/index.js",
+          },
+        }
       ),
     };
   }

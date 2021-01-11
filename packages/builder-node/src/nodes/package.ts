@@ -153,7 +153,17 @@ class FinishPackagePreparationNode implements BuilderNode {
         new ConstantNode(this.pkgPath),
         new URL(pkgPathFile, this.pkgURL)
       ),
-      entrypoints: new EntrypointsNode(this.pkgJSON, this.pkgURL, esCompliance),
+      entrypoints: new EntrypointsNode(
+        this.pkgJSON,
+        this.pkgURL,
+        esCompliance,
+        // all node builds have the runtime loader package available as a
+        // dependency, so that runtime loading situations (e.g. a dynamic
+        // require specifier) can be handled if they arise
+        {
+          "@catalogjs/loader": "^0.0.1",
+        }
+      ),
       esCompliance,
     };
   }

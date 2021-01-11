@@ -14,6 +14,7 @@ import { LockEntries } from "./lock-file";
 
 export interface Options {
   testing?: TestingOptions;
+  resolutions?: { [specifier: string]: string };
 }
 
 // This can leverage global bundle assignments (that spans all projects), or it
@@ -31,7 +32,7 @@ export interface Options {
 export class MakeProjectNode implements BuilderNode<LockEntries> {
   cacheKey: string;
   // TODO we can't just pass this Map around. it needs to be the output of a builder node...
-  private lockEntries: LockEntries = new Map();
+  private lockEntries: LockEntries;
   private optsWithDefaults: Options;
 
   constructor(
@@ -44,6 +45,12 @@ export class MakeProjectNode implements BuilderNode<LockEntries> {
     this.optsWithDefaults = {
       ...options,
     };
+    this.lockEntries = new Map(
+      Object.entries(options?.resolutions ?? {}).map(([specifier, href]) => [
+        specifier,
+        new URL(href),
+      ])
+    );
   }
 
   async deps() {

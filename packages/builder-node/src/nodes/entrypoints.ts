@@ -22,7 +22,8 @@ export class EntrypointsNode implements BuilderNode {
   constructor(
     private pkgJSON: PackageJSON,
     private pkgURL: URL,
-    private esCompliantNode: MakePkgESCompliantNode
+    private esCompliantNode: MakePkgESCompliantNode,
+    private builderDeps?: { [pkgName: string]: string }
   ) {
     this.cacheKey = `pkg-entrypoints:${pkgURL.href}`;
   }
@@ -67,6 +68,7 @@ export class EntrypointsNode implements BuilderNode {
     let dependencies: Dependencies = {};
     for (let [name, range] of Object.entries({
       ...(this.pkgJSON.dependencies ?? {}),
+      ...(this.builderDeps ?? {}),
       ...dependencyOverrides,
     })) {
       dependencies[name] = {

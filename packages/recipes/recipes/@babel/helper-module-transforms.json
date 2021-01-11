@@ -16,7 +16,8 @@
         "buffer": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/buffer.js",
         "process": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/process.js",
         "util": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/util.js",
-        "inherits": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/inherits.js"
+        "inherits": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/inherits.js",
+        "path": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/path.js"
       },
       "dependencies": {
         "@catalogjs/polyfills": "^0.0.1"
