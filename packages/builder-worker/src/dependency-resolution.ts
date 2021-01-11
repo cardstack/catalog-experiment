@@ -697,13 +697,17 @@ function resolveDeclaration(
         assertLocalDeclarationRegion(region, resolution, bundle);
         let declaration = region.declaration;
         let declaredName = declaration.declaredName;
-        if (isNamespaceMarker(resolution.importedAs)) {
-          throw new Error("unimplemented");
+        let name = resolution.importedAs;
+        if (isNamespaceMarker(name)) {
+          let { declaration } = resolution.consumedBy.desc.regions[
+            resolution.consumedByPointer
+          ] as DeclarationCodeRegion;
+          name = declaration.declaredName;
         }
         let result: ResolvedResult = {
           type: "resolved",
           module: resolution.consumedBy,
-          importedAs: resolution.importedAs,
+          importedAs: name,
           declaredName,
           region,
           declaration,

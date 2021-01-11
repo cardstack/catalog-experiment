@@ -461,9 +461,6 @@ class EditorAssigner {
         )
       );
     }
-    if (typeof process?.stdout?.write === "function") {
-      console.log(`  inverting code regions for bundle ${this.bundle.href}`);
-    }
     let { dependenciesOf, leaves } = this.invertCodeRegions(this.exposedIds);
     this.dependenciesOf = dependenciesOf;
 
