@@ -42,8 +42,13 @@ export interface ResolvedDeclarationDependency extends DependencyBase {
   importedSource?: {
     pointer: RegionPointer | undefined;
     declaredIn: ModuleResolution;
+    exportedAs: string | undefined;
   };
-  importedAs: string | NamespaceMarker;
+  // For the resolution name, we prefer the resolved binding's exported
+  // name, and use internal names if the resolved binding is not exported.
+  // If the internal name collides with an exported name then we assign
+  // an unused name.
+  name: string | NamespaceMarker;
   source: string;
 }
 export interface ResolvedSideEffectDependency extends DependencyBase {
@@ -204,8 +209,8 @@ export class DependencyResolver {
         }
         let bindings = flatMap(pkgVersions.get(bundleVersion)!, (r) =>
           r.type === "declaration"
-            ? !isNamespaceMarker(r.importedAs)
-              ? [r.importedAs]
+            ? !isNamespaceMarker(r.name)
+              ? [r.name]
               : ["{NamespaceMarker}"]
             : []
         );
@@ -242,8 +247,8 @@ export class DependencyResolver {
               pkgVersions.get(otherBundleVersion)!,
               (r) =>
                 r.type === "declaration"
-                  ? !isNamespaceMarker(r.importedAs)
-                    ? [r.importedAs]
+                  ? !isNamespaceMarker(r.name)
+                    ? [r.name]
                     : ["{NamespaceMarker}"]
                   : []
             );
@@ -368,14 +373,14 @@ export class DependencyResolver {
               ) {
                 return;
               }
-              if (r.importedAs === "default") {
+              if (r.name === "default") {
                 return (
                   pkgInfoFromCatalogJsURL(new URL(r.source))?.modulePath &&
                   pkgInfoFromCatalogJsURL(new URL(resolution.source))
                     ?.modulePath
                 );
               } else {
-                return resolution.importedAs === r.importedAs;
+                return resolution.name === r.name;
               }
             })
           )
@@ -387,7 +392,7 @@ export class DependencyResolver {
               r.type === "declaration" &&
               resolution.type === r.type &&
               resolution.source === r.source &&
-              resolution.importedAs === r.importedAs
+              resolution.name === r.name
           );
         if (dupeResolutions.length > 1) {
           let rawRanges = [range, ...dupeResolutions.map((r) => r.range)];
@@ -536,9 +541,11 @@ function resolveDeclaration(
       if (resolution?.importedSource) {
         // the resolution is an import of a specific pkg version, use that
         // module as the basis for the importFrom module in the subsequent logic
+        let exportedAs: string | undefined;
         ({
-          importedSource: { declaredIn: importedFromModule },
+          importedSource: { declaredIn: importedFromModule, exportedAs },
         } = resolution);
+        importedName = exportedAs ?? resolution.name;
       } else if (resolution) {
         // the resolution is a local declaration from an incorporated bundle
         // (the actual import is the preferred pkg ver)
@@ -547,9 +554,9 @@ function resolveDeclaration(
         assertLocalDeclarationRegion(region, resolution, bundle);
         let declaration = region.declaration;
         let declaredName = declaration.declaredName;
-        let bindingName = isNamespaceMarker(resolution.importedAs)
+        let bindingName = isNamespaceMarker(resolution.name)
           ? declaredName
-          : resolution.importedAs;
+          : resolution.name;
         let result: ResolvedResult = {
           type: "resolved",
           module: resolution.consumedBy,
@@ -604,19 +611,6 @@ function resolveDeclaration(
     };
     cacheResult(result);
     return result;
-  }
-
-  if (resolution?.importedSource && resolution.importedSource.pointer != null) {
-    let { declaration } = resolution.importedSource.declaredIn.desc.regions[
-      resolution.importedSource.pointer
-    ] as DeclarationCodeRegion;
-    let exports = getExports(resolution.importedSource.declaredIn);
-    for (let [exportName, { desc: exportDesc }] of exports.entries()) {
-      if (exportDesc?.name === declaration.declaredName) {
-        importedName = exportName;
-        break;
-      }
-    }
   }
 
   // follow the imported binding in its imported module
@@ -683,7 +677,7 @@ function resolveDeclaration(
       );
       if (resolution?.importedSource) {
         return resolveDeclaration(
-          resolution.importedAs,
+          resolution.name,
           resolution.importedSource.declaredIn,
           sourceModule,
           ownAssignments,
@@ -697,7 +691,7 @@ function resolveDeclaration(
         assertLocalDeclarationRegion(region, resolution, bundle);
         let declaration = region.declaration;
         let declaredName = declaration.declaredName;
-        let name = resolution.importedAs;
+        let name = resolution.name;
         if (isNamespaceMarker(name)) {
           let { declaration } = resolution.consumedBy.desc.regions[
             resolution.consumedByPointer
@@ -892,7 +886,8 @@ function gatherDependencies(
 ): ConsumedDependencies {
   // we use a separate cache here because we have not yet setup the dependency
   // resolution (that is actually the purpose of this function), so these
-  // answers will be different than after the dependency resolution is ready
+  // answers will be different then the answers we'd receive after the
+  // dependency resolution is ready
   let declarationResolutionCache: DeclarationResolutionCache = new Map();
   let consumedDeps: ConsumedDependencies = new Map();
   let ownAssignments = assignments.filter(
@@ -906,7 +901,8 @@ function gatherDependencies(
 
   // first we gather up all the direct dependencies of the project from the lock
   // file--this has the benefit of listing out all the direct dependencies of
-  // the project and their resolutions
+  // the project and their resolutions. then we'll identify all the consumption
+  // points for the code regions in each of the direct dependencies.
   for (let [specifier, bundleHref] of locks) {
     let [pkgName, ...bundleParts] = specifier.split("/");
     if (pkgName.startsWith("@")) {
@@ -931,7 +927,9 @@ function gatherDependencies(
         );
       }
     }
+
     for (let { module } of ownAssignments) {
+      // Add consumption points for all the side effects
       for (let pointer of module.desc.regions[documentPointer].dependsOn) {
         let region = module.desc.regions[pointer];
         if (region.type === "general") {
@@ -948,14 +946,14 @@ function gatherDependencies(
           );
         }
       }
+      // Add consumption points for all the reexports. reexports are a form of
+      // consumption point for deps which you will not find by scanning for
+      // declaration regions since reexported bindings are not scoped to the
+      // module so we'll look in the export desc specifically for them
       for (let [exportName, exportDesc] of module.desc.exports) {
         if (exportDesc.type !== "reexport" || isExportAllMarker(exportName)) {
           continue;
         }
-        // reexports are a form of consumption point for deps which you will not
-        // find by scanning for declaration regions since reexported bindings
-        // are not scoped to the module so we'll look in the export desc
-        // specifically for them
         if (
           module.resolvedImports[exportDesc.importIndex].url.href !== bundleHref
         ) {
@@ -971,12 +969,13 @@ function gatherDependencies(
               type: "declaration",
               importedSource: {
                 pointer: undefined,
+                exportedAs: undefined,
                 declaredIn: pkgModule,
               },
               bundleHref,
               consumedBy: module,
               consumedByPointer: exportDesc.exportRegion,
-              importedAs: NamespaceMarker,
+              name: NamespaceMarker,
               source: pkgModule.url.href,
               range: dependency.range,
             },
@@ -1029,11 +1028,16 @@ function gatherDependencies(
               importedSource: {
                 pointer: source.pointer,
                 declaredIn: pkgModule,
+                exportedAs: [...getExports(source.module)].find(
+                  ([, { desc }]) =>
+                    desc.name ===
+                    (source as ResolvedResult).declaration.declaredName
+                )![0],
               },
               bundleHref,
               consumedBy: module,
               consumedByPointer: exportDesc.exportRegion,
-              importedAs: exportDesc.name,
+              name: resolutionBindingName(exportDesc.name, source.module),
               source: source.declaration.source,
               range: dependency.range,
             },
@@ -1041,10 +1045,15 @@ function gatherDependencies(
           );
         }
       }
+
+      // Add consumption points for bindings in the module scope
       for (let [pointer, region] of module.desc.regions.entries()) {
         if (region.type !== "declaration") {
           continue;
         }
+        // Add consumption points for local declarations for bindings whose origin
+        // is this module (the consumption points will be the actual module you
+        // are iterating over since these are local)
         if (
           module.url.href === bundleHref &&
           region.declaration.type === "local" &&
@@ -1057,13 +1066,19 @@ function gatherDependencies(
               bundleHref,
               consumedBy: module,
               consumedByPointer: pointer,
-              importedAs: region.declaration.declaredName,
+              name: resolutionBindingName(
+                region.declaration.declaredName,
+                module
+              ),
               source: region.declaration.source,
               range: dependency.range,
             },
             consumedDeps
           );
-        } else if (
+        }
+
+        // Add consumption points for imported declarations
+        else if (
           region.declaration.type === "import" &&
           module.resolvedImports[region.declaration.importIndex].url.href ===
             bundleHref
@@ -1089,11 +1104,16 @@ function gatherDependencies(
                 importedSource: {
                   pointer: source.pointer,
                   declaredIn: makeNonCyclic(source.module),
+                  exportedAs: [...getExports(source.module)].find(
+                    ([, { desc }]) =>
+                      desc.name ===
+                      (source as ResolvedResult).declaration.declaredName
+                  )![0],
                 },
                 bundleHref,
                 consumedBy: module,
                 consumedByPointer: pointer,
-                importedAs: region.declaration.importedName,
+                name: region.declaration.importedName,
                 range: dependency.range,
                 source: source.declaration.source,
               },
@@ -1114,12 +1134,13 @@ function gatherDependencies(
                 type: "declaration",
                 importedSource: {
                   pointer: undefined,
+                  exportedAs: undefined,
                   declaredIn: importedFrom,
                 },
                 bundleHref,
                 consumedBy: module,
                 consumedByPointer: pointer,
-                importedAs: NamespaceMarker,
+                name: NamespaceMarker,
                 range: dependency.range,
                 source: importedFrom.url.href,
               },
@@ -1173,7 +1194,7 @@ function gatherDependencies(
               type: "declaration",
               consumedByPointer: pointer,
               consumedBy: module,
-              importedAs: declaration.original.importedAs,
+              name: declaration.original.importedAs,
               range: declaration.original.range,
               bundleHref: declaration.original.bundleHref,
               source: declaration.source,
@@ -1186,6 +1207,33 @@ function gatherDependencies(
   }
 
   return consumedDeps;
+}
+
+function resolutionBindingName(
+  internalName: string,
+  module: Resolution
+): string {
+  let exports = getExports(module);
+  let [exportedName] =
+    [...exports].find(([, { desc }]) => desc.name === internalName) ?? [];
+  if (exportedName) {
+    return exportedName;
+  }
+  return unusedNameLike(internalName, module);
+}
+
+function unusedNameLike(name: string, module: Resolution): string {
+  let exports = getExports(module);
+  let candidate = name;
+  let counter = 0;
+  let { declarations } = module.desc;
+  while (
+    exports.has(candidate) ||
+    (name !== candidate && declarations.has(candidate))
+  ) {
+    candidate = `${name}${counter++}`;
+  }
+  return candidate;
 }
 
 function addResolutionsForNamespace(
@@ -1228,7 +1276,7 @@ function addResolutionsForNamespace(
           bundleHref,
           consumedBy: makeNonCyclic(namespaceItemSource.module),
           consumedByPointer: namespaceItemSource.pointer,
-          importedAs: exportName,
+          name: exportName,
           range: dependency.range,
           source: namespaceItemSource.declaration.source,
         },
@@ -1381,7 +1429,7 @@ function assertLocalDeclarationRegion(
   if (region.type !== "declaration") {
     throw new Error(
       `expected region to be a declaration region for ${JSON.stringify(
-        resolution.importedAs
+        resolution.name
       )} from module ${resolution?.consumedBy.url.href} region pointer ${
         resolution?.consumedByPointer
       } in bundle ${bundle.href}, but it was ${JSON.stringify(
@@ -1407,7 +1455,7 @@ function assertLocalDeclarationDescription(
   if (desc.type !== "local") {
     throw new Error(
       `expected declaration region to have a local declaration type for ${JSON.stringify(
-        resolution.importedAs
+        resolution.name
       )} from module ${resolution?.consumedBy.url.href} region pointer ${
         resolution?.consumedByPointer
       } in bundle ${bundle.href}, but it was ${JSON.stringify(

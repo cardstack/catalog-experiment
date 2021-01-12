@@ -1186,7 +1186,7 @@ function setReferences(
     if (resolution?.importedSource) {
       assignedName = state.assignedImportedNames
         .get(resolution.source)
-        ?.get(resolution.importedAs);
+        ?.get(resolution.name);
     } else if (declaration.type === "import" || declarationPointer < 0) {
       assignedName = state.nameAssignments
         .get(module.url.href)
@@ -1578,22 +1578,22 @@ function assignedExports(
           depResolver
         );
         if (resolution) {
-          if (isNamespaceMarker(resolution.importedAs)) {
+          if (isNamespaceMarker(resolution.name)) {
             throw new Error("unimplemented");
           }
           if (!resolution.importedSource) {
             let assignedName = state.nameAssignments
               .get(resolution.consumedBy.url.href)
-              ?.get(resolution.importedAs);
+              ?.get(resolution.name);
             if (!assignedName) {
               throw new Error(
-                `could not find assigned name for declaration '${resolution.importedAs} in ${resolution.consumedBy.url.href} within bundle ${bundle.href}`
+                `could not find assigned name for declaration '${resolution.name} in ${resolution.consumedBy.url.href} within bundle ${bundle.href}`
               );
             }
             exports.set(exposedAs, assignedName);
             continue;
           }
-          original = resolution.importedAs;
+          original = resolution.name;
           module = resolution.consumedBy;
           importedFrom = resolution.importedSource.declaredIn;
         }
@@ -1627,9 +1627,7 @@ function assignedExports(
               ? source.resolution.source
               : source.importedFromModule.url.href
           )
-          ?.get(
-            source.resolution ? source.resolution.importedAs : source.importedAs
-          );
+          ?.get(source.resolution ? source.resolution.name : source.importedAs);
         if (!assignedName) {
           if (source.importedPointer == null) {
             throw new Error(

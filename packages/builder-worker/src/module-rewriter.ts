@@ -362,7 +362,7 @@ export class ModuleRewriter {
           ) {
             setDoubleNestedMapping(
               outerResolution.source,
-              outerResolution.importedAs,
+              outerResolution.name,
               assignedName,
               this.state.assignedImportedNames
             );
@@ -371,14 +371,14 @@ export class ModuleRewriter {
             source.resolution &&
             assignedName &&
             source.resolution.type === "declaration" &&
-            !isNamespaceMarker(source.resolution.importedAs)
+            !isNamespaceMarker(source.resolution.name)
           ) {
             // we deal with setting the namespace assigned import deps in the
             // makeNamespaceMappings()
             this.state.assignedDependencyBindings.set(assignedName, {
               bundleHref: source.resolution.bundleHref,
               range: source.resolution.range,
-              importedAs: source.resolution.importedAs,
+              importedAs: source.resolution.name,
             });
           }
         } else if (localDesc.type === "local" && localDesc.original) {
@@ -389,7 +389,7 @@ export class ModuleRewriter {
           )!; // this function actually throws when a local desc with an original does not have a resolution
           assignedName = this.maybeAssignImportName(
             resolution.source,
-            resolution.importedAs,
+            resolution.name,
             localName
           );
         }
@@ -403,12 +403,12 @@ export class ModuleRewriter {
         if (
           resolution &&
           resolution.type === "declaration" &&
-          !isNamespaceMarker(resolution.importedAs)
+          !isNamespaceMarker(resolution.name)
         ) {
-          let { bundleHref, range, importedAs, source } = resolution;
+          let { bundleHref, range, name: importedAs, source } = resolution;
           assignedName = this.maybeAssignImportName(
             source,
-            this.resolvedBindingName(resolution),
+            resolution.name,
             localName
           );
           this.state.assignedDependencyBindings.set(assignedName, {
@@ -608,12 +608,12 @@ export class ModuleRewriter {
               ? "_default"
               : namespaceItemSource.declaredName;
           if (namespaceItemSource.resolution?.type === "declaration") {
-            if (isNamespaceMarker(namespaceItemSource.resolution.importedAs)) {
+            if (isNamespaceMarker(namespaceItemSource.resolution.name)) {
               assignedName = exportedName;
             } else {
               assignedName = this.maybeAssignImportName(
                 namespaceItemSource.resolution.source,
-                namespaceItemSource.resolution.importedAs,
+                namespaceItemSource.resolution.name,
                 suggestedName
               );
             }
@@ -669,7 +669,7 @@ export class ModuleRewriter {
       }
       return this.maybeAssignImportName(
         source.resolution.source,
-        this.resolvedBindingName(source.resolution),
+        source.resolution.name,
         suggestedName
       );
     } else {
@@ -682,47 +682,10 @@ export class ModuleRewriter {
       }
       return this.maybeAssignImportName(
         source.resolution.source,
-        this.resolvedBindingName(source.resolution),
+        source.resolution.name,
         suggestedName
       );
     }
-  }
-
-  // TODO this is a band-aid to deal with an issue that we really should
-  // addressed in the dependency-resolution module when we assign names to our
-  // resolved bindings. let's address that issue there.
-  private resolvedBindingName(
-    resolution: ResolvedDeclarationDependency
-  ): string | NamespaceMarker {
-    if (resolution.importedSource) {
-      return resolution.importedAs;
-    }
-    if (isNamespaceMarker(resolution.importedAs)) {
-      return NamespaceMarker;
-    }
-    let name = resolution.importedAs;
-    let { declaration } = resolution.consumedBy.desc.regions[
-      resolution.consumedByPointer
-    ] as DeclarationCodeRegion;
-    let exports = getExports(resolution.consumedBy);
-    for (let exportName of new Set([
-      ...(this.state.multiExportedBindings
-        .get(resolution.consumedBy.url.href)
-        ?.get(name) ?? []),
-      name,
-    ])) {
-      let { desc: exportDesc } = exports.get(exportName) ?? {};
-      if (exportDesc && exportDesc.name !== declaration.declaredName) {
-        let [maybeName] =
-          [...exports].find(
-            ([, { desc }]) => desc.name === declaration.declaredName
-          ) ?? [];
-        if (maybeName) {
-          return maybeName;
-        }
-      }
-    }
-    return name;
   }
 
   private maybeAssignImportName(

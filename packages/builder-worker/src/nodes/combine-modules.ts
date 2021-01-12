@@ -178,7 +178,7 @@ function exposedRegions(
           depResolver
         );
         if (resolution) {
-          if (isNamespaceMarker(resolution.importedAs)) {
+          if (isNamespaceMarker(resolution.name)) {
             throw new Error("unimplemented");
           }
           if (!resolution.importedSource) {
@@ -192,7 +192,7 @@ function exposedRegions(
             }
             continue;
           }
-          original = resolution.importedAs;
+          original = resolution.name;
           module = resolution.consumedBy;
           importedFrom = resolution.importedSource.declaredIn;
         }

@@ -172,7 +172,7 @@ export class RegionWalker {
         id = regionId(consumingModule, importedPointer);
         if (
           this.moduleInOurBundle(source.importedFromModule) &&
-          isNamespaceMarker(source.resolution?.importedAs ?? source.importedAs)
+          isNamespaceMarker(source.resolution?.name ?? source.importedAs)
         ) {
           // we mark the namespace import region as something we want to keep as a
           // signal to the Append nodes to manufacture a namespace object for this
@@ -234,7 +234,7 @@ export class RegionWalker {
       // we want a namespace object manufactured here.
       else if (
         resolution?.type === "declaration" &&
-        isNamespaceMarker(resolution?.importedAs) &&
+        isNamespaceMarker(resolution?.name) &&
         resolution.importedSource?.declaredIn
       ) {
         let items = this.visitNamespace(resolution.importedSource.declaredIn);
@@ -413,7 +413,7 @@ export class RegionWalker {
         resolution.type === "declaration" &&
         resolution.importedSource &&
         resolution.importedSource.pointer != null &&
-        isNamespaceMarker(resolution.importedAs)
+        isNamespaceMarker(resolution.name)
       ) {
         resolvedConsumingModule = resolution.importedSource.declaredIn;
       } else {
