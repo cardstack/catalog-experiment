@@ -163,7 +163,7 @@ class CoreBuildNode implements BuilderNode {
           // all node builds should have resolutions for the runtime loader
           // available, so that runtime loading situations (e.g. a dynamic
           // require specifier) can be handled if they arise
-          resolutions: {
+          seededResolutions: {
             "@catalogjs/loader":
               "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/index.js",
           },

@@ -133,6 +133,11 @@ QUnit.module("Install from npm", function () {
       assert.deepEqual(aEntrypoints.dependencies, {
         b: { type: "npm", pkgName: "b", range: "4.5.6" },
         e: { type: "npm", pkgName: "e", range: "2.3.4" },
+        "@catalogjs/loader": {
+          type: "npm",
+          pkgName: "@catalogjs/loader",
+          range: "^0.0.1",
+        },
       });
 
       let cEntrypoints = JSON.parse(
@@ -144,6 +149,11 @@ QUnit.module("Install from npm", function () {
       assert.notOk(cEntrypoints.html);
       assert.deepEqual(cEntrypoints.dependencies, {
         b: { type: "npm", pkgName: "b", range: "7.8.9" },
+        "@catalogjs/loader": {
+          type: "npm",
+          pkgName: "@catalogjs/loader",
+          range: "^0.0.1",
+        },
       });
     });
 
@@ -153,18 +163,22 @@ QUnit.module("Install from npm", function () {
         await (await fs.openFile(new URL("catalogjs.lock", pkgAURL))).readText()
       );
       assert.deepEqual(lock, {
+        "@catalogjs/loader":
+          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/index.js",
         b:
-          "https://catalogjs.com/pkgs/npm/b/4.5.6/GPK8msJ9aPVm9Y8BPhPPh5fA5M4=/b.js",
+          "https://catalogjs.com/pkgs/npm/b/4.5.6/vuLeHhy9XcA1s76b5DYNGAuEpGY=/b.js",
         e:
-          "https://catalogjs.com/pkgs/npm/e/2.3.4/3HHDrHWAD4EmwKIiLurOF2RsOr0=/index.js",
+          "https://catalogjs.com/pkgs/npm/e/2.3.4/BUZOzJTxcd8z2LGoiXV858H4-xg=/index.js",
       });
 
       lock = JSON.parse(
         await (await fs.openFile(new URL("catalogjs.lock", pkgCURL))).readText()
       );
       assert.deepEqual(lock, {
+        "@catalogjs/loader":
+          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/index.js",
         b:
-          "https://catalogjs.com/pkgs/npm/b/7.8.9/cMh7+-SOkesYmVx7wn6d74z5o7M=/index.js",
+          "https://catalogjs.com/pkgs/npm/b/7.8.9/3xSsBvcctg1anboYO407-hDuLak=/index.js",
       });
     });
 
@@ -183,6 +197,11 @@ QUnit.module("Install from npm", function () {
       assert.notOk(b1Entrypoints.html);
       assert.deepEqual(b1Entrypoints.dependencies, {
         d: { type: "npm", pkgName: "d", range: "10.11.12" },
+        "@catalogjs/loader": {
+          type: "npm",
+          pkgName: "@catalogjs/loader",
+          range: "^0.0.1",
+        },
       });
 
       let { e: pkgEURL } = aLock;
@@ -193,8 +212,20 @@ QUnit.module("Install from npm", function () {
       );
       assert.deepEqual(eEntrypoints.js, ["./index.js"]);
       assert.notOk(eEntrypoints.html);
-      assert.deepEqual(eEntrypoints.dependencies, {});
-      await assert.file(new URL("catalogjs.lock", pkgEURL).href).doesNotExist();
+      assert.deepEqual(eEntrypoints.dependencies, {
+        "@catalogjs/loader": {
+          type: "npm",
+          pkgName: "@catalogjs/loader",
+          range: "^0.0.1",
+        },
+      });
+      let eLock = JSON.parse(
+        await (await fs.openFile(new URL("catalogjs.lock", pkgEURL))).readText()
+      );
+      assert.deepEqual(eLock, {
+        "@catalogjs/loader":
+          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/index.js",
+      });
 
       let b1Lock = JSON.parse(
         await (
@@ -202,7 +233,9 @@ QUnit.module("Install from npm", function () {
         ).readText()
       );
       assert.deepEqual(b1Lock, {
-        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/hloD8imK3ZAOrPIM2sC5dT2ouY8=/index.js`,
+        "@catalogjs/loader":
+          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/index.js",
+        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/6qYXPJtbTZQbzaBwr8tu6JSH3+w=/index.js`,
       });
       let { d: pkgD1URL } = b1Lock;
       let d1Entrypoints = JSON.parse(
@@ -211,11 +244,23 @@ QUnit.module("Install from npm", function () {
         ).readText()
       );
       assert.deepEqual(d1Entrypoints.js, ["./index.js"]);
-      assert.deepEqual(d1Entrypoints.dependencies, {});
+      assert.deepEqual(d1Entrypoints.dependencies, {
+        "@catalogjs/loader": {
+          type: "npm",
+          pkgName: "@catalogjs/loader",
+          range: "^0.0.1",
+        },
+      });
       assert.notOk(d1Entrypoints.html);
-      await assert
-        .file(new URL("catalogjs.lock", pkgD1URL).href)
-        .doesNotExist();
+      let dLock = JSON.parse(
+        await (
+          await fs.openFile(new URL("catalogjs.lock", pkgD1URL))
+        ).readText()
+      );
+      assert.deepEqual(dLock, {
+        "@catalogjs/loader":
+          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/index.js",
+      });
 
       let cLock = JSON.parse(
         await (await fs.openFile(new URL("catalogjs.lock", pkgCURL))).readText()
@@ -230,6 +275,11 @@ QUnit.module("Install from npm", function () {
       assert.notOk(b2Entrypoints.html);
       assert.deepEqual(b2Entrypoints.dependencies, {
         d: { type: "npm", pkgName: "d", range: "10.11.12" },
+        "@catalogjs/loader": {
+          type: "npm",
+          pkgName: "@catalogjs/loader",
+          range: "^0.0.1",
+        },
       });
 
       let b2Lock = JSON.parse(
@@ -238,7 +288,9 @@ QUnit.module("Install from npm", function () {
         ).readText()
       );
       assert.deepEqual(b2Lock, {
-        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/hloD8imK3ZAOrPIM2sC5dT2ouY8=/index.js`,
+        "@catalogjs/loader":
+          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/index.js",
+        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/6qYXPJtbTZQbzaBwr8tu6JSH3+w=/index.js`,
       });
       let { d: pkgD2URL } = b2Lock;
       assert.deepEqual(pkgD2URL, pkgD1URL);
@@ -256,7 +308,7 @@ QUnit.module("Install from npm", function () {
       if (nameDesc.type === "local") {
         assert.equal(
           nameDesc.original?.bundleHref,
-          "https://catalogjs.com/pkgs/npm/e/2.3.4/3HHDrHWAD4EmwKIiLurOF2RsOr0=/index.js"
+          "https://catalogjs.com/pkgs/npm/e/2.3.4/BUZOzJTxcd8z2LGoiXV858H4-xg=/index.js"
         );
       }
 
@@ -265,7 +317,7 @@ QUnit.module("Install from npm", function () {
       if (nameDesc.type === "local") {
         assert.equal(
           nameDesc.original?.bundleHref,
-          "https://catalogjs.com/pkgs/npm/b/4.5.6/GPK8msJ9aPVm9Y8BPhPPh5fA5M4=/b.js"
+          "https://catalogjs.com/pkgs/npm/b/4.5.6/vuLeHhy9XcA1s76b5DYNGAuEpGY=/b.js"
         );
       }
     });

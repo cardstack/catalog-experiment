@@ -62,7 +62,7 @@ export class MakePackageHashNode implements BuilderNode {
     // there might be entries in the lock file that are different entrypoints of
     // the same package version--flatten these down so that we are only considering the
     // pkgs themselves.
-    let pkgInfos = [...lockEntries.values()].map((url) =>
+    let pkgInfos = Object.values(lockEntries).map((url) =>
       pkgInfoFromCatalogJsURL(url)
     );
     let pkgGroups = groupBy(
@@ -172,7 +172,7 @@ export class PublishPackageNode implements BuilderNode {
         this.pkgWorkingURL,
         pkgFinalURL,
         listingEntries,
-        finalLockEntries.size > 0
+        Object.keys(finalLockEntries).length > 0
       ),
     };
   }

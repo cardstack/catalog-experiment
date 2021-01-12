@@ -29,7 +29,7 @@ export class BundleAssignmentsNode implements BuilderNode {
     private projectInput: URL,
     private projectOutput: URL,
     private resolver: Resolver,
-    private lockEntries: LockEntries,
+    private seededResolutions: LockEntries,
     private testingOpts?: TestingOptions
   ) {
     this.cacheKey = `bundle-assignments:input=${projectInput.href},output=${projectOutput.href}`;
@@ -41,25 +41,26 @@ export class BundleAssignmentsNode implements BuilderNode {
         this.projectInput,
         this.projectOutput
       ),
-      resolutions: new ModuleResolutionsNode(
+      results: new ModuleResolutionsNode(
         this.projectInput,
         this.projectOutput,
         this.resolver,
-        this.lockEntries
+        this.seededResolutions
       ),
     };
   }
 
   async run({
-    resolutions,
+    results: { resolutions, lockEntries },
     entrypoints,
   }: {
-    resolutions: ModuleResolution[];
+    results: { resolutions: ModuleResolution[]; lockEntries: LockEntries };
     entrypoints: Entrypoint[];
   }): Promise<
     Value<{
       assignments: BundleAssignment[];
       resolutionsInDepOrder: ModuleResolution[];
+      lockEntries: LockEntries;
     }>
   > {
     let assigner = new Assigner(
@@ -87,7 +88,7 @@ export class BundleAssignmentsNode implements BuilderNode {
       }
     }
     return {
-      value: { assignments, resolutionsInDepOrder },
+      value: { assignments, resolutionsInDepOrder, lockEntries },
     };
   }
 }

@@ -27,9 +27,11 @@ export class ModuleResolutionsNode implements BuilderNode {
     private projectInput: URL,
     private projectOutput: URL,
     private resolver: Resolver,
-    private lockEntries: LockEntries
+    private seededResolutions: LockEntries
   ) {
-    this.cacheKey = `module-resolutions:input=${projectInput.href},output=${projectOutput.href}`;
+    this.cacheKey = `module-resolutions:input=${projectInput.href},output=${
+      projectOutput.href
+    },seededResolutions=${JSON.stringify(seededResolutions)}`;
   }
 
   async deps() {
@@ -45,7 +47,9 @@ export class ModuleResolutionsNode implements BuilderNode {
     entrypoints,
   }: {
     entrypoints: Entrypoint[];
-  }): Promise<NextNode<Resolution[]>> {
+  }): Promise<
+    NextNode<{ resolutions: Resolution[]; lockEntries: LockEntries }>
+  > {
     let jsEntrypoints: Set<string> = new Set();
     for (let entrypoint of entrypoints) {
       if (entrypoint instanceof HTMLEntrypoint) {
@@ -61,10 +65,47 @@ export class ModuleResolutionsNode implements BuilderNode {
         new ModuleResolutionNode(
           new URL(jsEntrypoint),
           this.resolver,
-          this.lockEntries
+          this.seededResolutions
         )
     );
-    return { node: new AllNode(resolutions) };
+    return {
+      node: new FinishModuleResolutionsNode(
+        this.projectInput,
+        this.projectOutput,
+        this.seededResolutions,
+        resolutions
+      ),
+    };
+  }
+}
+
+export class FinishModuleResolutionsNode implements BuilderNode {
+  cacheKey: string;
+  constructor(
+    projectInput: URL,
+    projectOutput: URL,
+    seededResolutions: LockEntries,
+    private resolutionNodes: ModuleResolutionNode[]
+  ) {
+    this.cacheKey = `finish-module-resolutions:input=${projectInput.href},output=${projectOutput.href},seededResolutions=${seededResolutions}`;
+  }
+
+  async deps() {
+    return {
+      results: new AllNode(this.resolutionNodes),
+    };
+  }
+  async run({
+    results,
+  }: {
+    results: { resolution: ModuleResolution; lockEntries: LockEntries }[];
+  }): Promise<Value<{ resolutions: Resolution[]; lockEntries: LockEntries }>> {
+    let lockEntries = Object.assign(
+      {},
+      ...results.map(({ lockEntries }) => lockEntries)
+    );
+    let resolutions = results.map(({ resolution }) => resolution);
+    return { value: { resolutions, lockEntries } };
   }
 }
 
@@ -155,12 +196,13 @@ export class ModuleDescriptionNode implements BuilderNode {
 // TODO we should add some logic such that we can tell if the module resolution
 // is different for rebuilds and return an unchanged result if we see that
 // module resolution is the same.
-export class ModuleResolutionNode implements BuilderNode<Resolution> {
+export class ModuleResolutionNode
+  implements BuilderNode<{ resolution: Resolution; lockEntries: LockEntries }> {
   cacheKey: ModuleResolutionNode | string;
   constructor(
     private url: URL,
     private resolver: Resolver,
-    private lockEntries: LockEntries,
+    private lockEntries: LockEntries = {},
     private stack: string[] = []
   ) {
     this.cacheKey = `module-resolution:${url.href}`;
@@ -178,7 +220,7 @@ export class ModuleResolutionNode implements BuilderNode<Resolution> {
       info: { desc: ModuleDescription; source: string };
     },
     getRecipe: RecipeGetter
-  ): Promise<NextNode<Resolution>> {
+  ): Promise<NextNode<{ resolution: Resolution; lockEntries: LockEntries }>> {
     let urlNodes = await Promise.all(
       desc.imports.map(async (imp) => {
         let { pkgName: sourcePkgName, version: sourcePkgVersion } =
@@ -191,7 +233,9 @@ export class ModuleResolutionNode implements BuilderNode<Resolution> {
             return new ConstantNode(new URL(href));
           }
         }
-        return new ResolveFromLock(imp.specifier!, this.url, this.lockEntries);
+        return new ResolveFromLock(imp.specifier!, this.url, {
+          ...this.lockEntries,
+        });
       })
     );
     return {
@@ -201,7 +245,7 @@ export class ModuleResolutionNode implements BuilderNode<Resolution> {
         desc,
         source,
         this.resolver,
-        this.lockEntries,
+        { ...this.lockEntries },
         this.stack
       ),
     };
@@ -236,7 +280,7 @@ export class ResolveFromLock implements BuilderNode<URL | undefined> {
           new URL(lockHref),
         ])
       ),
-      ...this.lockEntries,
+      ...Object.entries(this.lockEntries),
     ]);
     let resolution = locks.get(this.specifier);
     return { value: resolution };
@@ -266,19 +310,18 @@ class FinishResolutionsFromLockNode implements BuilderNode {
     urls,
   }: {
     urls: (URL | undefined)[];
-  }): Promise<NextNode<Resolution>> {
+  }): Promise<NextNode<{ resolution: Resolution; lockEntries: LockEntries }>> {
     let depNodes = await Promise.all(
       this.consumerDesc.imports.map(async (imp, index) => {
         if (urls[index]) {
           return new ConstantNode({
             resolution: urls[index]!,
-            lockEntries: this.lockEntries,
+            lockEntries: { ...this.lockEntries },
           });
         }
         return await this.resolver.resolveAsBuilderNode(
           imp.specifier!,
-          this.consumerURL,
-          this.lockEntries
+          this.consumerURL
         );
       })
     );
@@ -289,7 +332,7 @@ class FinishResolutionsFromLockNode implements BuilderNode {
         this.consumerDesc,
         this.consumerSource,
         this.resolver,
-        this.lockEntries,
+        { ...this.lockEntries },
         this.stack
       ),
     };
@@ -322,7 +365,12 @@ class FinishResolutionsFromResolverNode implements BuilderNode {
     deps,
   }: {
     deps: { resolution: URL; lockEntries: LockEntries }[];
-  }): Promise<NextNode<Resolution>> {
+  }): Promise<NextNode<{ resolution: Resolution; lockEntries: LockEntries }>> {
+    let mergedLockEntries = Object.assign(
+      {},
+      this.lockEntries,
+      ...deps.map(({ lockEntries }) => lockEntries)
+    );
     let imports = deps.map(({ resolution: url }) => {
       if (this.stack.includes(url.href)) {
         return new CyclicModuleResolutionNode(url, [
@@ -330,7 +378,7 @@ class FinishResolutionsFromResolverNode implements BuilderNode {
           this.consumerURL.href,
         ]);
       } else {
-        return new ModuleResolutionNode(url, this.resolver, this.lockEntries, [
+        return new ModuleResolutionNode(url, this.resolver, mergedLockEntries, [
           ...this.stack,
           this.consumerURL.href,
         ]);
@@ -342,13 +390,15 @@ class FinishResolutionsFromResolverNode implements BuilderNode {
         this.consumerURL,
         imports,
         this.consumerDesc,
-        this.consumerSource
+        this.consumerSource,
+        mergedLockEntries
       ),
     };
   }
 }
 
-export class CyclicModuleResolutionNode implements BuilderNode<Resolution> {
+export class CyclicModuleResolutionNode
+  implements BuilderNode<{ resolution: Resolution; lockEntries: LockEntries }> {
   cacheKey: CyclicModuleResolutionNode | string;
   constructor(private url: URL, private stack: string[]) {
     this.cacheKey = `cyclic-module-resolution:${url.href}`;
@@ -363,14 +413,19 @@ export class CyclicModuleResolutionNode implements BuilderNode<Resolution> {
     info: { desc },
   }: {
     info: { desc: ModuleDescription; source: string };
-  }): Promise<Value<CyclicModuleResolution>> {
+  }): Promise<
+    Value<{ resolution: CyclicModuleResolution; lockEntries: LockEntries }>
+  > {
     return {
       value: {
-        type: "cyclic",
-        url: this.url,
-        desc,
-        hrefStack: this.stack,
-        cyclicGroup: new Set(), // we patch this as we exit the recursion stack
+        resolution: {
+          type: "cyclic",
+          url: this.url,
+          desc,
+          hrefStack: this.stack,
+          cyclicGroup: new Set(), // we patch this as we exit the recursion stack
+        },
+        lockEntries: {},
       },
     };
   }
@@ -382,7 +437,8 @@ class FinishResolutionNode implements BuilderNode {
     private url: URL,
     private imports: BuilderNode[],
     private desc: ModuleDescription,
-    private source: string
+    private source: string,
+    private lockEntries: LockEntries
   ) {
     this.cacheKey = this;
   }
@@ -390,14 +446,23 @@ class FinishResolutionNode implements BuilderNode {
     return this.imports;
   }
   async run(resolutions: {
-    [importIndex: number]: Resolution;
-  }): Promise<Value<ModuleResolution>> {
+    [importIndex: number]: { resolution: Resolution; lockEntries: LockEntries };
+  }): Promise<
+    Value<{ resolution: ModuleResolution; lockEntries: LockEntries }>
+  > {
+    let mergedLockEntries = Object.assign(
+      {},
+      this.lockEntries,
+      ...Object.values(resolutions).map(({ lockEntries }) => lockEntries)
+    );
     let module: ModuleResolution = {
       type: "standard",
       url: this.url,
       source: this.source,
       desc: this.desc,
-      resolvedImports: this.imports.map((_, index) => resolutions[index]),
+      resolvedImports: this.imports.map(
+        (_, index) => resolutions[index].resolution
+      ),
       resolvedImportsWithCyclicGroups: [],
     };
 
@@ -442,7 +507,7 @@ class FinishResolutionNode implements BuilderNode {
           consumedCycles.find((cycle) => cycle[0].url.href === m.url.href) ?? m
       ) as (ModuleResolution | ModuleResolution[])[];
     return {
-      value: module,
+      value: { resolution: module, lockEntries: mergedLockEntries },
     };
   }
 }

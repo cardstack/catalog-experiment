@@ -1,3 +1,4 @@
+import { mapValues } from "lodash";
 import {
   BuilderNode,
   NodeOutput,
@@ -11,7 +12,7 @@ export interface LockFile {
   [pkgName: string]: string;
 }
 
-export type LockEntries = Map<string, URL>;
+export type LockEntries = { [specifier: string]: URL };
 
 export class WriteLockFileNode implements BuilderNode<LockEntries> {
   cacheKey: string;
@@ -37,15 +38,10 @@ export class WriteLockFileNode implements BuilderNode<LockEntries> {
       lockFile = {};
     }
 
-    let mergedEntries: LockEntries = new Map([
-      ...new Map(
-        Object.entries(lockFile ?? {}).map(([pkgName, lockHref]) => [
-          pkgName,
-          new URL(lockHref),
-        ])
-      ),
+    let mergedEntries: LockEntries = {
+      ...mapValues(lockFile ?? {}, (href) => new URL(href)),
       ...this.lockEntries,
-    ]);
+    };
 
     return {
       node: new FinishWritingLockFileNode(this.lockFileURL, mergedEntries),
@@ -58,13 +54,11 @@ class FinishWritingLockFileNode implements BuilderNode<LockEntries> {
   private _lockEntries: { [pkgName: string]: string } = {};
   constructor(private lockFileURL: URL, private lockEntries: LockEntries) {
     this.cacheKey = `finish-writing-lock-file:${this.lockFileURL.href}`;
-    for (let [pkgName, bundleURL] of lockEntries) {
-      this._lockEntries[pkgName] = bundleURL.href;
-    }
+    this._lockEntries = mapValues(this.lockEntries, (url) => url.href);
   }
 
   async deps() {
-    if (this.lockEntries.size > 0) {
+    if (Object.keys(this.lockEntries).length > 0) {
       return {
         write: new WriteFileNode(
           new ConstantNode(JSON.stringify(this._lockEntries, null, 2)),

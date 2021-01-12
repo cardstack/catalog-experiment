@@ -580,7 +580,7 @@ QUnit.module("describe-file", function () {
     );
   });
 
-  test("the DocumentPointer code region depends on side effect regions that are within a declaration code region", async function (assert) {
+  test("the DocumentPointer code region depends on a declaration that has a side effect", async function (assert) {
     let { desc, editor } = describeESModule(`
       let a = initializeCache();
       export {};
@@ -588,17 +588,14 @@ QUnit.module("describe-file", function () {
     keepAll(desc, editor);
     let document = desc.regions[documentPointer];
     assert.equal(document.dependsOn.size, 1);
-    let [sideEffect] = [...document.dependsOn];
+    let [sideEffectDeclaration] = [...document.dependsOn];
     let { pointer } = desc.declarations.get("a")!;
-    assert.ok(
-      desc.regions[pointer].dependsOn.has(sideEffect),
-      "the side effect is a dependency region"
-    );
-    editor.replace(sideEffect, "walkTheDog()");
+    assert.equal(sideEffectDeclaration, pointer);
+    editor.replace(sideEffectDeclaration, "b = walkTheDog()");
     assert.codeEqual(
       editor.serialize().code,
       `
-        let a = walkTheDog();
+        let b = walkTheDog();
         export {};
         `
     );

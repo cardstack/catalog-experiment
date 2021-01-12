@@ -25,7 +25,7 @@ import {
   setTripleNestedMapping,
 } from "./utils";
 import { getExportDesc, getExports, isExportAllMarker } from "./describe-file";
-import { difference, flatMap, groupBy } from "lodash";
+import { difference, flatMap, groupBy, mapValues } from "lodash";
 
 export type ResolvedDependency =
   | ResolvedDeclarationDependency
@@ -895,7 +895,7 @@ function gatherDependencies(
   );
   let locks: Map<string, string> = new Map([
     ...Object.entries(lockFile ?? {}),
-    ...new Map([...lockEntries.entries()].map(([k, v]) => [k, v.href])),
+    ...Object.entries(mapValues(lockEntries, (url) => url.href)),
     ...Object.entries(resolutionRecipes ?? {}),
   ]);
 

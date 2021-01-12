@@ -26,20 +26,18 @@ export class NodeResolver extends AbstractResolver {
   }
   async resolveAsBuilderNode(
     specifier: string,
-    source: URL,
-    lockEntries: LockEntries
+    source: URL
   ): Promise<BuilderNode<{ resolution: URL; lockEntries: LockEntries }>> {
     if (specifier.startsWith(".") || specifier.startsWith("/")) {
       let resolution = await this.resolve(specifier, source);
-      return new ConstantNode({ resolution, lockEntries });
+      return new ConstantNode({ resolution, lockEntries: {} });
     }
     return new EnterDependencyNode(
       specifier,
       await this.getPkgPath(source),
       source,
       this.workingDir,
-      this,
-      lockEntries
+      this
     );
   }
 
@@ -82,8 +80,7 @@ class EnterDependencyNode
     private consumedFromPath: string,
     private consumedFromURL: URL,
     private workingDir: string,
-    private resolver: Resolver,
-    private lockEntries: LockEntries
+    private resolver: Resolver
   ) {
     let pkgInfo = pkgInfoFromSpecifier(specifier);
     if (!pkgInfo) {
@@ -131,7 +128,6 @@ class EnterDependencyNode
         this.specifier,
         finalURL,
         this.consumedFromURL,
-        this.lockEntries,
         this.resolver
       ),
     };
@@ -145,7 +141,6 @@ class ExitDependencyNode
     private specifier: string,
     private depPkgFinalURL: URL,
     consumedFromURL: URL,
-    private lockEntries: LockEntries,
     private resolver: Resolver
   ) {
     this.cacheKey = `exit-dep:${depPkgFinalURL.href},consumedFrom=${consumedFromURL.href}`;
@@ -185,7 +180,8 @@ class ExitDependencyNode
       }
       resolution = new URL(entrypoint, this.depPkgFinalURL);
     }
-    this.lockEntries.set(this.specifier, resolution);
-    return { value: { resolution, lockEntries: this.lockEntries } };
+    return {
+      value: { resolution, lockEntries: { [this.specifier]: resolution } },
+    };
   }
 }
