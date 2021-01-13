@@ -3,9 +3,20 @@ import { EntrypointsJSONNode, HTMLEntrypoint, Entrypoint } from "./entrypoint";
 import { WriteFileNode } from "./file";
 import uniqBy from "lodash/uniqBy";
 import flatten from "lodash/flatten";
-import { BundleAssignmentsNode, BundleNode, BundleAssignment } from "./bundle";
+import {
+  BundleAssignmentsNode,
+  BundleNode,
+  BundleAssignment,
+  TestingOptions,
+} from "./bundle";
 import { Resolver } from "../resolver";
 import { LockEntries } from "./lock-file";
+import { mapValues } from "lodash";
+
+export interface Options {
+  testing?: TestingOptions;
+  seededResolutions?: { [specifier: string]: string };
+}
 
 // This can leverage global bundle assignments (that spans all projects), or it
 // can derive bundle assignments for just its own project. The latter is
@@ -21,17 +32,25 @@ import { LockEntries } from "./lock-file";
 // global bundle assignment effort.
 export class MakeProjectNode implements BuilderNode<LockEntries> {
   cacheKey: string;
-  private lockEntries: LockEntries = new Map();
+  private optsWithDefaults: Options;
 
   constructor(
     private inputRoot: URL,
     readonly projectOutputRoot: URL,
-    private resolver: Resolver
+    private resolver: Resolver,
+    private options?: Partial<Options>
   ) {
     this.cacheKey = `project:input=${inputRoot.href},output=${projectOutputRoot.href}`;
+    this.optsWithDefaults = {
+      ...options,
+    };
   }
 
   async deps() {
+    let seededResolutions: LockEntries = mapValues(
+      this.options?.seededResolutions ?? {},
+      (href) => new URL(href)
+    );
     let entrypoints = new EntrypointsJSONNode(
       this.inputRoot,
       this.projectOutputRoot
@@ -42,26 +61,31 @@ export class MakeProjectNode implements BuilderNode<LockEntries> {
         this.inputRoot,
         this.projectOutputRoot,
         this.resolver,
-        this.lockEntries
+        seededResolutions,
+        this.optsWithDefaults.testing
       ),
     };
   }
 
   async run({
     entrypoints,
-    bundleAssignments,
+    bundleAssignments: { assignments, lockEntries },
   }: {
     entrypoints: Entrypoint[];
-    bundleAssignments: BundleAssignment[];
+    bundleAssignments: {
+      assignments: BundleAssignment[];
+      lockEntries: LockEntries;
+    };
   }): Promise<NextNode<LockEntries>> {
     return {
       node: new FinishProjectNode(
         this.inputRoot,
         this.projectOutputRoot,
         entrypoints,
-        bundleAssignments,
+        assignments,
         this.resolver,
-        this.lockEntries
+        lockEntries,
+        this.optsWithDefaults
       ),
     };
   }
@@ -76,16 +100,18 @@ class FinishProjectNode implements BuilderNode<LockEntries> {
     private entrypoints: Entrypoint[],
     private bundleAssignments: BundleAssignment[],
     private resolver: Resolver,
-    private lockEntries: LockEntries = new Map()
+    private lockEntries: LockEntries = {},
+    private options: Options
   ) {
     this.cacheKey = `finish-project:input=${inputRoot.href},output=${projectOutputRoot.href}`;
   }
 
   async deps() {
-    let htmls = (uniqBy(
+    let htmlEntrypoints = uniqBy(
       flatten(this.entrypoints).filter((e) => e instanceof HTMLEntrypoint),
       "destURL"
-    ) as HTMLEntrypoint[]).map(
+    ) as HTMLEntrypoint[];
+    let htmls = htmlEntrypoints.map(
       (htmlEntrypoint) =>
         new WriteFileNode(
           new ConstantNode(htmlEntrypoint.render(this.bundleAssignments)),
@@ -93,6 +119,7 @@ class FinishProjectNode implements BuilderNode<LockEntries> {
         )
     );
 
+    let dependencies = this.entrypoints[0].dependencies;
     let bundles = uniqBy(
       this.bundleAssignments.map((a) => a.bundleURL),
       (url) => url.href
@@ -104,7 +131,9 @@ class FinishProjectNode implements BuilderNode<LockEntries> {
             this.inputRoot,
             this.projectOutputRoot,
             this.resolver,
-            this.lockEntries
+            this.lockEntries,
+            dependencies,
+            this.options.testing
           ),
           bundleURL
         )
@@ -114,6 +143,6 @@ class FinishProjectNode implements BuilderNode<LockEntries> {
   }
 
   async run(): Promise<Value<LockEntries>> {
-    return { value: this.lockEntries };
+    return { value: { ...this.lockEntries } };
   }
 }

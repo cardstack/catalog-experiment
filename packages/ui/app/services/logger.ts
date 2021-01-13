@@ -10,7 +10,7 @@ import {
 
 export default class LoggerService extends Service {
   @tracked messages: LogMessage[] = [];
-  @tracked logLevel: LogLevel = "info";
+  @tracked logLevel: LogLevel = "debug";
 
   startListening() {
     navigator.serviceWorker.addEventListener("message", (event) => {

@@ -11,6 +11,9 @@
       "entrypoints": [
         "./src/index.js"
       ],
+      "macros": {
+        "process\\.env\\.NODE_ENV": "'production'"
+      },
       "babelPlugins": [
         "@babel/plugin-transform-flow-strip-types",
         [

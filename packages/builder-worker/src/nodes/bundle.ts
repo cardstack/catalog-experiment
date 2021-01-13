@@ -1,31 +1,26 @@
-import {
-  BuilderNode,
-  Value,
-  NextNode,
-  ConstantNode,
-  annotationEnd,
-  annotationStart,
-} from "./common";
+import { BuilderNode, Value } from "./common";
 import {
   ModuleResolutionsNode,
   ModuleResolution,
   isCyclicModuleResolution,
   Resolution,
 } from "./resolution";
-import { combineModules } from "../combine-modules";
-import { File } from "@babel/types";
+import { getExports, ModuleDescription } from "../describe-file";
 import {
+  ImportedDeclarationDescription,
   NamespaceMarker,
-  describeFile,
-  ImportedNameDescription,
-  isModuleDescription,
-} from "../describe-file";
-import { EntrypointsJSONNode, Entrypoint, HTMLEntrypoint } from "./entrypoint";
-import { JSParseNode } from "./js";
-import { encodeModuleDescription } from "../description-encoder";
+} from "../code-region";
+import {
+  EntrypointsJSONNode,
+  Entrypoint,
+  HTMLEntrypoint,
+  Dependencies,
+} from "./entrypoint";
 import { makeURLEndInDir } from "../path";
 import { Resolver } from "../resolver";
 import { LockEntries } from "./lock-file";
+import { CombineModulesNode } from "./combine-modules";
+import { addDescriptionToSource } from "../description-encoder";
 
 export class BundleAssignmentsNode implements BuilderNode {
   cacheKey: string;
@@ -34,7 +29,8 @@ export class BundleAssignmentsNode implements BuilderNode {
     private projectInput: URL,
     private projectOutput: URL,
     private resolver: Resolver,
-    private lockEntries: LockEntries
+    private seededResolutions: LockEntries,
+    private testingOpts?: TestingOptions
   ) {
     this.cacheKey = `bundle-assignments:input=${projectInput.href},output=${projectOutput.href}`;
   }
@@ -45,30 +41,54 @@ export class BundleAssignmentsNode implements BuilderNode {
         this.projectInput,
         this.projectOutput
       ),
-      resolutions: new ModuleResolutionsNode(
+      results: new ModuleResolutionsNode(
         this.projectInput,
         this.projectOutput,
         this.resolver,
-        this.lockEntries
+        this.seededResolutions
       ),
     };
   }
 
   async run({
-    resolutions,
+    results: { resolutions, lockEntries },
     entrypoints,
   }: {
-    resolutions: ModuleResolution[];
+    results: { resolutions: ModuleResolution[]; lockEntries: LockEntries };
     entrypoints: Entrypoint[];
-  }): Promise<Value<BundleAssignment[]>> {
+  }): Promise<
+    Value<{
+      assignments: BundleAssignment[];
+      resolutionsInDepOrder: ModuleResolution[];
+      lockEntries: LockEntries;
+    }>
+  > {
     let assigner = new Assigner(
       this.projectInput,
       this.projectOutput,
       resolutions,
       entrypoints
     );
+    let { assignments, resolutionsInDepOrder } = assigner;
+
+    if (this.testingOpts?.exports) {
+      for (let [outsideName, { file, name }] of Object.entries(
+        this.testingOpts.exports
+      )) {
+        let fileURL = new URL(file, this.testingOpts.origin);
+        let assignment = assignments.find(
+          (a) => a.module.url.href === fileURL.href
+        );
+        if (!assignment) {
+          throw new Error(
+            `invalid test setup, you tried to set an export for the module ${fileURL.href}}, but there is no assignment for that module`
+          );
+        }
+        assignment.exposedNames.set(name, outsideName);
+      }
+    }
     return {
-      value: assigner.assignments,
+      value: { assignments, resolutionsInDepOrder, lockEntries },
     };
   }
 }
@@ -84,6 +104,7 @@ export class Assigner {
   private internalBundleCount = 0;
   private consumersOf: Consumers;
   private requestedEntrypointURLs: URL[] = [];
+  private resolutions: ModuleResolution[];
 
   constructor(
     private projectInput: URL,
@@ -96,8 +117,11 @@ export class Assigner {
       this.requestedEntrypointURLs = [...htmlJSEntrypointURLs];
     }
     this.entrypoints = this.mapEntrypoints(entrypoints);
-    let { consumersOf, leaves } = invertDependencies(resolutions);
+    let { consumersOf, leaves, resolutionsInDepOrder } = invertDependencies(
+      resolutions
+    );
     this.consumersOf = consumersOf;
+    this.resolutions = [...resolutionsInDepOrder];
     for (let leaf of leaves) {
       this.assignModule(leaf);
     }
@@ -105,6 +129,9 @@ export class Assigner {
 
   get assignments(): BundleAssignment[] {
     return [...this.assignmentMap.values()].map((v) => v.assignment);
+  }
+  get resolutionsInDepOrder(): ModuleResolution[] {
+    return [...this.resolutions];
   }
 
   private inputToOutput(href: string): URL {
@@ -175,18 +202,35 @@ export class Assigner {
       };
       this.assignmentMap.set(module.url.href, internalAssignment);
       if (entrypoint.isLibrary) {
-        for (let exportedName of module.desc.exports.keys()) {
+        for (let [exportedName] of getExports(module)) {
           ensureExposed(exportedName, internalAssignment.assignment);
         }
       } else {
         for (let consumer of consumers) {
+          let { declarations } = consumer.module.desc;
           let myIndex = consumer.module.resolvedImports.findIndex(
             (m) => m.url.href === module.url.href
           );
-          for (let nameDesc of [...consumer.module.desc.names.values()].filter(
-            (desc) => desc.type === "import" && desc.importIndex === myIndex
-          ) as ImportedNameDescription[]) {
-            ensureExposed(nameDesc.name, internalAssignment.assignment);
+          for (let importDeclaration of [...declarations.values()]
+            .filter(
+              ({ declaration }) =>
+                declaration.type === "import" &&
+                declaration.importIndex === myIndex
+            )
+            .map(
+              ({ declaration }) => declaration
+            ) as ImportedDeclarationDescription[]) {
+            let [exportedName] =
+              [...getExports(module).entries()].find(
+                ([, { desc: exportDesc }]) =>
+                  exportDesc.name === importDeclaration.importedName
+              ) ?? [];
+            if (!exportedName) {
+              throw new Error(
+                `cannot find export of binding '${importDeclaration.importedName}' in ${module.url.href}`
+              );
+            }
+            ensureExposed(exportedName, internalAssignment.assignment);
           }
         }
       }
@@ -228,15 +272,25 @@ export class Assigner {
           (c) =>
             c.internalAssignment.assignment.bundleURL.href !== bundleURL.href
         )) {
-          for (let nameDesc of externalConsumer.module.desc.names.values()) {
+          let { declarations } = externalConsumer.module.desc;
+          for (let [name, { declaration }] of declarations.entries()) {
             if (
-              nameDesc.type !== "import" ||
-              externalConsumer.module.resolvedImports[nameDesc.importIndex].url
-                .href !== module.url.href
+              declaration.type !== "import" ||
+              externalConsumer.module.resolvedImports[declaration.importIndex]
+                .url.href !== module.url.href
             ) {
               continue;
             }
-            ensureExposed(nameDesc.name, internalAssignment.assignment);
+            let [exportedName] =
+              [...getExports(module).entries()].find(
+                ([, { desc: exportDesc }]) => exportDesc.name === name
+              ) ?? [];
+            if (!exportedName) {
+              throw new Error(
+                `cannot find export of binding '${name}' in ${module.url.href}`
+              );
+            }
+            ensureExposed(exportedName, internalAssignment.assignment);
           }
         }
 
@@ -260,7 +314,7 @@ export class Assigner {
       enclosingBundles,
     };
     this.assignmentMap.set(module.url.href, internalAssignment);
-    for (let exportedName of module.desc.exports.keys()) {
+    for (let [exportedName] of getExports(module)) {
       ensureExposed(exportedName, internalAssignment.assignment);
     }
     return internalAssignment;
@@ -282,57 +336,40 @@ export class BundleNode implements BuilderNode {
     private inputRoot: URL,
     private outputRoot: URL,
     private resolver: Resolver,
-    private lockEntries: LockEntries
+    private lockEntries: LockEntries,
+    private dependencies: Dependencies,
+    private testingOpts?: TestingOptions
   ) {
-    this.cacheKey = `bundle-node:url=${this.bundle.href},inputRoot=${this.inputRoot.href},outputRoot=${this.outputRoot.href}`;
+    this.cacheKey = `bundle-node:url=${this.bundle.href},inputRoot=${
+      this.inputRoot.href
+    },outputRoot=${this.outputRoot.href},dependencies=${JSON.stringify(
+      dependencies
+    )}`;
   }
 
   async deps() {
     return {
-      bundleAssignments: new BundleAssignmentsNode(
-        this.inputRoot,
-        this.outputRoot,
-        this.resolver,
-        this.lockEntries
+      result: new CombineModulesNode(
+        this.bundle,
+        this.dependencies,
+        this.lockEntries,
+        new BundleAssignmentsNode(
+          this.inputRoot,
+          this.outputRoot,
+          this.resolver,
+          this.lockEntries,
+          this.testingOpts
+        )
       ),
     };
   }
 
   async run({
-    bundleAssignments,
+    result: { code, desc },
   }: {
-    bundleAssignments: BundleAssignment[];
-  }): Promise<NextNode<string>> {
-    return {
-      node: new BundleSerializerNode(
-        combineModules(this.bundle, bundleAssignments).code
-      ),
-    };
-  }
-}
-
-export class BundleSerializerNode implements BuilderNode {
-  cacheKey = this;
-
-  constructor(private unannotatedSrc: string) {}
-
-  async deps() {
-    return {
-      parsed: new JSParseNode(new ConstantNode(this.unannotatedSrc)),
-    };
-  }
-
-  async run({ parsed }: { parsed: File }): Promise<Value<string>> {
-    let desc = describeFile(parsed);
-    if (!isModuleDescription(desc)) {
-      throw new Error(`Cannot encode description for CJS file`);
-    }
-    let value = [
-      this.unannotatedSrc,
-      annotationStart,
-      encodeModuleDescription(desc),
-      annotationEnd,
-    ].join("");
+    result: { code: string; desc: ModuleDescription };
+  }): Promise<Value<string>> {
+    let value = addDescriptionToSource(desc, code);
     return { value };
   }
 }
@@ -349,13 +386,10 @@ export interface BundleAssignment {
 
   // from name-as-originally exported to name-as-exposed-in-this-bundle, if any.
   // Not every export from every module will be publicly exposed by a bundle.
-  exposedNames: Map<string | NamespaceMarker, string>;
+  exposedNames: Map<string, string>;
 }
 
-function ensureExposed(
-  exported: string | NamespaceMarker,
-  assignment: BundleAssignment
-) {
+function ensureExposed(exported: string, assignment: BundleAssignment) {
   if (!assignment.exposedNames.has(exported)) {
     assignment.exposedNames.set(
       exported,
@@ -386,15 +420,22 @@ type Consumers = Map<
 function invertDependencies(
   resolutions: Resolution[],
   consumersOf: Consumers = new Map(),
-  leaves: Set<ModuleResolution> = new Set()
+  leaves: Set<ModuleResolution> = new Set(),
+  resolutionsInDepOrder: Set<ModuleResolution> = new Set()
 ): {
   consumersOf: Consumers;
   leaves: Set<ModuleResolution>;
+  resolutionsInDepOrder: Set<ModuleResolution>;
 } {
   for (let resolution of resolutions) {
     if (!isCyclicModuleResolution(resolution)) {
       if (resolution.resolvedImportsWithCyclicGroups.length > 0) {
-        invertDependencies(resolution.resolvedImports, consumersOf, leaves);
+        invertDependencies(
+          resolution.resolvedImports,
+          consumersOf,
+          leaves,
+          resolutionsInDepOrder
+        );
         // since we are handling this on the exit of the recursion, all your deps
         // will have entries in the identity map
         for (let [
@@ -420,13 +461,15 @@ function invertDependencies(
             let isDynamic = resolution.desc.imports[index].isDynamic;
             setConsumersOf(dep.url, resolution, isDynamic, consumersOf);
           }
+          resolutionsInDepOrder.add(resolution);
         }
       } else {
         leaves.add(resolution);
+        resolutionsInDepOrder.add(resolution);
       }
     }
   }
-  return { consumersOf, leaves };
+  return { consumersOf, leaves, resolutionsInDepOrder };
 }
 
 function setConsumersOf(
@@ -450,4 +493,11 @@ function intersection<T>(sets: Set<T>[]): Set<T> {
     }
   }
   return output;
+}
+
+export interface TestingOptions {
+  origin: string;
+  exports?: {
+    [outsideName: string]: { file: string; name: string };
+  };
 }

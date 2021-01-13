@@ -81,6 +81,8 @@ export class PreparePackageNode implements BuilderNode {
   }
 }
 
+// TODO we can get rid of this node by making a higher level mount before the
+// build starts and just assuming that directory is available
 class MakePackageWorkingAreaNode implements BuilderNode {
   cacheKey: string;
   constructor(
@@ -117,7 +119,7 @@ class MakePackageWorkingAreaNode implements BuilderNode {
         new URL(
           `${workingHref}npm/${this.pkgJSON.name}/${this.pkgJSON.version}/${hash}/`
         ),
-        // TODO make this configurably be a memory driver. using node fs by
+        // TODO make this configure-ably be a memory driver. using node fs by
         // default because it easy to debug when there are build failures.
         new NodeFileSystemDriver(underlyingPkgPath)
       ),
@@ -151,7 +153,17 @@ class FinishPackagePreparationNode implements BuilderNode {
         new ConstantNode(this.pkgPath),
         new URL(pkgPathFile, this.pkgURL)
       ),
-      entrypoints: new EntrypointsNode(this.pkgJSON, this.pkgURL, esCompliance),
+      entrypoints: new EntrypointsNode(
+        this.pkgJSON,
+        this.pkgURL,
+        esCompliance,
+        // all node builds have the runtime loader package available as a
+        // dependency, so that runtime loading situations (e.g. a dynamic
+        // require specifier) can be handled if they arise
+        {
+          "@catalogjs/loader": "^0.0.1",
+        }
+      ),
       esCompliance,
     };
   }
@@ -206,8 +218,9 @@ export class PackageSrcPrepareNode implements BuilderNode {
   async run(_: never, getRecipe: RecipeGetter): Promise<NextNode<void[]>> {
     let { name, version } = this.pkgJSON;
     let recipe = await getRecipe(name, version);
+    let { srcRepo, macros } = recipe ?? {};
     let srcPath: string;
-    if (recipe?.srcRepo) {
+    if (srcRepo) {
       srcPath = await clonePkg(this.pkgJSON, this.workingDir, recipe);
     } else {
       srcPath = this.pkgPath;
@@ -222,7 +235,13 @@ export class PackageSrcPrepareNode implements BuilderNode {
       ignore: `${srcPath}/${srcIgnoreGlob}`,
     });
     let contents = await Promise.all(
-      files.map((file) => readFile(file, "utf8"))
+      files.map(async (file) => {
+        let content = await readFile(file, "utf8");
+        for (let [macro, replacement] of Object.entries(macros ?? {})) {
+          content = content.replace(new RegExp(macro, "g"), replacement);
+        }
+        return content;
+      })
     );
     return {
       node: new AllNode(

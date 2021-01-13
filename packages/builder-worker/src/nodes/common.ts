@@ -1,9 +1,5 @@
 import { Recipe } from "../recipes";
 
-export const annotationStart = `\n/*====catalogjs annotation start====\n`;
-export const annotationEnd = `\n====catalogjs annotation end====*/`;
-export const annotationRegex = /\/\*====catalogjs annotation start====\n(.+)\n====catalogjs annotation end====\*\/\s*$/;
-
 export type OutputType<T> = T extends BuilderNode<infer Output>
   ? Output
   : never;
@@ -48,7 +44,7 @@ export function debugName(node: BuilderNode): string {
   if (!name) {
     let cacheKey = node.cacheKey;
     if (typeof cacheKey === "string") {
-      const maxCacheKeyLen = 60;
+      const maxCacheKeyLen = 80;
       if (cacheKey.length > maxCacheKeyLen) {
         name = `${cacheKey.slice(0, maxCacheKeyLen)}...`;
       } else {
@@ -68,9 +64,15 @@ export class ConstantNode<T> implements BuilderNode<T, void> {
   private firstRun = true;
 
   constructor(private value: T) {
-    this.cacheKey = `constant:${
-      typeof this.value === "string" ? this.value : JSON.stringify(this.value)
-    }`;
+    let stringified = JSON.stringify(this.value, (_, v) => {
+      if (v instanceof Set) {
+        return `Set(${JSON.stringify([...v])}`;
+      } else if (v instanceof Map) {
+        return `Map(${JSON.stringify([...v])}`;
+      }
+      return v;
+    });
+    this.cacheKey = `constant:${stringified}`;
   }
   async deps() {}
   async run(): Promise<NodeOutput<T>> {

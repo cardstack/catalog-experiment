@@ -8,32 +8,45 @@ import {
   ClassDeclaration,
   VariableDeclarator,
   Identifier,
-  Node,
   LVal,
   ObjectProperty,
   CallExpression,
-  StringLiteral,
   isVariableDeclarator,
   isIdentifier,
   isStringLiteral,
   isMemberExpression,
   isObjectExpression,
   isObjectProperty,
+  SpreadElement,
   isLVal,
 } from "@babel/types";
 import { assertNever } from "@catalogjs/shared/util";
 import traverse, { NodePath, Scope } from "@babel/traverse";
-import { CodeRegion, RegionPointer, RegionBuilder } from "./code-region";
-import { ImportAssignments } from "./combine-modules";
+import {
+  CodeRegion,
+  RegionPointer,
+  RegionBuilder,
+  notFoundPointer,
+  documentPointer,
+  DeclarationCodeRegion,
+  DeclarationDescription,
+  isReferenceCodeRegion,
+} from "./code-region";
 import { warn } from "./logger";
-import intersection from "lodash/intersection";
+import {
+  ModuleResolution,
+  Resolution,
+  makeNonCyclic,
+} from "./nodes/resolution";
+import { NamespaceMarker } from "./code-region";
+import { assignCodeRegionPositions } from "./region-editor";
+import { flatMap } from "lodash";
 
-export const NamespaceMarker = { isNamespace: true };
-export type NamespaceMarker = typeof NamespaceMarker;
-export function isNamespaceMarker(
-  value: string | NamespaceMarker
-): value is NamespaceMarker {
-  return typeof value !== "string";
+export interface ExportAllMarker {
+  exportAllFrom: string;
+}
+export function isExportAllMarker(value: any): value is ExportAllMarker {
+  return typeof value === "object" && "exportAllFrom" in value;
 }
 
 export type FileDescription = ModuleDescription | CJSDescription;
@@ -48,27 +61,26 @@ export interface ModuleDescription extends Description {
   imports: ImportDescription[];
 
   // all the names we export, and where they come from
-  exports: Map<string, ExportDescription>;
+  exports: Map<string | ExportAllMarker, ExportDescription>;
 
-  exportRegions: {
-    region: RegionPointer;
-    declaration: RegionPointer | undefined;
-    isDefaultExport: boolean;
-  }[];
-
-  // all the names in module scope
-  names: Map<string, LocalNameDescription | ImportedNameDescription>;
+  declarations: Declarations;
 }
+
+export type Declarations = Map<
+  string,
+  { pointer: RegionPointer; declaration: DeclarationDescription }
+>;
 
 export interface CJSDescription extends Description {
   requires: RequireDescription[];
-  names: Map<string, LocalNameDescription | RequiredNameDescription>;
   // when the module includes: Object.defineProperty(exports, "__esModule", {
   // value: true }) we'll keep track of all the named exports so that we can
   // have a higher fidelity ES shim for this module
   esTranspiledExports: string[] | undefined;
+  declarations: Declarations;
 }
 
+// TODO we need to refactor this to be region-centric as well....
 export interface RequireDescription {
   specifier: string | undefined;
   definitelyRuns: boolean;
@@ -77,62 +89,46 @@ export interface RequireDescription {
 }
 
 export type ExportDescription =
-  // comes from a local binding with this name. You can look it up in `names`.
-  | {
-      type: "local";
-      name: string;
-      exportRegion: RegionPointer;
-    }
-  // comes from another module, you can look up which one in `imports`.
-  | {
-      type: "reexport";
-      importIndex: number;
-      name: string | NamespaceMarker;
-      exportRegion: RegionPointer;
-    };
+  | LocalExportDescription
+  | ReexportExportDescription
+  | ExportAllExportDescription;
 
-export interface NameDescription {
-  // these are other names in the `names` that we depend on
-  dependsOn: Set<string>;
-
-  // true if this name is consumed directly the module scope
-  usedByModule: boolean;
-
-  declaration: RegionPointer;
-  declarationSideEffects: RegionPointer | undefined;
-  bindingsConsumedByDeclarationSideEffects: Set<string>;
-  references: RegionPointer[];
-}
-
-export interface LocalNameDescription extends NameDescription {
+// comes from a local binding with this name. You can look it up in `names`.
+export interface LocalExportDescription {
   type: "local";
-  original?: {
-    moduleHref: string;
-    exportedName: string | NamespaceMarker;
-  };
+  name: string;
+  exportRegion: RegionPointer;
 }
 
-export interface ImportedNameDescription extends NameDescription {
-  type: "import";
+// comes from another module, you can look up which one in `imports`.
+export interface ReexportExportDescription {
+  type: "reexport";
   importIndex: number;
   name: string | NamespaceMarker;
+  exportRegion: RegionPointer;
 }
 
-export interface RequiredNameDescription extends NameDescription {
-  type: "require";
-  requireIndex: number;
-  name: string | NamespaceMarker;
+// this is `export * from 'foo';` which appends the exports of foo (excluding
+// the default export) to the current module
+export interface ExportAllExportDescription {
+  type: "export-all";
+  importIndex: number;
+  exportRegion: RegionPointer;
 }
 
 export type ImportDescription =
   | {
       isDynamic: false;
       specifier: string;
+      isReexport: boolean;
       region: RegionPointer;
     }
   | {
       isDynamic: true;
-      specifier: string;
+      // if the specifier for an import() is not a string literal, then we throw
+      // a runtime error. we identify that by setting the specifier to
+      // undefined.
+      specifier: string | undefined;
       specifierRegion: RegionPointer;
     };
 
@@ -140,6 +136,99 @@ export function isModuleDescription(
   desc: FileDescription
 ): desc is ModuleDescription {
   return !("requires" in desc);
+}
+
+export function getExportDesc(
+  module: Resolution,
+  exportName: string
+):
+  | {
+      desc: LocalExportDescription | ReexportExportDescription;
+      module: ModuleResolution;
+    }
+  | undefined;
+export function getExportDesc(
+  module: Resolution,
+  exportAllMarker: ExportAllMarker
+):
+  | Map<
+      string,
+      {
+        desc: LocalExportDescription | ReexportExportDescription;
+        module: ModuleResolution;
+      }
+    >
+  | undefined;
+export function getExportDesc(
+  module: Resolution,
+  exportKey: string | ExportAllMarker
+):
+  | {
+      desc: LocalExportDescription | ReexportExportDescription;
+      module: ModuleResolution;
+    }
+  | Map<
+      string,
+      {
+        desc: LocalExportDescription | ReexportExportDescription;
+        module: ModuleResolution;
+      }
+    >
+  | undefined {
+  module = makeNonCyclic(module);
+  let desc = module.desc.exports.get(exportKey);
+
+  if (desc?.type === "local" || desc?.type === "reexport") {
+    return { desc, module };
+  }
+  if (desc?.type === "export-all") {
+    let exportModule = module.resolvedImports[desc.importIndex];
+    return getExports(exportModule);
+  }
+  if (
+    !desc &&
+    !isExportAllMarker(exportKey) &&
+    [...module.desc.exports.values()].some((e) => e.type === "export-all")
+  ) {
+    let exportAllMarkers = [...module.desc.exports.keys()].filter((k) =>
+      isExportAllMarker(k)
+    ) as ExportAllMarker[];
+    for (let exportAllMarker of exportAllMarkers) {
+      let descriptions = getExportDesc(module, exportAllMarker)!;
+      let desc = descriptions.get(exportKey);
+      if (desc) {
+        return desc;
+      }
+    }
+  }
+  return;
+}
+
+export function getExports(
+  module: Resolution
+): Map<
+  string,
+  {
+    desc: LocalExportDescription | ReexportExportDescription;
+    module: ModuleResolution;
+  }
+> {
+  let result = new Map();
+  for (let exportKey of module.desc.exports.keys()) {
+    if (isExportAllMarker(exportKey)) {
+      let descriptions = new Map(
+        [...getExportDesc(module, exportKey)!].filter(
+          ([key]) => key !== "default" // export-all does not export the default export of the source module
+        )
+      );
+      0;
+      result = new Map([...result, ...descriptions]);
+    } else {
+      let desc = getExportDesc(module, exportKey)!;
+      result.set(exportKey, desc);
+    }
+  }
+  return result;
 }
 
 // @babel/traverse makes it very hard to talk about NodePath's generically,
@@ -153,25 +242,19 @@ interface DuckPath {
   isIdentifier(): this is NodePath<Identifier>;
 }
 
-export function describeFile(
-  ast: File,
-  {
-    importAssignments,
-    filename,
-  }: {
-    importAssignments?: ImportAssignments;
-    filename?: string;
-  } = {}
-): FileDescription {
+export function describeFile(ast: File, filename: string): FileDescription {
   let isES6Module = false;
   let builder: RegionBuilder;
   let desc: ModuleDescription & CJSDescription;
   let consumedByModule: Set<string> = new Set();
   let cjsExportNames: string[] = [];
   let isTranspiledFromES = false;
+  let dependsOn = new WeakMap<CodeRegion, Set<string>>();
+  let moduleSideEffects: NodePath[][] = [];
   let currentModuleScopedDeclaration:
     | {
         path: DuckPath;
+        region: RegionPointer | undefined;
         defines: {
           declaration: NodePath;
           name: string;
@@ -179,9 +262,11 @@ export function describeFile(
           // it's the only one that has no identifier of its own
           identifier?: NodePath<Identifier>;
           sideEffects: NodePath | false;
+          lvalStack: DuckPath[];
         }[];
         consumes: Set<string>;
-        withinLVal: DuckPath | false;
+        dependsOnRegion: Set<RegionPointer>;
+        lvalStack: DuckPath[];
       }
     | undefined;
 
@@ -191,21 +276,29 @@ export function describeFile(
       | NodePath<ClassDeclaration>
       | NodePath<VariableDeclarator>
   ) {
-    // TODO also handle straightforward declarations that use a require
     let hasIdentifier = isIdentifier(path.node.id);
+    let declaratorRegion: RegionPointer | undefined;
     if (isModuleScopedDeclaration(path as NodePath)) {
-      builder.createCodeRegion(path as NodePath);
+      declaratorRegion = builder.createCodeRegion(path as NodePath);
     }
 
     if (
       isModuleScopedDeclaration(path as NodePath) &&
       (path.node.type === "VariableDeclarator" || hasIdentifier)
     ) {
+      let declarationRegion: RegionPointer | undefined;
+      if (path.parent.type === "VariableDeclaration") {
+        declarationRegion = builder.createCodeRegion(path.parentPath);
+      }
       currentModuleScopedDeclaration = {
         path,
+        region: declaratorRegion,
         defines: [],
         consumes: new Set(),
-        withinLVal: false,
+        dependsOnRegion: new Set(
+          declarationRegion != null ? [declarationRegion] : []
+        ),
+        lvalStack: [],
       };
       if (hasIdentifier) {
         let identifier = path.get("id") as NodePath<Identifier>;
@@ -214,57 +307,98 @@ export function describeFile(
           declaration: path as NodePath,
           identifier,
           sideEffects: sideEffectsForIdentifier(identifier),
+          lvalStack: [],
         });
       }
     }
   }
 
   function exitDeclaration(path: DuckPath) {
-    // TODO also handle straightforward declarations that use a require
     if (currentModuleScopedDeclaration?.path !== path) {
       return;
     }
-    let { defines, consumes } = currentModuleScopedDeclaration!;
+    let {
+      defines,
+      consumes,
+      dependsOnRegion,
+      region: declaratorRegionPointer,
+    } = currentModuleScopedDeclaration!;
     currentModuleScopedDeclaration = undefined;
-    for (let { name, declaration, identifier, sideEffects } of defines) {
-      let references: RegionPointer[];
+    let declaratorRegion =
+      declaratorRegionPointer != null
+        ? desc.regions[declaratorRegionPointer]
+        : undefined;
+    for (let {
+      name,
+      declaration,
+      identifier,
+      sideEffects: sideEffectsRegion,
+      lvalStack,
+    } of defines) {
+      if (!path.scope.getBinding(name) && identifier) {
+        continue;
+      }
+      // if an "export default" exports an already declared binding, then our work
+      // is already done
+      if (
+        desc.regions.find(
+          (r) => r.type === "declaration" && r.declaration.declaredName === name
+        )
+      ) {
+        continue;
+      }
+      let references: RegionPointer[] = [];
       if (identifier) {
-        references = [
-          builder.createCodeRegion(identifier as NodePath),
-          ...path.scope
-            .getBinding(name)!
-            // we filter because babel gives you some things like
-            // ExportNamedDeclaration here that aren't relevant to us, because
-            // we never do fine-grained renaming within export statements anyway
-            // -- we re-synthesize entire export statements.
-            .referencePaths.filter((path) => path.type === "Identifier")
-            .map((i) => builder.createCodeRegion(i)),
-        ];
-      } else {
-        references = [];
+        references = referencesForDeclaration(name, identifier, builder);
       }
-
-      let declarationSideEffects: RegionPointer | undefined;
+      let regionDeps: Set<number> = new Set();
+      let declaratorOfRegion = [...dependsOnRegion][0]; // this is the declaration region
+      let currentDependsOn = declaratorOfRegion;
+      let withinLval = lvalStack.length > 0;
+      if (currentDependsOn != null) {
+        if (withinLval && declaratorRegion && declaratorRegionPointer != null) {
+          declaratorRegion.dependsOn.add(currentDependsOn);
+          currentDependsOn = declaratorRegionPointer;
+        }
+        while (lvalStack.length > 0) {
+          currentDependsOn = builder.createCodeRegion(
+            lvalStack.pop()! as NodePath,
+            "general",
+            new Set([currentDependsOn])
+          );
+        }
+        regionDeps.add(currentDependsOn);
+      }
+      let sideEffects: RegionPointer | undefined;
+      if (sideEffectsRegion) {
+        sideEffects = builder.createCodeRegion(sideEffectsRegion, undefined);
+        regionDeps.add(sideEffects);
+      }
+      if (references[0] != null) {
+        regionDeps.add(references[0]); // the first reference is the self-reference in the declaration
+      }
+      let declarationPointer = builder.createCodeRegion(
+        declaration,
+        {
+          type: "local",
+          source: filename,
+          declaratorOfRegion,
+          references,
+          declaredName: name,
+        },
+        regionDeps
+      );
+      for (let referencePointer of references) {
+        let reference = desc.regions[referencePointer];
+        if (isReferenceCodeRegion(reference)) {
+          reference.dependsOn.add(declarationPointer);
+        }
+      }
       if (sideEffects) {
-        declarationSideEffects = builder.createCodeRegion(sideEffects);
+        desc.regions[sideEffects].dependsOn.add(declarationPointer);
+        desc.regions[documentPointer].dependsOn.add(declarationPointer);
       }
-      let nameDesc = {
-        type: "local",
-        dependsOn: consumes,
-        usedByModule: false,
-        declaration: builder.createCodeRegion(declaration),
-        references,
-        declarationSideEffects,
-        bindingsConsumedByDeclarationSideEffects: new Set(),
-      } as LocalNameDescription;
-      if (importAssignments && importAssignments.has(name)) {
-        let { moduleHref, name: exportedName } = importAssignments.get(name)!;
-        nameDesc.original = {
-          moduleHref,
-          exportedName,
-        };
-      }
-      desc.names.set(name, nameDesc);
+      dependsOn.set(builder.regions[declarationPointer], consumes);
     }
   }
 
@@ -292,7 +426,7 @@ export function describeFile(
       case "ObjectProperty":
       case "ArrayPattern":
       case "RestElement":
-        if (currentModuleScopedDeclaration?.withinLVal) {
+        if (currentModuleScopedDeclaration?.lvalStack) {
           let declaration = currentModuleScopedDeclaration.path as NodePath;
           if (
             declaration &&
@@ -308,25 +442,48 @@ export function describeFile(
         return false;
     }
   }
+
+  function addModuleSideEffect(path: NodePath) {
+    if (path.parent.type !== "Program") {
+      return;
+    }
+    let sideEffectIndex = path.parent.body.findIndex(
+      (statement) => statement === path.node
+    );
+    let [lastSideEffects] = moduleSideEffects.slice(-1);
+    if (lastSideEffects && path.type !== "ImportDeclaration") {
+      if (lastSideEffects && lastSideEffects.length > 0) {
+        let [lastSideEffect] = lastSideEffects;
+        let lastSideEffectIndex = path.parent.body.findIndex(
+          (statement) => statement === lastSideEffect.node
+        );
+        // merge contiguous side effects
+        if (
+          lastSideEffectIndex + 1 === sideEffectIndex &&
+          lastSideEffect.type === path.type
+        ) {
+          lastSideEffects.push(path as NodePath);
+          return;
+        }
+      }
+    }
+
+    moduleSideEffects.push([path as NodePath]);
+  }
+
   const handlePossibleLVal = {
     enter(path: DuckPath) {
       if (
         (path.parentPath === currentModuleScopedDeclaration?.path &&
           currentModuleScopedDeclaration?.path.node.id === path.node) ||
-        currentModuleScopedDeclaration?.withinLVal === path.parentPath
+        currentModuleScopedDeclaration?.lvalStack[0] === path.parentPath
       ) {
-        builder.createCodeRegion(path as NodePath);
-      }
-      if (
-        path.parentPath === currentModuleScopedDeclaration?.path &&
-        currentModuleScopedDeclaration?.path.node.id === path.node
-      ) {
-        currentModuleScopedDeclaration.withinLVal = path;
+        currentModuleScopedDeclaration.lvalStack.unshift(path);
       }
     },
     exit(path: DuckPath) {
-      if (currentModuleScopedDeclaration?.withinLVal === path) {
-        currentModuleScopedDeclaration.withinLVal = false;
+      if (currentModuleScopedDeclaration?.lvalStack[0] === path) {
+        currentModuleScopedDeclaration.lvalStack.shift();
       }
     },
   };
@@ -339,19 +496,58 @@ export function describeFile(
           imports: [],
           requires: [],
           exports: new Map(),
-          exportRegions: [],
-          names: new Map(),
+          declarations: new Map(),
           regions: builder.regions,
           esTranspiledExports: undefined,
         };
       },
       exit() {
-        for (let name of consumedByModule) {
-          let nameDesc = desc.names.get(name);
-          if (nameDesc) {
-            nameDesc.usedByModule = true;
+        let document = builder.regions[documentPointer];
+        // sort the consumedByModule declarations in the order they are imported
+        // (for the ones that are imported)
+        const aFirst = -1,
+          bFirst = 1,
+          same = 0;
+        let consumed = flatMap([...consumedByModule], (name) => {
+          let pointer = builder.regions.findIndex(
+            (r) =>
+              r.type === "declaration" && r.declaration.declaredName === name
+          );
+          return pointer !== notFoundPointer ? [pointer] : [];
+        }).sort((a, b) => {
+          // import declarations go before local declarations
+          let aRegion = builder.regions[a] as DeclarationCodeRegion;
+          let bRegion = builder.regions[b] as DeclarationCodeRegion;
+          if (
+            aRegion.declaration.type === "import" &&
+            bRegion.declaration.type === "local"
+          ) {
+            return aFirst;
           }
-        }
+          if (
+            aRegion.declaration.type === "local" &&
+            bRegion.declaration.type === "import"
+          ) {
+            return bFirst;
+          }
+          // finally sort based on import position (importIndex)
+          if (
+            aRegion.declaration.type === "import" &&
+            bRegion.declaration.type === "import"
+          ) {
+            return (
+              aRegion.declaration.importIndex - bRegion.declaration.importIndex
+            );
+          }
+          return same;
+        });
+        document.dependsOn = new Set([
+          // we reverse this because when we perform the editor assignment for
+          // code regions we perform it in consumer first order (backwards from
+          // how we serialize it)
+          ...consumed.reverse(),
+          ...document.dependsOn,
+        ]);
       },
     },
     FunctionDeclaration: {
@@ -362,11 +558,6 @@ export function describeFile(
       enter: enterDeclaration,
       exit: exitDeclaration,
     },
-    VariableDeclaration(path) {
-      if (isModuleScopedDeclaration(path as NodePath)) {
-        builder.createCodeRegion(path as NodePath);
-      }
-    },
     VariableDeclarator: {
       enter: enterDeclaration,
       exit: exitDeclaration,
@@ -375,16 +566,12 @@ export function describeFile(
     ObjectPattern: handlePossibleLVal,
     ArrayPattern: handlePossibleLVal,
     RestElement: handlePossibleLVal,
-    // ObjectProperty is not an LVal, so we don't want to use
-    // handlePossibleLVal, but we are interested in making a code region for it,
-    // since it composes an LVal
-    ObjectProperty(path) {
-      if (currentModuleScopedDeclaration?.withinLVal === path.parentPath) {
-        builder.createCodeRegion(path as NodePath);
-      }
-    },
+    ObjectProperty: handlePossibleLVal,
     Identifier(path) {
-      if (currentModuleScopedDeclaration?.withinLVal) {
+      if (
+        currentModuleScopedDeclaration?.lvalStack &&
+        currentModuleScopedDeclaration.lvalStack.length > 0
+      ) {
         let declaration = declarationForIdentifier(path);
         let sideEffects = sideEffectsForIdentifier(path);
         if (declaration) {
@@ -393,6 +580,7 @@ export function describeFile(
             declaration,
             identifier: path,
             sideEffects,
+            lvalStack: [...currentModuleScopedDeclaration.lvalStack],
           });
         }
       }
@@ -422,6 +610,12 @@ export function describeFile(
       }
     },
     CallExpression(path) {
+      // If there are signals that we are actually in an ES6 module, then we can
+      // bail. all the logic below is for CJS files.
+      if (isES6Module) {
+        return;
+      }
+
       let callee = path.get("callee");
       let calleeNode = callee.node;
       let argumentsPaths = path.get("arguments");
@@ -478,9 +672,13 @@ export function describeFile(
       let importDesc = {
         specifier: path.node.source.value,
         isDynamic: false,
-        region: builder.createCodeRegion(path as NodePath),
+        isReexport: false,
+        region: builder.createCodeRegion(path as NodePath, desc.imports.length),
       } as ImportDescription;
       desc.imports.push(importDesc);
+      if (path.node.specifiers.length === 0) {
+        addModuleSideEffect(path as NodePath);
+      }
     },
     ImportSpecifier(path) {
       addImportedName(desc, path.node.imported.name, path, builder);
@@ -494,51 +692,148 @@ export function describeFile(
     Import(path) {
       isES6Module = true;
       let callExpression = path.parentPath as NodePath<CallExpression>;
-      let stringLiteral = callExpression.node.arguments[0] as StringLiteral;
-      let importDesc = desc.imports.find(
-        (i) => i.specifier === stringLiteral.value
+      let specifier: string | undefined;
+      if (isStringLiteral(callExpression.node.arguments[0])) {
+        specifier = callExpression.node.arguments[0].value;
+      } else {
+        warn(
+          `encountered an import() whose specifier is not a string literal${
+            filename ? " in file " + filename : ""
+          }. If this import() is evaluated, a runtime error will be thrown.`
+        );
+      }
+      let importIndex = desc.imports.findIndex(
+        (i) => i.specifier === specifier
+      );
+      let importDesc = importIndex > -1 ? desc.imports[importIndex] : undefined;
+      let specifierRegion = builder.createCodeRegion(
+        (path.parentPath.get("arguments") as NodePath[])[0]
       );
       if (!importDesc) {
         if (!Array.isArray(path.parentPath.get("arguments"))) {
           throw new Error(
-            `bug: Cannot determine path to dynamic import's specifier`
+            `Cannot determine path to dynamic import's specifier '${specifier}'${
+              filename ? " in file " + filename : ""
+            }`
           );
         }
         importDesc = {
-          specifierRegion: builder.createCodeRegion(
-            (path.parentPath.get("arguments") as NodePath[])[0]
-          ),
-          specifier: stringLiteral.value,
+          specifierRegion,
+          specifier,
           isDynamic: true,
         };
+        importIndex = desc.imports.length;
         desc.imports.push(importDesc);
       } else {
         importDesc.isDynamic = true;
+        if (importDesc.isDynamic) {
+          importDesc.specifier = specifier;
+          importDesc.specifierRegion = specifierRegion;
+        }
       }
+      if (importDesc.isDynamic) {
+        builder.createCodeRegion(
+          path as NodePath,
+          {
+            importIndex,
+            exportType: undefined,
+            isDynamic: true,
+            specifierForDynamicImport: importDesc.specifier,
+          },
+          new Set([importDesc.specifierRegion])
+        );
+      }
+    },
+    BlockStatement(path) {
+      addModuleSideEffect(path as NodePath);
+    },
+    DoWhileStatement(path) {
+      addModuleSideEffect(path as NodePath);
+    },
+    ForStatement(path) {
+      addModuleSideEffect(path as NodePath);
+    },
+    ForInStatement(path) {
+      addModuleSideEffect(path as NodePath);
+    },
+    ForOfStatement(path) {
+      addModuleSideEffect(path as NodePath);
+    },
+    IfStatement(path) {
+      addModuleSideEffect(path as NodePath);
+    },
+    SwitchStatement(path) {
+      addModuleSideEffect(path as NodePath);
+    },
+    ThrowStatement(path) {
+      addModuleSideEffect(path as NodePath);
+    },
+    TryStatement(path) {
+      addModuleSideEffect(path as NodePath);
+    },
+    WhileStatement(path) {
+      addModuleSideEffect(path as NodePath);
+    },
+    ExpressionStatement(path) {
+      if (
+        path.parent.type !== "Program" ||
+        isSideEffectFree(path.node.expression)
+      ) {
+        return;
+      }
+
+      addModuleSideEffect(path as NodePath);
+    },
+    ExportAllDeclaration(path) {
+      isES6Module = true;
+
+      let source = path.node.source.value;
+      let specifier = path.node.source.value;
+      let importIndex = desc.imports.findIndex(
+        (i) => i.specifier === specifier
+      );
+      let importExists = importIndex > -1;
+      importIndex = importIndex === -1 ? desc.imports.length : importIndex;
+      let exportRegion = builder.createCodeRegion(path as NodePath, {
+        importIndex,
+        exportType: "export-all",
+        specifierForDynamicImport: undefined,
+        isDynamic: false,
+      });
+      if (!importExists) {
+        desc.imports.push({
+          specifier,
+          isDynamic: false,
+          isReexport: true,
+          region: exportRegion,
+        });
+      }
+
+      let marker: ExportAllMarker = { exportAllFrom: source };
+      desc.exports.set(marker, {
+        type: "export-all",
+        importIndex,
+        exportRegion,
+      });
     },
     ExportDefaultDeclaration: {
       enter(path) {
         isES6Module = true;
-        let exportRegion = builder.createCodeRegion(path as NodePath);
-        desc.exportRegions.push({
-          region: exportRegion,
-          isDefaultExport: true,
-          declaration: builder.createCodeRegion(
-            path.get("declaration") as NodePath
-          ),
-        });
 
         // we're relying on the fact that default is a keyword so it can't be used
         // as a real local name
         let name = "default";
-
         switch (path.node.declaration.type) {
+          case "Identifier":
+            name = path.node.declaration.name;
+            break;
           case "ClassDeclaration":
           case "FunctionDeclaration":
             if (isIdentifier(path.node.declaration.id)) {
               name = path.node.declaration.id.name;
             }
         }
+        let exportRegion = builder.createCodeRegion(path as NodePath);
         desc.exports.set("default", {
           type: "local",
           name,
@@ -552,42 +847,46 @@ export function describeFile(
 
         currentModuleScopedDeclaration = {
           path,
+          region: exportRegion,
           defines: [
             {
               name: "default",
               declaration: path.get("declaration") as NodePath,
               sideEffects: false,
+              lvalStack: [],
             },
           ],
           consumes: new Set(),
-          withinLVal: false,
+          dependsOnRegion: new Set(),
+          lvalStack: [],
         };
       },
       exit: exitDeclaration,
     },
     ExportNamedDeclaration(path) {
       isES6Module = true;
-      let declaration: RegionPointer | undefined;
-      let exportRegion = builder.createCodeRegion(path as NodePath);
-      if (path.node.declaration != null) {
-        declaration = builder.createCodeRegion(
-          path.get("declaration") as NodePath
-        );
-      }
-      desc.exportRegions.push({
-        region: exportRegion,
-        isDefaultExport: false,
-        declaration,
-      });
-
       if (path.node.source) {
         // we are reexporting things
-        let importIndex = ensureImportSpecifier(
-          desc,
-          path.node.source!.value,
-          exportRegion
+        let specifier = path.node.source.value;
+        let importIndex = desc.imports.findIndex(
+          (i) => i.specifier === specifier
         );
-
+        let importExists = importIndex > -1;
+        importIndex = importIndex === -1 ? desc.imports.length : importIndex;
+        let exportRegion = builder.createCodeRegion(path as NodePath, {
+          importIndex,
+          exportType: "reexport",
+          specifierForDynamicImport: undefined,
+          isDynamic: false,
+        });
+        if (!importExists) {
+          desc.imports.push({
+            specifier,
+            isDynamic: false,
+            isReexport: true,
+            region: exportRegion,
+          });
+        }
         for (let spec of path.node.specifiers) {
           switch (spec.type) {
             case "ExportDefaultSpecifier":
@@ -620,6 +919,7 @@ export function describeFile(
         }
       } else {
         // we are not reexporting
+        let exportRegion = builder.createCodeRegion(path as NodePath);
         if (path.node.declaration) {
           switch (path.node.declaration.type) {
             case "ClassDeclaration":
@@ -693,56 +993,63 @@ export function describeFile(
     },
   });
 
-  discoverReferencesConsumedBySideEffects(desc!);
+  let declarations = declarationsMap(desc!.regions);
+  let { regions } = desc!;
+  resolveDependsOnReferences(dependsOn, desc!, declarations);
 
-  let { names, regions } = desc!;
+  let sideEffectPointers = moduleSideEffects.map((paths) => {
+    return builder.createCodeRegion(paths, "general");
+  });
+  for (let { pointer } of declarations.values()) {
+    let region = regions[pointer];
+    region.dependsOn = new Set([...region.dependsOn, ...sideEffectPointers]);
+  }
+  let document = builder!.regions[documentPointer];
+  document.dependsOn = new Set([...document.dependsOn, ...sideEffectPointers]);
+
+  // clean up any dependencies on ourself--this may happen because at the time
+  // we didn't realize that we were identical to a code region that was
+  // already created--different paths can have identical code regions, e.g. an
+  // LVal declarator and an identifier for the declarator
+  cleanupSelfDependencies(desc!.regions);
+
+  assignCodeRegionPositions(desc!.regions);
+
   if (!isES6Module) {
     let { requires } = desc!;
     let esTranspiledExports = isTranspiledFromES ? cjsExportNames : undefined;
-    return { names, regions, requires, esTranspiledExports };
+    return { regions, requires, esTranspiledExports, declarations };
   } else {
-    let { imports, exports, exportRegions } = desc!;
-    return { names, regions, imports, exports, exportRegions };
+    let { imports, exports } = desc!;
+    return { regions, imports, exports, declarations };
   }
 }
 
-function discoverReferencesConsumedBySideEffects(fileDesc: FileDescription) {
-  let { names, regions } = fileDesc;
-  let descriptionsWithRegionsInSideEffects = [
-    ...fileDesc.names.values(),
-  ].filter(
-    (name) =>
-      name.declarationSideEffects &&
-      regions[name.declarationSideEffects].firstChild != null
-  );
-  for (let desc of descriptionsWithRegionsInSideEffects) {
-    let sideEffectRegions = [
-      ...regionSet(desc.declarationSideEffects!, regions),
-    ];
-    for (let [name, { references }] of names.entries()) {
-      if (intersection(sideEffectRegions, references).length > 0) {
-        desc.bindingsConsumedByDeclarationSideEffects.add(name);
-      }
+function cleanupSelfDependencies(regions: FileDescription["regions"]) {
+  for (let i = 0; i < regions.length; i++) {
+    let region = regions[i];
+    region.dependsOn.delete(i);
+  }
+}
+
+function resolveDependsOnReferences(
+  dependsOn: WeakMap<CodeRegion, Set<string>>,
+  desc: FileDescription,
+  declarations: Declarations
+) {
+  for (let region of desc.regions) {
+    let names = dependsOn.get(region);
+    if (!names) {
+      continue;
     }
+    region.dependsOn = new Set([
+      ...region.dependsOn,
+      ...([...names].map((name) => declarations.get(name)).filter(Boolean) as {
+        declaration: DeclarationDescription;
+        pointer: RegionPointer;
+      }[]).map(({ pointer }) => pointer),
+    ]);
   }
-}
-
-function regionSet(
-  pointer: RegionPointer,
-  regions: CodeRegion[]
-): Set<RegionPointer> {
-  let results: RegionPointer[] = [];
-  let region = regions[pointer];
-  let { firstChild, nextSibling } = region;
-  if (firstChild !== undefined) {
-    results.push(firstChild);
-    results.push(...regionSet(firstChild, regions));
-  }
-  if (nextSibling !== undefined) {
-    results.push(nextSibling);
-    results.push(...regionSet(nextSibling, regions));
-  }
-  return new Set(results);
 }
 
 function setLValExportDesc(
@@ -788,10 +1095,11 @@ function setLValExportDesc(
   }
 }
 
-function ensureImportSpecifier(
+export function ensureImportSpecifier(
   desc: ModuleDescription,
   specifier: string,
-  region: RegionPointer
+  region: RegionPointer,
+  isReexport: boolean
 ): number {
   let importDesc = desc.imports.find((i) => i.specifier === specifier);
   if (importDesc) {
@@ -801,6 +1109,7 @@ function ensureImportSpecifier(
     desc.imports.push({
       specifier,
       isDynamic: false,
+      isReexport,
       region,
     });
     return importIndex;
@@ -817,22 +1126,24 @@ function addImportedName(
   builder: RegionBuilder
 ) {
   let identifierPath = path.get("local") as NodePath<Identifier>;
-  desc.names.set(identifierPath.node.name, {
+  let references = referencesForDeclaration(
+    identifierPath.node.name,
+    identifierPath,
+    builder
+  );
+  let declarationPointer = builder.createCodeRegion(path as NodePath, {
     type: "import",
+    declaredName: identifierPath.node.name,
     importIndex: desc.imports.length - 1, // it's always the last import description added to desc.imports because the the order in which babel traverses the module
-    name: remoteName,
-    dependsOn: new Set(),
-    usedByModule: false,
-    declaration: builder.createCodeRegion(path as NodePath<Node>),
-    references: [
-      builder.createCodeRegion(identifierPath as NodePath),
-      ...path.scope
-        .getBinding(identifierPath.node.name)!
-        .referencePaths.map((i) => builder.createCodeRegion(i)),
-    ],
-    declarationSideEffects: undefined,
-    bindingsConsumedByDeclarationSideEffects: new Set(),
+    importedName: remoteName,
+    references,
   });
+  for (let referencePointer of references) {
+    let reference = desc.regions[referencePointer];
+    if (isReferenceCodeRegion(reference)) {
+      reference.dependsOn.add(declarationPointer);
+    }
+  }
 }
 
 function isModuleScopedDeclaration(path: NodePath): boolean {
@@ -881,17 +1192,87 @@ function declarationForIdentifier(
   }
 }
 
-function isSideEffectFree(node: Expression): boolean {
+function isSideEffectFree(node: Expression | SpreadElement): boolean {
   switch (node.type) {
     case "BooleanLiteral":
     case "NumericLiteral":
     case "StringLiteral":
+    case "RegExpLiteral":
     case "NullLiteral":
     case "Identifier":
     case "FunctionExpression":
     case "ClassExpression":
       return true;
+    case "MemberExpression":
+      return isSideEffectFree(node.property);
+    case "ArrayExpression":
+      return node.elements.every((e) => isSideEffectFree(e as Expression));
+    case "SpreadElement":
+      return isSideEffectFree(node.argument);
+    case "ConditionalExpression":
+      return (
+        isSideEffectFree(node.test) &&
+        isSideEffectFree(node.consequent) &&
+        isSideEffectFree(node.alternate)
+      );
+    case "LogicalExpression":
+    case "BinaryExpression":
+      return isSideEffectFree(node.left) && isSideEffectFree(node.right);
+    case "ObjectExpression":
+      return node.properties.every(
+        (p) =>
+          p.type === "ObjectMethod" ||
+          isSideEffectFree(
+            p.type === "SpreadElement"
+              ? (p.argument as Expression)
+              : (p.value as Expression)
+          )
+      );
     default:
       return false;
   }
+}
+
+function referencesForDeclaration(
+  name: string,
+  identifierPath: NodePath<Identifier>,
+  builder: RegionBuilder
+): RegionPointer[] {
+  return [
+    builder.createCodeRegionForReference(identifierPath as NodePath),
+    ...identifierPath.scope
+      .getBinding(name)!
+      // we filter because babel gives you some things like
+      // ExportNamedDeclaration here that aren't relevant to us, because
+      // we never do fine-grained renaming within export statements anyway
+      // -- we re-synthesize entire export statements.
+      .referencePaths.filter((path) => path.type === "Identifier")
+      .map((p) => builder.createCodeRegionForReference(p)),
+  ];
+}
+
+// this is a convenience to replace the removal of the "names" property in
+// ModuleDescription. it would be nice if this was memoized, somehow, after the
+// resolution has been constructed...
+export function declarationsMap(
+  regions: FileDescription["regions"]
+): Map<
+  string,
+  { declaration: DeclarationDescription; pointer: RegionPointer }
+> {
+  return new Map(
+    (regions.filter(
+      (r) => r.type === "declaration"
+    ) as DeclarationCodeRegion[]).map(({ declaration }) => [
+      declaration.declaredName,
+      {
+        declaration,
+        pointer: regions.findIndex(
+          (r2) =>
+            r2.type === "declaration" &&
+            r2.declaration.declaredName === declaration.declaredName
+        ),
+      },
+    ])
+  );
 }

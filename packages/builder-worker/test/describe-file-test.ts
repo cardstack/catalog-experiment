@@ -1,58 +1,38 @@
+import { describeESModule, describeCJSFile } from "./helpers/file-description";
+import { makeEditor } from "./helpers/bundle";
 import {
-  describeFile as astDescribeFile,
+  declarationsMap,
   FileDescription,
-  NamespaceMarker,
-  isModuleDescription,
+  LocalExportDescription,
   ModuleDescription,
-  CJSDescription,
+  ReexportExportDescription,
 } from "../src/describe-file";
-import { RegionEditor } from "../src/code-region";
-import { parse } from "@babel/core";
+import {
+  CodeRegion,
+  documentPointer,
+  NamespaceMarker,
+  notFoundPointer,
+} from "../src/code-region";
+import { RegionEditor } from "../src/region-editor";
 
-const { test, skip } = QUnit;
+const { test } = QUnit;
 
-let unusedNameNonce = 0;
-
-function describeFile(
-  js: string
-): { desc: FileDescription; editor: RegionEditor } {
-  js = js.trim();
-  let parsed = parse(js);
-  if (parsed?.type !== "File") {
-    throw new Error(`unexpected babel output`);
+function keepAll(desc: FileDescription, editor: RegionEditor) {
+  for (let i = 0; i < desc.regions.length; i++) {
+    editor.keepRegion(i);
   }
-  let desc = astDescribeFile(parsed);
+}
+
+function makeDescFromRegions(regions: CodeRegion[]): ModuleDescription {
   return {
-    desc,
-    editor: new RegionEditor(js, desc, () => `unused${unusedNameNonce++}`),
+    regions,
+    declarations: declarationsMap(regions),
+    exports: new Map(),
+    imports: [],
   };
 }
 
-function describeESModule(
-  js: string
-): { desc: ModuleDescription; editor: RegionEditor } {
-  let { desc, editor } = describeFile(js);
-  if (!isModuleDescription(desc)) {
-    throw new Error(`file is CJS, but we were expecting an ES module`);
-  }
-  return { desc, editor };
-}
-
-function describeCJSFile(
-  js: string
-): { desc: CJSDescription; editor: RegionEditor } {
-  let { desc, editor } = describeFile(js);
-  if (isModuleDescription(desc)) {
-    throw new Error(`file is ES module, but we were expecting CJS`);
-  }
-  return { desc, editor };
-}
-
-QUnit.module("describe-file", function (hooks) {
-  hooks.beforeEach(() => {
-    unusedNameNonce = 0;
-  });
-
+QUnit.module("describe-file", function () {
   test("can include require in description for CJS file", function (assert) {
     let { desc } = describeCJSFile(`
     const foo = require('./bar');
@@ -70,12 +50,13 @@ QUnit.module("describe-file", function (hooks) {
     let { desc, editor } = describeCJSFile(`
     const foo = require('./bar');
     `);
+    keepAll(desc, editor);
     assert.ok("requires" in desc);
     if ("requires" in desc) {
       let [req] = desc.requires;
       editor.replace(req.requireRegion, `_foo`);
       assert.codeEqual(
-        editor.serialize(),
+        editor.serialize().code,
         `
         const foo = _foo;
        `
@@ -87,12 +68,13 @@ QUnit.module("describe-file", function (hooks) {
     let { desc, editor } = describeCJSFile(`
     const foo = require('./bar');
     `);
+    keepAll(desc, editor);
     assert.ok("requires" in desc);
     if ("requires" in desc) {
       let [req] = desc.requires;
       editor.replace(req.specifierRegion, `"./bar.cjs.js"`);
       assert.codeEqual(
-        editor.serialize(),
+        editor.serialize().code,
         `
         const foo = require("./bar.cjs.js");
        `
@@ -137,94 +119,6 @@ QUnit.module("describe-file", function (hooks) {
     assert.deepEqual(desc.esTranspiledExports, undefined);
   });
 
-  skip("CJS require() name description can refer to required binding when there is straightforward declaration", function (assert) {
-    let { desc } = describeCJSFile(`
-    const bleep = require('./bloop');
-    const foo = require('./bar');
-    `);
-    assert.ok("requires" in desc);
-    if ("requires" in desc) {
-      let nameDesc = desc.names.get("foo")!;
-      assert.ok(nameDesc);
-      assert.equal(nameDesc.type, "require");
-      if (nameDesc.type === "require") {
-        assert.equal(nameDesc.requireIndex, 1);
-        assert.deepEqual(nameDesc.name, NamespaceMarker);
-      }
-    }
-  });
-
-  skip("CJS require() name description can indicate the exported name for ObjectPattern LVal declaration", function (assert) {
-    let { desc } = describeCJSFile(`
-    const somethingElse = require('blah');
-    const { foo, bleep } = require('./bar');
-    `);
-    let nameDesc = desc.names.get("foo")!;
-    assert.equal(nameDesc.type, "require");
-    if (nameDesc.type === "require") {
-      assert.equal(nameDesc.name, "foo");
-      assert.equal(nameDesc.requireIndex, 1);
-    }
-
-    nameDesc = desc.names.get("bleep")!;
-    assert.equal(nameDesc.type, "require");
-    if (nameDesc.type === "require") {
-      assert.equal(nameDesc.name, "bleep");
-      assert.equal(nameDesc.requireIndex, 1);
-    }
-  });
-
-  skip("CJS require() name description can indicate the exported name for renamed ObjectPattern LVal declaration", function (assert) {
-    let { desc } = describeCJSFile(`
-    const { foo: bleep } = require('./bar');
-    `);
-    let nameDesc = desc.names.get("bleep")!;
-    assert.equal(nameDesc.type, "require");
-    if (nameDesc.type === "require") {
-      assert.equal(nameDesc.name, "foo");
-    }
-  });
-
-  skip("CJS require() name description can indicate the exported name for member expression declaration", function (assert) {
-    let { desc } = describeCJSFile(`
-    const foo = require('./bar').bleep;
-    `);
-    let nameDesc = desc.names.get("foo")!;
-    assert.equal(nameDesc.type, "require");
-    if (nameDesc.type === "require") {
-      assert.equal(nameDesc.name, "bleep");
-    }
-  });
-
-  skip("CJS require() name description wont indicate the exported name for more complex scenarios", function (assert) {
-    let { desc } = describeCJSFile(`
-    const { foo } = require('./bar').bleep;
-    `);
-    let nameDesc = desc.names.get("foo")!;
-    assert.equal(nameDesc.type, "require");
-    if (nameDesc.type === "require") {
-      assert.deepEqual(nameDesc.name, NamespaceMarker);
-    }
-
-    ({ desc } = describeCJSFile(`
-    const { foo } = require('./bar')();
-    `));
-    nameDesc = desc.names.get("foo")!;
-    assert.equal(nameDesc.type, "require");
-    if (nameDesc.type === "require") {
-      assert.deepEqual(nameDesc.name, NamespaceMarker);
-    }
-
-    ({ desc } = describeCJSFile(`
-    const { foo } = require('./bar')[bleep()];
-    `));
-    nameDesc = desc.names.get("foo")!;
-    assert.equal(nameDesc.type, "require");
-    if (nameDesc.type === "require") {
-      assert.deepEqual(nameDesc.name, NamespaceMarker);
-    }
-  });
-
   test("CJS analysis won't treat module binding named 'require' as the CJS 'require' keyword", function (assert) {
     let { desc } = describeCJSFile(`
     function require() {
@@ -239,6 +133,472 @@ QUnit.module("describe-file", function (hooks) {
     if ("requires" in desc) {
       assert.equal(desc.requires.length, 0);
     }
+  });
+
+  test("creates a code region for variable declaration", function (assert) {
+    let { desc, editor } = describeESModule(`
+      const a = 1;
+      function b() { console.log('hi'); }
+      class c { foo() { return "bar"; } }
+      export {};
+    `);
+    keepAll(desc, editor);
+    let pointer = desc.regions.findIndex(
+      (r) => r.type === "declaration" && r.declaration.declaredName === "a"
+    );
+    let region = desc.regions[pointer];
+    assert.ok(region, "a code region was created for the declaration");
+    editor.replace(pointer, "lol = 'lol'");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+      const lol = 'lol';
+      function b() { console.log('hi'); }
+      class c { foo() { return "bar"; } }
+      export {};
+      `
+    );
+  });
+
+  test("creates a code region for a function declaration", function (assert) {
+    let { desc, editor } = describeESModule(`
+      const a = 1;
+      function b() { console.log('hi'); }
+      class c { foo() { return "bar"; } }
+      export {};
+    `);
+    keepAll(desc, editor);
+    let pointer = desc.regions.findIndex(
+      (r) => r.type === "declaration" && r.declaration.declaredName === "b"
+    );
+    let region = desc.regions[pointer];
+    assert.ok(region, "a code region was created for the declaration");
+    editor.replace(pointer, "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+      const a = 1;
+      //CODE_REGION
+      class c { foo() { return "bar"; } }
+      export {};
+      `
+    );
+  });
+
+  test("creates a code region for a class declaration", function (assert) {
+    let { desc, editor } = describeESModule(`
+      const a = 1;
+      function b() { console.log('hi'); }
+      class c { foo() { return "bar"; } }
+      export {};
+    `);
+    keepAll(desc, editor);
+    let pointer = desc.regions.findIndex(
+      (r) => r.type === "declaration" && r.declaration.declaredName === "c"
+    );
+    let region = desc.regions[pointer];
+    assert.ok(region, "a code region was created for the declaration");
+    editor.replace(pointer, "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+      const a = 1;
+      function b() { console.log('hi'); }
+      //CODE_REGION
+      export {};
+      `
+    );
+  });
+
+  test("creates code regions for bindings declared in an LVal", function (assert) {
+    let { desc, editor } = describeESModule(`
+      let { x, y: [z] } = foo();
+      export {};
+    `);
+    keepAll(desc, editor);
+
+    let pointer = desc.regions.findIndex(
+      (r) => r.type == "declaration" && r.declaration.declaredName === "x"
+    );
+    let region = desc.regions[pointer];
+    assert.ok(region, "a code region was created for the declaration");
+    editor.replace(pointer, "a");
+
+    pointer = desc.regions.findIndex(
+      (r) => r.type == "declaration" && r.declaration.declaredName === "z"
+    );
+    region = desc.regions[pointer];
+    assert.ok(region, "a code region was created for the declaration");
+    editor.replace(pointer, "b");
+
+    pointer = desc.regions.findIndex(
+      (r) => r.type == "declaration" && r.declaration.declaredName === "y"
+    );
+    assert.equal(
+      pointer,
+      notFoundPointer,
+      "no declaration code region is created for left-hand part of object pattern"
+    );
+
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+      let { a, y: [b] } = foo();
+      export {};
+      `
+    );
+  });
+
+  test("creates a code region for expression statement module side effect", function (assert) {
+    let { desc, editor } = describeESModule(`
+      console.log("side effect");
+      export {};
+    `);
+    keepAll(desc, editor);
+
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
+    assert.equal(sideEffects.size, 1);
+    editor.replace([...sideEffects][0], "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+        //CODE_REGION
+        export {};
+        `
+    );
+  });
+
+  test("creates a code region for block statement module side effect", function (assert) {
+    let { desc, editor } = describeESModule(`
+      {
+        console.log("side effect");
+      }
+      export {};
+    `);
+    keepAll(desc, editor);
+
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
+    assert.equal(sideEffects.size, 1);
+    editor.replace([...sideEffects][0], "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+        //CODE_REGION
+        export {};
+        `
+    );
+  });
+
+  test("creates a code region for do-while statement module side effect", function (assert) {
+    let { desc, editor } = describeESModule(`
+      do {
+        console.log("side effect");
+      } while (false);
+      export {};
+    `);
+    keepAll(desc, editor);
+
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
+    assert.equal(sideEffects.size, 1);
+    editor.replace([...sideEffects][0], "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+        //CODE_REGION
+        export {};
+        `
+    );
+  });
+
+  test("creates a code region for 'for' statement module side effect", function (assert) {
+    let { desc, editor } = describeESModule(`
+      for (let i = 0; i < 2; i++) {
+        console.log(i);
+      }
+      export {};
+    `);
+    keepAll(desc, editor);
+
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
+    assert.equal(sideEffects.size, 1);
+    editor.replace([...sideEffects][0], "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+        //CODE_REGION
+        export {};
+        `
+    );
+  });
+
+  test("creates a code region for for-in statement module side effect", function (assert) {
+    let { desc, editor } = describeESModule(`
+      for (let i in { a: 1, b: 2 }) {
+        console.log(i);
+      }
+      export {};
+    `);
+    keepAll(desc, editor);
+
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
+    assert.equal(sideEffects.size, 1);
+    editor.replace([...sideEffects][0], "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+        //CODE_REGION
+        export {};
+        `
+    );
+  });
+
+  test("creates a code region for for-of statement module side effect", function (assert) {
+    let { desc, editor } = describeESModule(`
+      for (let i of [1, 2, 3, 4]) {
+        console.log(i);
+      }
+      export {};
+    `);
+    keepAll(desc, editor);
+
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
+    assert.equal(sideEffects.size, 1);
+    editor.replace([...sideEffects][0], "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+        //CODE_REGION
+        export {};
+        `
+    );
+  });
+
+  test("creates a code region for if statement module side effect", function (assert) {
+    let { desc, editor } = describeESModule(`
+      if (true) {
+        console.log("side effect");
+      }
+      export {};
+    `);
+    keepAll(desc, editor);
+
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
+    assert.equal(sideEffects.size, 1);
+    editor.replace([...sideEffects][0], "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+        //CODE_REGION
+        export {};
+        `
+    );
+  });
+
+  test("creates a code region for switch statement module side effect", function (assert) {
+    let { desc, editor } = describeESModule(`
+      switch (a) {
+        case 'hi':
+        console.log("side effect");
+        break;
+      }
+      export {};
+    `);
+    keepAll(desc, editor);
+
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
+    assert.equal(sideEffects.size, 1);
+    editor.replace([...sideEffects][0], "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+        //CODE_REGION
+        export {};
+        `
+    );
+  });
+
+  test("creates a code region for throw statement module side effect", function (assert) {
+    let { desc, editor } = describeESModule(`
+      throw new Error("side effect");
+      export {};
+    `);
+    keepAll(desc, editor);
+
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
+    assert.equal(sideEffects.size, 1);
+    editor.replace([...sideEffects][0], "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+        //CODE_REGION
+        export {};
+        `
+    );
+  });
+
+  test("creates a code region for try statement module side effect", function (assert) {
+    let { desc, editor } = describeESModule(`
+      try {
+        console.log("side effect");
+      } catch (e) {
+        throw e;
+      }
+      export {};
+    `);
+    keepAll(desc, editor);
+
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
+    assert.equal(sideEffects.size, 1);
+    editor.replace([...sideEffects][0], "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+        //CODE_REGION
+        export {};
+        `
+    );
+  });
+
+  test("creates a code region for while statement module side effect", function (assert) {
+    let { desc, editor } = describeESModule(`
+      while(false) {
+        console.log("side effect");
+      }
+      export {};
+    `);
+    keepAll(desc, editor);
+
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
+    assert.equal(sideEffects.size, 1);
+    editor.replace([...sideEffects][0], "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+        //CODE_REGION
+        export {};
+        `
+    );
+  });
+
+  test("contiguous module side effects are contained in the same code region", function (assert) {
+    let { desc, editor } = describeESModule(`
+      console.log("side effect 1");
+      console.log("side effect 2");
+      const foo = "bar";
+      console.log("side effect 3");
+      export {};
+    `);
+    keepAll(desc, editor);
+
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
+    assert.equal(sideEffects.size, 2);
+    editor.replace([...sideEffects][0], "//CODE_REGION_1");
+    editor.replace([...sideEffects][1], "//CODE_REGION_2");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+        //CODE_REGION_1
+        const foo = "bar";
+        //CODE_REGION_2
+        export {};
+        `
+    );
+  });
+
+  test("a code region for a binding declaration depends on module side effects", function (assert) {
+    let { desc, editor } = describeESModule(`
+      console.log("side effect");
+      const foo = "bar";
+      export {};
+    `);
+    keepAll(desc, editor);
+    let document = desc.regions[documentPointer];
+    let [sideEffect] = [...document.dependsOn];
+    let { pointer } = desc.declarations.get("foo")!;
+    let region = desc.regions[pointer];
+    assert.ok(region.dependsOn.has(sideEffect));
+    editor.replace(sideEffect, "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+          //CODE_REGION
+          const foo = "bar";
+          export {};
+          `
+    );
+  });
+
+  test("a code region depends on the code regions for bindings consumed within the region", function (assert) {
+    let { desc } = describeESModule(`
+      let a = 3;
+      function printA() {
+        console.log(a);
+      }
+      export {};
+    `);
+    let { pointer: a } = desc.declarations.get("a")!;
+    let { pointer } = desc.declarations.get("printA")!;
+    let region = desc.regions[pointer];
+    assert.ok([...region.dependsOn].includes(a));
+  });
+
+  test("a code region declaration contains its references", async function (assert) {
+    let { desc, editor } = describeESModule(`
+      let a = 3;
+      function printA() {
+        console.log(a);
+      }
+      export {};
+    `);
+    keepAll(desc, editor);
+    let { declaration } = desc.declarations.get("a")!;
+    assert.equal(declaration.references.length, 2);
+    for (let reference of declaration.references) {
+      editor.replace(reference, "b");
+    }
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+      let b = 3;
+      function printA() {
+        console.log(b);
+      }
+      export {};
+      `
+    );
+  });
+
+  test("the DocumentPointer code region depends on a declaration that has a side effect", async function (assert) {
+    let { desc, editor } = describeESModule(`
+      let a = initializeCache();
+      export {};
+    `);
+    keepAll(desc, editor);
+    let document = desc.regions[documentPointer];
+    assert.equal(document.dependsOn.size, 1);
+    let [sideEffectDeclaration] = [...document.dependsOn];
+    let { pointer } = desc.declarations.get("a")!;
+    assert.equal(sideEffectDeclaration, pointer);
+    editor.replace(sideEffectDeclaration, "b = walkTheDog()");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+        let b = walkTheDog();
+        export {};
+        `
+    );
   });
 
   test("pure reexport examples", function (assert) {
@@ -257,14 +617,18 @@ QUnit.module("describe-file", function (hooks) {
     assert.ok(desc.exports.has("y"), "y in exportedNames");
     assert.ok(desc.exports.has("foo"), "foo is a reexport");
 
-    let exportDesc = desc.exports.get("foo")!;
+    let exportDesc = desc.exports.get("foo")! as
+      | LocalExportDescription
+      | ReexportExportDescription;
     assert.equal(exportDesc.type, "reexport");
     assert.equal(exportDesc.name, "foo", "foo is not named");
     if (exportDesc.type === "reexport") {
       assert.equal(exportDesc.importIndex, 0);
     }
 
-    exportDesc = desc.exports.get("y")!;
+    exportDesc = desc.exports.get("y")! as
+      | LocalExportDescription
+      | ReexportExportDescription;
     assert.equal(exportDesc.type, "reexport", "y is a reexport");
     assert.equal(exportDesc.name, "x");
     if (exportDesc.type === "reexport") {
@@ -279,7 +643,9 @@ QUnit.module("describe-file", function (hooks) {
     `);
     assert.ok(desc.exports.has("b"), "b in exportedNames");
     assert.ok(!desc.exports.has("a"), "a not in exportedNames");
-    let exportDesc = desc.exports.get("b")!;
+    let exportDesc = desc.exports.get("b")! as
+      | LocalExportDescription
+      | ReexportExportDescription;
     assert.equal(exportDesc.type, "local");
     assert.equal(exportDesc.name, "a", "we can see that b comes from a");
   });
@@ -298,11 +664,11 @@ QUnit.module("describe-file", function (hooks) {
       export default arrayMap;
     `);
     assert.ok(
-      desc.names.has("arrayMap"),
+      desc.declarations.has("arrayMap"),
       "module scoped binding in module description"
     );
     assert.notOk(
-      desc.names.has("array"),
+      desc.declarations.has("array"),
       "non-module scoped binding is not in module description"
     );
   });
@@ -311,43 +677,71 @@ QUnit.module("describe-file", function (hooks) {
     let { desc } = describeESModule(`
     export default function x() {}
   `);
-    let exportDesc = desc.exports.get("default")!;
+    let exportDesc = desc.exports.get("default")! as
+      | LocalExportDescription
+      | ReexportExportDescription;
     assert.equal(exportDesc.type, "local");
     assert.equal(exportDesc.name, "x");
-    assert.equal(desc.names.get("x")?.type, "local");
+    assert.equal(desc.declarations.get("x")?.declaration.type, "local");
   });
 
   test("default export class", function (assert) {
     let { desc } = describeESModule(`
     export default class x {}
   `);
-    let exportDesc = desc.exports.get("default")!;
+    let exportDesc = desc.exports.get("default")! as
+      | LocalExportDescription
+      | ReexportExportDescription;
     assert.equal(exportDesc.type, "local");
     assert.equal(exportDesc.name, "x");
-    assert.equal(desc.names.get("x")?.type, "local");
+    assert.equal(desc.declarations.get("x")?.declaration.type, "local");
   });
 
   test("default export with no local name", function (assert) {
     let { desc } = describeESModule(`
     export default foo();
   `);
-    let exportDesc = desc.exports.get("default")!;
+    let exportDesc = desc.exports.get("default")! as
+      | LocalExportDescription
+      | ReexportExportDescription;
     assert.equal(exportDesc.type, "local");
     assert.equal(exportDesc.name, "default");
-    assert.ok(desc.names.get("default")?.dependsOn.has("foo"));
+    let { pointer } = desc.declarations.get("default")!;
+    let region = desc.regions[pointer];
+    assert.equal(region.dependsOn.size, 0); // note that we don't depend on "foo" because it was not declared in the module scope
   });
 
   test("renaming local side of export", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       function x() {}
-      export { x };
+      function z() {}
+      export { x, z };
     `);
+    keepAll(desc, editor);
     editor.rename("x", "y");
+    editor.rename("z", "a");
+    let { code, regions } = editor.serialize();
     assert.codeEqual(
-      editor.serialize(),
+      code,
       `
       function y() {}
-      export { y as x };
+      function a() {}
+      export { y as x, a as z };
+    `
+    );
+
+    let newDesc = makeDescFromRegions(regions);
+    let newEditor = makeEditor(code, newDesc);
+    keepAll(newDesc, newEditor);
+    newEditor.rename("y", "bob");
+    newEditor.rename("a", "charlie");
+    code = newEditor.serialize().code;
+    assert.codeEqual(
+      code,
+      `
+      function bob() {}
+      function charlie() {}
+      export { bob as x, charlie as z };
     `
     );
   });
@@ -356,36 +750,42 @@ QUnit.module("describe-file", function (hooks) {
     let { desc } = describeESModule(`
       import { x } from 'somewhere';
     `);
-    let out = desc.names.get("x");
-    assert.equal(out?.type, "import");
-    if (out?.type === "import") {
-      assert.equal(out.importIndex, 0);
-      assert.equal(out.name, "x");
+    let out = desc.declarations.get("x");
+    assert.equal(out?.declaration.type, "import");
+    if (out?.declaration.type === "import") {
+      assert.equal(out.declaration.importIndex, 0);
+      assert.equal(out.declaration.importedName, "x");
     }
+    let document = desc.regions[documentPointer];
+    assert.equal(document.dependsOn.size, 0);
   });
 
-  test("imported namespace are discovered", function (assert) {
+  test("imported namespace is discovered", function (assert) {
     let { desc } = describeESModule(`
       import * as x from 'somewhere';
     `);
-    let out = desc.names.get("x");
-    assert.equal(out?.type, "import");
-    if (out?.type === "import") {
-      assert.equal(out.importIndex, 0);
-      assert.equal(out.name, NamespaceMarker);
+    let out = desc.declarations.get("x");
+    assert.equal(out?.declaration.type, "import");
+    if (out?.declaration.type === "import") {
+      assert.equal(out.declaration.importIndex, 0);
+      assert.equal(out.declaration.importedName, NamespaceMarker);
     }
+    let document = desc.regions[documentPointer];
+    assert.equal(document.dependsOn.size, 0);
   });
 
   test("default imported names are discovered", function (assert) {
     let { desc } = describeESModule(`
       import x from 'somewhere';
     `);
-    let out = desc.names.get("x");
-    assert.equal(out?.type, "import");
-    if (out?.type === "import") {
-      assert.equal(out.importIndex, 0);
-      assert.equal(out.name, "default");
+    let out = desc.declarations.get("x");
+    assert.equal(out?.declaration.type, "import");
+    if (out?.declaration.type === "import") {
+      assert.equal(out.declaration.importIndex, 0);
+      assert.equal(out.declaration.importedName, "default");
     }
+    let document = desc.regions[documentPointer];
+    assert.equal(document.dependsOn.size, 0);
   });
 
   test("local names are discovered", function (assert) {
@@ -393,7 +793,7 @@ QUnit.module("describe-file", function (hooks) {
       function x() {}
       export {};
     `);
-    assert.equal(desc.names.get("x")?.type, "local");
+    assert.equal(desc.declarations.get("x")?.declaration.type, "local");
   });
 
   test("local function is used by export", function (assert) {
@@ -403,11 +803,11 @@ QUnit.module("describe-file", function (hooks) {
         return x();
       }
     `);
-    let out = desc.names.get("y");
-    assert.equal(out?.type, "local");
-    if (out?.type === "local") {
-      assert.ok(out.dependsOn.has("x"));
-    }
+    let out = desc.declarations.get("y");
+    let region = desc.regions[out!.pointer];
+    let { pointer: xPointer } = desc.declarations.get("x")!;
+    assert.equal(out?.declaration.type, "local");
+    assert.ok(region.dependsOn.has(xPointer));
   });
 
   test("local function is used by module", function (assert) {
@@ -416,10 +816,12 @@ QUnit.module("describe-file", function (hooks) {
       x();
       export {};
     `);
-    let out = desc.names.get("x");
-    assert.equal(out?.type, "local");
-    if (out?.type === "local") {
-      assert.equal(out.usedByModule, true);
+    let document = desc.regions[documentPointer];
+    let out = desc.declarations.get("x")!;
+    let { pointer } = out;
+    assert.equal(out.declaration.type, "local");
+    if (out?.declaration.type === "local") {
+      assert.equal(document.dependsOn.has(pointer), true);
     }
   });
 
@@ -432,66 +834,53 @@ QUnit.module("describe-file", function (hooks) {
         }
       }
     `);
-    let out = desc.names.get("Q");
-    assert.equal(out?.type, "local");
-    if (out?.type === "local") {
-      assert.ok(out.dependsOn.has("x"));
+    let out = desc.declarations.get("Q")!;
+    let x = desc.declarations.get("x")!;
+    let { pointer: xPointer } = x;
+    let region = desc.regions[out.pointer];
+    assert.equal(out.declaration.type, "local");
+    if (out.declaration.type === "local") {
+      assert.ok(region.dependsOn.has(xPointer));
     }
     assert.ok(desc.exports.get("default")?.type === "local");
-    assert.ok(desc.exports.get("default")?.name === "Q");
+    assert.ok(
+      (desc.exports.get("default") as
+        | LocalExportDescription
+        | ReexportExportDescription)?.name === "Q"
+    );
   });
 
-  skip("variables consumed in LVal", function (assert) {
+  test("variables consumed in LVal", function (assert) {
     let { desc } = describeESModule(`
       let a = foo();
       let { x = a, y = x } = bar();
       export {};
     `);
-    let out = desc.names.get("x")!;
-    assert.ok(out.dependsOn.has("a"));
-
-    out = desc.names.get("y")!;
-    assert.ok(out.dependsOn.has("x"));
-    assert.notOk(out.dependsOn.has("a"));
+    let out = desc.declarations.get("x")!;
+    let { pointer: xPointer } = out;
+    let a = desc.declarations.get("a")!;
+    let { pointer: aPointer } = a;
+    let xRegion = desc.regions[out.pointer];
+    assert.ok(xRegion.dependsOn.has(aPointer));
+    out = desc.declarations.get("y")!;
+    let yRegion = desc.regions[out.pointer];
+    assert.ok(yRegion.dependsOn.has(xPointer));
   });
 
   test("renaming a function declaration", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       console.log(1);
       function x() {}
       x();
       export {};
     `);
+    keepAll(desc, editor);
     editor.rename("x", "y");
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
       console.log(1);
       function y() {}
-      y();
-      export {};
-    `
-    );
-  });
-
-  test("removing a function declaration", function (assert) {
-    let { editor } = describeESModule(`
-      console.log(1);
-      function a() {}
-      function x() {}
-      function y() {}
-      a();
-      y();
-      export {};
-    `);
-    editor.removeDeclaration("x");
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      console.log(1);
-      function a() {}
-      function y() {}
-      a();
       y();
       export {};
     `
@@ -503,7 +892,7 @@ QUnit.module("describe-file", function (hooks) {
       function x({ a }) {}
       export {};
     `);
-    assert.ok(!desc.names.has("a"));
+    assert.notOk(desc.declarations.has("a"));
   });
 
   test("function default arguments consume other bindings", function (assert) {
@@ -512,44 +901,71 @@ QUnit.module("describe-file", function (hooks) {
       function x(y=a) {}
       export {};
     `);
-    let out = desc.names.get("x");
-    assert.ok(out?.dependsOn.has("a"));
+    let out = desc.declarations.get("x")!;
+    let region = desc.regions[out.pointer];
+    let a = desc.declarations.get("a")!;
+    let { pointer } = a;
+    assert.ok(region.dependsOn.has(pointer));
   });
 
   test("code regions for an imported name can be used to replace it", function (assert) {
-    let { editor } = describeESModule(`
-      import { a, b as c, d as d } from "lib";
+    let { desc, editor } = describeESModule(`
+      import { a, a1, b as c, b1, d as d } from "lib";
       export default function(a) {
         console.log(a);
       }
-      console.log(a, c, d);
+      console.log(a, a1, c, b1, d);
     `);
+    keepAll(desc, editor);
     editor.rename("a", "alpha");
+    editor.rename("a1", "alpha1");
+    editor.rename("b1", "bravo1");
     editor.rename("c", "charlie");
     editor.rename("d", "delta");
+    let { code, regions } = editor.serialize();
     assert.codeEqual(
-      editor.serialize(),
+      code,
       `
-      import { a as alpha, b as charlie, d as delta } from "lib";
+      import { a as alpha, a1 as alpha1, b as charlie, b1 as bravo1, d as delta } from "lib";
       export default function(a) {
         console.log(a);
       }
-      console.log(alpha, charlie, delta);
+      console.log(alpha, alpha1, charlie, bravo1, delta);
+    `
+    );
+
+    let newDesc = makeDescFromRegions(regions);
+    let newEditor = makeEditor(code, newDesc);
+    keepAll(newDesc, newEditor);
+    newEditor.rename("alpha", "renamedAlpha");
+    newEditor.rename("alpha1", "renamedAlpha1");
+    newEditor.rename("bravo1", "renamedBravo1");
+    newEditor.rename("charlie", "renamedCharlie");
+    newEditor.rename("delta", "renamedDelta");
+    assert.codeEqual(
+      newEditor.serialize().code,
+      `
+      import { a as renamedAlpha, a1 as renamedAlpha1, b as renamedCharlie, b1 as renamedBravo1, d as renamedDelta } from "lib";
+      export default function(a) {
+        console.log(a);
+      }
+      console.log(renamedAlpha, renamedAlpha1, renamedCharlie, renamedBravo1, renamedDelta);
     `
     );
   });
 
   test("code regions for a local variable can be used to replace it", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       const a = 1;
       export default function(a) {
         console.log(a);
       }
       console.log(a);
     `);
+    keepAll(desc, editor);
     editor.rename("a", "alpha");
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
       const alpha = 1;
       export default function(a) {
@@ -561,33 +977,50 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("code regions for a variable declared within an object pattern can be used to replace it", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       const { a, b: c } = foo();
       console.log(a, c);
       export {};
     `);
+    keepAll(desc, editor);
     editor.rename("a", "alpha");
     editor.rename("c", "charlie");
+    let { code, regions } = editor.serialize();
     assert.codeEqual(
-      editor.serialize(),
+      code,
       `
       const { a: alpha, b: charlie } = foo();
       console.log(alpha, charlie);
       export {};
     `
     );
+
+    let newDesc = makeDescFromRegions(regions);
+    let newEditor = makeEditor(code, newDesc);
+    keepAll(newDesc, newEditor);
+    newEditor.rename("alpha", "renamedAlpha");
+    newEditor.rename("charlie", "renamedCharlie");
+    assert.codeEqual(
+      newEditor.serialize().code,
+      `
+      const { a: renamedAlpha, b: renamedCharlie } = foo();
+      console.log(renamedAlpha, renamedCharlie);
+      export {};
+    `
+    );
   });
 
-  test("code regions for a variable assign via an LVal AssignmentPattern can be used to replace it", function (assert) {
-    let { editor } = describeESModule(`
+  test("code regions for a variable assigned via an LVal AssignmentPattern can be used to replace it", function (assert) {
+    let { desc, editor } = describeESModule(`
       const { a, b = a } = foo();
       console.log(a, b);
       export {};
     `);
+    keepAll(desc, editor);
     editor.rename("a", "alpha");
     editor.rename("b", "bravo");
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
       const { a: alpha, b: bravo = alpha } = foo();
       console.log(alpha, bravo);
@@ -597,14 +1030,15 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("code regions for a variable assign via an LVal AssignmentPattern with shorthand can be used to replace it", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       const { a, b: bravo = a } = foo();
       console.log(a, bravo);
       export {};
     `);
+    keepAll(desc, editor);
     editor.rename("bravo", "b");
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
       const { a, b = a } = foo();
       console.log(a, b);
@@ -614,15 +1048,16 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("code regions for a MemberExpression can be used to replace it", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       const bar = makeBar();
       const { a, b = bar.blah } = foo();
       console.log(a, bar.blurb);
       export {};
     `);
+    keepAll(desc, editor);
     editor.rename("bar", "bleep");
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
       const bleep = makeBar();
       const { a, b = bleep.blah } = foo();
@@ -633,14 +1068,15 @@ QUnit.module("describe-file", function (hooks) {
   });
 
   test("code regions for nested ObjectPattern can be used to replace it", function (assert) {
-    let { editor } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       let [{ x }, { y }] = bar();
       console.log(y);
       export {};
     `);
+    keepAll(desc, editor);
     editor.rename("y", "yas");
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
       let [{ x }, { y: yas }] = bar();
       console.log(yas);
@@ -649,476 +1085,28 @@ QUnit.module("describe-file", function (hooks) {
     );
   });
 
-  test("removing leading variable declaration from a list", function (assert) {
-    let { editor } = describeESModule(`
-      let a = 1, b = 2;
-      console.log(b);
+  test("code regions for an ArrayPattern can be used to replace it", function (assert) {
+    let { desc, editor } = describeESModule(`
+      let [ x, y ] = bar();
+      console.log(y);
       export {};
     `);
-    editor.removeDeclaration("a");
+    keepAll(desc, editor);
+    editor.rename("y", "yas");
     assert.codeEqual(
-      editor.serialize(),
+      editor.serialize().code,
       `
-      let b = 2;
-      console.log(b);
+      let [ x, yas ] = bar();
+      console.log(yas);
       export {};
     `
-    );
-  });
-
-  test("removing trailing variable declaration from a list", function (assert) {
-    let { editor } = describeESModule(`
-      let a = 1, b = 2;
-      export {};
-    `);
-    editor.removeDeclaration("b");
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      let a = 1;
-      export {};
-    `
-    );
-  });
-
-  test("removing adjacent variable declarations from a list", function (assert) {
-    let { editor } = describeESModule(`
-      let a = 1, b = 2, c = 3, d = 4;
-      export {};
-    `);
-    editor.removeDeclaration("b");
-    editor.removeDeclaration("c");
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      let a = 1, d = 4;
-      export {};
-    `
-    );
-  });
-
-  test("removing first 2 adjacent variable declarations from a list", function (assert) {
-    let { editor } = describeESModule(`
-      let a = 1, b = 2, c = 3, d = 4;
-      export {};
-    `);
-    editor.removeDeclaration("a");
-    editor.removeDeclaration("b");
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      let c = 3, d = 4;
-      export {};
-    `
-    );
-  });
-
-  test("removing a declaration from a list that includes a mix of LVal and non-LVal declarations", function (assert) {
-    let { editor } = describeESModule(`
-      let { a } = foo, b = 2, { c } = blah, d = 4;
-      export {};
-    `);
-    editor.removeDeclaration("b");
-    editor.removeDeclaration("c");
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      let { a } = foo, d = 4;
-      export {};
-      `
-    );
-  });
-
-  test("removing all variable declarations", function (assert) {
-    let { editor } = describeESModule(`
-      let a = 1;
-      console.log(2);
-      export {};
-    `);
-    editor.removeDeclaration("a");
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      console.log(2);
-      export {};
-    `
-    );
-  });
-
-  test("removing all variable declarations in an LVal", function (assert) {
-    let { editor } = describeESModule(`
-      let [ ...{ ...a } ] = foo;
-      console.log(2);
-      export {};
-    `);
-    editor.removeDeclaration("a");
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      console.log(2);
-      export {};
-    `
-    );
-  });
-
-  test("removing a renamed variable declaration in an ObjectPattern LVal", function (assert) {
-    let { editor } = describeESModule(`
-      let { x, y: a } = foo;
-      console.log(2);
-      export {};
-    `);
-    editor.removeDeclaration("a");
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      let { x } = foo;
-      console.log(2);
-      export {};
-    `
-    );
-  });
-
-  test("removing a variable declaration in a nested ObjectPattern LVal", function (assert) {
-    let { editor } = describeESModule(`
-      let { x, y: { a } } = foo;
-      console.log(2);
-      export {};
-    `);
-    editor.removeDeclaration("a");
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      let { x } = foo;
-      console.log(2);
-      export {};
-    `
-    );
-  });
-
-  test("removing a variable declaration in an ArrayPattern LVal", function (assert) {
-    let { editor } = describeESModule(`
-      let [ x, y, z ] = foo;
-      console.log(2);
-      export {};
-    `);
-    editor.removeDeclaration("x");
-    editor.removeDeclaration("y");
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      let [ , , z ] = foo;
-      console.log(2);
-      export {};
-    `
-    );
-  });
-
-  test("removing a variable declaration in a nested ArrayPattern LVal", function (assert) {
-    let { editor } = describeESModule(`
-      let [ x, [ a ] ] = foo;
-      console.log(2);
-      export {};
-    `);
-    editor.removeDeclaration("a");
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      let [ x ] = foo;
-      console.log(2);
-      export {};
-    `
-    );
-  });
-
-  test("removing a variable declaration in a RestElement LVal", function (assert) {
-    let { editor } = describeESModule(`
-      let [ x, ...y ] = foo;
-      console.log(2);
-      export {};
-    `);
-    editor.removeDeclaration("y");
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      let [ x ] = foo;
-      console.log(2);
-      export {};
-    `
-    );
-  });
-
-  test("removing a variable declaration in a nested RestElement LVal", function (assert) {
-    let { editor } = describeESModule(`
-      let [ x, ...[ ...y ]] = foo;
-      console.log(2);
-      export {};
-    `);
-    editor.removeDeclaration("y");
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      let [ x ] = foo;
-      console.log(2);
-      export {};
-    `
-    );
-  });
-
-  test("removing a variable declaration in an AssignmentPattern LVal", function (assert) {
-    let { editor } = describeESModule(`
-      let { x, y = 1 } = foo;
-      console.log(2);
-      export {};
-    `);
-    editor.removeDeclaration("y");
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      let { x } = foo;
-      console.log(2);
-      export {};
-    `
-    );
-  });
-
-  test("removing a variable declaration in a nested AssignmentPattern LVal", function (assert) {
-    let { editor } = describeESModule(`
-      let { x, b: [ y = 1 ] } = foo;
-      console.log(2);
-      export {};
-    `);
-    editor.removeDeclaration("y");
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      let { x } = foo;
-      console.log(2);
-      export {};
-    `
-    );
-  });
-
-  test("preserves side-effectful right-hand side when there is only one side effect at the beginning of the list", async function (assert) {
-    let { editor } = describeESModule(`
-      let a = initCache(), b = true, c = 1, d = 'd', e = null, f = undefined, g = function() {}, h = class foo {};
-      export {};
-    `);
-
-    editor.removeDeclaration("a");
-    editor.removeDeclaration("b");
-    editor.removeDeclaration("c");
-    editor.removeDeclaration("d");
-    editor.removeDeclaration("e");
-    editor.removeDeclaration("f");
-    editor.removeDeclaration("g");
-    editor.removeDeclaration("h");
-
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      initCache();
-      export {};
-      `
-    );
-  });
-
-  test("preserves side-effectful right-hand side when there is only one side effect at the end of the list", async function (assert) {
-    let { editor } = describeESModule(`
-      let b = true, c = 1, d = 'd', e = null, f = undefined, g = function() {}, h = class foo {}, a = initCache();
-      export {};
-    `);
-
-    editor.removeDeclaration("a");
-    editor.removeDeclaration("b");
-    editor.removeDeclaration("c");
-    editor.removeDeclaration("d");
-    editor.removeDeclaration("e");
-    editor.removeDeclaration("f");
-    editor.removeDeclaration("g");
-    editor.removeDeclaration("h");
-
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      initCache();
-      export {};
-      `
-    );
-  });
-
-  test("preserves side-effectful right-hand side when there is only one side effect in the middle of the list", async function (assert) {
-    let { editor } = describeESModule(`
-      let b = true, c = 1, d = 'd', e = null, a = initCache(), f = undefined, g = function() {}, h = class foo {};
-      export {};
-    `);
-
-    editor.removeDeclaration("a");
-    editor.removeDeclaration("b");
-    editor.removeDeclaration("c");
-    editor.removeDeclaration("d");
-    editor.removeDeclaration("e");
-    editor.removeDeclaration("f");
-    editor.removeDeclaration("g");
-    editor.removeDeclaration("h");
-
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      initCache();
-      export {};
-      `
-    );
-  });
-
-  test("preserves side-effectful right-hand side when there are multiple effects in the list", async function (assert) {
-    let { editor } = describeESModule(`
-      let a = initACache(), b = true, c = 1, d = 'd', e = initECache(), f = undefined, g = function() {}, h = class foo {};
-      export {};
-    `);
-
-    editor.removeDeclaration("a");
-    editor.removeDeclaration("b");
-    editor.removeDeclaration("c");
-    editor.removeDeclaration("d");
-    editor.removeDeclaration("e");
-    editor.removeDeclaration("f");
-    editor.removeDeclaration("g");
-    editor.removeDeclaration("h");
-
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      let unused0 = initACache(), unused1 = initECache();
-      export {};
-      `
-    );
-  });
-
-  test("preserves side-effectful right-hand side when it is the only declarator in a declaration", async function (assert) {
-    let { editor } = describeESModule(`
-      let a = initCache();
-      export {};
-    `);
-
-    editor.removeDeclaration("a");
-
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      initCache();
-      export {};
-      `
-    );
-  });
-
-  test("preserves side-effectful right-hand side for ObjectPatten LVal", async function (assert) {
-    let { editor } = describeESModule(`
-      let { x } = initCache();
-      export {};
-    `);
-
-    editor.removeDeclaration("x");
-
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      let { x: unused0 } = initCache();
-      export {};
-      `
-    );
-  });
-
-  test("preserves side-effectful right-hand side for ArrayPatten LVal", async function (assert) {
-    let { editor } = describeESModule(`
-      let [ x ] = initCache();
-      export {};
-    `);
-
-    editor.removeDeclaration("x");
-
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      let [ unused0 ] = initCache();
-      export {};
-      `
-    );
-  });
-
-  test("preserves side-effectful right-hand side for RestElement LVal", async function (assert) {
-    let { editor } = describeESModule(`
-      let { a: [ ...x ] } = initCache();
-      export {};
-    `);
-
-    editor.removeDeclaration("x");
-
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      let { a: [ ...unused0 ] }= initCache();
-      export {};
-      `
-    );
-  });
-
-  test("preserves side-effectful right-hand side for multiple LVal identifiers", async function (assert) {
-    let { editor } = describeESModule(`
-      let { x, y } = initCache();
-      export {};
-    `);
-
-    editor.removeDeclaration("x");
-    editor.removeDeclaration("y");
-
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      let { x: unused0, y: unused1 } = initCache();
-      export {};
-      `
-    );
-  });
-
-  test("preserves side-effectful initializer in LVal", async function (assert) {
-    let { editor } = describeESModule(`
-      let { x = initCache() } = foo;
-      export {};
-    `);
-
-    editor.removeDeclaration("x");
-
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      let { x: unused0 = initCache() } = foo;
-      export {};
-      `
-    );
-  });
-
-  test("preserves side-effectful initializer in list that includes side-effectful LVal", async function (assert) {
-    let { editor } = describeESModule(`
-      let { x = initCache() } = foo, y = 1, z = initZCache();
-      export {};
-    `);
-
-    editor.removeDeclaration("x");
-    editor.removeDeclaration("y");
-    editor.removeDeclaration("z");
-
-    assert.codeEqual(
-      editor.serialize(),
-      `
-      let { x: unused0 = initCache() } = foo, unused1 = initZCache();
-      export {};
-      `
     );
   });
 
   test("rename an exported const", async function (assert) {
-    let { editor } = describeESModule(`export const a = 'a';`);
+    let { desc, editor } = describeESModule(`export const a = 'a';`);
+    keepAll(desc, editor);
     editor.rename("a", "a0");
-    assert.codeEqual(editor.serialize(), `export const a0 = 'a';`);
+    assert.codeEqual(editor.serialize().code, `export const a0 = 'a';`);
   });
 });

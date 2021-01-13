@@ -74,6 +74,31 @@ export interface Recipe {
   resolutions?: {
     [specifier: string]: string;
   };
+
+  // If you want to override the package.json dependencies in order to specify a
+  // consumption range for the package because the consumed dependency is
+  // actually shadowing the consumption range of another consumer's
+  // package.json, then use the "dependencies" property. This is an object whose
+  // keys are the dependencies' package names, and whose values are the semver
+  // range to use for the dependency. Any values declared here will override
+  // what is in the package.json. It's worth paying attention to what the
+  // resolved package dependency actually is so you don't provide a conflicting
+  // consumption range. The resolved version is available in the catalogjs.lock
+  // file.
+  dependencies: {
+    [pkgName: string]: string;
+  };
+
+  // If you wish to replace macros with specific values at build time, then use
+  // the "macros" property. This is an object whose keys are the macros that you
+  // wish to replace, and whose corresponding values are the macro replacements.
+  // Note that macro is the body of a regex, so make sure to escape any regex
+  // chars. Also if you are replacing the macro with a string literal, make sure
+  // to include quotes in the macro value:
+  //   "MY_VERSION": "'5.6.4'"
+  macros?: {
+    [macro: string]: string;
+  };
 }
 
 let cache: Map<string, Recipe | undefined> = new Map();

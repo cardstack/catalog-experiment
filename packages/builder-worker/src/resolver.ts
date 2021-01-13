@@ -10,14 +10,14 @@ export const workingHref = "https://working/";
 export interface Resolver {
   resolveAsBuilderNode(
     specifier: string,
-    source: URL,
-    lockEntries: LockEntries
+    source: URL
   ): Promise<BuilderNode<{ resolution: URL; lockEntries: LockEntries }>>;
   resolve(specifier: string, source: URL): Promise<URL>;
 }
 
 interface PkgInfo {
   pkgName: string;
+  pkgURL?: URL;
   registry: string | undefined;
   version: string | undefined;
   hash: string | undefined;
@@ -50,8 +50,7 @@ export abstract class AbstractResolver implements Resolver {
 
   abstract resolveAsBuilderNode(
     specifier: string,
-    source: URL,
-    lockEntries: LockEntries
+    source: URL
   ): Promise<BuilderNode<{ resolution: URL; lockEntries: LockEntries }>>;
 
   async resolve(specifier: string, source: URL): Promise<URL> {
@@ -128,13 +127,9 @@ export class CoreResolver extends AbstractResolver {
   // URLs that match the project root input folder (currently in the Builder's
   // InternalFileNode) into here--this is a more natural place for
   // that.
-  async resolveAsBuilderNode(
-    specifier: string,
-    source: URL,
-    lockEntries: LockEntries
-  ) {
+  async resolveAsBuilderNode(specifier: string, source: URL) {
     let resolution = await this.resolve(specifier, source);
-    return new ConstantNode({ resolution, lockEntries });
+    return new ConstantNode({ resolution, lockEntries: {} });
   }
 }
 
@@ -163,7 +158,10 @@ export function pkgInfoFromSpecifier(specifier: string): PkgInfo | undefined {
   };
 }
 
-export function pkgInfoFromCatalogJsURL(url: URL): PkgInfo | undefined {
+const externalRegistries = ["npm"];
+export function pkgInfoFromCatalogJsURL(
+  url: URL
+): Required<PkgInfo> | undefined {
   if (
     !url.href.startsWith(catalogjsHref) &&
     !url.href.startsWith(workingHref)
@@ -177,8 +175,15 @@ export function pkgInfoFromCatalogJsURL(url: URL): PkgInfo | undefined {
   let modulePath: string | undefined;
   let path = url.href.replace(catalogjsHref, "").replace(workingHref, "");
   let parts = path.split("/");
-  let registry = parts.shift()!;
-  let scopedName = registry === "@catalogjs" ? "@catalogjs" : parts.shift()!;
+  let registryOrScopedName = parts.shift()!;
+  let registry: string;
+  let isExternalRegistry = externalRegistries.includes(registryOrScopedName);
+  if (!isExternalRegistry) {
+    registry = "catalogjs";
+  } else {
+    registry = registryOrScopedName;
+  }
+  let scopedName = isExternalRegistry ? parts.shift()! : registryOrScopedName;
   pkgName = scopedName.startsWith("@")
     ? `${scopedName}/${parts.shift()}`
     : scopedName;
@@ -188,9 +193,13 @@ export function pkgInfoFromCatalogJsURL(url: URL): PkgInfo | undefined {
     parts.shift();
   }
   modulePath = parts.length > 0 ? parts.join("/") : undefined;
+  let pkgURL = new URL(
+    `${catalogjsHref}${isExternalRegistry ? "npm/" : ""}${pkgName}`
+  );
   return {
     registry,
     pkgName,
+    pkgURL,
     version,
     hash,
     modulePath,

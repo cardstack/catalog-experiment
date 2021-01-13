@@ -14,7 +14,18 @@
       "resolutions": {
         "path": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/path.js",
         "url": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/url.js",
-        "fs": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/fs-stub.js"
+        "fs": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/fs-stub.js",
+        "punycode": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/punycode.js",
+        "util": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/util.js",
+        "querystring": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/querystring.js",
+        "process": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/process.js",
+        "inherits": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/inherits.js"
+      },
+      "macros": {
+        "process\\.env\\.NODE_ENV": "'production'"
+      },
+      "dependencies": {
+        "@catalogjs/polyfills": "^0.0.1"
       },
       "babelPlugins": [
         "@babel/plugin-transform-flow-strip-types",

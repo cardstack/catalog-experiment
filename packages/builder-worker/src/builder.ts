@@ -26,6 +26,7 @@ import { error } from "./logger";
 import sortBy from "lodash/sortBy";
 import { CoreResolver } from "./resolver";
 import { getRecipe, Recipe } from "./recipes";
+import { Options } from "./nodes/project";
 
 type BoolForEach<T> = {
   [P in keyof T]: boolean;
@@ -416,8 +417,13 @@ export class Builder<Input> {
   }
 
   // roots lists [inputRoot, outputRoot]
-  static forProjects(fs: FileSystem, roots: [URL, URL][], recipesURL: URL) {
-    return new this(fs, projectsToNodes(roots, fs), recipesURL);
+  static forProjects(
+    fs: FileSystem,
+    roots: [URL, URL][],
+    recipesURL: URL,
+    options?: Partial<Options>
+  ) {
+    return new this(fs, projectsToNodes(roots, fs, options), recipesURL);
   }
 
   async build(): ReturnType<BuildRunner<Input>["build"]> {
@@ -462,12 +468,23 @@ export class Rebuilder<Input> {
   };
   private nextState: Deferred<RebuilderState> = new Deferred();
 
-  constructor(fs: FileSystem, roots: Input, recipesURL: URL) {
+  constructor(
+    fs: FileSystem,
+    roots: Input,
+    recipesURL: URL,
+    private whenIdle?: () => void
+  ) {
     this.runner = new BuildRunner(fs, roots, recipesURL, this.inputDidChange);
   }
 
   // roots lists [inputRoot, outputRoot]
-  static forProjects(fs: FileSystem, roots: [URL, URL][], recipesURL: URL) {
+  static forProjects(
+    fs: FileSystem,
+    roots: [URL, URL][],
+    recipesURL: URL,
+    options?: Partial<Options>,
+    whenIdle?: () => void
+  ) {
     for (let [input, output] of roots) {
       if (input.origin === output.origin) {
         throw new Error(
@@ -475,7 +492,12 @@ export class Rebuilder<Input> {
         );
       }
     }
-    return new this(fs, projectsToNodes(roots, fs), recipesURL);
+    return new this(
+      fs,
+      projectsToNodes(roots, fs, options),
+      recipesURL,
+      whenIdle
+    );
   }
 
   get status():
@@ -555,6 +577,9 @@ export class Rebuilder<Input> {
           }
           break;
         case "idle":
+          if (typeof this.whenIdle === "function") {
+            this.whenIdle();
+          }
           await this.nextState.promise;
           break;
         case "rebuild-requested":
@@ -626,8 +651,11 @@ function dotSafeName(name: string): string {
 
 export function explainAsDot(explanation: Explanation): string {
   let output = ["digraph {"];
-  for (let [debugName, { inputs, created, didChange }] of explanation) {
-    let name = dotSafeName(debugName);
+  for (let [
+    debugName,
+    { inputs, created, didChange, buildTime },
+  ] of explanation) {
+    let name = `${dotSafeName(debugName)} (${buildTime}ms)`;
 
     // nodes with red outlines have changed on the last build.
     output.push(`"${name}" ${didChange ? '[color="red"]' : ""}`);
@@ -646,10 +674,14 @@ export function explainAsDot(explanation: Explanation): string {
   return output.join("\n");
 }
 
-function projectsToNodes(roots: [URL, URL][], fs: FileSystem) {
+function projectsToNodes(
+  roots: [URL, URL][],
+  fs: FileSystem,
+  options?: Partial<Options>
+) {
   return roots.map(
     ([input, output]) =>
-      new MakeProjectNode(input, output, new CoreResolver(fs))
+      new MakeProjectNode(input, output, new CoreResolver(fs), options)
   );
 }
 

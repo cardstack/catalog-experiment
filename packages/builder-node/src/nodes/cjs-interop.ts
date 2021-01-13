@@ -21,7 +21,7 @@ import {
 import { JSParseNode } from "../../../builder-worker/src/nodes/js";
 import { File } from "@babel/types";
 import upperFirst from "lodash/upperFirst";
-import { RegionEditor } from "../../../builder-worker/src/code-region";
+import { RegionEditor } from "../../../builder-worker/src/region-editor";
 import {
   pkgInfoFromCatalogJsURL,
   pkgInfoFromSpecifier,
@@ -97,13 +97,16 @@ class IntrospectSrcNode implements BuilderNode {
       return {};
     }
     return {
+      src: new FileNode(this.url),
       desc: new AnalyzeFileNode(this.url),
     };
   }
 
   async run({
+    src,
     desc,
   }: {
+    src: string;
     desc: FileDescription | undefined;
   }): Promise<NodeOutput<void[] | void[][]>> {
     let url = new URL(
@@ -112,24 +115,56 @@ class IntrospectSrcNode implements BuilderNode {
     );
     if (!desc || isModuleDescription(desc)) {
       let jsonDeps = new Set<string>();
-      for (let importDesc of desc?.names.values() || []) {
+      let updatedSrc: string | undefined;
+      let editor: RegionEditor | undefined;
+      let pkgInfo = pkgInfoFromCatalogJsURL(this.url)!;
+      let { pkgName, version, modulePath } = pkgInfo;
+      for (let [pointer, region] of desc?.regions.entries() ?? []) {
+        if (
+          region.type === "import" &&
+          region.isDynamic &&
+          region.specifierForDynamicImport == null
+        ) {
+          editor = editor ?? new RegionEditor(src, desc!, url);
+          for (let [p] of editor.regions.entries()) {
+            editor.keepRegion(p);
+          }
+          editor.replace(
+            pointer,
+            `importHasNonStringLiteralSpecifier("${pkgName}", "${version}", ${
+              modulePath ? '"' + modulePath + '"' : "undefined"
+            })`
+          );
+        }
+      }
+      for (let { declaration: importDesc } of desc?.declarations.values() ||
+        []) {
         if (
           importDesc.type === "import" &&
-          desc!.imports[importDesc.importIndex].specifier.endsWith(".json")
+          desc!.imports[importDesc.importIndex].specifier &&
+          desc!.imports[importDesc.importIndex].specifier!.endsWith(".json")
         ) {
-          jsonDeps.add(desc!.imports[importDesc.importIndex].specifier);
+          jsonDeps.add(desc!.imports[importDesc.importIndex].specifier!);
         }
       }
       for (let exportDesc of desc?.exports.values() || []) {
         if (
           exportDesc.type === "reexport" &&
-          desc!.imports[exportDesc.importIndex].specifier.endsWith(".json")
+          desc!.imports[exportDesc.importIndex].specifier &&
+          desc!.imports[exportDesc.importIndex].specifier!.endsWith(".json")
         ) {
-          jsonDeps.add(desc!.imports[exportDesc.importIndex].specifier);
+          jsonDeps.add(desc!.imports[exportDesc.importIndex].specifier!);
         }
       }
+      if (editor) {
+        updatedSrc = `import { importHasNonStringLiteralSpecifier } from "@catalogjs/loader";
+${editor.serialize().code}`;
+      }
       let nodes: BuilderNode<void>[] = [
-        new WriteFileNode(new FileNode(this.url), url),
+        new WriteFileNode(
+          updatedSrc ? new ConstantNode(updatedSrc) : new FileNode(this.url),
+          url
+        ),
         ...[...jsonDeps].map(
           (specifier) =>
             new JSONRewriterNode(
@@ -174,15 +209,17 @@ class ESInteropNode implements BuilderNode {
 function remapRequires(
   origSrc: string,
   desc: CJSDescription,
-  depBindingName: string
+  depBindingName: string,
+  url: URL
 ): string {
-  let editor = new RegionEditor(origSrc, desc, () => {
-    throw new Error(`Cannot obtain unused binding name for CJS file`);
-  });
+  let editor = new RegionEditor(origSrc, desc, url);
+  for (let [pointer] of editor.regions.entries()) {
+    editor.keepRegion(pointer);
+  }
   for (let [index, require] of desc.requires.entries()) {
     editor.replace(require.requireRegion, `${depBindingName}[${index}]()`);
   }
-  return editor.serialize();
+  return editor.serialize().code;
 }
 
 function depFactoryName(specifier: string): string {
@@ -261,7 +298,7 @@ class RewriteCJSNode implements BuilderNode {
     });
     let depBindingName = "dependencies";
     let count = 0;
-    while (this.desc.names.has(depBindingName)) {
+    while (this.desc.declarations.has(depBindingName)) {
       depBindingName = `dependencies${count++}`;
     }
     let newSrc = `${[...imports].join("\n")}
@@ -273,7 +310,7 @@ function implementation() {
       "module",
       "exports",
       "${depBindingName}",
-      \`${remapRequires(this.src, this.desc, depBindingName)
+      \`${remapRequires(this.src, this.desc, depBindingName, this.outputURL)
         .replace(/\\/g, "\\\\")
         .replace(/`/g, "\\`")
         .replace(/\$/g, "\\$")}\`
@@ -404,6 +441,6 @@ class AnalyzeFileNode implements BuilderNode {
   }
 
   async run({ parsed }: { parsed: File }): Promise<Value<FileDescription>> {
-    return { value: describeFile(parsed, { filename: this.url.href }) };
+    return { value: describeFile(parsed, this.url.href) };
   }
 }

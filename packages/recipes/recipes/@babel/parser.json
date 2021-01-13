@@ -11,6 +11,13 @@
       "entrypoints": [
         "./src/index.js"
       ],
+      "macros": {
+        "process\\.env\\.NODE_ENV": "'production'"
+      },
+      "dependencies": {
+        "@babel/helper-validator-identifier": "^7.9.0",
+        "charcodes": "^0.2.0"
+      },
       "babelPlugins": [
         "@babel/plugin-transform-flow-strip-types",
         [

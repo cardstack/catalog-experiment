@@ -1,12 +1,12 @@
 import "qunit";
 import "qunit/qunit/qunit.css";
 
-import "./path-test";
-import "./builder-test";
 import "./builder-nodes-test";
-import "./filesystem-test";
-import "./combine-modules-test";
+import "./code-editor-test";
 import "./describe-file-test";
+import "./builder-test";
+import "./path-test";
+import "./filesystem-test";
 import "./http-driver-test";
 import "./logger-test";
 

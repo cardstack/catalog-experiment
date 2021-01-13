@@ -22,7 +22,8 @@ export class EntrypointsNode implements BuilderNode {
   constructor(
     private pkgJSON: PackageJSON,
     private pkgURL: URL,
-    private esCompliantNode: MakePkgESCompliantNode
+    private esCompliantNode: MakePkgESCompliantNode,
+    private builderDeps?: { [pkgName: string]: string }
   ) {
     this.cacheKey = `pkg-entrypoints:${pkgURL.href}`;
   }
@@ -48,25 +49,31 @@ export class EntrypointsNode implements BuilderNode {
     };
   }
 
-  async run({
-    entrypointsExist,
-  }: {
-    entrypointsExist: boolean[];
-  }): Promise<NextNode<void>> {
+  async run(
+    {
+      entrypointsExist,
+    }: {
+      entrypointsExist: boolean[];
+    },
+    getRecipe: RecipeGetter
+  ): Promise<NextNode<void>> {
     let { name, version } = this.pkgJSON;
     if (entrypointsExist.some((exist) => !exist)) {
       throw new Error(
         `The package is missing entrypoint(s) files for the package ${name} ${version} at ${this.pkgURL.href}`
       );
     }
+    let recipe = await getRecipe(name, version);
+    let { dependencies: dependencyOverrides = {} } = recipe ?? {};
     let dependencies: Dependencies = {};
-    for (let [name, range] of Object.entries(this.pkgJSON.dependencies ?? {})) {
+    for (let [name, range] of Object.entries({
+      ...(this.pkgJSON.dependencies ?? {}),
+      ...(this.builderDeps ?? {}),
+      ...dependencyOverrides,
+    })) {
       dependencies[name] = {
-        url: `https://catalogjs.com/pkgs/npm/${name}/`,
-        //TODO: this is a bit awkward as npm shoves a lot of things besides the
-        // range on the right-hand side of the dep name (src URL, SHA, tag,
-        // branch, etc). work with Ed to figure out a better/less npm-ish
-        // thing(s) to capture here
+        type: "npm",
+        pkgName: name,
         range,
       };
     }

@@ -10,6 +10,7 @@ import { buildSrcDir } from "../src/nodes/package";
 import { recipesURL } from "../../builder-worker/src/recipes";
 import { installFileAssertions } from "../../builder-worker/test/helpers/file-assertions";
 import { NodeResolver } from "../src/resolver";
+import { extractDescriptionFromSource } from "../../builder-worker/src/description-encoder";
 
 QUnit.module("Install from npm", function () {
   QUnit.module("pkg dependencies", function (origHooks) {
@@ -28,11 +29,17 @@ QUnit.module("Install from npm", function () {
       };
       a.files = {
         "index.js": `
-        import b from "b";
-        import e from "e";
-        b();
-        e();
-        console.log('a')`,
+          import a from "./a";
+          import b from "b";
+          import e from "e";
+          a();
+          b();
+          e();
+          console.log('a')`,
+        "a.js": `
+          export default function() {
+            console.log('a');
+          };`,
       };
       let b1 = a.addDependency("b", "4.5.6");
       b1.pkg = {
@@ -124,8 +131,13 @@ QUnit.module("Install from npm", function () {
       assert.deepEqual(aEntrypoints.js, ["./index.js"]);
       assert.notOk(aEntrypoints.html);
       assert.deepEqual(aEntrypoints.dependencies, {
-        b: { url: "https://catalogjs.com/pkgs/npm/b/", range: "4.5.6" },
-        e: { url: "https://catalogjs.com/pkgs/npm/e/", range: "2.3.4" },
+        b: { type: "npm", pkgName: "b", range: "4.5.6" },
+        e: { type: "npm", pkgName: "e", range: "2.3.4" },
+        "@catalogjs/loader": {
+          type: "npm",
+          pkgName: "@catalogjs/loader",
+          range: "^0.0.1",
+        },
       });
 
       let cEntrypoints = JSON.parse(
@@ -136,7 +148,12 @@ QUnit.module("Install from npm", function () {
       assert.deepEqual(cEntrypoints.js, ["./index.js"]);
       assert.notOk(cEntrypoints.html);
       assert.deepEqual(cEntrypoints.dependencies, {
-        b: { url: "https://catalogjs.com/pkgs/npm/b/", range: "7.8.9" },
+        b: { type: "npm", pkgName: "b", range: "7.8.9" },
+        "@catalogjs/loader": {
+          type: "npm",
+          pkgName: "@catalogjs/loader",
+          range: "^0.0.1",
+        },
       });
     });
 
@@ -146,18 +163,22 @@ QUnit.module("Install from npm", function () {
         await (await fs.openFile(new URL("catalogjs.lock", pkgAURL))).readText()
       );
       assert.deepEqual(lock, {
+        "@catalogjs/loader":
+          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/index.js",
         b:
-          "https://catalogjs.com/pkgs/npm/b/4.5.6/q-VwjabeuTToknSVrW+emXye55w=/b.js",
+          "https://catalogjs.com/pkgs/npm/b/4.5.6/vuLeHhy9XcA1s76b5DYNGAuEpGY=/b.js",
         e:
-          "https://catalogjs.com/pkgs/npm/e/2.3.4/3HHDrHWAD4EmwKIiLurOF2RsOr0=/index.js",
+          "https://catalogjs.com/pkgs/npm/e/2.3.4/BUZOzJTxcd8z2LGoiXV858H4-xg=/index.js",
       });
 
       lock = JSON.parse(
         await (await fs.openFile(new URL("catalogjs.lock", pkgCURL))).readText()
       );
       assert.deepEqual(lock, {
+        "@catalogjs/loader":
+          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/index.js",
         b:
-          "https://catalogjs.com/pkgs/npm/b/7.8.9/6LqJQFQXBznRzHbvKXVsF39KLTE=/index.js",
+          "https://catalogjs.com/pkgs/npm/b/7.8.9/3xSsBvcctg1anboYO407-hDuLak=/index.js",
       });
     });
 
@@ -175,7 +196,12 @@ QUnit.module("Install from npm", function () {
       assert.deepEqual(b1Entrypoints.js, ["./b.js"]);
       assert.notOk(b1Entrypoints.html);
       assert.deepEqual(b1Entrypoints.dependencies, {
-        d: { url: "https://catalogjs.com/pkgs/npm/d/", range: "10.11.12" },
+        d: { type: "npm", pkgName: "d", range: "10.11.12" },
+        "@catalogjs/loader": {
+          type: "npm",
+          pkgName: "@catalogjs/loader",
+          range: "^0.0.1",
+        },
       });
 
       let { e: pkgEURL } = aLock;
@@ -186,8 +212,20 @@ QUnit.module("Install from npm", function () {
       );
       assert.deepEqual(eEntrypoints.js, ["./index.js"]);
       assert.notOk(eEntrypoints.html);
-      assert.deepEqual(eEntrypoints.dependencies, {});
-      await assert.file(new URL("catalogjs.lock", pkgEURL).href).doesNotExist();
+      assert.deepEqual(eEntrypoints.dependencies, {
+        "@catalogjs/loader": {
+          type: "npm",
+          pkgName: "@catalogjs/loader",
+          range: "^0.0.1",
+        },
+      });
+      let eLock = JSON.parse(
+        await (await fs.openFile(new URL("catalogjs.lock", pkgEURL))).readText()
+      );
+      assert.deepEqual(eLock, {
+        "@catalogjs/loader":
+          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/index.js",
+      });
 
       let b1Lock = JSON.parse(
         await (
@@ -195,7 +233,9 @@ QUnit.module("Install from npm", function () {
         ).readText()
       );
       assert.deepEqual(b1Lock, {
-        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/hloD8imK3ZAOrPIM2sC5dT2ouY8=/index.js`,
+        "@catalogjs/loader":
+          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/index.js",
+        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/6qYXPJtbTZQbzaBwr8tu6JSH3+w=/index.js`,
       });
       let { d: pkgD1URL } = b1Lock;
       let d1Entrypoints = JSON.parse(
@@ -204,11 +244,23 @@ QUnit.module("Install from npm", function () {
         ).readText()
       );
       assert.deepEqual(d1Entrypoints.js, ["./index.js"]);
-      assert.deepEqual(d1Entrypoints.dependencies, {});
+      assert.deepEqual(d1Entrypoints.dependencies, {
+        "@catalogjs/loader": {
+          type: "npm",
+          pkgName: "@catalogjs/loader",
+          range: "^0.0.1",
+        },
+      });
       assert.notOk(d1Entrypoints.html);
-      await assert
-        .file(new URL("catalogjs.lock", pkgD1URL).href)
-        .doesNotExist();
+      let dLock = JSON.parse(
+        await (
+          await fs.openFile(new URL("catalogjs.lock", pkgD1URL))
+        ).readText()
+      );
+      assert.deepEqual(dLock, {
+        "@catalogjs/loader":
+          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/index.js",
+      });
 
       let cLock = JSON.parse(
         await (await fs.openFile(new URL("catalogjs.lock", pkgCURL))).readText()
@@ -222,7 +274,12 @@ QUnit.module("Install from npm", function () {
       assert.deepEqual(b2Entrypoints.js, ["./index.js"]);
       assert.notOk(b2Entrypoints.html);
       assert.deepEqual(b2Entrypoints.dependencies, {
-        d: { url: "https://catalogjs.com/pkgs/npm/d/", range: "10.11.12" },
+        d: { type: "npm", pkgName: "d", range: "10.11.12" },
+        "@catalogjs/loader": {
+          type: "npm",
+          pkgName: "@catalogjs/loader",
+          range: "^0.0.1",
+        },
       });
 
       let b2Lock = JSON.parse(
@@ -231,10 +288,38 @@ QUnit.module("Install from npm", function () {
         ).readText()
       );
       assert.deepEqual(b2Lock, {
-        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/hloD8imK3ZAOrPIM2sC5dT2ouY8=/index.js`,
+        "@catalogjs/loader":
+          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/index.js",
+        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/6qYXPJtbTZQbzaBwr8tu6JSH3+w=/index.js`,
       });
       let { d: pkgD2URL } = b2Lock;
       assert.deepEqual(pkgD2URL, pkgD1URL);
+    });
+
+    test("bundle metadata utilize final pkg URLs", async function (assert) {
+      let [pkgAURL] = packageURLs;
+      let source = await (
+        await fs.openFile(new URL("index.js", pkgAURL))
+      ).readText();
+      let { desc } = extractDescriptionFromSource(source);
+
+      let { declaration: nameDesc } = desc!.declarations.get("e")!;
+      assert.equal(nameDesc?.type, "local");
+      if (nameDesc.type === "local") {
+        assert.equal(
+          nameDesc.original?.bundleHref,
+          "https://catalogjs.com/pkgs/npm/e/2.3.4/BUZOzJTxcd8z2LGoiXV858H4-xg=/index.js"
+        );
+      }
+
+      ({ declaration: nameDesc } = desc!.declarations.get("b")!);
+      assert.equal(nameDesc?.type, "local");
+      if (nameDesc.type === "local") {
+        assert.equal(
+          nameDesc.original?.bundleHref,
+          "https://catalogjs.com/pkgs/npm/b/4.5.6/vuLeHhy9XcA1s76b5DYNGAuEpGY=/b.js"
+        );
+      }
     });
   });
 
@@ -361,15 +446,12 @@ QUnit.module("Install from npm", function () {
               \`const {
   a
 } = dependencies[0]();
-
 const {
   dep
 } = dependencies[1]();
-
 function doSomething() {
   console.log(\\\`\\\${a}\\\${dep}\\\`);
 }
-
 module.exports = {
   doSomething
 };\`
@@ -447,17 +529,13 @@ module.exports = {
               "exports",
               "dependencies",
               \`const dep1 = dependencies[0]().dep;
-
 const dep2 = dependencies[1]().dep2;
-
 const {
   a
 } = dependencies[2]();
-
 function doSomething() {
   console.log(\\\`\\\${a}\\\${dep1}\\\${dep2}\\\`);
 }
-
 module.exports = {
   doSomething
 };\`
@@ -489,7 +567,6 @@ module.exports = {
               \`const {
   dep
 } = dependencies0[0]();
-
 let dependencies = "don't collide with me" + dep;
 module.exports.default = dependencies;\`
             )(module, module.exports, [test_pkg_depFactory]);
@@ -546,7 +623,6 @@ module.exports.default = dependencies;\`
               "exports",
               "dependencies",
               \`const fs = dependencies[0]();
-
 module.exports.nope = function (filename) {
   return fs.readFileSync(filename);
 };\`
@@ -576,7 +652,6 @@ module.exports.nope = function (filename) {
               "exports",
               "dependencies",
               \`const sample = dependencies[0]();
-
 module.exports.foo = sample.foo;\`
             )(module, module.exports, [getSampleJSON]);
           }
