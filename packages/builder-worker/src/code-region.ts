@@ -25,6 +25,163 @@ const lvalTypes = ["ObjectProperty", "ArrayPattern", "RestElement"];
 
 // the parts of a CodeRegion that we can determine independent of its location,
 // based only on its own NodePath.
+export type CodeRegion =
+  | DocumentCodeRegion
+  | GeneralCodeRegion
+  | ImportCodeRegion
+  | DeclarationCodeRegion
+  | ReferenceCodeRegion;
+
+export interface BaseCodeRegion {
+  // this is the position of the code region in the document when we traverse
+  // the document's code regions in order starting at the document pointer.
+  position: number;
+
+  // starting position relative to start of parent (if we're the firstChild) or
+  // end of previous sibling (if we are the nextSibling)
+  start: number;
+
+  // ending position relative to the last child's end, or relative to our start
+  // if no children
+  end: number;
+
+  firstChild: RegionPointer | undefined;
+  nextSibling: RegionPointer | undefined;
+  dependsOn: Set<RegionPointer>;
+
+  // we use this to track the original source for module side-effects
+  original?: {
+    bundleHref: string;
+    range: string;
+  };
+  // when we want to rewrite regions containing identifiers, we need to be aware
+  // if they represent object or import shorthand syntax, so that we can
+  // rewrite:
+  //
+  //    let { x } = foo();
+  //
+  // to:
+  //
+  //    let { x: x0 } = foo();
+  //
+  shorthand: "import" | "export" | "object" | false;
+}
+
+export type DeclarationDescription =
+  | LocalDeclarationDescription
+  | ImportedDeclarationDescription;
+export interface BaseDeclarationDescription {
+  declaredName: string;
+  references: RegionPointer[];
+}
+
+export interface LocalDeclarationDescription
+  extends BaseDeclarationDescription {
+  type: "local";
+  declaratorOfRegion: RegionPointer | undefined;
+  source: string;
+  original?: {
+    bundleHref: string;
+    range: string;
+    importedAs: string | NamespaceMarker;
+  };
+}
+export function isDeclarationDescription(
+  desc: any
+): desc is DeclarationDescription {
+  return (
+    typeof desc === "object" && "declaredName" in desc && "references" in desc
+  );
+}
+
+export interface ImportedDeclarationDescription
+  extends BaseDeclarationDescription {
+  type: "import";
+  importIndex: number;
+  importedName: string | NamespaceMarker;
+}
+
+export interface DocumentCodeRegion extends BaseCodeRegion {
+  type: "document";
+}
+export function isDocumentCodeRegion(
+  region: any
+): region is DocumentCodeRegion {
+  return (
+    typeof region === "object" && "type" in region && region.type === "document"
+  );
+}
+export interface GeneralCodeRegion extends BaseCodeRegion {
+  type: "general";
+  preserveGaps: boolean;
+}
+
+export function isGeneralCodeRegion(region: any): region is GeneralCodeRegion {
+  return (
+    typeof region === "object" && "type" in region && region.type === "general"
+  );
+}
+
+export interface DeclarationCodeRegion extends Omit<GeneralCodeRegion, "type"> {
+  type: "declaration";
+  declaration: DeclarationDescription;
+}
+export function isDeclarationCodeRegion(
+  region: any
+): region is DeclarationCodeRegion {
+  return (
+    typeof region === "object" &&
+    "type" in region &&
+    region.type === "declaration"
+  );
+}
+
+// When an import region is inserted within a declaration region, or declaration
+// region is inserted around an import region, then the declaration region will
+// automatically depend on the reference region--this will allow dynamically
+// loaded module code regions to be traversed. Note that we'll need to update
+// this for top level await so that a document region can automatically depend
+// on an import region when the import is a direct child of the document region.
+export interface ImportCodeRegion extends Omit<GeneralCodeRegion, "type"> {
+  type: "import";
+  importIndex: number;
+  isDynamic: boolean;
+  specifierForDynamicImport: string | undefined;
+  exportType: "reexport" | "export-all" | undefined;
+}
+
+export function isImportCodeRegion(region: any): region is ImportCodeRegion {
+  return (
+    typeof region === "object" && "type" in region && region.type === "import"
+  );
+}
+
+// When a reference region is inserted, or another region is inserted around a
+// reference region, then the parent of the reference region will automatically
+// depend on the reference region.
+export interface ReferenceCodeRegion extends BaseCodeRegion {
+  type: "reference";
+}
+export function isReferenceCodeRegion(
+  region: any
+): region is ReferenceCodeRegion {
+  return (
+    typeof region === "object" &&
+    "type" in region &&
+    region.type === "reference"
+  );
+}
+
+export function isCodeRegion(region: any): region is CodeRegion {
+  return (
+    isDocumentCodeRegion(region) ||
+    isGeneralCodeRegion(region) ||
+    isDeclarationCodeRegion(region) ||
+    isReferenceCodeRegion(region) ||
+    isImportCodeRegion(region)
+  );
+}
+
 type PathFacts = Pick<GeneralCodeRegion, "shorthand" | "preserveGaps">;
 
 interface NewRegion {
@@ -623,177 +780,6 @@ export class RegionBuilder {
   }
 }
 
-export type DeclarationDescription =
-  | LocalDeclarationDescription
-  | ImportedDeclarationDescription;
-export interface BaseDeclarationDescription {
-  declaredName: string;
-  references: RegionPointer[];
-}
-
-export interface LocalDeclarationDescription
-  extends BaseDeclarationDescription {
-  type: "local";
-  declaratorOfRegion: RegionPointer | undefined;
-  source: string;
-  original?: {
-    bundleHref: string;
-    range: string;
-    importedAs: string | NamespaceMarker;
-  };
-}
-export function isDeclarationDescription(
-  desc: any
-): desc is DeclarationDescription {
-  return (
-    typeof desc === "object" && "declaredName" in desc && "references" in desc
-  );
-}
-
-export interface ImportedDeclarationDescription
-  extends BaseDeclarationDescription {
-  type: "import";
-  importIndex: number;
-  importedName: string | NamespaceMarker;
-}
-
-export interface EnclosedNames {
-  [name: string]: number; // starting position of name (position should not include bytes in this region's child regions)
-}
-
-export type CodeRegion =
-  | DocumentCodeRegion
-  | GeneralCodeRegion
-  | ImportCodeRegion
-  | DeclarationCodeRegion
-  | ReferenceCodeRegion;
-
-export interface BaseCodeRegion {
-  // this is the position of the code region in the document when we traverse
-  // the document's code regions in order starting at the document pointer.
-  position: number;
-
-  // starting position relative to start of parent (if we're the firstChild) or
-  // end of previous sibling (if we are the nextSibling)
-  start: number;
-
-  // ending position relative to the last child's end, or relative to our start
-  // if no children
-  end: number;
-
-  firstChild: RegionPointer | undefined;
-  nextSibling: RegionPointer | undefined;
-
-  // when we want to rewrite regions containing identifiers, we need to be aware
-  // if they represent object or import shorthand syntax, so that we can
-  // rewrite:
-  //
-  //    let { x } = foo();
-  //
-  // to:
-  //
-  //    let { x: x0 } = foo();
-  //
-  shorthand: "import" | "export" | "object" | false;
-  dependsOn: Set<RegionPointer>;
-
-  // we use this to track the original source for module side-effects
-  original?: {
-    bundleHref: string;
-    range: string;
-  };
-}
-
-export interface DocumentCodeRegion extends BaseCodeRegion {
-  type: "document";
-}
-export function isDocumentCodeRegion(
-  region: any
-): region is DocumentCodeRegion {
-  return (
-    typeof region === "object" && "type" in region && region.type === "document"
-  );
-}
-export interface GeneralCodeRegion extends BaseCodeRegion {
-  type: "general";
-  preserveGaps: boolean;
-}
-
-export function isGeneralCodeRegion(region: any): region is GeneralCodeRegion {
-  return (
-    typeof region === "object" && "type" in region && region.type === "general"
-  );
-}
-
-export interface DeclarationCodeRegion extends Omit<GeneralCodeRegion, "type"> {
-  type: "declaration";
-  declaration: DeclarationDescription;
-}
-export function isDeclarationCodeRegion(
-  region: any
-): region is DeclarationCodeRegion {
-  return (
-    typeof region === "object" &&
-    "type" in region &&
-    region.type === "declaration"
-  );
-}
-
-// When an import region is inserted within a declaration region, or declaration
-// region is inserted around an import region, then the declaration region will
-// automatically depend on the reference region--this will allow dynamically
-// loaded module code regions to be traversed. Note that we'll need to update
-// this for top level await so that a document region can automatically depend
-// on an import region when the import is a direct child of the document region.
-export interface ImportCodeRegion extends Omit<GeneralCodeRegion, "type"> {
-  type: "import";
-  importIndex: number;
-  isDynamic: boolean;
-  specifierForDynamicImport: string | undefined;
-  exportType: "reexport" | "export-all" | undefined;
-}
-
-export function isImportCodeRegion(region: any): region is ImportCodeRegion {
-  return (
-    typeof region === "object" && "type" in region && region.type === "import"
-  );
-}
-
-export function assignCodeRegionPositions(regions: CodeRegion[]) {
-  let index = 0;
-  visitCodeRegions(
-    regions,
-    (region) => (region.position = index++),
-    documentPointer
-  );
-}
-
-// When a reference region is inserted, or another region is inserted around a
-// reference region, then the parent of the reference region will automatically
-// depend on the reference region.
-export interface ReferenceCodeRegion extends BaseCodeRegion {
-  type: "reference";
-}
-export function isReferenceCodeRegion(
-  region: any
-): region is ReferenceCodeRegion {
-  return (
-    typeof region === "object" &&
-    "type" in region &&
-    region.type === "reference"
-  );
-}
-
-export function isCodeRegion(region: any): region is CodeRegion {
-  return (
-    isDocumentCodeRegion(region) ||
-    isGeneralCodeRegion(region) ||
-    isDeclarationCodeRegion(region) ||
-    isReferenceCodeRegion(region) ||
-    isImportCodeRegion(region)
-  );
-}
-
 type Disposition =
   | {
       state: "unchanged";
@@ -820,6 +806,9 @@ export class RegionEditor {
   readonly dispositions: Disposition[];
 
   private pendingGap: { withinParent: RegionPointer; gap: number } | undefined;
+  private pendingGapDeletion:
+    | { withinParent: RegionPointer; gapDeletion: number }
+    | undefined;
   private pendingStart:
     | { withinParent: RegionPointer; start: number }
     | undefined;
@@ -1050,7 +1039,7 @@ export class RegionEditor {
             // over parent regions that we are intentionally not emitting
             if (
               this.outputCode.join("").trim().length > 0 &&
-              !Boolean(this.outputCode.slice(-1)[0].match(/\s/))
+              !Boolean(this.outputCode.slice(-1)[0]?.slice(-1).match(/\s/))
             ) {
               // when we add a new gap, then the next region that is output will
               // have it's start adjusted by this amount
@@ -1068,6 +1057,7 @@ export class RegionEditor {
       case "replaced": {
         let outputRegion = cloneDeep(region);
         this.absorbPendingGap(outputRegion, true);
+        this.absorbPendingGapDeletion(outputRegion, true);
         gap = this.absorbPendingStart(outputRegion);
         let outputPointer = this.outputRegions.length;
         this.handleReplace(
@@ -1112,6 +1102,7 @@ export class RegionEditor {
           outputRegion.nextSibling = maybeNextSibling;
         }
         this.absorbPendingGap(outputRegion, true);
+        this.absorbPendingGapDeletion(outputRegion, true);
         gap = this.absorbPendingStart(outputRegion);
         if (region.firstChild != null) {
           let childRegion: CodeRegion;
@@ -1120,9 +1111,30 @@ export class RegionEditor {
           this.forAllSiblings(region.firstChild, (r) => {
             childRegion = this.regions[r];
             let gapIndex = this.outputCode.length;
-            this.outputCode.push(
-              this.src.slice(this.cursor, this.cursor + childRegion.start)
+            let gapString = this.src.slice(
+              this.cursor,
+              this.cursor + childRegion.start
             );
+
+            // collapse unnecessary whitespace
+            if (
+              region.type === "document" &&
+              gapString.length > 1 &&
+              gapString.match(/^\s+$/)
+            ) {
+              let collapseSize = Boolean(
+                this.outputCode.slice(-1)[0]?.slice(-1).match(/\s/)
+              )
+                ? gapString.length
+                : gapString.length - 1;
+              this.emitPendingGapDeletion(regionPointer, collapseSize);
+              if (gapString.length > collapseSize) {
+                this.outputCode.push("\n");
+              }
+            } else {
+              this.outputCode.push(gapString);
+            }
+
             this.cursor += childRegion.start;
             let {
               disposition,
@@ -1146,6 +1158,7 @@ export class RegionEditor {
             childDispositions.push(disposition);
           });
           this.absorbPendingGap(outputRegion);
+          this.absorbPendingGapDeletion(outputRegion);
           if (!isLastChildGapRemoved! && this.pendingStart) {
             outputRegion.end += this.pendingStart.start;
           }
@@ -1442,6 +1455,29 @@ export class RegionEditor {
     }
   }
 
+  private absorbPendingGapDeletion(
+    region: CodeRegion,
+    deleteBeforeRegion = false
+  ) {
+    if (this.pendingGapDeletion && deleteBeforeRegion) {
+      if (region.start < this.pendingGapDeletion.gapDeletion) {
+        throw new Error(
+          `we have removed more whitespace than is accommodated for in the proceeding region`
+        );
+      }
+      region.start -= this.pendingGapDeletion.gapDeletion;
+      this.pendingGapDeletion = undefined;
+    } else if (this.pendingGapDeletion && !deleteBeforeRegion) {
+      if (region.end < this.pendingGapDeletion.gapDeletion) {
+        throw new Error(
+          `we have removed more whitespace than is accommodated for at the end of the region`
+        );
+      }
+      region.end -= this.pendingGapDeletion.gapDeletion;
+      this.pendingGapDeletion = undefined;
+    }
+  }
+
   private absorbPendingStart(outputRegion: CodeRegion): number {
     if (this.pendingStart != null) {
       let originalStart = outputRegion.start;
@@ -1497,15 +1533,34 @@ export class RegionEditor {
   ) {
     let region = this.regions[pointer];
     let parentRegion = this.regions[parentPointer];
+    let start = region.start;
     if (this.pendingStart == null && pointer !== documentPointer) {
-      this.pendingStart = { withinParent: parentPointer, start: region.start };
+      if (this.pendingGapDeletion) {
+        if (start < this.pendingGapDeletion.gapDeletion) {
+          throw new Error(
+            `we have removed more whitespace than is accommodated for in the proceeding region (which is deleted ${pointer})`
+          );
+        }
+        start -= this.pendingGapDeletion.gapDeletion;
+        this.pendingGapDeletion = undefined;
+      }
+      this.pendingStart = { withinParent: parentPointer, start };
     } else if (
       this.pendingStart &&
       this.pendingStart.withinParent === parentPointer &&
       (parentRegion.type === "document" ||
         (parentRegion.type === "general" && parentRegion.preserveGaps))
     ) {
-      this.pendingStart.start += region.start;
+      if (this.pendingGapDeletion) {
+        if (start < this.pendingGapDeletion.gapDeletion) {
+          throw new Error(
+            `we have removed more whitespace than is accommodated for in the proceeding region (which is deleted ${pointer})`
+          );
+        }
+        start -= this.pendingGapDeletion.gapDeletion;
+        this.pendingGapDeletion = undefined;
+      }
+      this.pendingStart.start += start;
     }
   }
 
@@ -1516,7 +1571,20 @@ export class RegionEditor {
     this.pendingGap.gap += gap;
   }
 
+  private emitPendingGapDeletion(
+    parentPointer: RegionPointer,
+    gapDeletion: number
+  ) {
+    if (!this.pendingGapDeletion) {
+      this.pendingGapDeletion = { withinParent: parentPointer, gapDeletion: 0 };
+    }
+    this.pendingGapDeletion.gapDeletion += gapDeletion;
+  }
+
   private cancelPendingActions(pointer: RegionPointer) {
+    if (this.pendingGapDeletion?.withinParent === pointer) {
+      this.pendingGapDeletion = undefined;
+    }
     if (this.pendingGap?.withinParent === pointer) {
       this.pendingGap = undefined;
     }
@@ -1552,6 +1620,15 @@ export class RegionEditor {
       current = this.regions[current].nextSibling;
     }
   }
+}
+
+export function assignCodeRegionPositions(regions: CodeRegion[]) {
+  let index = 0;
+  visitCodeRegions(
+    regions,
+    (region) => (region.position = index++),
+    documentPointer
+  );
 }
 
 function shorthandMode(path: NodePath): PathFacts["shorthand"] {

@@ -7944,15 +7944,16 @@ QUnit.module("module builder", function (origHooks) {
           export const mango = "Mango";
         `,
       });
-      builder = makeBuilder(assert.fs);
-      await builder.build();
-      await assert
-        .file("output/index.js")
-        .matches(/const vanGogh = "Van Gogh";[\n ]+ const mango = "Mango";/);
-      await assert
-        .file("output/index.js")
-        .matches(/const puppies = { vanGogh, mango };/);
-      await assert.file("output/index.js").matches(/export { puppies };/);
+      let { source } = await bundle(assert.fs);
+      assert.codeEqual(
+        source,
+        `
+        const vanGogh = \"Van Gogh\";
+        const mango = \"Mango\";
+        const puppies = { vanGogh, mango };
+        export { puppies };
+        `
+      );
     });
 
     test("circular imports", async function (assert) {
