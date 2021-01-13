@@ -12,8 +12,8 @@ import {
   documentPointer,
   NamespaceMarker,
   notFoundPointer,
-  RegionEditor,
 } from "../src/code-region";
+import { RegionEditor } from "../src/region-editor";
 
 const { test } = QUnit;
 

@@ -19,13 +19,13 @@ import {
 import isEqual from "lodash/isEqual";
 import invert from "lodash/invert";
 import {
-  assignCodeRegionPositions,
   DeclarationCodeRegion,
   GeneralCodeRegion,
   ImportCodeRegion,
   NamespaceMarker,
   ReferenceCodeRegion,
 } from "./code-region";
+import { assignCodeRegionPositions } from "./region-editor";
 import { assertNever } from "@catalogjs/shared/util";
 import { catalogjsHref, workingHref } from "./resolver";
 

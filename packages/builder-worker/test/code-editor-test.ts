@@ -7,11 +7,8 @@ import {
   LocalExportDescription,
   ModuleDescription,
 } from "../src/describe-file";
-import {
-  CodeRegion,
-  DeclarationCodeRegion,
-  RegionEditor,
-} from "../src/code-region";
+import { CodeRegion, DeclarationCodeRegion } from "../src/code-region";
+import { RegionEditor } from "../src/region-editor";
 
 const { test } = QUnit;
 

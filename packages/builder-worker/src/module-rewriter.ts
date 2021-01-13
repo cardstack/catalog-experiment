@@ -11,13 +11,13 @@ import {
 import {
   isNamespaceMarker,
   NamespaceMarker,
-  RegionEditor,
   DeclarationCodeRegion,
   CodeRegion,
   RegionPointer,
   DeclarationDescription,
   documentPointer,
 } from "./code-region";
+import { RegionEditor } from "./region-editor";
 import { BundleAssignment } from "./nodes/bundle";
 import stringify from "json-stable-stringify";
 // @ts-ignore

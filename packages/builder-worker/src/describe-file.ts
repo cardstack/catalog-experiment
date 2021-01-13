@@ -38,7 +38,8 @@ import {
   Resolution,
   makeNonCyclic,
 } from "./nodes/resolution";
-import { NamespaceMarker, assignCodeRegionPositions } from "./code-region";
+import { NamespaceMarker } from "./code-region";
+import { assignCodeRegionPositions } from "./region-editor";
 import { flatMap } from "lodash";
 
 export interface ExportAllMarker {

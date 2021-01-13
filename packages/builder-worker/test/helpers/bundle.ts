@@ -6,7 +6,7 @@ import { extractDescriptionFromSource } from "../../src/description-encoder";
 import { Options } from "../../src/nodes/project";
 import { FileDescriptor } from "../../src/filesystem-drivers/filesystem-driver";
 import { FileDescription } from "../../src/describe-file";
-import { RegionEditor } from "../../src/code-region";
+import { RegionEditor } from "../../src/region-editor";
 
 export const outputOrigin = `http://output`;
 

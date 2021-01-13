@@ -9,9 +9,7 @@ import {
 } from "../describe-file";
 import {
   isNamespaceMarker,
-  assignCodeRegionPositions,
   NamespaceMarker,
-  RegionEditor,
   RegionPointer,
   DeclarationCodeRegion,
   CodeRegion,
@@ -23,6 +21,7 @@ import {
   DeclarationDescription,
   DocumentCodeRegion,
 } from "../code-region";
+import { RegionEditor, assignCodeRegionPositions } from "../region-editor";
 import { BundleAssignment } from "./bundle";
 import { maybeRelativeURL } from "../path";
 import { HeadState, ModuleRewriter } from "../module-rewriter";
@@ -153,7 +152,7 @@ export class FinishAppendModulesNode implements BuilderNode {
         end: 0,
         firstChild: 1,
         nextSibling: undefined,
-        dependsOn: new Set(), // TODO need to add all module side effects, and all the module scoped declaration side effects
+        dependsOn: new Set(),
       },
     ];
 

@@ -2,9 +2,9 @@ import { difference, flatMap } from "lodash";
 import {
   documentPointer,
   isNamespaceMarker,
-  RegionEditor,
   RegionPointer,
 } from "./code-region";
+import { RegionEditor } from "./region-editor";
 import {
   DependencyResolver,
   ResolvedDependency,

@@ -18,8 +18,8 @@ import {
   ImportCodeRegion,
   isNamespaceMarker,
   NamespaceMarker,
-  RegionEditor,
 } from "../src/code-region";
+import { RegionEditor } from "../src/region-editor";
 import {
   isExportAllMarker,
   LocalExportDescription,

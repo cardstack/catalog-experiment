@@ -21,7 +21,7 @@ import {
 import { JSParseNode } from "../../../builder-worker/src/nodes/js";
 import { File } from "@babel/types";
 import upperFirst from "lodash/upperFirst";
-import { RegionEditor } from "../../../builder-worker/src/code-region";
+import { RegionEditor } from "../../../builder-worker/src/region-editor";
 import {
   pkgInfoFromCatalogJsURL,
   pkgInfoFromSpecifier,

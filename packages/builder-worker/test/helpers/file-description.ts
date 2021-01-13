@@ -5,7 +5,7 @@ import {
   ModuleDescription,
   CJSDescription,
 } from "../../src/describe-file";
-import { RegionEditor } from "../../src/code-region";
+import { RegionEditor } from "../../src/region-editor";
 import { parse } from "@babel/core";
 import { url } from "./file-assertions";
 
