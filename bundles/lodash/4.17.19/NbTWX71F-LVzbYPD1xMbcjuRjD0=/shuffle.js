@@ -1,0 +1,18 @@
+import { default as copyArray } from "./dist/117.js";
+import { default as shuffleSelf } from "./dist/170.js";
+import { default as values } from "./values.js";
+import { default as isArray } from "./isArray.js";
+function arrayShuffle(array) {
+  return shuffleSelf(copyArray(array));
+}
+function baseShuffle(collection) {
+  return shuffleSelf(values(collection));
+}
+function shuffle(collection) {
+  var func = isArray(collection) ? arrayShuffle : baseShuffle;
+  return func(collection);
+}
+export { shuffle as default };
+/*====catalogjs annotation start====
+k5SVwq0uL2Rpc3QvMTE3LmpzA8LAlcKtLi9kaXN0LzE3MC5qcwbCwJXCqy4vdmFsdWVzLmpzCcLAlcKsLi9pc0FycmF5LmpzDMLAgadkZWZhdWx0lKFsp3NodWZmbGUewNwAIJehbwAAA8CTDhMYwJmhZAkAAsCRAsDCmKFpqWNvcHlBcnJheZICEcAAp2RlZmF1bHTAwJihcgsJwMCRAcDCnKFpABgBBpDAwgDCwMCZoWQJAAXAkQXAwpihaatzaHVmZmxlU2VsZpMFEBXAAadkZWZhdWx0wMCYoXILC8DAkQTAwpyhaQEYBAmQwMIBwsDAmaFkCQAIwJEIwMKYoWmmdmFsdWVzkggWwAKnZGVmYXVsdMDAmKFyCwbAwJEHwMKcoWkBFgcMkMDCAsLAwJmhZAkAC8CRC8DCmKFpp2lzQXJyYXmSCxrAA6dkZWZhdWx0wMCYoXILB8DAkQrAwpyhaQEXCg2QwMIDwsDAl6FvAQAOEpDAmaFkAAsPwJMQEQ/AwpihbKxhcnJheVNodWZmbGWSDxvAwMDA2U1XbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvX2FycmF5U2h1ZmZsZS5qc5ihcgkMwBCRDsDCmKFyEwvAEZEEwMKYoXIBCcDAkQHAwpehbwEAExeQwJmhZAAQFMCTFRYUwMKYoWyrYmFzZVNodWZmbGWSFBzAwMDA2UxXbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvX2Jhc2VTaHVmZmxlLmpzmKFyCQvAFZETwMKYoXIYC8AWkQTAwpihcgEGwMCRB8DCl6FvAQAYHZDAmaFkAB4ZwJQaGxwZwMKYoWync2h1ZmZsZZIZH8DAwMDZR1ducG0vbG9kYXNoLzQuMTcuMTkvN0tBOTgtb0c2NEpjNEp0VnROT2ppOXA5UjRJPS9fX2J1aWxkX3NyYy9zaHVmZmxlLmpzmKFyCQfAGpEYwMKYoXIcB8AbkQrAwpihcg8MwByRDsDCmKFyAwvAwJETwMKYoWcBAx7AkMDCmKFnCQsfwJEfwMKYoXIAB8DAkRjAwg==
+====catalogjs annotation end====*/

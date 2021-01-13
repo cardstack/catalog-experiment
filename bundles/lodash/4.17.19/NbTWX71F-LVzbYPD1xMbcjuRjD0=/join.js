@@ -1,0 +1,9 @@
+var arrayProto = Array.prototype;
+var nativeJoin = arrayProto.join;
+function join(array, separator) {
+  return array == null ? '' : nativeJoin.call(array, separator);
+}
+export { join as default };
+/*====catalogjs annotation start====
+k5CBp2RlZmF1bHSUoWykam9pbg3An5ehbwAAAcCRCcCXoW8AAAIMkMCYoWcAAQMFkMDCmaFkBBIEwJIEAsDCmKFsqmFycmF5UHJvdG+SBAjAwMAC2URXbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvam9pbi5qc5ihcgAKwMCRA8DCmKFnAQEGCZDAwpmhZAQFB8CUCAcFA8DCmKFsqm5hdGl2ZUpvaW6SBwvAwMAF2URXbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvam9pbi5qc5ihcgAKwAiRBsDCmKFyAwrAwJEDwMKZoWQBGgrAkwsKBsDCmKFspGpvaW6SCg7AwMDA2URXbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvam9pbi5qc5ihcgkEwAuRCcDCmKFyMwrAwJEGwMKYoWcBAw3AkMDCmKFnCQsOwJEOwMKYoXIABMDAkQnAwg==
+====catalogjs annotation end====*/

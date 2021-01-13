@@ -1,0 +1,10 @@
+import { default as baseGetTag } from "./dist/86.js";
+import { default as isObjectLike } from "./isObjectLike.js";
+var weakSetTag = '[object WeakSet]';
+function isWeakSet(value) {
+  return isObjectLike(value) && baseGetTag(value) == weakSetTag;
+}
+export { isWeakSet as default };
+/*====catalogjs annotation start====
+k5KVwqwuL2Rpc3QvODYuanMDwsCVwrEuL2lzT2JqZWN0TGlrZS5qcwbCwIGnZGVmYXVsdJShbKlpc1dlYWtTZXQRwNwAE5ehbwAAA8CRC8CZoWQJAALAkQLAwpihaapiYXNlR2V0VGFnkgIOwACnZGVmYXVsdMDAmKFyCwrAwJEBwMKcoWkAFwEGkMDCAMLAwJmhZAkABcCRBcDCmKFprGlzT2JqZWN0TGlrZZIFDcABp2RlZmF1bHTAwJihcgsMwMCRBMDCnKFpARwEB5DAwgHCwMCXoW8BAAgQkMCYoWcAAQkLkMDCmaFkBBUKwJIKCMDCmKFsqndlYWtTZXRUYWeSCg/AwMAI2UlXbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvaXNXZWFrU2V0LmpzmKFyAArAwJEJwMKZoWQBAwzAlQ0ODwwJwMKYoWypaXNXZWFrU2V0kgwSwMDAwNlJV25wbS9sb2Rhc2gvNC4xNy4xOS83S0E5OC1vRzY0SmM0SnRWdE5Pamk5cDlSNEk9L19fYnVpbGRfc3JjL2lzV2Vha1NldC5qc5ihcgkJwA2RC8DCmKFyEwzADpEEwMKYoXILCsAPkQHAwpihcgsKwMCRCcDCmKFnAQMRwJDAwpihZwkLEsCREsDCmKFyAAnAwJELwMI=
+====catalogjs annotation end====*/

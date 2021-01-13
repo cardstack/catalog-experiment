@@ -1,0 +1,14 @@
+import { default as baseRest } from "./dist/49.js";
+import { default as createWrap } from "./dist/23.js";
+import { default as getHolder } from "./dist/126.js";
+import { default as replaceHolders } from "./dist/129.js";
+var WRAP_PARTIAL_RIGHT_FLAG = 64;
+var partialRight = baseRest(function (func, partials) {
+  var holders = replaceHolders(partials, getHolder(partialRight));
+  return createWrap(func, WRAP_PARTIAL_RIGHT_FLAG, undefined, partials, holders);
+});
+partialRight.placeholder = {};
+export { partialRight as default };
+/*====catalogjs annotation start====
+k5SVwqwuL2Rpc3QvNDkuanMDwsCVwqwuL2Rpc3QvMjMuanMGwsCVwq0uL2Rpc3QvMTI2LmpzCcLAlcKtLi9kaXN0LzEyOS5qcwzCwIGnZGVmYXVsdJShbKxwYXJ0aWFsUmlnaHQewNwAIJehbwAAA8CSEhvAmaFkCQACwJECwMKYoWmoYmFzZVJlc3SSAhXAAKdkZWZhdWx0wMCYoXILCMDAkQHAwpyhaQAXAQaQwMIAwsDAmaFkCQAFwJEFwMKYoWmqY3JlYXRlV3JhcJIFGcABp2RlZmF1bHTAwJihcgsKwMCRBMDCnKFpARcECZDAwgHCwMCZoWQJAAjAkQjAwpihaalnZXRIb2xkZXKSCBfAAqdkZWZhdWx0wMCYoXILCcDAkQfAwpyhaQEYBwyQwMICwsDAmaFkCQALwJELwMKYoWmucmVwbGFjZUhvbGRlcnOSCxbAA6dkZWZhdWx0wMCYoXILDsDAkQrAwpyhaQEYCg2QwMIDwsDAl6FvAQAOHZDAmKFnAAEPEZDAwpmhZAQFEMCTEA4bwMKYoWy3V1JBUF9QQVJUSUFMX1JJR0hUX0ZMQUeSEBrAwMAO2UxXbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvcGFydGlhbFJpZ2h0LmpzmKFyABfAwJEPwMKYoWcBARIbkMDCmaFkBAATwJUTERQPG8DCmKFsrHBhcnRpYWxSaWdodJQTGBwfwMDAEdlMV25wbS9sb2Rhc2gvNC4xNy4xOS83S0E5OC1vRzY0SmM0SnRWdE5Pamk5cDlSNEk9L19fYnVpbGRfc3JjL3BhcnRpYWxSaWdodC5qc5ihcgAMwBSREsDCmKFnAyMVwJcVFhcYGRoSwMKYoXIACMAWkQHAwpihci0OwBeRCsDCmKFyCwnAGJEHwMKYoXIBDMAZkRLAwpihcg0KwBqRBMDCmKFyBxfAwJEPwMKYoWcBEhzAkRzAw5ihcgAMwMCREsDCmKFnAQMewJDAwpihZwkLH8CRH8DCmKFyAAzAwJESwMI=
+====catalogjs annotation end====*/

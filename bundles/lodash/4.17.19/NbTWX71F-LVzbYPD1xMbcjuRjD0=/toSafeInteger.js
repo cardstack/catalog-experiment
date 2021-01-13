@@ -1,0 +1,10 @@
+import { default as baseClamp } from "./dist/148.js";
+import { default as toInteger } from "./toInteger.js";
+var MAX_SAFE_INTEGER = 9007199254740991;
+function toSafeInteger(value) {
+  return value ? baseClamp(toInteger(value), -MAX_SAFE_INTEGER, MAX_SAFE_INTEGER) : value === 0 ? value : 0;
+}
+export { toSafeInteger as default };
+/*====catalogjs annotation start====
+k5KVwq0uL2Rpc3QvMTQ4LmpzA8LAlcKuLi90b0ludGVnZXIuanMGwsCBp2RlZmF1bHSUoWytdG9TYWZlSW50ZWdlchLA3AAUl6FvAAADwJELwJmhZAkAAsCRAsDCmKFpqWJhc2VDbGFtcJICDcAAp2RlZmF1bHTAwJihcgsJwMCRAcDCnKFpABgBBpDAwgDCwMCZoWQJAAXAkQXAwpihaal0b0ludGVnZXKSBQ7AAadkZWZhdWx0wMCYoXILCcDAkQTAwpyhaQEZBAeQwMIBwsDAl6FvAQAIEZDAmKFnAAEJC5DAwpmhZAQTCsCSCgjAwpihbLBNQVhfU0FGRV9JTlRFR0VSkwoPEMDAwAjZTVducG0vbG9kYXNoLzQuMTcuMTkvN0tBOTgtb0c2NEpjNEp0VnROT2ppOXA5UjRJPS9fX2J1aWxkX3NyYy90b1NhZmVJbnRlZ2VyLmpzmKFyABDAwJEJwMKZoWQBHgzAlg0ODxAMCcDCmKFsrXRvU2FmZUludGVnZXKSDBPAwMDA2U1XbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvdG9TYWZlSW50ZWdlci5qc5ihcgkNwA2RC8DCmKFyGwnADpEBwMKYoXIBCcAPkQTAwpihcgoQwBCRCcDCmKFyAhDAwJEJwMKYoWcBAxLAkMDCmKFnCQsTwJETwMKYoXIADcDAkQvAwg==
+====catalogjs annotation end====*/
