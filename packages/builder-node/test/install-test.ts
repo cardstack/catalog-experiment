@@ -446,15 +446,12 @@ QUnit.module("Install from npm", function () {
               \`const {
   a
 } = dependencies[0]();
-
 const {
   dep
 } = dependencies[1]();
-
 function doSomething() {
   console.log(\\\`\\\${a}\\\${dep}\\\`);
 }
-
 module.exports = {
   doSomething
 };\`
@@ -532,17 +529,13 @@ module.exports = {
               "exports",
               "dependencies",
               \`const dep1 = dependencies[0]().dep;
-
 const dep2 = dependencies[1]().dep2;
-
 const {
   a
 } = dependencies[2]();
-
 function doSomething() {
   console.log(\\\`\\\${a}\\\${dep1}\\\${dep2}\\\`);
 }
-
 module.exports = {
   doSomething
 };\`
@@ -574,7 +567,6 @@ module.exports = {
               \`const {
   dep
 } = dependencies0[0]();
-
 let dependencies = "don't collide with me" + dep;
 module.exports.default = dependencies;\`
             )(module, module.exports, [test_pkg_depFactory]);
@@ -631,7 +623,6 @@ module.exports.default = dependencies;\`
               "exports",
               "dependencies",
               \`const fs = dependencies[0]();
-
 module.exports.nope = function (filename) {
   return fs.readFileSync(filename);
 };\`
@@ -661,7 +652,6 @@ module.exports.nope = function (filename) {
               "exports",
               "dependencies",
               \`const sample = dependencies[0]();
-
 module.exports.foo = sample.foo;\`
             )(module, module.exports, [getSampleJSON]);
           }
