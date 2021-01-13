@@ -154,7 +154,6 @@ export class FinishAppendModulesNode implements BuilderNode {
         firstChild: 1,
         nextSibling: undefined,
         dependsOn: new Set(), // TODO need to add all module side effects, and all the module scoped declaration side effects
-        shorthand: false,
       },
     ];
 
@@ -390,7 +389,6 @@ function buildManufacturedCode(
                 index === mappings.size - 1
                   ? namespaceBindingReferencePointer
                   : referencePointer + 1,
-              shorthand: false,
               position: 0,
               dependsOn: new Set([declarationPointer, referencePointer]),
               preserveGaps: false,
@@ -466,7 +464,6 @@ function buildImports(
           nextSibling: undefined,
           position: 0,
           dependsOn: new Set(),
-          shorthand: false,
           preserveGaps: false,
         } as ImportCodeRegion);
         // this import is a bundle side effect
@@ -524,7 +521,6 @@ function buildImports(
           nextSibling: undefined,
           position: 0,
           dependsOn: new Set(),
-          shorthand: false,
           exportType: undefined,
           preserveGaps: false,
           specifierForDynamicImport: undefined,
@@ -536,7 +532,6 @@ function buildImports(
           end: 0, // declaration ends at the same place as enclosing reference
           firstChild: referencePointer,
           nextSibling: undefined,
-          shorthand: false,
           position: 0,
           dependsOn: new Set([referencePointer]),
           preserveGaps: false,
@@ -594,7 +589,6 @@ function buildImports(
           end: 0, // declaration ends at the same place as enclosing reference
           firstChild: referencePointer,
           nextSibling: undefined,
-          shorthand: false,
           position: 0,
           dependsOn: new Set([referencePointer]),
           preserveGaps: false,
@@ -753,7 +747,6 @@ function buildExports(
         start: 1, // newline
         end: reexportDeclaration.length,
         dependsOn: new Set(),
-        shorthand: false,
         preserveGaps: false,
         isDynamic: false,
         exportType: "reexport",
@@ -790,7 +783,6 @@ function buildExports(
         start: 1, // newline
         end: exportAllDeclaration.length,
         dependsOn: new Set(),
-        shorthand: false,
         preserveGaps: false,
         isDynamic: false,
         exportType: "export-all",
@@ -828,7 +820,6 @@ function buildExportNamedDeclaration(
     start: 1, // newline
     end: 3, // " };"
     dependsOn: new Set(),
-    shorthand: false,
     preserveGaps: false,
   });
   let lastSpecifier: RegionPointer | undefined;
@@ -860,7 +851,6 @@ function buildExportNamedDeclaration(
           ? 0
           : 4 + outsideName.length /* " as outsideName" */,
       dependsOn: new Set([referencePointer]),
-      shorthand: false,
       preserveGaps: false,
     });
 
@@ -1267,7 +1257,6 @@ function buildNamespaces(
           end: 1, // trailing semicolon
           firstChild: declaratorPointer,
           nextSibling: undefined,
-          shorthand: false,
           position: 0,
           dependsOn: new Set(),
           preserveGaps: false,
@@ -1278,7 +1267,6 @@ function buildNamespaces(
           end: 2, // " }"
           firstChild: referencePointer,
           nextSibling: undefined,
-          shorthand: false,
           position: 0,
           dependsOn: new Set([
             declarationPointer,

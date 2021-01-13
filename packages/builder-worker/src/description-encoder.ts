@@ -27,6 +27,7 @@ import {
   ReferenceCodeRegion,
 } from "./code-region";
 import { assertNever } from "@catalogjs/shared/util";
+import { catalogjsHref, workingHref } from "./resolver";
 
 const annotationStart = `\n/*====catalogjs annotation start====\n`;
 const annotationEnd = `\n====catalogjs annotation end====*/`;
@@ -55,7 +56,6 @@ const baseCodeRegionLegend = [
   "end", // number
   "firstChild", // number | null
   "nextSibling", // number | null
-  "shorthand", // "i" = "import" | "e" = "export" | "o" = "object" | false
   "dependsOn", // Set<number>
   "original", // [bundleHref: string, range: string ] | null
 ];
@@ -75,7 +75,10 @@ const importCodeRegionLegend = [
   "exportType", // "r" = "reexport" | "e" = "export-all" | null
 ];
 
-const referenceCodeRegionLegend = [...baseCodeRegionLegend];
+const referenceCodeRegionLegend = [
+  ...baseCodeRegionLegend,
+  "shorthand", // "i" = "import" | "e" = "export" | "o" = "object" | false
+];
 
 const documentCodeRegionLegend = [...baseCodeRegionLegend];
 
@@ -165,11 +168,12 @@ function encodeModuleDescription(desc: ModuleDescription): string {
                   generalCodeRegionLegend,
                   {
                     type: { ...regionTypeShorthand },
-                    shorthand: { import: "i", export: "e", object: "o" },
                   },
+                  undefined,
                   {
                     original: {
                       legend: ["bundleHref", "range"],
+                      encodeHints: { bundleHref: "href" },
                     },
                   }
                 );
@@ -181,12 +185,10 @@ function encodeModuleDescription(desc: ModuleDescription): string {
               case "document":
                 return encodeObj(r, documentCodeRegionLegend, {
                   type: { ...regionTypeShorthand },
-                  shorthand: { import: "i", export: "e", object: "o" },
                 });
               case "import":
                 return encodeObj(r, importCodeRegionLegend, {
                   type: { ...regionTypeShorthand },
-                  shorthand: { import: "i", export: "e", object: "o" },
                   exportType: { reexport: "r", "export-all": "e" },
                 });
               case "declaration":
@@ -195,15 +197,17 @@ function encodeModuleDescription(desc: ModuleDescription): string {
                   declarationCodeRegionLegend,
                   {
                     type: { ...regionTypeShorthand },
-                    shorthand: { import: "i", export: "e", object: "o" },
                   },
+                  undefined,
                   {
                     declaration: {
                       legend: declarationLegend,
                       shorthand: { type: { import: "i", local: "l" } },
+                      encodeHints: { source: "href" },
                       encodeProps: {
                         original: {
                           legend: ["bundleHref", "importedAs", "range"],
+                          encodeHints: { bundleHref: "href" },
                         },
                       },
                     },
@@ -265,12 +269,12 @@ function decodeModuleDescription(encoded: string): ModuleDescription {
                 generalCodeRegionLegend,
                 {
                   type: { ...regionTypeShorthand },
-                  shorthand: { import: "i", export: "e", object: "o" },
                 },
                 { dependsOn: "Set" },
                 {
                   original: {
                     legend: ["bundleHref", "range"],
+                    typeHints: { bundleHref: "href" },
                   },
                 }
               ) as GeneralCodeRegion;
@@ -290,7 +294,6 @@ function decodeModuleDescription(encoded: string): ModuleDescription {
                 documentCodeRegionLegend,
                 {
                   type: { ...regionTypeShorthand },
-                  shorthand: { import: "i", export: "e", object: "o" },
                 },
                 { dependsOn: "Set" }
               ) as ReferenceCodeRegion;
@@ -300,7 +303,6 @@ function decodeModuleDescription(encoded: string): ModuleDescription {
                 importCodeRegionLegend,
                 {
                   type: { ...regionTypeShorthand },
-                  shorthand: { import: "i", export: "e", object: "o" },
                   exportType: { reexport: "r", "export-all": "e" },
                 },
                 { dependsOn: "Set" }
@@ -311,16 +313,17 @@ function decodeModuleDescription(encoded: string): ModuleDescription {
                 declarationCodeRegionLegend,
                 {
                   type: { ...regionTypeShorthand },
-                  shorthand: { import: "i", export: "e", object: "o" },
                 },
                 { dependsOn: "Set" },
                 {
                   declaration: {
                     legend: declarationLegend,
                     shorthand: { type: { import: "i", local: "l" } },
+                    typeHints: { source: "href" },
                     decodeProps: {
                       original: {
                         legend: ["bundleHref", "importedAs", "range"],
+                        typeHints: { bundleHref: "href" },
                       },
                     },
                   },
@@ -358,6 +361,27 @@ function decodeRegionType(e: string) {
   return type;
 }
 
+function encodeHref(href: string | undefined) {
+  if (href == null) {
+    return;
+  }
+  return href.replace(catalogjsHref, "C").replace(workingHref, "W");
+}
+
+function decodeHref(e: string | undefined) {
+  if (!e) {
+    return;
+  }
+  switch (e.slice(0, 1)) {
+    case "C":
+      return `${catalogjsHref}${e.slice(1)}`;
+    case "W":
+      return `${workingHref}${e.slice(1)}`;
+    default:
+      return e;
+  }
+}
+
 const encodedNamespaceMarker = Object.freeze({ n: true });
 function encodeExportAllMarker(marker: ExportAllMarker) {
   return `{${marker.exportAllFrom}}`;
@@ -381,6 +405,7 @@ interface EncodeProps {
   [prop: string]: {
     legend: string[];
     shorthand?: Shorthand;
+    encodeHints?: EncodeHints;
     encodeProps?: EncodeProps;
   };
 }
@@ -395,7 +420,10 @@ interface DecodeProps {
 }
 
 interface TypeHints {
-  [prop: string]: "Set"; // add more as necessary
+  [prop: string]: "Set" | "href"; // add more as necessary
+}
+interface EncodeHints {
+  [prop: string]: "href"; // add more as necessary
 }
 
 function decodeArray(
@@ -422,6 +450,9 @@ function decodeArray(
         case "Set":
           val = new Set(val);
           break;
+        case "href":
+          val = decodeHref(val);
+          break;
         default:
           throw assertNever(type);
       }
@@ -447,6 +478,7 @@ function encodeObj(
   obj: Pojo,
   legend: string[],
   shorthand?: Shorthand,
+  encodeHints?: EncodeHints,
   encodeProps?: EncodeProps
 ) {
   return legend.map((k) => {
@@ -459,8 +491,18 @@ function encodeObj(
         value,
         encodeProps[k].legend,
         encodeProps[k].shorthand,
+        encodeProps[k].encodeHints,
         encodeProps[k].encodeProps
       );
+    } else if (encodeHints && k in encodeHints) {
+      let encode = encodeHints[k];
+      switch (encode) {
+        case "href":
+          value = encodeHref(value);
+          break;
+        default:
+          throw assertNever(encode);
+      }
     } else if (shorthand && k in shorthand) {
       value = typeof value === "string" ? shorthand[k][value] : value;
     }

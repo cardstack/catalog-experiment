@@ -54,17 +54,6 @@ export interface BaseCodeRegion {
     bundleHref: string;
     range: string;
   };
-  // when we want to rewrite regions containing identifiers, we need to be aware
-  // if they represent object or import shorthand syntax, so that we can
-  // rewrite:
-  //
-  //    let { x } = foo();
-  //
-  // to:
-  //
-  //    let { x: x0 } = foo();
-  //
-  shorthand: "import" | "export" | "object" | false;
 }
 
 export type DeclarationDescription =
@@ -161,6 +150,17 @@ export function isImportCodeRegion(region: any): region is ImportCodeRegion {
 // depend on the reference region.
 export interface ReferenceCodeRegion extends BaseCodeRegion {
   type: "reference";
+  // when we want to rewrite regions containing identifiers, we need to be aware
+  // if they represent object or import shorthand syntax, so that we can
+  // rewrite:
+  //
+  //    let { x } = foo();
+  //
+  // to:
+  //
+  //    let { x: x0 } = foo();
+  //
+  shorthand: "import" | "export" | "object" | false;
 }
 export function isReferenceCodeRegion(
   region: any
@@ -182,7 +182,8 @@ export function isCodeRegion(region: any): region is CodeRegion {
   );
 }
 
-type PathFacts = Pick<GeneralCodeRegion, "shorthand" | "preserveGaps">;
+type PathFacts = Pick<GeneralCodeRegion, "preserveGaps"> &
+  Pick<ReferenceCodeRegion, "shorthand">;
 
 interface NewRegion {
   type: CodeRegion["type"];
@@ -258,7 +259,6 @@ export class RegionBuilder {
       firstChild: undefined,
       nextSibling: undefined,
       dependsOn: new Set(),
-      shorthand: false,
     });
   }
 
@@ -328,7 +328,6 @@ export class RegionBuilder {
       nodeType = pathOrPaths.type;
     }
 
-    // TODO add support for simpler reference regions...
     let type: CodeRegion["type"];
     let importIndex: number | undefined;
     let isDynamic: boolean | undefined;
@@ -1216,7 +1215,6 @@ export class RegionEditor {
       end: 1, // trailing semicolon
       firstChild: declaratorPointer,
       nextSibling: region.nextSibling,
-      shorthand: false,
       position: 0,
       dependsOn: new Set(),
       preserveGaps: false,
@@ -1227,7 +1225,6 @@ export class RegionEditor {
       end: 1, // closing paren of the expression context
       firstChild: referencePointer,
       nextSibling: region.nextSibling,
-      shorthand: false,
       position: 0,
       dependsOn: new Set([
         referencePointer,
@@ -1264,7 +1261,6 @@ export class RegionEditor {
       end: region.end,
       firstChild: region.firstChild,
       nextSibling: undefined,
-      shorthand: false,
       position: 0,
       dependsOn: new Set([
         declaratorPointer,
@@ -1358,7 +1354,11 @@ export class RegionEditor {
       }
     }
 
-    if (!region.shorthand) {
+    if (
+      !isReferenceCodeRegion(region) ||
+      !isReferenceCodeRegion(outputRegion) ||
+      !region.shorthand
+    ) {
       outputRegion.end = replacement.length;
       this.outputRegions.push({
         originalPointer: regionPointer,
