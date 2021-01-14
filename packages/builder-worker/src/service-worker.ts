@@ -162,7 +162,7 @@ async function checkForOurBackend() {
       await worker.registration.unregister();
       break;
     } else {
-      await new Promise((res) => setTimeout(() => res(), 10 * 1000));
+      await new Promise<void>((res) => setTimeout(() => res(), 10 * 1000));
     }
   }
 }
