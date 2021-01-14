@@ -1,4 +1,4 @@
-import { difference, flatMap } from "lodash";
+import { flatMap } from "lodash";
 import {
   documentPointer,
   isNamespaceMarker,
@@ -19,6 +19,7 @@ import {
   Resolution,
 } from "./nodes/resolution";
 import { pkgInfoFromCatalogJsURL } from "./resolver";
+import { log, debug } from "./logger";
 
 // A region's identity is denoted as "moduleHref:pointer".
 export type RegionGraph = Map<string, Set<string>>;
@@ -30,6 +31,8 @@ interface EditorAssignment {
 
 export class RegionWalker {
   readonly keptRegions: RegionGraph = new Map();
+  private dependenciesOf: RegionGraph = new Map();
+  private leaves: Set<string> = new Set();
   private resolvedRegions: Map<string, string> = new Map();
   private seenRegions: Set<string> = new Set();
   private assigner: EditorAssigner;
@@ -43,6 +46,7 @@ export class RegionWalker {
     let ownResolutions = resolutionsInDepOrder.filter((m) =>
       ownAssignments.find(({ module }) => module.url.href === m.url.href)
     );
+    let walkStart = Date.now();
     // marry up the document regions to the exposed regions in dependency order
     for (let module of ownResolutions) {
       // walks all the module side effects
@@ -58,8 +62,14 @@ export class RegionWalker {
     if (typeof process?.stdout?.write === "function") {
       console.log();
     }
+    log(
+      `  completed walking ${this.seenRegions.size} code regions in ${
+        Date.now() - walkStart
+      }ms`
+    );
     this.assigner = new EditorAssigner(
-      this.keptRegions,
+      this.dependenciesOf,
+      this.leaves,
       this.ownAssignments,
       ownResolutions,
       this.bundle,
@@ -90,6 +100,10 @@ export class RegionWalker {
     if (typeof process?.stdout?.write === "function") {
       process.stdout.write(
         `  visited ${this.seenRegions.size} regions for bundle ${this.bundle.href}\r`
+      );
+    } else if (this.seenRegions.size % 1000 === 0) {
+      debug(
+        `  visited ${this.seenRegions.size} regions for bundle ${this.bundle.href}`
       );
     }
 
@@ -354,6 +368,19 @@ export class RegionWalker {
   ) {
     this.keptRegions.set(resolvedId, deps);
     this.resolvedRegions.set(originalId, resolvedId);
+    if (deps.size === 0) {
+      this.leaves.add(resolvedId);
+    } else {
+      this.leaves.delete(resolvedId);
+    }
+    for (let dep of deps) {
+      let consumers = this.dependenciesOf.get(dep);
+      if (!consumers) {
+        consumers = new Set();
+        this.dependenciesOf.set(dep, consumers);
+      }
+      consumers.add(resolvedId);
+    }
   }
 
   private resolvePkgDependency(
@@ -439,10 +466,10 @@ export class RegionWalker {
 class EditorAssigner {
   private assignmentMap: Map<string, EditorAssignment> = new Map();
   private editorMap: Map<string, Editor> = new Map();
-  private dependenciesOf: RegionGraph;
   private exposedIds: string[];
   constructor(
-    private keptRegions: RegionGraph,
+    private dependenciesOf: RegionGraph,
+    leaves: Set<string>,
     private ownAssignments: BundleAssignment[],
     resolutionsInDepOrder: ModuleResolution[],
     private bundle: URL,
@@ -461,8 +488,6 @@ class EditorAssigner {
         )
       );
     }
-    let { dependenciesOf, leaves } = this.invertCodeRegions(this.exposedIds);
-    this.dependenciesOf = dependenciesOf;
 
     let leavesInDepOrder: string[] = [];
     for (let module of resolutionsInDepOrder) {
@@ -471,9 +496,11 @@ class EditorAssigner {
       );
       leavesInDepOrder.push(...moduleLeaves);
     }
+    let assignStart = Date.now();
     for (let leaf of leavesInDepOrder.reverse()) {
       this.assignEditor(leaf);
     }
+    log(`  completed editor assignment in ${Date.now() - assignStart}ms`);
 
     for (let [regionId, { editors: editors }] of this.assignmentMap) {
       let { pointer } = idParts(regionId);
@@ -662,47 +689,6 @@ class EditorAssigner {
       }
     }
   }
-
-  private invertCodeRegions(
-    regionIds: string[],
-    dependenciesOf: RegionGraph = new Map(),
-    leaves: Set<string> = new Set(),
-    seen: Set<string> = new Set()
-  ): { dependenciesOf: RegionGraph; leaves: Set<string> } {
-    for (let depender of regionIds) {
-      seen.add(depender);
-    }
-    for (let depender of regionIds) {
-      let dependsOn = [...(this.keptRegions.get(depender) ?? [])];
-      if (dependsOn.length > 0) {
-        this.invertCodeRegions(
-          difference(dependsOn, [...seen]),
-          dependenciesOf,
-          leaves,
-          seen
-        );
-        // since we are handling this on the exit of the recursion, all your deps
-        // will have entries in the identity map
-        for (let depId of dependsOn) {
-          setDependenciesOf(depId, depender, dependenciesOf);
-        }
-      } else {
-        leaves.add(depender);
-      }
-    }
-    return { dependenciesOf, leaves };
-  }
-}
-
-function setDependenciesOf(
-  dependsOn: string,
-  depender: string,
-  dependenciesOf: RegionGraph
-) {
-  if (!dependenciesOf.has(dependsOn)) {
-    dependenciesOf.set(dependsOn, new Set());
-  }
-  dependenciesOf.get(dependsOn)!.add(depender);
 }
 
 function regionId(module: Resolution | string, pointer: RegionPointer) {
