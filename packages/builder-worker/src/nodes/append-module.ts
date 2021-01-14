@@ -163,7 +163,6 @@ export class FinishAppendModulesNode implements BuilderNode {
     ];
 
     let start = Date.now();
-    log(`  serializing bundle ${this.bundle.href}`);
     let importAssignments = assignedImports(
       this.bundle,
       this.bundleAssignments,
@@ -244,7 +243,11 @@ export class FinishAppendModulesNode implements BuilderNode {
       this.bundle
     );
 
-    log(`  completed serializing bundle ${Date.now() - start}`);
+    log(
+      `  completed serializing bundle ${this.bundle.href} in ${
+        Date.now() - start
+      }ms`
+    );
 
     return { value: { code: code.join("\n"), desc } };
   }
