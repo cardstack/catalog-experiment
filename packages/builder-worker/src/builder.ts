@@ -27,6 +27,7 @@ import sortBy from "lodash/sortBy";
 import { CoreResolver } from "./resolver";
 import { getRecipe, Recipe } from "./recipes";
 import { Options } from "./nodes/project";
+import { log } from "./logger";
 
 type BoolForEach<T> = {
   [P in keyof T]: boolean;
@@ -148,6 +149,8 @@ class BuildRunner<Input> {
   }
 
   async build(): Promise<OutputTypes<Input>> {
+    let start = Date.now();
+    log(`Starting build`);
     let context = new CurrentContext(this.recentlyChangedFiles);
     this.currentContext = context;
     this.recentlyChangedFiles = new Set();
@@ -155,6 +158,7 @@ class BuildRunner<Input> {
     assertAllComplete(context.nodeStates);
     this.nodeStates = context.nodeStates;
     this.currentContext = undefined;
+    log(`completed build in ${Date.now() - start}ms`);
     return result.values;
   }
 

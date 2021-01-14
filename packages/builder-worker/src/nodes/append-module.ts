@@ -35,6 +35,7 @@ import { depAsURL, Dependencies } from "./entrypoint";
 import { setDoubleNestedMapping, stringifyReplacer } from "../utils";
 import { flatMap } from "lodash";
 import { pkgInfoFromCatalogJsURL } from "../resolver";
+import { log, debug } from "../logger";
 
 export class AppendModuleNode implements BuilderNode {
   cacheKey: string;
@@ -48,9 +49,14 @@ export class AppendModuleNode implements BuilderNode {
     private depResolver: DependencyResolver,
     private rewriters: ModuleRewriter[] = []
   ) {
+    let start = Date.now();
+    debug(
+      `  creating append node for ${this.bundle.href}:${this.module.url.href}`
+    );
     this.cacheKey = `append-module-node:${this.bundle.href}:${
       this.module.url.href
     }:${this.state.hash()}`;
+    debug(`  completed creating append node in ${Date.now() - start}ms`);
   }
 
   async deps() {}
@@ -156,6 +162,8 @@ export class FinishAppendModulesNode implements BuilderNode {
       },
     ];
 
+    let start = Date.now();
+    log(`  serializing bundle ${this.bundle.href}`);
     let importAssignments = assignedImports(
       this.bundle,
       this.bundleAssignments,
@@ -235,6 +243,8 @@ export class FinishAppendModulesNode implements BuilderNode {
       exportRegions,
       this.bundle
     );
+
+    log(`  completed serializing bundle ${Date.now() - start}`);
 
     return { value: { code: code.join("\n"), desc } };
   }
