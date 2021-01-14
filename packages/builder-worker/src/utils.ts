@@ -38,12 +38,12 @@ export function stringifyReplacer(_: string, value: any) {
   if (value instanceof Map) {
     return {
       dataType: "Map",
-      value: value.entries(),
+      value: [...value.entries()],
     };
   } else if (value instanceof Set) {
     return {
       dataType: "Set",
-      value: value.entries(),
+      value: [...value.entries()],
     };
   } else {
     return value;

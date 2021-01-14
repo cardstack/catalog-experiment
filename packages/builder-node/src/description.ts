@@ -17,11 +17,5 @@ let bundlePath = resolve(join(process.cwd(), bundle[0]));
 let bundleSrc = readFileSync(bundlePath, "utf8");
 
 let { desc } = extractDescriptionFromSource(bundleSrc);
-console.log(
-  `Bundle description for ${bundle}:\n${JSON.stringify(
-    desc,
-    stringifyReplacer,
-    2
-  )}`
-);
+console.log(JSON.stringify(desc, stringifyReplacer, 2));
 process.exit(0);
