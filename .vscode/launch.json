@@ -67,6 +67,18 @@
     {
       "type": "node",
       "request": "launch",
+      "name": "Describe bundle",
+      "cwd": "${workspaceRoot}",
+      "console": "integratedTerminal",
+      "env": {},
+      "program": "${workspaceRoot}/packages/builder-node/bin/description.js",
+      "args": [
+        "./working/cdn/npm/lodash/4.17.19/NbTWX71F-LVzbYPD1xMbcjuRjD0=/flatMap.js"
+      ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
       "name": "Run file-daemon QUnit",
       "cwd": "${workspaceRoot}/packages/file-daemon",
       "env": {},
