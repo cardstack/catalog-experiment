@@ -6443,6 +6443,120 @@ QUnit.module("module builder", function (origHooks) {
         }
       });
 
+      test("can serialize a namespace import of pkg dependency that is imported in multiple modules", async function (assert) {
+        let typesBundleHref =
+          "https://catalogjs.com/pkgs/npm/types/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+        await assert.setupFiles({
+          [`${typesBundleHref}/entrypoints.json`]: `{"js": ["index.js"] }`,
+          [`${typesBundleHref}/index.js`]: `
+            export function typeA() { console.log("typeA"); }
+            export function typeB() { console.log("typeA"); }
+            export function typeC() { console.log("typeA"); }
+          `,
+          "entrypoints.json": `{
+            "js": ["driver.js"],
+            "dependencies": {
+              "types": {
+                "type": "npm",
+                "pkgName": "types",
+                "range": "^1.0.0"
+              }
+            }
+          }`,
+          "catalogjs.lock": `{
+            "types": "${typesBundleHref}/index.js"
+          }`,
+          "driver.js": `
+            import createBuilder from "./builder";
+            export const smart = createBuilder("smart");
+            export const statement = createBuilder("statement");
+            export const expression = createBuilder("expression");
+            export const program = createBuilder("program");
+          `,
+          "builder.js": `
+            import makeStrings from "./string";
+            import makeLiterals from "./literal";
+            export default function createBuilder(args) {
+              makeStrings(args);
+              makeLiterals(args);
+            }
+          `,
+          "literal.js": `
+            import doParseThings from "./parse";
+            import doPopulateThings from "./populate";
+            function parse(args) {
+              doParseThings(args);
+            }
+            export default function makeLiterals(args) {
+              parse(args);
+              doPopulateThings(args);
+            }
+          `,
+          "string.js": `
+            import doParseThings from "./parse";
+            import doPopulateThings from "./populate";
+            export default function makeStrings(args) {
+              doParseThings(args);
+              doPopulateThings(args);
+            }
+          `,
+          "parse.js": `
+            import * as t from "types";
+            export default function doParseThings(args) {
+              t.typeB(args);
+              t.typeC(args);
+            }
+            `,
+          "populate.js": `
+            import * as t from "types";
+            export default function doPopulateThings(args) {
+              t.typeA(args);
+            }
+          `,
+        });
+
+        let { source } = await bundle(assert.fs, url("output/driver.js"));
+
+        assert.codeEqual(
+          source,
+          `
+          function typeA() { console.log("typeA"); }
+          function typeB() { console.log("typeA"); }
+          function typeC() { console.log("typeA"); }
+
+          const t = { typeA, typeB, typeC };
+          function doParseThings(args) {
+            t.typeB(args);
+            t.typeC(args);
+          }
+          function doPopulateThings(args) {
+            t.typeA(args);
+          }
+          function makeStrings(args) {
+            doParseThings(args);
+            doPopulateThings(args);
+          }
+          function parse(args) {
+            doParseThings(args);
+          }
+          function makeLiterals(args) {
+            parse(args);
+            doPopulateThings(args);
+          }
+          function createBuilder(args) {
+            makeStrings(args);
+            makeLiterals(args);
+          }
+          const smart = createBuilder("smart");
+          const statement = createBuilder("statement");
+          const expression = createBuilder("expression");
+          const program = createBuilder("program");
+
+          export { smart, statement, expression, program };
+          `
+        );
+      });
+
       test("will throw when there is a direct dependency that is shadowing another dependency's consumption range", async function (assert) {
         await assert.setupFiles({
           "entrypoints.json": `{

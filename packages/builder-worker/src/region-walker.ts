@@ -1,7 +1,9 @@
 import { flatMap } from "lodash";
 import {
+  CodeRegion,
   documentPointer,
   isNamespaceMarker,
+  NamespaceMarker,
   RegionPointer,
 } from "./code-region";
 import { RegionEditor } from "./region-editor";
@@ -196,11 +198,11 @@ export class RegionWalker {
               `unable to determine the region for a namespace import '${region.declaration.declaredName}' of ${source.importedFromModule.url.href} from the consuming module ${source.consumingModule.url.href} in bundle ${this.bundle.href}`
             );
           }
-          let items = this.visitNamespace(
+          let namespaceMarker = this.visitNamespace(
             source.resolution?.importedSource?.declaredIn ??
               source.importedFromModule
           );
-          this.keepRegion(originalId, id, new Set(items));
+          this.keepRegion(originalId, id, new Set([namespaceMarker]));
           return id;
         } else {
           // we mark the external bundle import region as something we want to keep
@@ -251,8 +253,10 @@ export class RegionWalker {
         isNamespaceMarker(resolution?.name) &&
         resolution.importedSource?.declaredIn
       ) {
-        let items = this.visitNamespace(resolution.importedSource.declaredIn);
-        this.keepRegion(originalId, id, new Set(items));
+        let namespaceMarker = this.visitNamespace(
+          resolution.importedSource.declaredIn
+        );
+        this.keepRegion(originalId, id, new Set([namespaceMarker]));
         return id;
       }
 
@@ -302,7 +306,7 @@ export class RegionWalker {
     }
   }
 
-  private visitNamespace(module: Resolution): string[] {
+  private visitNamespace(module: Resolution): string {
     let exports = getExports(module);
     let namespaceItemIds: string[] = [];
     for (let [exportName, { module: sourceModule }] of exports.entries()) {
@@ -346,10 +350,17 @@ export class RegionWalker {
               `unable to determine the region for a namespace import of ${source.importedFromModule.url.href} from the consuming module ${source.consumingModule.url.href} in bundle ${this.bundle.href}`
             );
           }
-          let itemId = regionId(source.consumingModule, source.importedPointer);
-          let items = this.visitNamespace(source.importedFromModule);
-          this.keepRegion(itemId, itemId, new Set(items));
-          namespaceItemIds.push(itemId);
+          let namespaceImport = regionId(
+            source.consumingModule,
+            source.importedPointer
+          );
+          let namespaceMarker = this.visitNamespace(source.importedFromModule);
+          this.keepRegion(
+            namespaceImport,
+            namespaceImport,
+            new Set([namespaceMarker])
+          );
+          namespaceItemIds.push(namespaceImport);
         } else {
           let itemId = regionId(module, importedPointer);
           this.keepRegion(itemId, itemId, new Set());
@@ -358,7 +369,13 @@ export class RegionWalker {
       }
     }
 
-    return namespaceItemIds;
+    let namespaceMarker = regionId(module, NamespaceMarker);
+    this.keepRegion(
+      namespaceMarker,
+      namespaceMarker,
+      new Set(namespaceItemIds)
+    );
+    return namespaceMarker;
   }
 
   private keepRegion(
@@ -366,6 +383,10 @@ export class RegionWalker {
     resolvedId: string,
     deps: Set<string>
   ) {
+    // document regions are inherently retained.
+    if (idParts(resolvedId).pointer === documentPointer) {
+      return;
+    }
     this.keptRegions.set(resolvedId, deps);
     this.resolvedRegions.set(originalId, resolvedId);
     if (deps.size === 0) {
@@ -475,19 +496,9 @@ class EditorAssigner {
     private bundle: URL,
     exposed: ExposedRegionInfo[]
   ) {
-    this.exposedIds = [];
-    // marry up the document regions to the exposed regions in dependency order
-    for (let module of resolutionsInDepOrder) {
-      let modulesExposedRegions = exposed.filter(
-        ({ module: m }) => m.url.href === module.url.href
-      );
-      this.exposedIds.push(
-        regionId(module, documentPointer),
-        ...modulesExposedRegions.map(({ module: m, pointer: p }) =>
-          regionId(m, p)
-        )
-      );
-    }
+    this.exposedIds = exposed.map(({ module: m, pointer: p }) =>
+      regionId(m, p)
+    );
 
     let leavesInDepOrder: string[] = [];
     for (let module of resolutionsInDepOrder) {
@@ -504,6 +515,12 @@ class EditorAssigner {
 
     for (let [regionId, { editors: editors }] of this.assignmentMap) {
       let { pointer } = idParts(regionId);
+      if (isNamespaceMarker(pointer)) {
+        // the namespace marker is just a grouping mechanism that allows the
+        // constituent namespace items to be co-located in the same
+        // editor--there is nothing to write out here.
+        continue;
+      }
       for (let editorId of editors) {
         let item = this.editorMap.get(editorId);
         if (!item) {
@@ -571,16 +588,15 @@ class EditorAssigner {
           r.declaration.declaratorOfRegion === pointer
       )
     );
-    for (let consumer of consumers) {
-      if (
-        !consumer.assignment.editors.has(
-          regionId(moduleHref, documentPointer)
-        ) &&
-        consumer.moduleHref === moduleHref &&
-        consumers.every(
-          (otherDepender) => otherDepender.moduleHref === consumer.moduleHref
-        )
-      ) {
+    if (consumers.every((c) => c.moduleHref === moduleHref)) {
+      let namespaceMarkerConsumer = consumers.find((c) =>
+        c.assignment.editors.has(regionId(moduleHref, NamespaceMarker))
+      );
+      // favor merging into a namespace marker consumer
+      for (let consumer of new Set([
+        ...(namespaceMarkerConsumer ? [namespaceMarkerConsumer] : []),
+        ...consumers,
+      ])) {
         // we can merge with this consumer
         if (!hasDeclarators) {
           let assignment: EditorAssignment = {
@@ -603,10 +619,10 @@ class EditorAssigner {
           }
         }
       }
-    }
-    if (hasDeclarators && declarationAssignment) {
-      this.assignmentMap.set(id, declarationAssignment);
-      return declarationAssignment;
+      if (hasDeclarators && declarationAssignment) {
+        this.assignmentMap.set(id, declarationAssignment);
+        return declarationAssignment;
+      }
     }
 
     // we need to have our own editor
@@ -691,26 +707,37 @@ class EditorAssigner {
   }
 }
 
-function regionId(module: Resolution | string, pointer: RegionPointer) {
+function regionId(
+  module: Resolution | string,
+  pointer: RegionPointer | NamespaceMarker
+) {
+  let _pointer = isNamespaceMarker(pointer) ? -1 : pointer;
   if (typeof module === "string") {
-    return `${module}:${pointer}`;
+    return `${module}:${_pointer}`;
   }
-  return `${module.url.href}:${pointer}`;
+  return `${module.url.href}:${_pointer}`;
 }
 
 function idParts(
   regionId: string
-): { moduleHref: string; pointer: RegionPointer } {
+): { moduleHref: string; pointer: RegionPointer | NamespaceMarker } {
   let index = regionId.lastIndexOf(":");
   let moduleHref = regionId.slice(0, index);
   let pointer = parseInt(regionId.slice(index + 1)) as RegionPointer;
+  if (pointer === -1) {
+    return { moduleHref, pointer: NamespaceMarker };
+  }
   return { moduleHref, pointer };
 }
 
 function getRegionFromId(
   regionId: string,
   ownAssignments: BundleAssignment[]
-): { module: ModuleResolution; pointer: RegionPointer } {
+): {
+  module: ModuleResolution;
+  pointer: RegionPointer | NamespaceMarker;
+  region: CodeRegion | undefined;
+} {
   let { moduleHref, pointer } = idParts(regionId);
   let module = ownAssignments.find(({ module: m }) => m.url.href === moduleHref)
     ?.module;
@@ -719,6 +746,9 @@ function getRegionFromId(
       `cannot resolve regionId ${regionId}, unable to resolve the module ${moduleHref} to an assigned module for the bundle ${ownAssignments[0].bundleURL}`
     );
   }
+  if (isNamespaceMarker(pointer)) {
+    return { module, pointer, region: undefined };
+  }
 
-  return { module, pointer };
+  return { module, pointer, region: module.desc.regions[pointer] };
 }
