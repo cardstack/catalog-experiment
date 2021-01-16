@@ -43,7 +43,7 @@ export function stringifyReplacer(_: string, value: any) {
   } else if (value instanceof Set) {
     return {
       dataType: "Set",
-      value: [...value.entries()],
+      value: [...value],
     };
   } else {
     return value;
