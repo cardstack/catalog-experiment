@@ -8951,8 +8951,53 @@ QUnit.module("module builder", function (origHooks) {
           export default implementation;
         `,
       });
-      builder = makeBuilder(assert.fs);
-      await builder.build();
+      let { source, desc } = await bundle(assert.fs);
+      assert.codeEqual(
+        source,
+        `
+        let module;
+        function a() {
+          if (!module) {
+            module = { exports: {} };
+            Function(
+              \"module\",
+              \"exports\",
+              \"dependencies\",
+              \`console.log(\"hi\");\`
+            )(module, module.exports, []);
+          }
+          return module.exports;
+        }
+        const _default = (function() { a(); });
+        export { _default as default };`
+      );
+      assert.ok(desc, "bundle description exists");
+      if (desc) {
+        let editor = makeEditor(source, desc);
+        keepAll(desc, editor);
+        editor.rename("module", "module60");
+        editor.rename("_default", "_default60");
+        assert.codeEqual(
+          editor.serialize().code,
+          `
+          let module60;
+          function a() {
+            if (!module60) {
+              module60 = { exports: {} };
+              Function(
+                \"module\",
+                \"exports\",
+                \"dependencies\",
+                \`console.log(\"hi\");\`
+              )(module60, module60.exports, []);
+            }
+            return module60.exports;
+          }
+          const _default60 = (function() { a(); });
+          export { _default60 as default };`
+        );
+      }
+
       await assert.file("output/index.js").matches(/console\.log\("hi"\);/);
       await assert
         .file("output/index.js")

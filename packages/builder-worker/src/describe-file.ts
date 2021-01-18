@@ -9,11 +9,13 @@ import {
   VariableDeclarator,
   Identifier,
   LVal,
+  Program,
   ObjectProperty,
   CallExpression,
   isVariableDeclarator,
   isIdentifier,
   isStringLiteral,
+  AssignmentExpression,
   isMemberExpression,
   isObjectExpression,
   isObjectProperty,
@@ -251,6 +253,8 @@ export function describeFile(ast: File, filename: string): FileDescription {
   let isTranspiledFromES = false;
   let dependsOn = new WeakMap<CodeRegion, Set<string>>();
   let moduleSideEffects: NodePath[][] = [];
+  let assignments: Set<NodePath<AssignmentExpression>> = new Set();
+  let programPath: NodePath<Program>;
   let currentModuleScopedDeclaration:
     | {
         path: DuckPath;
@@ -491,6 +495,7 @@ export function describeFile(ast: File, filename: string): FileDescription {
   traverse(ast, {
     Program: {
       enter(path) {
+        programPath = path;
         builder = new RegionBuilder(path);
         desc = {
           imports: [],
@@ -662,6 +667,9 @@ export function describeFile(ast: File, filename: string): FileDescription {
             isIdentifier(argumentsNodes[2].properties[0].key) &&
             argumentsNodes[2].properties[0].key.name === "value"); // this seems close enough....
       }
+    },
+    AssignmentExpression(path) {
+      assignments.add(path);
     },
     ImportDeclaration(path) {
       isES6Module = true;
@@ -993,6 +1001,16 @@ export function describeFile(ast: File, filename: string): FileDescription {
     },
   });
 
+  if (isES6Module) {
+    setReferencesFromAssignments(
+      programPath!,
+      assignments,
+      desc!.regions,
+      builder!,
+      filename
+    );
+  }
+
   let declarations = declarationsMap(desc!.regions);
   let { regions } = desc!;
   resolveDependsOnReferences(dependsOn, desc!, declarations);
@@ -1218,6 +1236,8 @@ function isSideEffectFree(node: Expression | SpreadElement): boolean {
     case "LogicalExpression":
     case "BinaryExpression":
       return isSideEffectFree(node.left) && isSideEffectFree(node.right);
+    case "UnaryExpression":
+      return isSideEffectFree(node.argument);
     case "ObjectExpression":
       return node.properties.every(
         (p) =>
@@ -1249,6 +1269,81 @@ function referencesForDeclaration(
       .referencePaths.filter((path) => path.type === "Identifier")
       .map((p) => builder.createCodeRegionForReference(p)),
   ];
+}
+
+// @babel has a bug whereby it does not recognize the left side of an assignment
+// expression as a binding reference
+// https://github.com/babel/babel/issues/10299, so we are gathering up all the
+// assignment expressions and looking for any assignments of bindings in the
+// module scope and turning those Identifiers into reference regions.
+function setReferencesFromAssignments(
+  programPath: NodePath<Program>,
+  assignments: Set<NodePath<AssignmentExpression>>,
+  regions: CodeRegion[],
+  builder: RegionBuilder,
+  filename: string
+) {
+  let moduleScope = programPath.scope;
+  function setReferenceForName(name: string, path: NodePath) {
+    let moduleScopedBinding = moduleScope.getBinding(name);
+    let currentScope = path.scope;
+    let binding = currentScope.getBinding(name);
+    if (binding === moduleScopedBinding) {
+      let declarationPointer = regions.findIndex(
+        (r) => r.type === "declaration" && r.declaration.declaredName === name
+      );
+      let declarationRegion = regions[declarationPointer];
+      if (!declarationRegion || declarationRegion.type !== "declaration") {
+        throw new Error(
+          `could not find declaration region for '${name}' in ${filename} despite finding a module scoped binding with this name`
+        );
+      }
+      let referencePointer = builder.createCodeRegionForReference(path);
+      regions[referencePointer].dependsOn.add(declarationPointer);
+      declarationRegion.declaration.references.push(referencePointer);
+    }
+  }
+
+  function setReference(path: NodePath<LVal> | NodePath<ObjectProperty>) {
+    let { node } = path;
+    switch (node.type) {
+      case "Identifier":
+        let name = node.name as string;
+        setReferenceForName(name, path as NodePath);
+        break;
+      case "ObjectPattern":
+        let properties = path.get("properties") as NodePath<ObjectProperty>[];
+        for (let prop of properties) {
+          setReference(prop);
+        }
+        break;
+      case "ObjectProperty":
+        setReference(path.get("value") as NodePath<LVal>);
+        break;
+      case "ArrayPattern":
+        let elements = path.get("elements") as NodePath<LVal>[];
+        for (let element of elements) {
+          setReference(element);
+        }
+        break;
+      case "RestElement":
+        setReference(path.get("element") as NodePath<LVal>);
+        break;
+      case "AssignmentPattern":
+        setReference(path.get("left") as NodePath<LVal>);
+        break;
+      case "MemberExpression":
+      case "TSParameterProperty":
+        break;
+      default:
+        assertNever(node);
+    }
+  }
+
+  for (let assignment of assignments) {
+    let assignee = assignment.get("left");
+    setReference(assignee);
+  }
 }
 
 // this is a convenience to replace the removal of the "names" property in

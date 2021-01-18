@@ -580,6 +580,86 @@ QUnit.module("describe-file", function () {
     );
   });
 
+  test("a code region declaration can have a reference as the left-hand side of an assignment expression", async function (assert) {
+    let { desc, editor } = describeESModule(`
+      let a;
+      function initA() {
+        a = 3;
+      }
+      export {};
+    `);
+    keepAll(desc, editor);
+    let { declaration } = desc.declarations.get("a")!;
+    assert.equal(declaration.references.length, 2);
+    for (let reference of declaration.references) {
+      editor.replace(reference, "b");
+    }
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+      let b;
+      function initA() {
+        b = 3;
+      }
+      export {};
+      `
+    );
+  });
+
+  test("a code region declaration can have a reference as the left-hand side of an assignment expression that is an LVal", async function (assert) {
+    let { desc, editor } = describeESModule(`
+      let a;
+      function initA() {
+        let foo = cachedValue();
+        ({ a } = foo);
+      }
+      export {};
+    `);
+    keepAll(desc, editor);
+    let { declaration } = desc.declarations.get("a")!;
+    assert.equal(declaration.references.length, 2);
+    for (let reference of declaration.references) {
+      editor.replace(reference, "b");
+    }
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+      let b;
+      function initA() {
+        let foo = cachedValue();
+        ({ a: b } = foo);
+      }
+      export {};
+      `
+    );
+  });
+
+  test("a code region declaration will not have a reference to a similarly named left-hand side of an assignment expression when the referenced binding is not in the module scope", async function (assert) {
+    let { desc, editor } = describeESModule(`
+      let a;
+      function init() {
+        let a = 3;
+      }
+      export {};
+    `);
+    keepAll(desc, editor);
+    let { declaration } = desc.declarations.get("a")!;
+    assert.equal(declaration.references.length, 1);
+    for (let reference of declaration.references) {
+      editor.replace(reference, "b");
+    }
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+      let b;
+      function init() {
+        let a = 3;
+      }
+      export {};
+      `
+    );
+  });
+
   test("the DocumentPointer code region depends on a declaration that has a side effect", async function (assert) {
     let { desc, editor } = describeESModule(`
       let a = initializeCache();
