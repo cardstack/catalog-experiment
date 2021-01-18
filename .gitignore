@@ -34,3 +34,4 @@
 /packages/shared/**/*.js.map
 
 !webpack.config.js
+!/bundles/**/dist
