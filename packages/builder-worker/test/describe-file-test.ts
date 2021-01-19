@@ -9,6 +9,7 @@ import {
 } from "../src/describe-file";
 import {
   CodeRegion,
+  DeclarationCodeRegion,
   documentPointer,
   NamespaceMarker,
   notFoundPointer,
@@ -180,6 +181,39 @@ QUnit.module("describe-file", function () {
       const a = 1;
       //CODE_REGION
       class c { foo() { return "bar"; } }
+      export {};
+      `
+    );
+  });
+
+  test("creates a code region for a function declaration that has a paramter named the same as the function", function (assert) {
+    let { desc, editor } = describeESModule(`
+      const a = 1;
+      function validate(validate) {
+        console.log(validate);
+      }
+      validate(a);
+      export {};
+    `);
+    keepAll(desc, editor);
+    let pointer = desc.regions.findIndex(
+      (r) =>
+        r.type === "declaration" && r.declaration.declaredName === "validate"
+    );
+    let region = desc.regions[pointer] as DeclarationCodeRegion;
+    assert.ok(region, "a code region was created for the declaration");
+    assert.equal(region.declaration.references.length, 2);
+    for (let reference of region.declaration.references) {
+      editor.replace(reference, "validate0");
+    }
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+      const a = 1;
+      function validate0(validate) {
+        console.log(validate);
+      }
+      validate0(a);
       export {};
       `
     );

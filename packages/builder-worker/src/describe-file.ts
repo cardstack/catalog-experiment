@@ -353,7 +353,12 @@ export function describeFile(ast: File, filename: string): FileDescription {
       }
       let references: RegionPointer[] = [];
       if (identifier) {
-        references = referencesForDeclaration(name, identifier, builder);
+        references = referencesForDeclaration(
+          name,
+          identifier,
+          programPath,
+          builder
+        );
       }
       let regionDeps: Set<number> = new Set();
       let declaratorOfRegion = [...dependsOnRegion][0]; // this is the declaration region
@@ -689,13 +694,19 @@ export function describeFile(ast: File, filename: string): FileDescription {
       }
     },
     ImportSpecifier(path) {
-      addImportedName(desc, path.node.imported.name, path, builder);
+      addImportedName(
+        desc,
+        path.node.imported.name,
+        path,
+        programPath,
+        builder
+      );
     },
     ImportDefaultSpecifier(path) {
-      addImportedName(desc, "default", path, builder);
+      addImportedName(desc, "default", path, programPath, builder);
     },
     ImportNamespaceSpecifier(path) {
-      addImportedName(desc, NamespaceMarker, path, builder);
+      addImportedName(desc, NamespaceMarker, path, programPath, builder);
     },
     Import(path) {
       isES6Module = true;
@@ -1141,12 +1152,14 @@ function addImportedName(
     | NodePath<ImportSpecifier>
     | NodePath<ImportDefaultSpecifier>
     | NodePath<ImportNamespaceSpecifier>,
+  programPath: NodePath<Program>,
   builder: RegionBuilder
 ) {
   let identifierPath = path.get("local") as NodePath<Identifier>;
   let references = referencesForDeclaration(
     identifierPath.node.name,
     identifierPath,
+    programPath,
     builder
   );
   let declarationPointer = builder.createCodeRegion(path as NodePath, {
@@ -1256,11 +1269,12 @@ function isSideEffectFree(node: Expression | SpreadElement): boolean {
 function referencesForDeclaration(
   name: string,
   identifierPath: NodePath<Identifier>,
+  programPath: NodePath<Program>,
   builder: RegionBuilder
 ): RegionPointer[] {
   return [
     builder.createCodeRegionForReference(identifierPath as NodePath),
-    ...identifierPath.scope
+    ...programPath.scope
       .getBinding(name)!
       // we filter because babel gives you some things like
       // ExportNamedDeclaration here that aren't relevant to us, because
