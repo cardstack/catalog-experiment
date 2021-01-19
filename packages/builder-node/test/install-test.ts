@@ -494,7 +494,7 @@ module.exports = {
         src,
         `
         import implementation from "./index.js$cjs$";
-        export default implementation();
+        export default implementation;
         `
       );
       src = await (
@@ -504,7 +504,7 @@ module.exports = {
         src,
         `
         import implementation from "./a.js$cjs$";
-        export default implementation();
+        export default implementation;
         `
       );
     });
