@@ -15,6 +15,9 @@
       "dependencies": {
         "charcodes": "^0.2.0"
       },
+      "macros": {
+        "new Set\\(": "new window.Set("
+      },
       "babelPlugins": [
         "@babel/plugin-transform-flow-strip-types",
         [
