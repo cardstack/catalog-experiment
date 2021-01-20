@@ -13,7 +13,8 @@
       ],
       "macros": {
         "process\\.env\\.BABEL_TYPES_8_BREAKING": "false",
-        "Symbol\\.for\\(": "window.Symbol.for("
+        "Symbol\\.for\\(": "window.Symbol.for(",
+        "new Set\\(": "new window.Set("
       },
       "babelPlugins": [
         "@babel/plugin-transform-flow-strip-types",
