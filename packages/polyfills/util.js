@@ -65,7 +65,7 @@ export function format(f) {
 // If --no-deprecation is set, then it is a no-op.
 export function deprecate(fn, msg) {
   // Allow for deprecating things in the process of starting up.
-  if (isUndefined(global.process)) {
+  if (isUndefined(window.process)) {
     return function () {
       return deprecate(fn, msg).apply(this, arguments);
     };
