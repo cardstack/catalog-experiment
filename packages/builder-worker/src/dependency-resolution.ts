@@ -392,7 +392,9 @@ export class DependencyResolver {
               r.type === "declaration" &&
               resolution.type === r.type &&
               resolution.source === r.source &&
-              resolution.name === r.name
+              (resolution.name === r.name ||
+                (isNamespaceMarker(resolution.name) &&
+                  isNamespaceMarker(r.name)))
           );
         if (dupeResolutions.length > 1) {
           let rawRanges = [range, ...dupeResolutions.map((r) => r.range)];
@@ -407,7 +409,10 @@ export class DependencyResolver {
           // resolution whose consumedBy is actually the bundleHref, if there
           // are none, then first one alphabetically by consumer href wins
           let winningResolution = dupeResolutions.find(
-            (r) => r.bundleHref === r.consumedBy.url.href
+            (r) =>
+              r.bundleHref === r.consumedBy.url.href ||
+              (r.type === "declaration" &&
+                r.importedSource?.declaredIn.url.href === r.bundleHref)
           );
           if (!winningResolution) {
             dupeResolutions.sort(

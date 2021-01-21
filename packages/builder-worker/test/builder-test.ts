@@ -7380,6 +7380,113 @@ QUnit.module("module builder", function (origHooks) {
           );
         }
       });
+
+      test("bundle reexports namespace of a pkg dependency that collapses an overlapping range in an included bundle", async function (assert) {
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["index.js"],
+            "dependencies": {
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "^7.9.2"
+              }
+            }
+          }`,
+          "catalogjs.lock": `{ "puppies": "${puppiesBundle2Href}/index.js" }`, // ver 7.9.2
+          "index.js": `
+            import { puppies } from "puppies";
+            function getPuppies() { return puppies; }
+            function getCats() { return ["jojo"]; }
+            function getRats() { return ["pizza rat"]; }
+            export { getPuppies, getCats, getRats };
+          `,
+        });
+        let bundle1Src = await bundleSource(assert.fs);
+        let lib1BundleHref =
+          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["driver.js"],
+            "dependencies": {
+              "lib1": {
+                "type": "npm",
+                "pkgName": "lib1",
+                "range": "^1.0.0"
+              },
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "^7.9.3"
+              }
+            }
+          }`,
+          // puppies dep is ver 7.9.4
+          "catalogjs.lock": `{
+            "lib1": "${lib1BundleHref}/lib.js",
+            "puppies": "${puppiesBundle1Href}/index.js"
+          }`,
+          "driver.js": `
+            import { getPuppies } from "lib1";
+            export * as babies from "puppies";
+            console.log(getPuppies());
+          `,
+          [`${lib1BundleHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
+          [`${lib1BundleHref}/lib.js`]: bundle1Src,
+        });
+        let { source, desc } = await bundle(assert.fs, url("output/driver.js"));
+
+        assert.codeEqual(
+          source,
+          `
+          const puppies = ["mango", "van gogh"];
+          const babies = { puppies };
+          function getPuppies() { return puppies; }
+          console.log(getPuppies());
+          export { babies };
+          `
+        );
+
+        if (desc) {
+          let puppies = desc.declarations.get("puppies");
+          assert.equal(puppies?.declaration.type, "local");
+          if (puppies?.declaration.type === "local") {
+            assert.equal(
+              puppies.declaration.original?.bundleHref,
+              `${puppiesBundle1Href}/index.js`
+            );
+            assert.equal(puppies.declaration.original?.range, "^7.9.3");
+            assert.equal(puppies.declaration.original?.importedAs, "puppies");
+          }
+
+          assert.equal(desc?.exports.size, 1);
+          let babiesExport = desc.exports.get("babies")!;
+          assert.equal(babiesExport.type, "local");
+          if (babiesExport.type === "local") {
+            assert.equal(babiesExport.name, "babies");
+            assert.ok(
+              babiesExport.exportRegion != null,
+              "export desc contains region"
+            );
+          }
+
+          let editor = makeEditor(source, desc);
+          keepAll(desc, editor);
+          editor.rename("puppies", "renamedPuppies");
+          editor.rename("babies", "renamedBabies");
+          editor.rename("getPuppies", "renamedGetPuppies");
+          assert.codeEqual(
+            editor.serialize().code,
+            `
+            const renamedPuppies = ["mango", "van gogh"];
+            const renamedBabies = { puppies: renamedPuppies };
+            function renamedGetPuppies() { return renamedPuppies; }
+            console.log(renamedGetPuppies());
+            export { renamedBabies as babies };
+            `
+          );
+        }
+      });
     });
   });
 

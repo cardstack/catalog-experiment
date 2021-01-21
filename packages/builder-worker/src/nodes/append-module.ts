@@ -1185,10 +1185,12 @@ function setReferences(
       depResolver
     );
     let assignedName: string | undefined;
-    if (resolution?.importedSource) {
+    if (resolution) {
       assignedName = state.assignedImportedNames
         .get(resolution.source)
-        ?.get(resolution.name);
+        ?.get(
+          isNamespaceMarker(resolution.name) ? NamespaceMarker : resolution.name
+        );
     } else if (declaration.type === "import" || declarationPointer < 0) {
       assignedName = state.nameAssignments
         .get(module.url.href)
@@ -1568,8 +1570,8 @@ function assignedExports(
   );
   for (let assignment of ownAssignments) {
     let { module } = assignment;
-    let importedFrom = module;
     for (let [original, exposedAs] of assignment.exposedNames.entries()) {
+      let importedFrom = module;
       let exportDesc = module.desc.exports.get(original);
       if (exportDesc && exportDesc.type === "local") {
         let resolution = resolutionForPkgDepDeclaration(
@@ -1627,7 +1629,15 @@ function assignedExports(
               ? source.resolution.source
               : source.importedFromModule.url.href
           )
-          ?.get(source.resolution ? source.resolution.name : source.importedAs);
+          ?.get(
+            source.resolution
+              ? isNamespaceMarker(source.resolution.name)
+                ? NamespaceMarker
+                : source.resolution.name
+              : isNamespaceMarker(source.importedAs)
+              ? NamespaceMarker
+              : source.importedAs
+          );
         if (!assignedName) {
           if (source.importedPointer == null) {
             throw new Error(
@@ -1838,7 +1848,7 @@ function assignedImports(
       }
       let assignedName = state.assignedImportedNames
         .get(importedFromModule.url.href)
-        ?.get(importedAs);
+        ?.get(isNamespaceMarker(importedAs) ? NamespaceMarker : importedAs);
       if (!assignedName) {
         throw new Error(
           `could not find assigned name for import of ${JSON.stringify(

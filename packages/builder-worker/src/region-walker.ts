@@ -275,12 +275,38 @@ export class RegionWalker {
       }
     }
 
-    // This is an import for side-effects only.
+    // consider "import" regions (which can include reexports as well as imports
+    // for pure side effects)
     else if (region.type === "import" && !region.isDynamic) {
       let importedModule = makeNonCyclic(module).resolvedImports[
         region.importIndex
       ];
       if (this.moduleInOurBundle(importedModule)) {
+        // consider a namespace reexport from an entrypoint module, which in
+        // turn is a bundle export. normally reexports do not effect the
+        // module scope. however namespace reexports do require us to fabricate
+        // a namespace object in the module scope. For namespace reexports,
+        // generally the declaration resolution will guide our "walk" such that
+        // the namespace markers are included as kept regions. However, in this
+        // case, because module scope is skipped entirely, we need to handle it
+        // specially.
+        if (region.exportType === "reexport") {
+          let exportDesc = [...module.desc.exports.values()].find(
+            (desc) => desc.type === "reexport" && desc.exportRegion === pointer
+          );
+          if (!exportDesc || exportDesc.type !== "reexport") {
+            throw new Error(
+              `cannot identify export description for the reexport region ${pointer} in module ${module.url.href} when making bundle ${this.bundle.href}`
+            );
+          }
+          if (isNamespaceMarker(exportDesc.name)) {
+            let namespaceMarker = this.visitNamespace(importedModule);
+            this.keepRegion(originalId, id, new Set([namespaceMarker]));
+            return id;
+          }
+        }
+
+        // This is an import for side-effects only.
         return this.walk(importedModule, documentPointer, originalId);
       } else {
         // we mark the external bundle import region as something we want to keep
