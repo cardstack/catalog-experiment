@@ -362,7 +362,9 @@ export class ModuleRewriter {
           ) {
             setDoubleNestedMapping(
               outerResolution.source,
-              outerResolution.name,
+              isNamespaceMarker(outerResolution.name)
+                ? NamespaceMarker
+                : outerResolution.name,
               assignedName,
               this.state.assignedImportedNames
             );
@@ -530,30 +532,70 @@ export class ModuleRewriter {
   private makeNamespaceMappings() {
     for (let pointer of this.editor.includedRegions()) {
       let region = this.module.desc.regions[pointer];
-      if (
-        region.type !== "declaration" ||
-        region.declaration.type !== "import"
-      ) {
-        continue;
-      }
-      let { declaration: desc } = region;
-      let importedModule = this.module.resolvedImports[desc.importIndex];
-      let source = this.depResolver.resolveDeclaration(
-        desc.importedName,
-        importedModule,
-        this.module,
-        this.ownAssignments
-      );
+      let importedModule: Resolution | undefined;
+      let resolvedImportedModule: Resolution | undefined;
+      let assignedName: string | undefined;
 
-      if (source.type === "resolved") {
-        continue;
-      }
-      let { importedFromModule } = source;
       if (
-        !this.ownAssignments.find(
-          (a) => a.module.url.href === importedFromModule.url.href
-        )
+        region.type === "declaration" &&
+        region.declaration.type === "import"
       ) {
+        let { declaration: desc } = region;
+        importedModule = this.module.resolvedImports[desc.importIndex];
+        let source = this.depResolver.resolveDeclaration(
+          desc.importedName,
+          importedModule,
+          this.module,
+          this.ownAssignments
+        );
+
+        if (source.type === "resolved") {
+          continue;
+        }
+        resolvedImportedModule = source.importedFromModule;
+        if (
+          !this.ownAssignments.find(
+            (a) => a.module.url.href === resolvedImportedModule!.url.href
+          )
+        ) {
+          continue;
+        }
+        assignedName = this.state.assignedImportedNames
+          .get(resolvedImportedModule.url.href)
+          ?.get(NamespaceMarker);
+      } else if (region.type === "import" && region.exportType === "reexport") {
+        let [exportName, exportDesc] =
+          [...this.module.desc.exports].find(
+            ([, exportDesc]) =>
+              exportDesc.type === "reexport" &&
+              exportDesc.exportRegion === pointer
+          ) ?? [];
+        if (!exportName || !exportDesc || exportDesc.type !== "reexport") {
+          throw new Error(
+            `cannot identify export description for the reexport region ${pointer} in module ${this.module.url.href} when making bundle ${this.bundle.href}`
+          );
+        }
+        if (
+          !isNamespaceMarker(exportDesc.name) ||
+          isExportAllMarker(exportName)
+        ) {
+          continue;
+        }
+        importedModule = this.module.resolvedImports[exportDesc.importIndex];
+        resolvedImportedModule = importedModule;
+        if (
+          !this.ownAssignments.find(
+            (a) => a.module.url.href === importedModule!.url.href
+          )
+        ) {
+          continue;
+        }
+        assignedName = this.maybeAssignImportName(
+          importedModule.url.href,
+          NamespaceMarker,
+          exportName
+        );
+      } else {
         continue;
       }
 
@@ -561,17 +603,14 @@ export class ModuleRewriter {
       // should be in the bundle, now let's actually remove it.
       this.editor.removeRegionAndItsChildren(pointer);
 
-      let assignedName = this.state.assignedImportedNames
-        .get(source.importedFromModule.url.href)
-        ?.get(NamespaceMarker);
       if (!assignedName) {
         throw new Error(
-          `There is no name assignment for the namespace import of ${source.importedFromModule.url.href} in module ${this.module.url.href}`
+          `There is no name assignment for the namespace import of ${resolvedImportedModule.url.href} in module ${this.module.url.href}`
         );
       }
       let nameMap: Map<string, string> = new Map(); // outside name => inside name
       let dep = Object.values(this.dependencies).find((dep) =>
-        importedModule.url.href.includes(depAsURL(dep).href)
+        importedModule!.url.href.includes(depAsURL(dep).href)
       );
       let resolution: ResolvedDeclarationDependency | undefined;
       let pkgURL = pkgInfoFromCatalogJsURL(importedModule.url)?.pkgURL;
@@ -588,7 +627,7 @@ export class ModuleRewriter {
       for (let [
         exportedName,
         { desc: exportDesc, module: sourceModule },
-      ] of getExports(source.importedFromModule).entries()) {
+      ] of getExports(resolvedImportedModule).entries()) {
         if (isNamespaceMarker(exportDesc.name)) {
           continue;
         }
@@ -706,7 +745,7 @@ export class ModuleRewriter {
     for (let name of exportedNames) {
       alreadyAssignedName = this.state.assignedImportedNames
         .get(remoteModuleHref)
-        ?.get(name);
+        ?.get(isNamespaceMarker(name) ? NamespaceMarker : name);
       if (alreadyAssignedName) {
         return alreadyAssignedName;
       }
@@ -714,7 +753,7 @@ export class ModuleRewriter {
     let assignedName = this.unusedNameLike(suggestedName);
     setDoubleNestedMapping(
       remoteModuleHref,
-      importedAs,
+      isNamespaceMarker(importedAs) ? NamespaceMarker : importedAs,
       assignedName,
       this.state.assignedImportedNames
     );
