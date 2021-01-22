@@ -462,7 +462,7 @@ export function describeFile(ast: File, filename: string): FileDescription {
     let [lastSideEffects] = moduleSideEffects.slice(-1);
     if (lastSideEffects && path.type !== "ImportDeclaration") {
       if (lastSideEffects && lastSideEffects.length > 0) {
-        let [lastSideEffect] = lastSideEffects;
+        let [lastSideEffect] = lastSideEffects.slice(-1);
         let lastSideEffectIndex = path.parent.body.findIndex(
           (statement) => statement === lastSideEffect.node
         );

@@ -551,6 +551,68 @@ QUnit.module("describe-file", function () {
     );
   });
 
+  test("contiguous module side effect tagged template expressions are contained in the same code region", function (assert) {
+    let { desc, editor } = describeESModule(`
+      const helpers = Object.create(null);
+      export default helpers;
+
+      const helper = minVersion => tpl => ({
+        minVersion,
+        ast: () => template.program.ast(tpl)
+      });
+
+      helpers.typeof = helper("7.0.0-beta.0")\`
+        export default function _typeof(obj) {}
+      \`;
+      helpers.jsx = helper("7.0.0-beta.0")\`
+        var REACT_ELEMENT_TYPE;
+      \`;
+      helpers.asyncIterator = helper("7.0.0-beta.0")\`
+        export default function _asyncIterator(iterable) {}
+      \`;
+      helpers.AwaitValue = helper("7.0.0-beta.0")\`
+        export default function _AwaitValue(value) {
+      \`;
+      helpers.wrapAsyncGenerator = helper("7.0.0-beta.0")\`
+        import AsyncGenerator from "AsyncGenerator";
+      \`;
+      helpers.awaitAsyncGenerator = helper("7.0.0-beta.0")\`
+        import AwaitValue from "AwaitValue";
+      \`;
+      helpers.asyncGeneratorDelegate = helper("7.0.0-beta.0")\`
+        export default function _asyncGeneratorDelegate(inner, awaitWrap) {}
+      \`;
+      helpers.asyncToGenerator = helper("7.0.0-beta.0")\`
+        function asyncGeneratorStep(gen, resolve, reject, _next, _throw, key, arg) {}
+      \`;
+      helpers.classCallCheck = helper("7.0.0-beta.0")\`
+        export default function _classCallCheck(instance, Constructor) {
+      \`;
+    `);
+    keepAll(desc, editor);
+
+    let document = desc.regions[documentPointer];
+    let sideEffects = document.dependsOn;
+    // we have 2 declarations with a side effect, and all the tagged templates
+    // should be merged into a 3rd side effect
+    assert.equal(sideEffects.size, 3);
+    editor.replace([...sideEffects][2], "//CODE_REGION");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+      const helpers = Object.create(null);
+      export default helpers;
+
+      const helper = minVersion => tpl => ({
+        minVersion,
+        ast: () => template.program.ast(tpl)
+      });
+
+      //CODE_REGION
+      `
+    );
+  });
+
   test("a code region for a binding declaration depends on module side effects", function (assert) {
     let { desc, editor } = describeESModule(`
       console.log("side effect");
@@ -609,6 +671,35 @@ QUnit.module("describe-file", function () {
       function printA() {
         console.log(b);
       }
+      export {};
+      `
+    );
+  });
+
+  test("a code region declaration can have a reference in a tagged template expression", async function (assert) {
+    let { desc, editor } = describeESModule(`
+      function tag() { return 'cool'; }
+      const thing = 'bananas';
+      const sentence = tag\`I like \${thing}\`
+      export {};
+    `);
+    keepAll(desc, editor);
+    let { declaration: tag } = desc.declarations.get("tag")!;
+    assert.equal(tag.references.length, 2);
+    let { declaration: thing } = desc.declarations.get("thing")!;
+    assert.equal(thing.references.length, 2);
+    for (let reference of tag.references) {
+      editor.replace(reference, "renamedTag");
+    }
+    for (let reference of thing.references) {
+      editor.replace(reference, "renamedThing");
+    }
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+      function renamedTag() { return 'cool'; }
+      const renamedThing = 'bananas';
+      const sentence = renamedTag\`I like \${renamedThing}\`
       export {};
       `
     );

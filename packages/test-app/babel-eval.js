@@ -1,4 +1,4 @@
-import { parseSync } from "https://local-disk/bundles/@babel/core/7.9.0/d8b7Ummfqw3exmsT8yWq3gr13OM=/src/index.js";
+import { parseSync } from "https://local-disk/bundles/@babel/core/7.9.0/mjrA8i7qhVIlMPwC63GVqBhU0eQ=/src/index.js";
 import flatMap from "https://local-disk/bundles/lodash/4.17.19/NbTWX71F-LVzbYPD1xMbcjuRjD0=/flatMap.js";
 
 // TODO test a bundle built from CJS sources as well
