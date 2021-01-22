@@ -614,7 +614,18 @@ class EditorAssigner {
           r.declaration.declaratorOfRegion === pointer
       )
     );
-    if (consumers.every((c) => c.moduleHref === moduleHref)) {
+    // we only merge into consumers that are in our module and all share the
+    // same editor, unless we have declarators--in that case all our consumers
+    // need us to merge into them regardless
+    if (
+      consumers.every(
+        (c) =>
+          c.moduleHref === moduleHref &&
+          [...c.assignment.editors][0] ===
+            [...consumers[0].assignment.editors][0]
+      ) ||
+      hasDeclarators
+    ) {
       let namespaceMarkerConsumer = consumers.find((c) =>
         c.assignment.editors.has(regionId(moduleHref, NamespaceMarker))
       );
