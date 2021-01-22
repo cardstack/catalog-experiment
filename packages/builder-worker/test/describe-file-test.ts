@@ -668,6 +668,39 @@ QUnit.module("describe-file", function () {
     );
   });
 
+  test("a code region declaration can have a reference as the left-hand side of an assignment expression that is a member expression", async function (assert) {
+    let { desc, editor } = describeESModule(`
+      let a = {};
+      let b = 'bar';
+      function initA() {
+        a[b] = 'foo';
+      }
+      export {};
+    `);
+    keepAll(desc, editor);
+    let { declaration: a } = desc.declarations.get("a")!;
+    assert.equal(a.references.length, 2);
+    let { declaration: b } = desc.declarations.get("b")!;
+    assert.equal(b.references.length, 2);
+    for (let reference of a.references) {
+      editor.replace(reference, "alpha");
+    }
+    for (let reference of b.references) {
+      editor.replace(reference, "bravo");
+    }
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+      let alpha = {};
+      let bravo = 'bar';
+      function initA() {
+        alpha[bravo] = 'foo';
+      }
+      export {};
+      `
+    );
+  });
+
   test("a code region declaration will not have a reference to a similarly named left-hand side of an assignment expression when the referenced binding is not in the module scope", async function (assert) {
     let { desc, editor } = describeESModule(`
       let a;
