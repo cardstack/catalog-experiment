@@ -1,4 +1,4 @@
-import { flatMap } from "lodash";
+import { flatMap, partition } from "lodash";
 import {
   CodeRegion,
   documentPointer,
@@ -49,18 +49,38 @@ export class RegionWalker {
       ownAssignments.find(({ module }) => module.url.href === m.url.href)
     );
     let walkStart = Date.now();
+    let additionalSideEffects: string[] = [];
     // marry up the document regions to the exposed regions in dependency order
     for (let module of ownResolutions) {
-      // walks all the module side effects
-      this.walk(module, documentPointer);
+      let {
+        declarationSideEffects,
+        nonDeclarationSideEffects,
+      } = this.partitionSideEffects(module);
+      // first we'll walk the module side effects that are not the result of a
+      // declaration
+      for (let pointer of nonDeclarationSideEffects) {
+        this.walk(module, pointer);
+      }
+      additionalSideEffects.push(
+        ...declarationSideEffects.map((p) => regionId(module, p))
+      );
 
-      // walks the exposed API of the module
+      // then we walk the exposed API of the module
       for (let pointer of exposed
         .filter(({ module: m }) => m.url.href === module.url.href)
         .map(({ pointer }) => pointer)) {
         this.walk(module, pointer);
       }
     }
+    // finally, we walk the declaration side effects last, so that if the
+    // declaration is consumed, it will be crawled in its natural order first
+    for (let regionId of additionalSideEffects) {
+      let { module, pointer } = getRegionFromId(regionId, this.ownAssignments);
+      if (!isNamespaceMarker(pointer)) {
+        this.walk(module, pointer);
+      }
+    }
+
     if (typeof process?.stdout?.write === "function") {
       console.log();
     }
@@ -79,6 +99,19 @@ export class RegionWalker {
     );
   }
 
+  private partitionSideEffects(
+    module: Resolution
+  ): {
+    declarationSideEffects: RegionPointer[];
+    nonDeclarationSideEffects: RegionPointer[];
+  } {
+    let [declarationSideEffects, nonDeclarationSideEffects] = partition(
+      [...module.desc.regions[documentPointer].dependsOn],
+      (p) => module.desc.regions[p].type === "declaration"
+    );
+    return { declarationSideEffects, nonDeclarationSideEffects };
+  }
+
   get editors(): Editor[] {
     return this.assigner.editors;
   }
@@ -92,6 +125,7 @@ export class RegionWalker {
     let region = module.desc.regions[pointer];
 
     if (this.keptRegions.has(id)) {
+      this.resolvedRegions.set(originalId, id);
       return id;
     }
     if (this.seenRegions.has(id)) {
@@ -317,8 +351,10 @@ export class RegionWalker {
       }
     }
 
-    // This is a plain jane region that has no pkg resolutions that we just want
-    // to keep, and continue our journey for its deps
+    // Finally we are ready to walk through our dependencies, importantly
+    // marking them as kept before we mark the region in question as kept, and
+    // recording our deps as regions that we indeed depend upon as part of our
+    // walk.
     else {
       let deps: Set<string> = new Set();
       for (let depId of region.dependsOn) {

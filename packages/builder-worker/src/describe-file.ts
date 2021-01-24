@@ -404,7 +404,6 @@ export function describeFile(ast: File, filename: string): FileDescription {
         }
       }
       if (sideEffects) {
-        desc.regions[sideEffects].dependsOn.add(declarationPointer);
         desc.regions[documentPointer].dependsOn.add(declarationPointer);
       }
       dependsOn.set(builder.regions[declarationPointer], consumes);
