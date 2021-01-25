@@ -73,7 +73,14 @@ export class RegionWalker {
       }
     }
     // finally, we walk the declaration side effects last, so that if the
-    // declaration is consumed, it will be crawled in its natural order first
+    // declaration is consumed, it will be crawled in its natural order first.
+    // For unconsumed declarations with side effects, we want those to be walked
+    // at the same time that we walk the nonDeclarationSideEffects--so that the
+    // order they are serialized is correct, however, we don't know they are
+    // unconsumed until at this point, at which point our walk thru these will
+    // place the unconsumed declaration with a side effect in a position within
+    // the resulting bundle that is after when it should really be. need a
+    // better answer here...
     for (let regionId of additionalSideEffects) {
       let { module, pointer } = getRegionFromId(regionId, this.ownAssignments);
       if (!isNamespaceMarker(pointer)) {
@@ -298,7 +305,7 @@ export class RegionWalker {
       // winning resolution, so we keep this region and continue our journey.
       else {
         let deps: Set<string> = new Set();
-        for (let depId of region.dependsOn) {
+        for (let depId of orderDependencies(region.dependsOn, module)) {
           let resolvedDepId = this.walk(module, depId);
           if (resolvedDepId != null) {
             deps.add(resolvedDepId);
@@ -357,7 +364,7 @@ export class RegionWalker {
     // walk.
     else {
       let deps: Set<string> = new Set();
-      for (let depId of region.dependsOn) {
+      for (let depId of orderDependencies(region.dependsOn, module)) {
         let resolvedDepId = this.walk(module, depId);
         if (resolvedDepId != null) {
           deps.add(resolvedDepId);
@@ -709,36 +716,6 @@ class EditorAssigner {
 
   private pruneEditors() {
     for (let [editorId, { editor }] of this.editorMap) {
-      // remove declaration regions that have no more declarator regions
-      let flattenedDeclarators = flatMap(editor.regions, (region, pointer) =>
-        region.type === "declaration" &&
-        region.declaration.type === "local" &&
-        region.declaration.declaratorOfRegion != null
-          ? [[region.declaration.declaratorOfRegion, pointer]]
-          : []
-      );
-      let declarations = flattenedDeclarators.reduce(
-        (declarations, [declarationPointer, declaratorPointer]) => {
-          if (editor.dispositions[declarationPointer].state !== "removed") {
-            let declarators = declarations.get(declarationPointer);
-            if (!declarators) {
-              declarators = [];
-              declarations.set(declarationPointer, declarators);
-            }
-            if (editor.dispositions[declaratorPointer].state !== "removed") {
-              declarators.push(declaratorPointer);
-            }
-          }
-          return declarations;
-        },
-        new Map()
-      );
-      for (let [declarationPointer, declarators] of declarations) {
-        if (declarators.length === 0) {
-          editor.removeRegion(declarationPointer);
-        }
-      }
-
       // filter out editors that have only retained solely their document regions,
       // these are no-ops
       if (
@@ -774,6 +751,38 @@ class EditorAssigner {
         editor.mergeWith(...rest.map(([, { editor }]) => editor));
         for (let [mergedId] of rest) {
           this.editorMap.delete(mergedId);
+        }
+      }
+    }
+
+    for (let { editor } of this.editorMap.values()) {
+      // remove declaration regions that have no more declarator regions
+      let flattenedDeclarators = flatMap(editor.regions, (region, pointer) =>
+        region.type === "declaration" &&
+        region.declaration.type === "local" &&
+        region.declaration.declaratorOfRegion != null
+          ? [[region.declaration.declaratorOfRegion, pointer]]
+          : []
+      );
+      let declarations = flattenedDeclarators.reduce(
+        (declarations, [declarationPointer, declaratorPointer]) => {
+          if (editor.dispositions[declarationPointer].state !== "removed") {
+            let declarators = declarations.get(declarationPointer);
+            if (!declarators) {
+              declarators = [];
+              declarations.set(declarationPointer, declarators);
+            }
+            if (editor.dispositions[declaratorPointer].state !== "removed") {
+              declarators.push(declaratorPointer);
+            }
+          }
+          return declarations;
+        },
+        new Map()
+      );
+      for (let [declarationPointer, declarators] of declarations) {
+        if (declarators.length === 0) {
+          editor.removeRegion(declarationPointer);
         }
       }
     }
@@ -824,4 +833,46 @@ function getRegionFromId(
   }
 
   return { module, pointer, region: module.desc.regions[pointer] };
+}
+
+function orderDependencies(
+  deps: Set<RegionPointer>,
+  module: Resolution
+): RegionPointer[] {
+  let regions = module.desc.regions;
+  const aFirst = -1,
+    bFirst = 1,
+    same = 0;
+  let sortedDeps = [...deps].sort((a, b) => {
+    let typeA = regions[a].type;
+    let typeB = regions[b].type;
+    if (typeA === "reference" && typeB === "reference") {
+      let declA = regions[[...regions[a].dependsOn][0]];
+      let declB = regions[[...regions[b].dependsOn][0]];
+      if (declA.type === "declaration" && declB.type === "declaration") {
+        // references to local declarations go first
+        if (
+          declA.declaration.type === "import" &&
+          declB.declaration.type === "local"
+        ) {
+          return bFirst;
+        }
+        if (
+          declA.declaration.type === "local" &&
+          declB.declaration.type === "import"
+        ) {
+          return aFirst;
+        }
+        // otherwise sort by import position (importIndex) in desc order
+        if (
+          declA.declaration.type === "import" &&
+          declB.declaration.type === "import"
+        ) {
+          return declB.declaration.importIndex - declA.declaration.importIndex;
+        }
+      }
+    }
+    return same;
+  });
+  return sortedDeps;
 }
