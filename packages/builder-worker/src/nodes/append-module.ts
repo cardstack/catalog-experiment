@@ -1480,6 +1480,9 @@ function buildNamespaceMemberAssignment(
       `bug: can't find declaration for namespace object '${assignedName}' in bundle ${bundle.href}`
     );
   }
+  regions[namespaceObjDeclaration.pointer].dependsOn.add(
+    generalCodeRegionPointer
+  );
   regions.push(
     generalRegion,
     ...flatMap([...nameMap], ([outsideName, insideName], index) => {
