@@ -1,4 +1,5 @@
 import {
+  isCyclicModuleResolution,
   makeNonCyclic,
   ModuleResolution,
   Resolution,
@@ -75,6 +76,19 @@ export class HeadState {
       resolution: ResolvedDeclarationDependency | undefined;
     }
   > = new Map();
+  // this is a map of the module in which to perform the namespace member
+  // assignments. Normally the namespace members are assigned right before the
+  // module in which they are consumed as part of the namespace declaration.
+  // However, if the namespace is part of a cyclic module resolution, then we'll
+  // assign the namespace members after the module that consumes the cycle. The
+  // key is the module in which we perform the namespace member assignments, and
+  // the value is the a map of assigned names for names space objects to a map of
+  // inner and outer names for that namespace assignment.
+  // assignmentModuleHref => assignedName => outer member name => inner member value
+  readonly namespaceMemberAssignment: Map<
+    string,
+    Map<string, Map<string, string>>
+  > = new Map();
   readonly assignedDependencyBindings: Map<
     string,
     {
@@ -131,6 +145,7 @@ export class HeadState {
       visited,
       assignedNamespaces,
       assignedModules,
+      namespaceMemberAssignment,
       queue,
     } = this;
     // Creating summary objects, as otherwise the nesting nature of
@@ -169,6 +184,7 @@ export class HeadState {
         visitedSummary,
         assignedNamespacesSummary,
         assignedModules,
+        namespaceMemberAssignment,
         queueSummary,
       },
       {
@@ -624,6 +640,39 @@ export class ModuleRewriter {
           resolution = _resolution;
         }
       }
+
+      // generally we'll serialize the namespace object's member assignments right
+      // before we serialize the module in which they are consumed. However, if
+      // the module is part of a cycle, we'll serialize the assignments right
+      // after the module that consumes the cycle.
+      let namespaceAssignmentHref: string;
+      if (isCyclicModuleResolution(resolvedImportedModule)) {
+        let stack = [...resolvedImportedModule.hrefStack];
+        for (let {
+          url: { href },
+        } of resolvedImportedModule.cyclicGroup) {
+          stack.splice(
+            stack.findIndex((h) => h === href),
+            1
+          );
+        }
+        let [cycleConsumer] = stack.slice(-1);
+        if (!cycleConsumer) {
+          // if there is no consumer left, that means that the entrypoint is
+          // part of the cycle
+          cycleConsumer = resolvedImportedModule.hrefStack[0];
+        }
+        namespaceAssignmentHref = cycleConsumer;
+      } else {
+        namespaceAssignmentHref = this.module.url.href;
+      }
+      setDoubleNestedMapping(
+        namespaceAssignmentHref,
+        assignedName,
+        nameMap,
+        this.state.namespaceMemberAssignment
+      );
+
       for (let [
         exportedName,
         { desc: exportDesc, module: sourceModule },

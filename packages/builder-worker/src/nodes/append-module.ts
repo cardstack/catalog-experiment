@@ -148,6 +148,7 @@ export class FinishAppendModulesNode implements BuilderNode {
   async run(): Promise<Value<{ code: string; desc: ModuleDescription }>> {
     let bundleDeclarations: DeclarationRegionMap = new Map();
     let referenceMappings: ReferenceMappings = new Map();
+    let completedNamespaceAssignments = new Set<string>();
     let code: string[] = [];
     let regions: CodeRegion[] = [
       // document region for the bundle itself
@@ -199,11 +200,35 @@ export class FinishAppendModulesNode implements BuilderNode {
       this.rewriters,
       bundleDeclarations,
       referenceMappings,
+      completedNamespaceAssignments,
       this.bundle,
       this.state,
       this.dependencies,
       this.depResolver
     );
+    // a namespace object's member assignments may need to be serialized after a
+    // module that we have no rewriter for, in which case we should just
+    // serialize them at the end of the bundle
+    for (let href of [
+      ...this.state.namespaceMemberAssignment.keys(),
+    ].reverse()) {
+      let namespacesAssignments = this.state.namespaceMemberAssignment.get(
+        href
+      )!;
+      for (let [assignedName, nameMap] of namespacesAssignments) {
+        prevSibling = buildNamespaceMemberAssignment(
+          code,
+          regions,
+          prevSibling,
+          assignedName,
+          nameMap,
+          bundleDeclarations,
+          completedNamespaceAssignments,
+          this.bundle
+        );
+      }
+    }
+
     setReferences(
       regions,
       referenceMappings,
@@ -894,6 +919,7 @@ function buildBundleBody(
   rewriters: ModuleRewriter[],
   bundleDeclarations: DeclarationRegionMap,
   referenceMappings: ReferenceMappings,
+  completedNamespaceAssignments: Set<string>,
   bundle: URL,
   state: HeadState,
   dependencies: Dependencies,
@@ -912,6 +938,7 @@ function buildBundleBody(
       regions.length,
       rewriter,
       bundleDeclarations,
+      completedNamespaceAssignments,
       state,
       bundle
     );
@@ -1039,6 +1066,28 @@ function buildBundleBody(
     }
 
     regions.push(...moduleRegions);
+
+    let namespaceMemberAssignments = state.namespaceMemberAssignment.get(
+      module.url.href
+    );
+    if (namespaceMemberAssignments) {
+      for (let [assignedName, nameMap] of namespaceMemberAssignments) {
+        // don't perform the member assignments before we have declared the
+        // namespace object since modules may have multiple editors.
+        if (bundleDeclarations.has(assignedName)) {
+          prevModuleStartPointer = buildNamespaceMemberAssignment(
+            code,
+            regions,
+            offset,
+            assignedName,
+            nameMap,
+            bundleDeclarations,
+            completedNamespaceAssignments,
+            bundle
+          );
+        }
+      }
+    }
 
     // update the declaration "original" property with the resolved dependency
     // info. (consumption ranges may have been narrowed because of collapsed
@@ -1235,6 +1284,7 @@ function buildNamespaces(
   offset: number,
   rewriter: ModuleRewriter,
   bundleDeclarations: DeclarationRegionMap,
+  completedNamespaceAssignments: Set<string>,
   state: HeadState,
   bundle: URL
 ): CodeRegion[][] {
@@ -1242,6 +1292,9 @@ function buildNamespaces(
   if (rewriter.namespacesAssignments.length > 0) {
     let previousDeclarationRegion: GeneralCodeRegion | undefined;
     let count = 0;
+    let memberAssignments = state.namespaceMemberAssignment.get(
+      rewriter.module.url.href
+    );
     for (let assignedName of rewriter.namespacesAssignments) {
       let declarationPointer: RegionPointer =
         offset +
@@ -1250,17 +1303,26 @@ function buildNamespaces(
       let regions: CodeRegion[] = [];
       let { nameMap, importedModule, resolution } =
         state.assignedNamespaces.get(assignedName) ?? {};
-      if (nameMap && nameMap?.size > 0 && importedModule) {
+      if (nameMap && importedModule) {
+        if (memberAssignments?.has(assignedName)) {
+          completedNamespaceAssignments.add(assignedName);
+        } else {
+          // in this case we'll just write out an empty object and we'll perform
+          // the member assignments in a different module
+          nameMap = new Map();
+        }
         let declarationCode: string[] = [`const ${assignedName} = {`];
-        declarationCode.push(
-          [...nameMap]
-            .map(([outsideName, insideName]) =>
-              outsideName === insideName
-                ? outsideName
-                : `${outsideName}: ${insideName}`
-            )
-            .join(", ")
-        );
+        if (nameMap.size > 0) {
+          declarationCode.push(
+            [...nameMap]
+              .map(([outsideName, insideName]) =>
+                outsideName === insideName
+                  ? outsideName
+                  : `${outsideName}: ${insideName}`
+              )
+              .join(", ")
+          );
+        }
         declarationCode.push(`};`);
         code.push(declarationCode.join(" "));
         let declaratorPointer = declarationPointer + 1;
@@ -1278,7 +1340,7 @@ function buildNamespaces(
         let declaratorRegion: DeclarationCodeRegion = {
           type: "declaration",
           start: 6, // "const ",
-          end: 2, // " }"
+          end: nameMap.size === 0 ? 6 /* " = { }" */ : 2, // " }"
           firstChild: referencePointer,
           nextSibling: undefined,
           position: 0,
@@ -1313,7 +1375,7 @@ function buildNamespaces(
           start: 0, // the reference starts at the same location as its declarator
           end: assignedName.length,
           firstChild: undefined,
-          nextSibling: referencePointer + 1,
+          nextSibling: nameMap.size > 0 ? referencePointer + 1 : undefined,
           shorthand: false,
           position: 0,
           dependsOn: new Set([declaratorPointer]),
@@ -1369,6 +1431,104 @@ function buildNamespaces(
     }
   }
   return namespacesRegions;
+}
+
+function buildNamespaceMemberAssignment(
+  code: string[],
+  regions: CodeRegion[],
+  prevSibling: RegionPointer | undefined,
+  assignedName: string,
+  nameMap: Map<string, string>,
+  bundleDeclarations: DeclarationRegionMap,
+  completedNamespaceAssignments: Set<string>,
+  bundle: URL
+): RegionPointer | undefined {
+  if (nameMap.size === 0 || completedNamespaceAssignments.has(assignedName)) {
+    return prevSibling;
+  }
+  let memberAssignmentCode = [...nameMap].map(
+    ([outsideName, insideName]) =>
+      `${assignedName}["${outsideName}"] = ${insideName};`
+  );
+  code.push(memberAssignmentCode.join("\n"));
+
+  let generalCodeRegionPointer = regions.length;
+  let firstReference = generalCodeRegionPointer + 1;
+  if (prevSibling != null) {
+    regions[prevSibling].nextSibling = regions.length;
+  } else {
+    regions[documentPointer].firstChild = regions.length;
+  }
+  let generalRegion: GeneralCodeRegion = {
+    type: "general",
+    position: 0,
+    start: prevSibling == null ? 0 : 1, // assume a newline if there is a previous sibling
+    end: 1, // 1 char for trailing semicolon
+    firstChild: firstReference,
+    nextSibling: undefined,
+    preserveGaps: false,
+    dependsOn: new Set(
+      flatMap([...[...nameMap.keys()].entries()], ([index]) => [
+        index * 2 + firstReference,
+        index * 2 + firstReference + 1,
+      ])
+    ),
+  };
+  let namespaceObjDeclaration = bundleDeclarations.get(assignedName);
+  if (!namespaceObjDeclaration) {
+    throw new Error(
+      `bug: can't find declaration for namespace object '${assignedName}' in bundle ${bundle.href}`
+    );
+  }
+  regions.push(
+    generalRegion,
+    ...flatMap([...nameMap], ([outsideName, insideName], index) => {
+      let declaration = bundleDeclarations.get(insideName);
+      if (!declaration) {
+        throw new Error(
+          `bug: can't find declaration for item '${insideName}' in namespace object '${assignedName}' in bundle ${bundle.href}`
+        );
+      }
+      (regions[
+        namespaceObjDeclaration!.pointer
+      ] as DeclarationCodeRegion).declaration.references.push(
+        firstReference + index * 2
+      );
+      (regions[
+        declaration.pointer
+      ] as DeclarationCodeRegion).declaration.references.push(
+        firstReference + index * 2 + 1
+      );
+      return [
+        {
+          type: "reference",
+          position: 0,
+          start: index === 0 ? 0 : 2 /* ";\n" */,
+          end: assignedName.length,
+          firstChild: undefined,
+          nextSibling: firstReference + index * 2 + 1,
+          shorthand: false,
+          dependsOn: new Set([namespaceObjDeclaration!.pointer]),
+        } as ReferenceCodeRegion,
+        {
+          type: "reference",
+          position: 0,
+          start: outsideName.length + 7 /* `["outsideName"] = ` */,
+          end: insideName.length,
+          firstChild: undefined,
+          nextSibling:
+            index === nameMap!.size - 1
+              ? undefined
+              : firstReference + index * 2 + 2,
+          shorthand: false,
+          dependsOn: new Set([declaration.pointer]),
+        } as ReferenceCodeRegion,
+      ];
+    })
+  );
+  completedNamespaceAssignments.add(assignedName);
+
+  return generalCodeRegionPointer;
 }
 
 function flushImportDeclarationCode(

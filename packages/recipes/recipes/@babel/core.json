@@ -22,8 +22,7 @@
         "inherits": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/inherits.js"
       },
       "macros": {
-        "process\\.env\\.NODE_ENV": "'production'",
-        "import \\* as context from \"../index\";": "const context = {}; // catalogjs: consider using dynamic import of \"../index\" instead so we don't form a static binding dependency cycle, which is what I think it wants to be since this is consumed inside of a generator function"
+        "process\\.env\\.NODE_ENV": "'production'"
       },
       "dependencies": {
         "@catalogjs/polyfills": "^0.0.1"
