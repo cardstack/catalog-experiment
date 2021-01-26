@@ -1767,8 +1767,8 @@ QUnit.module("module builder", function (origHooks) {
         await bundleCode(assert.fs),
         `
         function i() { return 1; }
-        console.log(i());
         let unused_a = initCache();
+        console.log(i());
         export {};
         `
       );
@@ -1799,7 +1799,6 @@ QUnit.module("module builder", function (origHooks) {
         await bundleCode(assert.fs),
         `
         function i() { return 1; }
-        console.log(i());
         function getNative(a, b) { return a[b]; }
         var defineProperty = function () {
           try {
@@ -1808,6 +1807,7 @@ QUnit.module("module builder", function (origHooks) {
             return func;
           } catch (e) {}
         }();
+        console.log(i());
         export {};
         `
       );
@@ -1840,7 +1840,6 @@ QUnit.module("module builder", function (origHooks) {
         await bundleCode(assert.fs),
         `
         function i() { return 1; }
-        console.log(i());
         class Cache {
           constructor(opts) {
             window.__cache = { bar: opts};
@@ -1848,6 +1847,7 @@ QUnit.module("module builder", function (origHooks) {
         }
         let b = 'foo';
         let unused_a = new Cache(b);
+        console.log(i());
         export {};
         `
       );
