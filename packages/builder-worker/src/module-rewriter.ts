@@ -317,8 +317,7 @@ export class ModuleRewriter {
       return;
     }
 
-    for (let pointer of this.editor.includedRegions()) {
-      let region = this.module.desc.regions[pointer];
+    for (let region of this.module.desc.regions) {
       if (region.type !== "declaration") {
         continue;
       }
@@ -373,7 +372,13 @@ export class ModuleRewriter {
             localName
           );
           if (
-            source.type === "resolved" &&
+            (source.type === "resolved" ||
+              (this.ownAssignments.find(
+                (a) =>
+                  a.module.url.href ===
+                  (source as UnresolvedResult).importedFromModule.url.href
+              ) &&
+                isNamespaceMarker(source.importedAs))) &&
             outerResolution?.type === "declaration"
           ) {
             setDoubleNestedMapping(
