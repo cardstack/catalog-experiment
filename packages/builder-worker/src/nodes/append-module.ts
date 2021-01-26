@@ -1801,7 +1801,7 @@ function assignedExports(
               ? NamespaceMarker
               : source.importedAs
           );
-        if (!assignedName) {
+        if (!assignedName || !ownAssignments.includes(assignment)) {
           if (source.importedPointer == null) {
             throw new Error(
               `cannot determine code region that imports (as a reexport or export-all) the module ${source.importedFromModule.url.href} in module ${source.consumingModule.url.href} within bundle ${bundle.href}`
@@ -1809,7 +1809,9 @@ function assignedExports(
           }
           let region =
             source.consumingModule.desc.regions[source.importedPointer];
-          if (region.type !== "import" || !region.exportType) {
+          if (assignedName && region.type === "declaration") {
+            exports.set(exposedAs, assignedName);
+          } else if (region.type !== "import" || !region.exportType) {
             throw new Error(
               `expected code region ${source.importedPointer} in ${
                 source.consumingModule.url.href
@@ -1820,16 +1822,17 @@ function assignedExports(
                 stringifyReplacer
               )}`
             );
-          }
-          if (region.exportType === "reexport") {
-            setDoubleNestedMapping(
-              assignment.bundleURL.href,
-              exposedAs,
-              source.importedAs,
-              reexports
-            );
           } else {
-            exportAlls.add(assignment.bundleURL.href);
+            if (region.exportType === "reexport") {
+              setDoubleNestedMapping(
+                assignment.bundleURL.href,
+                exposedAs,
+                source.importedAs,
+                reexports
+              );
+            } else {
+              exportAlls.add(assignment.bundleURL.href);
+            }
           }
         } else {
           // this is an "import" into the bundle's scope, and then an "export"
