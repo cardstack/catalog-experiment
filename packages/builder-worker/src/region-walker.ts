@@ -1,4 +1,4 @@
-import { flatMap, partition } from "lodash";
+import { flatMap } from "lodash";
 import {
   CodeRegion,
   documentPointer,
@@ -49,43 +49,21 @@ export class RegionWalker {
       ownAssignments.find(({ module }) => module.url.href === m.url.href)
     );
     let walkStart = Date.now();
-    let additionalSideEffects: string[] = [];
     // marry up the document regions to the exposed regions in dependency order
     for (let module of ownResolutions) {
-      let {
-        declarationSideEffects,
-        nonDeclarationSideEffects,
-      } = this.partitionSideEffects(module);
-      // first we'll walk the module side effects that are not the result of a
-      // declaration
-      for (let pointer of nonDeclarationSideEffects) {
-        this.walk(module, pointer);
-      }
-      additionalSideEffects.push(
-        ...declarationSideEffects.map((p) => regionId(module, p))
-      );
-
-      // then we walk the exposed API of the module
+      // we walk the exposed API of the module
       for (let pointer of exposed
         .filter(({ module: m }) => m.url.href === module.url.href)
         .map(({ pointer }) => pointer)) {
         this.walk(module, pointer);
       }
     }
-    // finally, we walk the declaration side effects last, so that if the
-    // declaration is consumed, it will be crawled in its natural order first.
-    // For unconsumed declarations with side effects, we want those to be walked
-    // at the same time that we walk the nonDeclarationSideEffects--so that the
-    // order they are serialized is correct, however, we don't know they are
-    // unconsumed until at this point, at which point our walk thru these will
-    // place the unconsumed declaration with a side effect in a position within
-    // the resulting bundle that is after when it should really be. need a
-    // better answer here...
-    for (let regionId of additionalSideEffects) {
-      let { module, pointer } = getRegionFromId(regionId, this.ownAssignments);
-      if (!isNamespaceMarker(pointer)) {
-        this.walk(module, pointer);
-      }
+    // We also walk the side effects of the entrypoint module since the bundle
+    // may not have any exports.
+    let [entrypointModule] = ownResolutions.slice(-1);
+    for (let pointer of entrypointModule.desc.regions[documentPointer]
+      .dependsOn) {
+      this.walk(entrypointModule, pointer);
     }
 
     if (typeof process?.stdout?.write === "function") {
@@ -104,19 +82,6 @@ export class RegionWalker {
       this.bundle,
       exposed
     );
-  }
-
-  private partitionSideEffects(
-    module: Resolution
-  ): {
-    declarationSideEffects: RegionPointer[];
-    nonDeclarationSideEffects: RegionPointer[];
-  } {
-    let [declarationSideEffects, nonDeclarationSideEffects] = partition(
-      [...module.desc.regions[documentPointer].dependsOn],
-      (p) => module.desc.regions[p].type === "declaration"
-    );
-    return { declarationSideEffects, nonDeclarationSideEffects };
   }
 
   get editors(): Editor[] {
@@ -192,7 +157,11 @@ export class RegionWalker {
         this.ownAssignments
       );
       if (source.type === "resolved") {
-        return this.walk(source.module, source.pointer, originalId);
+        let innerId = this.walk(source.module, source.pointer, originalId);
+        for (let visitedModule of source.moduleStack) {
+          this.walkSideEffects(visitedModule);
+        }
+        return innerId;
       } else {
         // declarations that are "unresolved" are either namespace imports
         // (internal or external) or external imports
@@ -203,11 +172,15 @@ export class RegionWalker {
         ) {
           // This is the scenario where the resolution resolves to an
           // already fashioned namespace object declaration
-          return this.walk(
+          let innerId = this.walk(
             source.resolution.consumedBy,
             source.resolution.consumedByPointer,
             originalId
           );
+          for (let visitedModule of source.moduleStack) {
+            this.walkSideEffects(visitedModule);
+          }
+          return innerId;
         }
         let consumingModule = makeNonCyclic(
           source.resolution?.consumedBy ?? source.consumingModule
@@ -294,6 +267,7 @@ export class RegionWalker {
         isNamespaceMarker(resolution?.name) &&
         resolution.importedSource?.declaredIn
       ) {
+        this.walkSideEffects(resolvedConsumingModule);
         let namespaceMarker = this.visitNamespace(
           resolution.importedSource.declaredIn
         );
@@ -305,8 +279,12 @@ export class RegionWalker {
       // winning resolution, so we keep this region and continue our journey.
       else {
         let deps: Set<string> = new Set();
-        for (let depId of orderDependencies(region.dependsOn, module)) {
-          let resolvedDepId = this.walk(module, depId);
+        this.walkSideEffects(resolvedConsumingModule);
+        for (let depId of orderDependencies(
+          region.dependsOn,
+          resolvedConsumingModule
+        )) {
+          let resolvedDepId = this.walk(resolvedConsumingModule, depId);
           if (resolvedDepId != null) {
             deps.add(resolvedDepId);
           }
@@ -341,6 +319,7 @@ export class RegionWalker {
             );
           }
           if (isNamespaceMarker(exportDesc.name)) {
+            this.walkSideEffects(module);
             let namespaceMarker = this.visitNamespace(importedModule);
             this.keepRegion(originalId, id, new Set([namespaceMarker]));
             return id;
@@ -348,7 +327,7 @@ export class RegionWalker {
         }
 
         // This is an import for side-effects only.
-        return this.walk(importedModule, documentPointer, originalId);
+        return this.walkSideEffects(importedModule, originalId);
       } else {
         // we mark the external bundle import region as something we want to keep
         // as a signal to the Append nodes that this import is consumed and to
@@ -364,6 +343,7 @@ export class RegionWalker {
     // walk.
     else {
       let deps: Set<string> = new Set();
+      this.walkSideEffects(module);
       for (let depId of orderDependencies(region.dependsOn, module)) {
         let resolvedDepId = this.walk(module, depId);
         if (resolvedDepId != null) {
@@ -378,6 +358,7 @@ export class RegionWalker {
   private visitNamespace(module: Resolution): string {
     let exports = getExports(module);
     let namespaceItemIds: string[] = [];
+    this.walkSideEffects(module);
     for (let [exportName, { module: sourceModule }] of exports.entries()) {
       let source = this.depResolver.resolveDeclaration(
         exportName,
@@ -392,6 +373,9 @@ export class RegionWalker {
         let sourceModule: Resolution = source.module;
         let pointer: RegionPointer = source.pointer;
         let itemId = this.walk(sourceModule, pointer);
+        for (let visitedModule of source.moduleStack) {
+          this.walkSideEffects(visitedModule);
+        }
         if (itemId) {
           namespaceItemIds.push(itemId);
         }
@@ -445,6 +429,13 @@ export class RegionWalker {
       new Set(namespaceItemIds)
     );
     return namespaceMarker;
+  }
+
+  private walkSideEffects(
+    module: Resolution,
+    originalId?: string
+  ): string | undefined {
+    return this.walk(module, documentPointer, originalId);
   }
 
   private keepRegion(

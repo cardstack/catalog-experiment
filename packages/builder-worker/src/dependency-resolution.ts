@@ -64,6 +64,7 @@ export interface ResolvedResult {
   pointer: RegionPointer;
   declaration: DeclarationDescription;
   resolution?: ResolvedDeclarationDependency;
+  moduleStack: Resolution[];
 }
 
 export interface UnresolvedResult {
@@ -74,6 +75,7 @@ export interface UnresolvedResult {
   importedRegion: CodeRegion | undefined;
   importedPointer: RegionPointer | undefined;
   resolution?: ResolvedDeclarationDependency;
+  moduleStack: Resolution[];
 }
 
 type DeclarationResolutionCache = Map<
@@ -492,7 +494,8 @@ function resolveDeclaration(
   ownAssignments: BundleAssignment[],
   declarationResolutionCache: DeclarationResolutionCache,
   depResolver: DependencyResolver | undefined,
-  importedPointer?: RegionPointer // if you have this handy it saves work passing it in--otherwise we'll calculate it
+  importedPointer: RegionPointer | undefined, // if you have this handy it saves work passing it in--otherwise we'll calculate it
+  moduleStack: Resolution[] = [importedFromModule]
 ): ResolvedResult | UnresolvedResult {
   let cacheKey = {
     importedName,
@@ -571,6 +574,7 @@ function resolveDeclaration(
           declaration,
           pointer,
           resolution,
+          moduleStack,
         };
         cacheResult(result);
         return result;
@@ -591,6 +595,7 @@ function resolveDeclaration(
           ? consumingModule.desc.regions[importedPointer]
           : undefined,
       resolution,
+      moduleStack,
     };
     cacheResult(result);
     return result;
@@ -613,6 +618,7 @@ function resolveDeclaration(
           ? consumingModule.desc.regions[importedPointer]
           : undefined,
       resolution,
+      moduleStack,
     };
     cacheResult(result);
     return result;
@@ -656,6 +662,7 @@ function resolveDeclaration(
           ? consumingModule.desc.regions[importedPointer]
           : undefined,
       resolution,
+      moduleStack,
     };
     cacheResult(result);
     return result;
@@ -688,7 +695,8 @@ function resolveDeclaration(
           ownAssignments,
           declarationResolutionCache,
           depResolver,
-          resolution.consumedByPointer
+          resolution.consumedByPointer,
+          [resolution.importedSource.declaredIn, ...moduleStack]
         );
       } else if (resolution) {
         let pointer = resolution.consumedByPointer;
@@ -712,6 +720,7 @@ function resolveDeclaration(
           declaration,
           pointer,
           resolution,
+          moduleStack,
         };
         cacheResult(result);
         return result;
@@ -736,7 +745,8 @@ function resolveDeclaration(
         ownAssignments,
         declarationResolutionCache,
         depResolver,
-        exportDesc.exportRegion
+        exportDesc.exportRegion,
+        [sourceModule!.resolvedImports[exportDesc.importIndex], ...moduleStack]
       );
     } else {
       let { declaration, pointer } = declarations.get(exportDesc.name)!;
@@ -752,7 +762,8 @@ function resolveDeclaration(
         ownAssignments,
         declarationResolutionCache,
         depResolver,
-        pointer
+        pointer,
+        [sourceModule!.resolvedImports[declaration.importIndex], ...moduleStack]
       );
     }
   }
@@ -820,6 +831,7 @@ function resolveDeclaration(
     declaration,
     pointer,
     resolution,
+    moduleStack,
   };
   cacheResult(result);
   return result;
@@ -1001,6 +1013,7 @@ function gatherDependencies(
             module,
             ownAssignments,
             declarationResolutionCache,
+            undefined,
             undefined
           );
           if (source.type === "unresolved") {
@@ -1094,6 +1107,7 @@ function gatherDependencies(
             module,
             ownAssignments,
             declarationResolutionCache,
+            undefined,
             undefined
           );
           if (source.type === "resolved") {
@@ -1258,6 +1272,7 @@ function addResolutionsForNamespace(
       sourceModule,
       ownAssignments,
       declarationResolutionCache,
+      undefined,
       undefined
     );
     if (namespaceItemSource.type === "resolved") {
