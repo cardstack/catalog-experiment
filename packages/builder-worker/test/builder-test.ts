@@ -8272,6 +8272,170 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file("output/index.js").matches(/export { foo, a }/);
     });
 
+    test("cyclic binding consumption involving a namespace import", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["./index.js"] }`,
+        "index.js": `
+          export { transform } from "./transform.js";
+          function parse() {
+            doParse();
+          }
+          export { parse };
+        `,
+        "transform.js": `
+          import loadConfig from "./config.js";
+          export function transform(args) {
+            loadConfig();
+            doTransform(args);
+          }
+        `,
+        "config.js": `
+          import loadFullConfig from "./full.js";
+          function loadPartialConfig() {
+            return doPartialConfig();
+          }
+          export { loadFullConfig as default };
+          export { loadFullConfig, loadPartialConfig};
+        `,
+        "full.js": `
+          import * as context from "./config.js";
+          export default function loadConfig() {
+            return doThings(context);
+          }
+        `,
+      });
+      let { source, desc } = await bundle(assert.fs);
+      assert.codeEqual(
+        source,
+        `
+        function loadPartialConfig() {
+          return doPartialConfig();
+        }
+        const context = { };
+        function loadConfig() {
+          return doThings(context);
+        }
+        function transform(args) {
+          loadConfig();
+          doTransform(args);
+        }
+        context["default"] = loadConfig;
+        context["loadFullConfig"] = loadConfig;
+        context["loadPartialConfig"] = loadPartialConfig;
+        function parse() {
+          doParse();
+        }
+        export { transform, parse };
+      `
+      );
+      assert.ok(desc, "module description exists");
+      if (desc) {
+        let editor = makeEditor(source, desc);
+        keepAll(desc, editor);
+        editor.rename("context", "renamedContext");
+        editor.rename("loadConfig", "renamedLoadConfig");
+        assert.codeEqual(
+          editor.serialize().code,
+          `
+          function loadPartialConfig() {
+            return doPartialConfig();
+          }
+          const renamedContext = { };
+          function renamedLoadConfig() {
+            return doThings(renamedContext);
+          }
+          function transform(args) {
+            renamedLoadConfig();
+            doTransform(args);
+          }
+          renamedContext["default"] = renamedLoadConfig;
+          renamedContext["loadFullConfig"] = renamedLoadConfig;
+          renamedContext["loadPartialConfig"] = loadPartialConfig;
+          function parse() {
+            doParse();
+          }
+          export { transform, parse };
+          `
+        );
+      }
+    });
+
+    test("cyclic binding consumption involving a namespace import where the entrypoint is part of the cycle", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["./index.js"] }`,
+        "index.js": `
+          export { transform } from "./transform.js";
+          function parse() {
+            doParse();
+          }
+          export { parse };
+        `,
+        "transform.js": `
+          import loadConfig from "./config.js";
+          export function transform(args) {
+            loadConfig();
+            doTransform(args);
+          }
+        `,
+        "config.js": `
+          import loadFullConfig from "./full.js";
+          export { loadFullConfig as default };
+        `,
+        "full.js": `
+          import * as context from "./index.js";
+          export default function loadConfig() {
+            return doThings(context);
+          }
+        `,
+      });
+      let { source, desc } = await bundle(assert.fs);
+      assert.codeEqual(
+        source,
+        `
+        function parse() {
+          doParse();
+        }
+        const context = { };
+        function loadConfig() {
+          return doThings(context);
+        }
+        function transform(args) {
+          loadConfig();
+          doTransform(args);
+        }
+        context["transform"] = transform;
+        context["parse"] = parse;
+        export { transform, parse };
+      `
+      );
+      assert.ok(desc, "module description exists");
+      if (desc) {
+        let editor = makeEditor(source, desc);
+        keepAll(desc, editor);
+        editor.rename("context", "renamedContext");
+        editor.rename("transform", "renamedTransform");
+        assert.codeEqual(
+          editor.serialize().code,
+          `
+          function parse() {
+            doParse();
+          }
+          const renamedContext = { };
+          function loadConfig() {
+            return doThings(renamedContext);
+          }
+          function renamedTransform(args) {
+            loadConfig();
+            doTransform(args);
+          }
+          renamedContext["transform"] = renamedTransform;
+          renamedContext["parse"] = parse;
+          export { renamedTransform as transform, parse };
+          `
+        );
+      }
+    });
+
     test("imported binding is explicitly exported", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["./index.js"] }`,
