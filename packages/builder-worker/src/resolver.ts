@@ -5,6 +5,7 @@ import { LockEntries } from "./nodes/lock-file";
 import { makeURLEndInDir } from "./path";
 
 export const catalogjsHref = "https://catalogjs.com/pkgs/";
+export const localDiskHref = "https://local-disk/pkgs/";
 export const workingHref = "https://working/";
 
 export interface Resolver {
@@ -164,6 +165,7 @@ export function pkgInfoFromCatalogJsURL(
 ): Required<PkgInfo> | undefined {
   if (
     !url.href.startsWith(catalogjsHref) &&
+    !url.href.startsWith(localDiskHref) &&
     !url.href.startsWith(workingHref)
   ) {
     return;
@@ -173,7 +175,10 @@ export function pkgInfoFromCatalogJsURL(
   let version: string;
   let hash: string;
   let modulePath: string | undefined;
-  let path = url.href.replace(catalogjsHref, "").replace(workingHref, "");
+  let path = url.href
+    .replace(catalogjsHref, "")
+    .replace(workingHref, "")
+    .replace(localDiskHref, "");
   let parts = path.split("/");
   let registryOrScopedName = parts.shift()!;
   let registry: string;
