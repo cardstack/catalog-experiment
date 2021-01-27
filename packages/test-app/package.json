@@ -4,7 +4,7 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "start-pkg": "node ../file-daemon/dist/main.js . ../test-lib ../recipes ../../bundles",
-    "start": "node ../file-daemon/bin/file-daemon . ../test-lib ../recipes ../../bundles"
+    "start-pkg": "node ../file-daemon/dist/main.js . ../test-lib ../recipes ../../pkgs",
+    "start": "node ../file-daemon/bin/file-daemon . ../test-lib ../recipes ../../pkgs"
   }
 }

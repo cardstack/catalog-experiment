@@ -125,7 +125,11 @@ type DeclarationRegionMap = Map<
 
 type ReferenceMappings = Map<
   RegionPointer,
-  { declaration: DeclarationDescription; module: ModuleResolution }
+  {
+    declaration: DeclarationDescription;
+    module: ModuleResolution;
+    originalName: string;
+  }
 >;
 
 export class FinishAppendModulesNode implements BuilderNode {
@@ -1049,6 +1053,7 @@ function buildBundleBody(
       bundleDeclarations,
       referenceMappings,
       module,
+      state,
       bundle
     );
 
@@ -1156,6 +1161,7 @@ function setReferenceMappings(
   bundleDeclarations: DeclarationRegionMap,
   referenceMappings: ReferenceMappings,
   module: ModuleResolution,
+  state: HeadState,
   bundle: URL
 ) {
   for (let region of regions.filter(
@@ -1195,17 +1201,40 @@ function setReferenceMappings(
         )}, module=${module.url.href}, while making bundle ${bundle.href}`
       );
     }
+    let originalName: string | undefined;
     if (declarationPointer < 0) {
       declarationRegion = module.desc.regions[-1 * declarationPointer];
+      assertDeclarationRegion(
+        declarationRegion,
+        declarationPointer,
+        module,
+        bundle
+      );
+      originalName = declarationRegion.declaration.declaredName;
     } else {
       declarationRegion = regions[declarationPointer - offset];
+      assertDeclarationRegion(
+        declarationRegion,
+        declarationPointer,
+        module,
+        bundle
+      );
+      originalName = state.usedNames.get(
+        declarationRegion.declaration.declaredName
+      )?.name;
+      if (!originalName) {
+        throw new Error(
+          `cannot determine original name for the assigned name '${declarationRegion.declaration.declaredName}' from module ${module.url.href} when making bundle ${bundle.href}`
+        );
+      }
     }
     if (declarationRegion?.type !== "declaration") {
       continue;
     }
     referenceMappings.set(pointer + offset, {
-      declaration: declarationRegion.declaration,
       module,
+      declaration: declarationRegion.declaration,
+      originalName,
     });
   }
 }
@@ -1218,7 +1247,10 @@ function setReferences(
   depResolver: DependencyResolver,
   bundle: URL
 ) {
-  for (let [pointer, { module, declaration }] of referenceMappings) {
+  for (let [
+    pointer,
+    { module, declaration, originalName },
+  ] of referenceMappings) {
     let region = regions[pointer];
     if (region.type !== "reference") {
       throw new Error(
@@ -1227,12 +1259,14 @@ function setReferences(
         }: ${JSON.stringify(region, stringifyReplacer)}`
       );
     }
-    let declarationPointer = [...region.dependsOn][0]; // a reference region should always depend on just it's declaration region
-    let resolution = resolutionForPkgDepDeclaration(
+    let resolution: ResolvedDeclarationDependency | undefined;
+    resolution = resolutionForPkgDepDeclaration(
       module,
-      declaration.declaredName,
+      originalName,
       depResolver
     );
+
+    let declarationPointer = [...region.dependsOn][0]; // a reference region should always depend on just it's declaration region
     let assignedName: string | undefined;
     if (resolution) {
       assignedName = state.assignedImportedNames
@@ -1243,14 +1277,14 @@ function setReferences(
     } else if (declaration.type === "import" || declarationPointer < 0) {
       assignedName = state.nameAssignments
         .get(module.url.href)
-        ?.get(declaration.declaredName);
+        ?.get(originalName);
     } else {
       continue;
     }
 
     if (!assignedName) {
       throw new Error(
-        `bug: could not find assigned name for import '${declaration.declaredName}' in ${module.url.href} from bundle ${bundle.href}`
+        `bug: could not find assigned name for import '${originalName}' in ${module.url.href} from bundle ${bundle.href}`
       );
     }
     let bundleDeclaration = bundleDeclarations.get(assignedName);
@@ -2046,4 +2080,22 @@ function assignedImports(
   }
 
   return results;
+}
+
+function assertDeclarationRegion(
+  region: CodeRegion,
+  pointer: RegionPointer,
+  module: ModuleResolution,
+  bundle: URL
+): asserts region is DeclarationCodeRegion {
+  if (region.type !== "declaration") {
+    throw new Error(
+      `bug: the region type for the region ${pointer} is not a declaration. in module ${
+        module.url.href
+      } when making bundle ${bundle.href} the region is ${JSON.stringify(
+        region,
+        stringifyReplacer
+      )}`
+    );
+  }
 }
