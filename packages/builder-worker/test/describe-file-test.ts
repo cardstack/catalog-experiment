@@ -15,6 +15,7 @@ import {
   notFoundPointer,
 } from "../src/code-region";
 import { RegionEditor } from "../src/region-editor";
+import { intersection } from "lodash";
 
 const { test } = QUnit;
 
@@ -595,8 +596,8 @@ QUnit.module("describe-file", function () {
     let sideEffects = document.dependsOn;
     // we have 2 declarations with a side effect, and all the tagged templates
     // should be merged into a 3rd side effect
-    assert.equal(sideEffects.size, 3);
-    editor.replace([...sideEffects][2], "//CODE_REGION");
+    assert.equal(sideEffects.size, 1);
+    editor.replace([...sideEffects][0], "//CODE_REGION");
     assert.codeEqual(
       editor.serialize().code,
       `
@@ -1056,10 +1057,15 @@ QUnit.module("describe-file", function () {
     `);
     let document = desc.regions[documentPointer];
     let out = desc.declarations.get("x")!;
-    let { pointer } = out;
     assert.equal(out.declaration.type, "local");
     if (out?.declaration.type === "local") {
-      assert.equal(document.dependsOn.has(pointer), true);
+      let [sideEffect] = [...document.dependsOn];
+      assert.ok(
+        intersection(out.declaration.references, [
+          ...desc.regions[sideEffect].dependsOn,
+        ]).length > 0,
+        "side effect contains reference to declaration"
+      );
     }
   });
 

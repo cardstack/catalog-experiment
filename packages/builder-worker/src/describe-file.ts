@@ -28,7 +28,6 @@ import {
   CodeRegion,
   RegionPointer,
   RegionBuilder,
-  notFoundPointer,
   documentPointer,
   DeclarationCodeRegion,
   DeclarationDescription,
@@ -42,7 +41,7 @@ import {
 } from "./nodes/resolution";
 import { NamespaceMarker } from "./code-region";
 import { assignCodeRegionPositions } from "./region-editor";
-import { flatMap } from "lodash";
+import { intersection } from "lodash";
 
 export interface ExportAllMarker {
   exportAllFrom: string;
@@ -509,54 +508,6 @@ export function describeFile(ast: File, filename: string): FileDescription {
           regions: builder.regions,
           esTranspiledExports: undefined,
         };
-      },
-      exit() {
-        let document = builder.regions[documentPointer];
-        // sort the consumedByModule declarations in the order they are imported
-        // (for the ones that are imported)
-        const aFirst = -1,
-          bFirst = 1,
-          same = 0;
-        let consumed = flatMap([...consumedByModule], (name) => {
-          let pointer = builder.regions.findIndex(
-            (r) =>
-              r.type === "declaration" && r.declaration.declaredName === name
-          );
-          return pointer !== notFoundPointer ? [pointer] : [];
-        }).sort((a, b) => {
-          // import declarations go before local declarations
-          let aRegion = builder.regions[a] as DeclarationCodeRegion;
-          let bRegion = builder.regions[b] as DeclarationCodeRegion;
-          if (
-            aRegion.declaration.type === "import" &&
-            bRegion.declaration.type === "local"
-          ) {
-            return aFirst;
-          }
-          if (
-            aRegion.declaration.type === "local" &&
-            bRegion.declaration.type === "import"
-          ) {
-            return bFirst;
-          }
-          // finally sort based on import position (importIndex)
-          if (
-            aRegion.declaration.type === "import" &&
-            bRegion.declaration.type === "import"
-          ) {
-            return (
-              aRegion.declaration.importIndex - bRegion.declaration.importIndex
-            );
-          }
-          return same;
-        });
-        document.dependsOn = new Set([
-          // we reverse this because when we perform the editor assignment for
-          // code regions we perform it in consumer first order (backwards from
-          // how we serialize it)
-          ...consumed.reverse(),
-          ...document.dependsOn,
-        ]);
       },
     },
     FunctionDeclaration: {
@@ -1034,6 +985,7 @@ export function describeFile(ast: File, filename: string): FileDescription {
   }
   let document = builder!.regions[documentPointer];
   document.dependsOn = new Set([...document.dependsOn, ...sideEffectPointers]);
+  cleanUpSideEffects(desc!.regions);
 
   // clean up any dependencies on ourself--this may happen because at the time
   // we didn't realize that we were identical to a code region that was
@@ -1050,6 +1002,45 @@ export function describeFile(ast: File, filename: string): FileDescription {
   } else {
     let { imports, exports } = desc!;
     return { regions, imports, exports, declarations };
+  }
+}
+
+// the side effects that we have gathered include general regions in the module,
+// which can be call expressions, for loops, if/else's, etc that are module
+// scoped as well as declarations that happen to be side effectful. The goal
+// here is that we only want to capture the first step of each side effect
+// subgraph--not all the nodes. When we capture all the nodes, we don't know
+// which node comes before the other. Rather we capture the first node (region)
+// of each side effect sub-graph, and then allow our region walk to flesh out
+// the rest of the graph in order. Side effects captured in general regions are
+// each considered the root of their respective side effect subgraph. The side
+// effectful declaration regions, however, may be the root of a side effectful
+// subgraph, or they may actually be a dependency of aside effectful general
+// region, in which case we should prune it from the document's dependencies, as
+// there already is a path to it from a side effect sub graph.
+function cleanUpSideEffects(regions: FileDescription["regions"]) {
+  let sideEffectPointers = [...regions[documentPointer].dependsOn];
+  let generalRegionPointers = sideEffectPointers.filter(
+    (p) => regions[p].type === "general"
+  );
+  for (let pointer of sideEffectPointers) {
+    let region = regions[pointer];
+    if (region.type !== "declaration") {
+      continue;
+    }
+    if (
+      generalRegionPointers.find(
+        (p) =>
+          intersection(
+            (region as DeclarationCodeRegion).declaration.references,
+            [...regions[p].dependsOn]
+          ).length > 0
+      )
+    ) {
+      // this is a side effectful declaration that is actually consumed by a
+      // module side effect
+      regions[documentPointer].dependsOn.delete(pointer);
+    }
   }
 }
 
