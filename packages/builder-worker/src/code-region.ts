@@ -314,11 +314,10 @@ export class RegionBuilder {
         );
       }
       if (pathOrPaths.find((p) => pathOrPaths[0].type !== p.type)) {
-        throw new Error(
-          `cannot create code region for multiple paths that have different types`
-        );
+        nodeType = "multipleTypes";
+      } else {
+        nodeType = pathOrPaths[0].type;
       }
-      nodeType = pathOrPaths[0].type;
     } else {
       nodeType = pathOrPaths.type;
     }
