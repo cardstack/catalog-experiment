@@ -458,20 +458,19 @@ export function describeFile(ast: File, filename: string): FileDescription {
       (statement) => statement === path.node
     );
     let [lastSideEffects] = moduleSideEffects.slice(-1);
-    if (lastSideEffects && path.type !== "ImportDeclaration") {
-      if (lastSideEffects && lastSideEffects.length > 0) {
-        let [lastSideEffect] = lastSideEffects.slice(-1);
-        let lastSideEffectIndex = path.parent.body.findIndex(
-          (statement) => statement === lastSideEffect.node
-        );
-        // merge contiguous side effects
-        if (
-          lastSideEffectIndex + 1 === sideEffectIndex &&
-          lastSideEffect.type === path.type
-        ) {
-          lastSideEffects.push(path as NodePath);
-          return;
-        }
+    if (lastSideEffects && lastSideEffects.length > 0) {
+      let [lastSideEffect] = lastSideEffects.slice(-1);
+      let lastSideEffectIndex = path.parent.body.findIndex(
+        (statement) => statement === lastSideEffect.node
+      );
+      // merge contiguous side effects
+      if (
+        path.type !== "ImportDeclaration" &&
+        lastSideEffect.type !== "ImportDeclaration" &&
+        lastSideEffectIndex + 1 === sideEffectIndex
+      ) {
+        lastSideEffects.push(path as NodePath);
+        return;
       }
     }
 
@@ -1015,33 +1014,50 @@ export function describeFile(ast: File, filename: string): FileDescription {
 // the rest of the graph in order. Side effects captured in general regions are
 // each considered the root of their respective side effect subgraph. The side
 // effectful declaration regions, however, may be the root of a side effectful
-// subgraph, or they may actually be a dependency of aside effectful general
+// subgraph, or they may actually be a dependency of a side effectful general
 // region, in which case we should prune it from the document's dependencies, as
 // there already is a path to it from a side effect sub graph.
 function cleanUpSideEffects(regions: FileDescription["regions"]) {
-  let sideEffectPointers = [...regions[documentPointer].dependsOn];
-  let generalRegionPointers = sideEffectPointers.filter(
+  let declarationPointers = [...regions[documentPointer].dependsOn].filter(
+    (p) => regions[p].type === "declaration"
+  );
+  let generalRegionPointers = [...regions[documentPointer].dependsOn].filter(
     (p) => regions[p].type === "general"
   );
-  for (let pointer of sideEffectPointers) {
-    let region = regions[pointer];
-    if (region.type !== "declaration") {
-      continue;
-    }
-    if (
-      generalRegionPointers.find(
-        (p) =>
-          intersection(
-            (region as DeclarationCodeRegion).declaration.references,
-            [...regions[p].dependsOn]
-          ).length > 0
-      )
-    ) {
-      // this is a side effectful declaration that is actually consumed by a
-      // module side effect
-      regions[documentPointer].dependsOn.delete(pointer);
+  for (let declarationPointer of declarationPointers) {
+    let references = (regions[declarationPointer] as DeclarationCodeRegion)
+      .declaration.references;
+    for (let generalPointer of generalRegionPointers) {
+      if (findDependency(generalPointer, references, regions)) {
+        // this is a side effectful declaration that is actually consumed by a
+        // module side effect
+        regions[documentPointer].dependsOn.delete(declarationPointer);
+        break;
+      }
     }
   }
+}
+
+function findDependency(
+  start: RegionPointer,
+  searchPointers: RegionPointer[],
+  regions: FileDescription["regions"],
+  seen: Set<RegionPointer> = new Set()
+): boolean {
+  seen.add(start);
+  let region = regions[start];
+  if (intersection(searchPointers, [...region.dependsOn]).length > 0) {
+    return true;
+  }
+  for (let dep of region.dependsOn) {
+    if (seen.has(dep)) {
+      continue;
+    }
+    if (findDependency(dep, searchPointers, regions, seen)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function cleanupSelfDependencies(regions: FileDescription["regions"]) {
