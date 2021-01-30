@@ -1767,8 +1767,8 @@ QUnit.module("module builder", function (origHooks) {
         await bundleCode(assert.fs),
         `
         function i() { return 1; }
-        let unused_a = initCache();
         console.log(i());
+        let unused_a = initCache();
         export {};
         `
       );

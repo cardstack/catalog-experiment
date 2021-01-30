@@ -91,6 +91,7 @@ export class RegionWalker {
   private walk(
     module: Resolution,
     pointer: RegionPointer,
+    sideEffectStack: string[] = [],
     originalId = regionId(module, pointer)
   ): string | undefined {
     let id = regionId(module, pointer);
@@ -159,13 +160,22 @@ export class RegionWalker {
       if (source.type === "resolved") {
         let sourceModule = source.module;
         let sourcePointer = source.pointer;
-        return this.withSideEffects(source.moduleStack[0], () => {
-          let innerId = this.walk(sourceModule, sourcePointer, originalId);
-          for (let visitedModule of source.moduleStack.slice(1)) {
-            this.withSideEffects(visitedModule, () => undefined);
+        return this.withSideEffects(
+          source.moduleStack[0],
+          sideEffectStack,
+          (stack) => {
+            let innerId = this.walk(
+              sourceModule,
+              sourcePointer,
+              stack,
+              originalId
+            );
+            for (let visitedModule of source.moduleStack.slice(1)) {
+              this.withSideEffects(visitedModule, stack, () => undefined);
+            }
+            return innerId;
           }
-          return innerId;
-        });
+        );
       } else {
         // declarations that are "unresolved" are either namespace imports
         // (internal or external) or external imports
@@ -178,13 +188,22 @@ export class RegionWalker {
           // already fashioned namespace object declaration
           let sourceModule = source.resolution.consumedBy;
           let sourcePointer = source.resolution.consumedByPointer;
-          return this.withSideEffects(source.moduleStack[0], () => {
-            let innerId = this.walk(sourceModule, sourcePointer, originalId);
-            for (let visitedModule of source.moduleStack.slice(1)) {
-              this.withSideEffects(visitedModule, () => undefined);
+          return this.withSideEffects(
+            source.moduleStack[0],
+            sideEffectStack,
+            (stack) => {
+              let innerId = this.walk(
+                sourceModule,
+                sourcePointer,
+                stack,
+                originalId
+              );
+              for (let visitedModule of source.moduleStack.slice(1)) {
+                this.withSideEffects(visitedModule, stack, () => undefined);
+              }
+              return innerId;
             }
-            return innerId;
-          });
+          );
         }
         let consumingModule = makeNonCyclic(
           source.resolution?.consumedBy ?? source.consumingModule
@@ -218,7 +237,8 @@ export class RegionWalker {
           }
           let namespaceMarker = this.visitNamespace(
             source.resolution?.importedSource?.declaredIn ??
-              source.importedFromModule
+              source.importedFromModule,
+            sideEffectStack
           );
           this.keepRegion(originalId, id, new Set([namespaceMarker]));
           return id;
@@ -257,6 +277,7 @@ export class RegionWalker {
         return this.walk(
           resolvedConsumingModule,
           resolvedConsumingPointer,
+          sideEffectStack,
           originalId
         );
       }
@@ -272,30 +293,33 @@ export class RegionWalker {
         resolution.importedSource?.declaredIn
       ) {
         let namespaceModule = resolution.importedSource.declaredIn;
-        return this.withSideEffects(resolvedConsumingModule, () => {
-          let namespaceMarker = this.visitNamespace(namespaceModule);
-          this.keepRegion(originalId, id, new Set([namespaceMarker]));
-          return id;
-        });
+        return this.withSideEffects(
+          resolvedConsumingModule,
+          sideEffectStack,
+          (stack) => {
+            let namespaceMarker = this.visitNamespace(namespaceModule, stack);
+            this.keepRegion(originalId, id, new Set([namespaceMarker]));
+            return id;
+          }
+        );
       }
 
       // In this case the region that we entered our walk with is actually the
       // winning resolution, so we keep this region and continue our journey.
       else {
-        let deps: Set<string> = new Set();
-        return this.withSideEffects(resolvedConsumingModule, () => {
-          for (let depId of orderDependencies(
-            region.dependsOn,
-            resolvedConsumingModule
-          )) {
-            let resolvedDepId = this.walk(resolvedConsumingModule, depId);
-            if (resolvedDepId != null) {
-              deps.add(resolvedDepId);
-            }
+        return this.withSideEffects(
+          resolvedConsumingModule,
+          sideEffectStack,
+          (stack) => {
+            let deps: Set<string> = this.walkDeps(
+              resolvedConsumingModule,
+              region,
+              stack
+            );
+            this.keepRegion(originalId, id, deps);
+            return id;
           }
-          this.keepRegion(originalId, id, deps);
-          return id;
-        });
+        );
       }
     }
 
@@ -324,8 +348,8 @@ export class RegionWalker {
             );
           }
           if (isNamespaceMarker(exportDesc.name)) {
-            return this.withSideEffects(module, () => {
-              let namespaceMarker = this.visitNamespace(importedModule);
+            return this.withSideEffects(module, sideEffectStack, (stack) => {
+              let namespaceMarker = this.visitNamespace(importedModule, stack);
               this.keepRegion(originalId, id, new Set([namespaceMarker]));
               return id;
             });
@@ -333,7 +357,11 @@ export class RegionWalker {
         }
 
         // This is an import for side-effects only.
-        return this.withSideEffects(importedModule, () => undefined);
+        return this.withSideEffects(
+          importedModule,
+          sideEffectStack,
+          () => undefined
+        );
       } else {
         // we mark the external bundle import region as something we want to keep
         // as a signal to the Append nodes that this import is consumed and to
@@ -348,24 +376,36 @@ export class RegionWalker {
     // recording our deps as regions that we indeed depend upon as part of our
     // walk.
     else {
-      let deps: Set<string> = new Set();
-      return this.withSideEffects(module, () => {
-        for (let depId of orderDependencies(region.dependsOn, module)) {
-          let resolvedDepId = this.walk(module, depId);
-          if (resolvedDepId != null) {
-            deps.add(resolvedDepId);
-          }
-        }
+      return this.withSideEffects(module, sideEffectStack, (stack) => {
+        let deps = this.walkDeps(module, region, stack);
         this.keepRegion(originalId, id, deps);
         return id;
       });
     }
   }
 
-  private visitNamespace(module: Resolution): string {
+  private walkDeps(
+    module: Resolution,
+    region: CodeRegion,
+    sideEffectStack: string[]
+  ): Set<string> {
+    let deps: Set<string> = new Set();
+    for (let depId of orderDependencies(region.dependsOn, module)) {
+      let resolvedDepId = this.walk(module, depId, sideEffectStack);
+      if (resolvedDepId != null) {
+        deps.add(resolvedDepId);
+      }
+    }
+    return deps;
+  }
+
+  private visitNamespace(
+    module: Resolution,
+    sideEffectStack: string[]
+  ): string {
     let exports = getExports(module);
     let namespaceItemIds: string[] = [];
-    return this.withSideEffects(module, () => {
+    return this.withSideEffects(module, sideEffectStack, (stack) => {
       for (let [exportName, { module: sourceModule }] of exports.entries()) {
         let source = this.depResolver.resolveDeclaration(
           exportName,
@@ -379,13 +419,17 @@ export class RegionWalker {
         if (source.type === "resolved") {
           let sourceModule: Resolution = source.module;
           let pointer: RegionPointer = source.pointer;
-          let itemId = this.withSideEffects(source.moduleStack[0], () => {
-            let id = this.walk(sourceModule, pointer);
-            for (let visitedModule of source.moduleStack.slice(1)) {
-              this.withSideEffects(visitedModule, () => undefined);
+          let itemId = this.withSideEffects(
+            source.moduleStack[0],
+            stack,
+            (s) => {
+              let id = this.walk(sourceModule, pointer, s);
+              for (let visitedModule of source.moduleStack.slice(1)) {
+                this.withSideEffects(visitedModule, s, () => undefined);
+              }
+              return id;
             }
-            return id;
-          });
+          );
           if (itemId) {
             namespaceItemIds.push(itemId);
           }
@@ -418,7 +462,8 @@ export class RegionWalker {
               source.importedPointer
             );
             let namespaceMarker = this.visitNamespace(
-              source.importedFromModule
+              source.importedFromModule,
+              stack
             );
             this.keepRegion(
               namespaceImport,
@@ -446,43 +491,41 @@ export class RegionWalker {
 
   private withSideEffects(
     module: Resolution,
-    walk: () => string | undefined
+    sideEffectStack: string[],
+    walk: (sideEffectStack: string[]) => string | undefined
   ): string | undefined {
+    if (sideEffectStack.includes(module.url.href)) {
+      // we are already in the midsts of processing side effects for this
+      // module, so just do the walk
+      return walk(sideEffectStack);
+    }
+
     let regions = module.desc.regions;
     let sideEffects = regions[documentPointer].dependsOn;
+    let newStack = [module.url.href, ...sideEffectStack];
     for (let sideEffect of sideEffects) {
-      let region = regions[sideEffect];
-      let general: CodeRegion;
-      if (
-        region.type !== "declaration" ||
-        // if the declaration region's side effect has no references
-        ((general = regions[[...region.dependsOn].slice(-1)[0]]).type ===
-          "general" &&
-          general.dependsOn.size === 0)
-      ) {
-        this.walk(module, sideEffect);
+      if (regions[sideEffect].type !== "declaration") {
+        this.walk(module, sideEffect, newStack);
       }
     }
 
-    let result = walk();
+    let result = walk(newStack);
 
     // walk the side-effectful declarations last so that we can step through the
     // declaration in its natural order if it is consumed in our walk.
 
-    //I'm thinking that is this probably not going to be sufficient as-is. I could
-    // almost see doing a 2 pass walk. The first pass is to derive all the
+    // I'm thinking that is this probably not going to be sufficient as-is. I
+    // could almost see doing a 2 pass walk. The first pass is to derive all the
     // resolutions and understand what resolved regions consume what, and a 2nd
     // pass to actually perform the walk, where side effects that are consume
     // the region that actually brought you to the module actually go last
-    // here... Given that we can walk 20K regions in 250ms in the browser, it
-    // seems probably ok to do another pass. I'll let the next issue we find in
-    // this area drive this work so we have a solid scenario to test against.
+    // here... I'll let the next issue we find in this area drive this work so
+    // we have a solid scenario to test against.
     for (let sideEffect of sideEffects) {
       if (regions[sideEffect].type === "declaration") {
-        this.walk(module, sideEffect);
+        this.walk(module, sideEffect, newStack);
       }
     }
-
     return result;
   }
 
