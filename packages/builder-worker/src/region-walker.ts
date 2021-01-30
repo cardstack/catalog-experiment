@@ -157,11 +157,15 @@ export class RegionWalker {
         this.ownAssignments
       );
       if (source.type === "resolved") {
-        let innerId = this.walk(source.module, source.pointer, originalId);
-        for (let visitedModule of source.moduleStack) {
-          this.walkSideEffects(visitedModule);
-        }
-        return innerId;
+        let sourceModule = source.module;
+        let sourcePointer = source.pointer;
+        return this.withSideEffects(source.moduleStack[0], () => {
+          let innerId = this.walk(sourceModule, sourcePointer, originalId);
+          for (let visitedModule of source.moduleStack.slice(1)) {
+            this.withSideEffects(visitedModule, () => undefined);
+          }
+          return innerId;
+        });
       } else {
         // declarations that are "unresolved" are either namespace imports
         // (internal or external) or external imports
@@ -172,15 +176,15 @@ export class RegionWalker {
         ) {
           // This is the scenario where the resolution resolves to an
           // already fashioned namespace object declaration
-          let innerId = this.walk(
-            source.resolution.consumedBy,
-            source.resolution.consumedByPointer,
-            originalId
-          );
-          for (let visitedModule of source.moduleStack) {
-            this.walkSideEffects(visitedModule);
-          }
-          return innerId;
+          let sourceModule = source.resolution.consumedBy;
+          let sourcePointer = source.resolution.consumedByPointer;
+          return this.withSideEffects(source.moduleStack[0], () => {
+            let innerId = this.walk(sourceModule, sourcePointer, originalId);
+            for (let visitedModule of source.moduleStack.slice(1)) {
+              this.withSideEffects(visitedModule, () => undefined);
+            }
+            return innerId;
+          });
         }
         let consumingModule = makeNonCyclic(
           source.resolution?.consumedBy ?? source.consumingModule
@@ -267,30 +271,31 @@ export class RegionWalker {
         isNamespaceMarker(resolution?.name) &&
         resolution.importedSource?.declaredIn
       ) {
-        this.walkSideEffects(resolvedConsumingModule);
-        let namespaceMarker = this.visitNamespace(
-          resolution.importedSource.declaredIn
-        );
-        this.keepRegion(originalId, id, new Set([namespaceMarker]));
-        return id;
+        let namespaceModule = resolution.importedSource.declaredIn;
+        return this.withSideEffects(resolvedConsumingModule, () => {
+          let namespaceMarker = this.visitNamespace(namespaceModule);
+          this.keepRegion(originalId, id, new Set([namespaceMarker]));
+          return id;
+        });
       }
 
       // In this case the region that we entered our walk with is actually the
       // winning resolution, so we keep this region and continue our journey.
       else {
         let deps: Set<string> = new Set();
-        this.walkSideEffects(resolvedConsumingModule);
-        for (let depId of orderDependencies(
-          region.dependsOn,
-          resolvedConsumingModule
-        )) {
-          let resolvedDepId = this.walk(resolvedConsumingModule, depId);
-          if (resolvedDepId != null) {
-            deps.add(resolvedDepId);
+        return this.withSideEffects(resolvedConsumingModule, () => {
+          for (let depId of orderDependencies(
+            region.dependsOn,
+            resolvedConsumingModule
+          )) {
+            let resolvedDepId = this.walk(resolvedConsumingModule, depId);
+            if (resolvedDepId != null) {
+              deps.add(resolvedDepId);
+            }
           }
-        }
-        this.keepRegion(originalId, id, deps);
-        return id;
+          this.keepRegion(originalId, id, deps);
+          return id;
+        });
       }
     }
 
@@ -319,15 +324,16 @@ export class RegionWalker {
             );
           }
           if (isNamespaceMarker(exportDesc.name)) {
-            this.walkSideEffects(module);
-            let namespaceMarker = this.visitNamespace(importedModule);
-            this.keepRegion(originalId, id, new Set([namespaceMarker]));
-            return id;
+            return this.withSideEffects(module, () => {
+              let namespaceMarker = this.visitNamespace(importedModule);
+              this.keepRegion(originalId, id, new Set([namespaceMarker]));
+              return id;
+            });
           }
         }
 
         // This is an import for side-effects only.
-        return this.walkSideEffects(importedModule, originalId);
+        return this.withSideEffects(importedModule, () => undefined);
       } else {
         // we mark the external bundle import region as something we want to keep
         // as a signal to the Append nodes that this import is consumed and to
@@ -343,99 +349,141 @@ export class RegionWalker {
     // walk.
     else {
       let deps: Set<string> = new Set();
-      this.walkSideEffects(module);
-      for (let depId of orderDependencies(region.dependsOn, module)) {
-        let resolvedDepId = this.walk(module, depId);
-        if (resolvedDepId != null) {
-          deps.add(resolvedDepId);
+      return this.withSideEffects(module, () => {
+        for (let depId of orderDependencies(region.dependsOn, module)) {
+          let resolvedDepId = this.walk(module, depId);
+          if (resolvedDepId != null) {
+            deps.add(resolvedDepId);
+          }
         }
-      }
-      this.keepRegion(originalId, id, deps);
-      return id;
+        this.keepRegion(originalId, id, deps);
+        return id;
+      });
     }
   }
 
   private visitNamespace(module: Resolution): string {
     let exports = getExports(module);
     let namespaceItemIds: string[] = [];
-    this.walkSideEffects(module);
-    for (let [exportName, { module: sourceModule }] of exports.entries()) {
-      let source = this.depResolver.resolveDeclaration(
-        exportName,
-        sourceModule,
-        module,
-        this.ownAssignments
-      );
+    return this.withSideEffects(module, () => {
+      for (let [exportName, { module: sourceModule }] of exports.entries()) {
+        let source = this.depResolver.resolveDeclaration(
+          exportName,
+          sourceModule,
+          module,
+          this.ownAssignments
+        );
 
-      // this is the scenario where we were able to resolve the namespace item
-      // to a local declaration
-      if (source.type === "resolved") {
-        let sourceModule: Resolution = source.module;
-        let pointer: RegionPointer = source.pointer;
-        let itemId = this.walk(sourceModule, pointer);
-        for (let visitedModule of source.moduleStack) {
-          this.walkSideEffects(visitedModule);
+        // this is the scenario where we were able to resolve the namespace item
+        // to a local declaration
+        if (source.type === "resolved") {
+          let sourceModule: Resolution = source.module;
+          let pointer: RegionPointer = source.pointer;
+          let itemId = this.withSideEffects(source.moduleStack[0], () => {
+            let id = this.walk(sourceModule, pointer);
+            for (let visitedModule of source.moduleStack.slice(1)) {
+              this.withSideEffects(visitedModule, () => undefined);
+            }
+            return id;
+          });
+          if (itemId) {
+            namespaceItemIds.push(itemId);
+          }
         }
-        if (itemId) {
-          namespaceItemIds.push(itemId);
+
+        // in this case the namespace item is either a nested namespace import or
+        // comes from an external bundle.
+        else {
+          let { importedPointer } = source;
+          if (importedPointer == null) {
+            throw new Error(
+              `bug: could not determine code region pointer for import of ${JSON.stringify(
+                source.importedAs
+              )} from ${source.importedFromModule.url.href} in module ${
+                source.consumingModule.url.href
+              }`
+            );
+          }
+          // we mark the namespace import region as something we want to keep as a
+          // signal to the Append nodes to manufacture a namespace object for this
+          // import--ultimately, though, we will not include this region.
+          if (isNamespaceMarker(source.importedAs)) {
+            if (source.importedPointer == null) {
+              throw new Error(
+                `unable to determine the region for a namespace import of ${source.importedFromModule.url.href} from the consuming module ${source.consumingModule.url.href} in bundle ${this.bundle.href}`
+              );
+            }
+            let namespaceImport = regionId(
+              source.consumingModule,
+              source.importedPointer
+            );
+            let namespaceMarker = this.visitNamespace(
+              source.importedFromModule
+            );
+            this.keepRegion(
+              namespaceImport,
+              namespaceImport,
+              new Set([namespaceMarker])
+            );
+            namespaceItemIds.push(namespaceImport);
+          } else {
+            let itemId = regionId(module, importedPointer);
+            this.keepRegion(itemId, itemId, new Set());
+            namespaceItemIds.push(itemId);
+          }
         }
       }
 
-      // in this case the namespace item is either a nested namespace import or
-      // comes from an external bundle.
-      else {
-        let { importedPointer } = source;
-        if (importedPointer == null) {
-          throw new Error(
-            `bug: could not determine code region pointer for import of ${JSON.stringify(
-              source.importedAs
-            )} from ${source.importedFromModule.url.href} in module ${
-              source.consumingModule.url.href
-            }`
-          );
-        }
-        // we mark the namespace import region as something we want to keep as a
-        // signal to the Append nodes to manufacture a namespace object for this
-        // import--ultimately, though, we will not include this region.
-        if (isNamespaceMarker(source.importedAs)) {
-          if (source.importedPointer == null) {
-            throw new Error(
-              `unable to determine the region for a namespace import of ${source.importedFromModule.url.href} from the consuming module ${source.consumingModule.url.href} in bundle ${this.bundle.href}`
-            );
-          }
-          let namespaceImport = regionId(
-            source.consumingModule,
-            source.importedPointer
-          );
-          let namespaceMarker = this.visitNamespace(source.importedFromModule);
-          this.keepRegion(
-            namespaceImport,
-            namespaceImport,
-            new Set([namespaceMarker])
-          );
-          namespaceItemIds.push(namespaceImport);
-        } else {
-          let itemId = regionId(module, importedPointer);
-          this.keepRegion(itemId, itemId, new Set());
-          namespaceItemIds.push(itemId);
-        }
+      let namespaceMarker = regionId(module, NamespaceMarker);
+      this.keepRegion(
+        namespaceMarker,
+        namespaceMarker,
+        new Set(namespaceItemIds)
+      );
+      return namespaceMarker;
+    })!;
+  }
+
+  private withSideEffects(
+    module: Resolution,
+    walk: () => string | undefined
+  ): string | undefined {
+    let regions = module.desc.regions;
+    let sideEffects = regions[documentPointer].dependsOn;
+    for (let sideEffect of sideEffects) {
+      let region = regions[sideEffect];
+      let general: CodeRegion;
+      if (
+        region.type !== "declaration" ||
+        // if the declaration region's side effect has no references
+        ((general = regions[[...region.dependsOn].slice(-1)[0]]).type ===
+          "general" &&
+          general.dependsOn.size === 0)
+      ) {
+        this.walk(module, sideEffect);
       }
     }
 
-    let namespaceMarker = regionId(module, NamespaceMarker);
-    this.keepRegion(
-      namespaceMarker,
-      namespaceMarker,
-      new Set(namespaceItemIds)
-    );
-    return namespaceMarker;
-  }
+    let result = walk();
 
-  private walkSideEffects(
-    module: Resolution,
-    originalId?: string
-  ): string | undefined {
-    return this.walk(module, documentPointer, originalId);
+    // walk the side-effectful declarations last so that we can step through the
+    // declaration in its natural order if it is consumed in our walk.
+
+    //I'm thinking that is this probably not going to be sufficient as-is. I could
+    // almost see doing a 2 pass walk. The first pass is to derive all the
+    // resolutions and understand what resolved regions consume what, and a 2nd
+    // pass to actually perform the walk, where side effects that are consume
+    // the region that actually brought you to the module actually go last
+    // here... Given that we can walk 20K regions in 250ms in the browser, it
+    // seems probably ok to do another pass. I'll let the next issue we find in
+    // this area drive this work so we have a solid scenario to test against.
+    for (let sideEffect of sideEffects) {
+      if (regions[sideEffect].type === "declaration") {
+        this.walk(module, sideEffect);
+      }
+    }
+
+    return result;
   }
 
   private keepRegion(
