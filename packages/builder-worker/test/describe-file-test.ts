@@ -614,29 +614,6 @@ QUnit.module("describe-file", function () {
     );
   });
 
-  test("a code region for a binding declaration depends on module side effects", function (assert) {
-    let { desc, editor } = describeESModule(`
-      console.log("side effect");
-      const foo = "bar";
-      export {};
-    `);
-    keepAll(desc, editor);
-    let document = desc.regions[documentPointer];
-    let [sideEffect] = [...document.dependsOn];
-    let { pointer } = desc.declarations.get("foo")!;
-    let region = desc.regions[pointer];
-    assert.ok(region.dependsOn.has(sideEffect));
-    editor.replace(sideEffect, "//CODE_REGION");
-    assert.codeEqual(
-      editor.serialize().code,
-      `
-          //CODE_REGION
-          const foo = "bar";
-          export {};
-          `
-    );
-  });
-
   test("a code region depends on the code regions for bindings consumed within the region", function (assert) {
     let { desc } = describeESModule(`
       let a = 3;
