@@ -9,6 +9,7 @@ import {
   VariableDeclarator,
   Identifier,
   LVal,
+  Node,
   Program,
   ObjectProperty,
   CallExpression,
@@ -19,7 +20,6 @@ import {
   isMemberExpression,
   isObjectExpression,
   isObjectProperty,
-  SpreadElement,
   isLVal,
 } from "@babel/types";
 import { assertNever } from "@catalogjs/shared/util";
@@ -41,7 +41,6 @@ import {
 } from "./nodes/resolution";
 import { NamespaceMarker } from "./code-region";
 import { assignCodeRegionPositions } from "./region-editor";
-import { intersection } from "lodash";
 
 export interface ExportAllMarker {
   exportAllFrom: string;
@@ -978,10 +977,7 @@ export function describeFile(ast: File, filename: string): FileDescription {
   let sideEffectPointers = moduleSideEffects.map((paths) => {
     return builder.createCodeRegion(paths, "general");
   });
-  for (let { pointer } of declarations.values()) {
-    let region = regions[pointer];
-    region.dependsOn = new Set([...region.dependsOn, ...sideEffectPointers]);
-  }
+
   let document = builder!.regions[documentPointer];
   document.dependsOn = new Set([...document.dependsOn, ...sideEffectPointers]);
   cleanUpSideEffects(desc!.regions);
@@ -1025,10 +1021,15 @@ function cleanUpSideEffects(regions: FileDescription["regions"]) {
     (p) => regions[p].type === "general"
   );
   for (let declarationPointer of declarationPointers) {
-    let references = (regions[declarationPointer] as DeclarationCodeRegion)
-      .declaration.references;
+    let { declaration } = regions[declarationPointer] as DeclarationCodeRegion;
     for (let generalPointer of generalRegionPointers) {
-      if (findDependency(generalPointer, references, regions)) {
+      if (
+        findDeclarationDependency(
+          generalPointer,
+          declaration.declaredName,
+          regions
+        )
+      ) {
         // this is a side effectful declaration that is actually consumed by a
         // module side effect
         regions[documentPointer].dependsOn.delete(declarationPointer);
@@ -1038,22 +1039,25 @@ function cleanUpSideEffects(regions: FileDescription["regions"]) {
   }
 }
 
-function findDependency(
+function findDeclarationDependency(
   start: RegionPointer,
-  searchPointers: RegionPointer[],
+  name: string,
   regions: FileDescription["regions"],
   seen: Set<RegionPointer> = new Set()
 ): boolean {
   seen.add(start);
   let region = regions[start];
-  if (intersection(searchPointers, [...region.dependsOn]).length > 0) {
+  if (
+    region.type === "declaration" &&
+    region.declaration.declaredName === name
+  ) {
     return true;
   }
   for (let dep of region.dependsOn) {
     if (seen.has(dep)) {
       continue;
     }
-    if (findDependency(dep, searchPointers, regions, seen)) {
+    if (findDeclarationDependency(dep, name, regions, seen)) {
       return true;
     }
   }
@@ -1229,7 +1233,7 @@ function declarationForIdentifier(
   }
 }
 
-function isSideEffectFree(node: Expression | SpreadElement): boolean {
+function isSideEffectFree(node: Node): boolean {
   switch (node.type) {
     case "BooleanLiteral":
     case "NumericLiteral":
@@ -1261,11 +1265,10 @@ function isSideEffectFree(node: Expression | SpreadElement): boolean {
       return node.properties.every(
         (p) =>
           p.type === "ObjectMethod" ||
-          isSideEffectFree(
-            p.type === "SpreadElement"
-              ? (p.argument as Expression)
-              : (p.value as Expression)
-          )
+          (p.type === "ObjectProperty" &&
+            isSideEffectFree(p.key) &&
+            isSideEffectFree(p.value)) ||
+          (p.type === "SpreadElement" && isSideEffectFree(p.argument))
       );
     default:
       return false;
