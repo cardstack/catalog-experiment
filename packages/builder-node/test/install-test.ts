@@ -433,8 +433,8 @@ QUnit.module("Install from npm", function () {
         src,
         // this is the output of the remapRequires() function
         `
-        import aFactory from "./a$cjs$";
-        import test_pkg_depFactory from "test-pkg-dep$cjs$";
+        import { cjs as aFactory } from "./a";
+        import { cjs as test_pkg_depFactory } from "test-pkg-dep";
         let module;
         function implementation() {
           if (!module) {
@@ -459,7 +459,7 @@ module.exports = {
           }
           return module.exports;
         }
-        export default implementation;`
+        export { implementation as default, implementation as cjs};`
       );
 
       src = await (
@@ -481,7 +481,7 @@ module.exports = {
           }
           return module.exports;
         }
-        export default implementation;`
+        export { implementation as default, implementation as cjs};`
       );
     });
 
@@ -494,7 +494,8 @@ module.exports = {
         src,
         `
         import implementation from "./index.js$cjs$";
-        export default implementation;
+        export default implementation();
+        export { implementation as cjs };
         `
       );
       src = await (
@@ -504,7 +505,8 @@ module.exports = {
         src,
         `
         import implementation from "./a.js$cjs$";
-        export default implementation;
+        export default implementation();
+        export { implementation as cjs };
         `
       );
     });
@@ -518,8 +520,8 @@ module.exports = {
       assert.codeEqual(
         src,
         `
-        import test_pkg_depFactory from "test-pkg-dep$cjs$";
-        import aFactory from "./a$cjs$";
+        import { cjs as test_pkg_depFactory } from "test-pkg-dep";
+        import { cjs as aFactory } from "./a";
         let module;
         function implementation() {
           if (!module) {
@@ -543,7 +545,7 @@ module.exports = {
           }
           return module.exports;
         }
-        export default implementation;`
+        export { implementation as default, implementation as cjs};`
       );
     });
 
@@ -555,7 +557,7 @@ module.exports = {
       assert.codeEqual(
         src,
         `
-        import test_pkg_depFactory from "test-pkg-dep$cjs$";
+        import { cjs as test_pkg_depFactory } from "test-pkg-dep";
         let module;
         function implementation() {
           if (!module) {
@@ -573,7 +575,7 @@ module.exports.default = dependencies;\`
           }
           return module.exports;
         }
-        export default implementation;`
+        export { implementation as default, implementation as cjs};`
       );
     });
 
@@ -601,7 +603,7 @@ module.exports.default = dependencies;\`
           }
           return module.exports;
         }
-        export default implementation;`
+        export { implementation as default, implementation as cjs};`
       );
     });
 
@@ -630,7 +632,7 @@ module.exports.nope = function (filename) {
           }
           return module.exports;
         }
-        export default implementation;`
+        export { implementation as default, implementation as cjs};`
       );
     });
 
@@ -658,7 +660,7 @@ module.exports.foo = sample.foo;\`
           return module.exports;
         }
         function getSampleJSON() { return sampleJSON; }
-        export default implementation;`
+        export { implementation as default, implementation as cjs};`
       );
 
       let json = await (

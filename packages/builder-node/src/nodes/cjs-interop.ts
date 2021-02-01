@@ -265,6 +265,7 @@ class RewriteCJSNode implements BuilderNode {
           return `import { requireHasNonStringLiteralSpecifier } from "@catalogjs/loader";`;
         }
         let pkgInfo = pkgInfoFromSpecifier(specifier);
+        // TODO polyfill what we can...
         if (builtinModules.includes(pkgInfo?.pkgName)) {
           return `import { requireNodeBuiltin } from "@catalogjs/loader";`;
         }
@@ -272,7 +273,9 @@ class RewriteCJSNode implements BuilderNode {
           jsonSpecifiers.add(specifier); // side-effecty, but we're right here anyways...
           return `import ${depJSONName(specifier)} from "${specifier}.js";`;
         }
-        return `import ${depFactoryName(specifier)} from "${specifier}$cjs$";`;
+        return `import { cjs as ${depFactoryName(
+          specifier
+        )} } from "${specifier}";`;
       })
     );
     let deps: string[] = this.desc.requires.map(({ specifier }) => {
@@ -327,7 +330,7 @@ ${[...jsonSpecifiers]
   )
   .join("\n")}
 
-export default implementation;`;
+export { implementation as default, implementation as cjs };`;
     let nodes: BuilderNode<void>[] = [];
     nodes.push(
       new WriteFileNode(
@@ -407,18 +410,20 @@ class ESModuleShimNode implements BuilderNode {
       );
       if (nonDefaultExports.length > 0) {
         exports.push(
-          `const { ${nonDefaultExports.join(", ")} } = implementation;`
+          `const { ${nonDefaultExports.join(", ")} } = implementation();`
         );
         exports.push(`export { ${nonDefaultExports.join(", ")} };`);
       }
       if (this.desc.esTranspiledExports.includes("default")) {
         exports.push(`export default implementation().default;`);
       }
+      exports.push(`export { implementation as cjs }`);
       src = `import implementation from "./${basename}$cjs$";
 ${exports.join("\n")}`;
     } else {
       src = `import implementation from "./${basename}$cjs$";
-export default implementation;`;
+export default implementation();
+export { implementation as cjs };`;
     }
     return {
       node: new AllNode([
