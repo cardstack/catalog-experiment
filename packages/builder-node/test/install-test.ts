@@ -433,8 +433,8 @@ QUnit.module("Install from npm", function () {
         src,
         // this is the output of the remapRequires() function
         `
-        import aFactory from "./a$cjs$";
-        import test_pkg_depFactory from "test-pkg-dep$cjs$";
+        import { cjs as aFactory } from "./a";
+        import { cjs as test_pkg_depFactory } from "test-pkg-dep";
         let module;
         function implementation() {
           if (!module) {
@@ -445,10 +445,10 @@ QUnit.module("Install from npm", function () {
               "dependencies",
               \`const {
   a
-} = dependencies[0];
+} = dependencies[0]();
 const {
   dep
-} = dependencies[1];
+} = dependencies[1]();
 function doSomething() {
   console.log(\\\`\\\${a}\\\${dep}\\\`);
 }
@@ -459,7 +459,7 @@ module.exports = {
           }
           return module.exports;
         }
-        export default implementation;`
+        export { implementation as default, implementation as cjs};`
       );
 
       src = await (
@@ -481,7 +481,7 @@ module.exports = {
           }
           return module.exports;
         }
-        export default implementation;`
+        export { implementation as default, implementation as cjs};`
       );
     });
 
@@ -495,6 +495,7 @@ module.exports = {
         `
         import implementation from "./index.js$cjs$";
         export default implementation();
+        export { implementation as cjs };
         `
       );
       src = await (
@@ -505,6 +506,7 @@ module.exports = {
         `
         import implementation from "./a.js$cjs$";
         export default implementation();
+        export { implementation as cjs };
         `
       );
     });
@@ -518,8 +520,8 @@ module.exports = {
       assert.codeEqual(
         src,
         `
-        import test_pkg_depFactory from "test-pkg-dep$cjs$";
-        import aFactory from "./a$cjs$";
+        import { cjs as test_pkg_depFactory } from "test-pkg-dep";
+        import { cjs as aFactory } from "./a";
         let module;
         function implementation() {
           if (!module) {
@@ -528,11 +530,11 @@ module.exports = {
               "module",
               "exports",
               "dependencies",
-              \`const dep1 = dependencies[0].dep;
-const dep2 = dependencies[1].dep2;
+              \`const dep1 = dependencies[0]().dep;
+const dep2 = dependencies[1]().dep2;
 const {
   a
-} = dependencies[2];
+} = dependencies[2]();
 function doSomething() {
   console.log(\\\`\\\${a}\\\${dep1}\\\${dep2}\\\`);
 }
@@ -543,7 +545,7 @@ module.exports = {
           }
           return module.exports;
         }
-        export default implementation;`
+        export { implementation as default, implementation as cjs};`
       );
     });
 
@@ -555,7 +557,7 @@ module.exports = {
       assert.codeEqual(
         src,
         `
-        import test_pkg_depFactory from "test-pkg-dep$cjs$";
+        import { cjs as test_pkg_depFactory } from "test-pkg-dep";
         let module;
         function implementation() {
           if (!module) {
@@ -566,14 +568,14 @@ module.exports = {
               "dependencies0",
               \`const {
   dep
-} = dependencies0[0];
+} = dependencies0[0]();
 let dependencies = "don't collide with me" + dep;
 module.exports.default = dependencies;\`
             )(module, module.exports, [test_pkg_depFactory]);
           }
           return module.exports;
         }
-        export default implementation;`
+        export { implementation as default, implementation as cjs};`
       );
     });
 
@@ -595,13 +597,13 @@ module.exports.default = dependencies;\`
               "exports",
               "dependencies",
               \`module.exports.boom = function (file) {
-  dependencies[0];
+  dependencies[0]();
 };\`,
             )(module, module.exports, [requireHasNonStringLiteralSpecifier("test-pkg", "1.2.3", "d.js")]);
           }
           return module.exports;
         }
-        export default implementation;`
+        export { implementation as default, implementation as cjs};`
       );
     });
 
@@ -622,7 +624,7 @@ module.exports.default = dependencies;\`
               "module",
               "exports",
               "dependencies",
-              \`const fs = dependencies[0];
+              \`const fs = dependencies[0]();
 module.exports.nope = function (filename) {
   return fs.readFileSync(filename);
 };\`
@@ -630,7 +632,7 @@ module.exports.nope = function (filename) {
           }
           return module.exports;
         }
-        export default implementation;`
+        export { implementation as default, implementation as cjs};`
       );
     });
 
@@ -651,14 +653,14 @@ module.exports.nope = function (filename) {
               "module",
               "exports",
               "dependencies",
-              \`const sample = dependencies[0];
+              \`const sample = dependencies[0]();
 module.exports.foo = sample.foo;\`
             )(module, module.exports, [getSampleJSON]);
           }
           return module.exports;
         }
         function getSampleJSON() { return sampleJSON; }
-        export default implementation;`
+        export { implementation as default, implementation as cjs};`
       );
 
       let json = await (
