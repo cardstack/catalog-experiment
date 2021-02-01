@@ -62,6 +62,7 @@ export class CombineModulesNode implements BuilderNode {
     let depResolver = new DependencyResolver(
       this.dependencies,
       assignments,
+      resolutionsInDepOrder,
       this.lockEntries,
       lockFile,
       resolutionRecipes,

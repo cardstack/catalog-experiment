@@ -96,6 +96,7 @@ export class DependencyResolver {
   constructor(
     dependencies: Dependencies,
     assignments: BundleAssignment[],
+    private resolutionsInDepOrder: ModuleResolution[],
     lockEntries: LockEntries,
     lockFile: LockFile | undefined,
     resolutionRecipes:
@@ -347,8 +348,9 @@ export class DependencyResolver {
         (r) => r.consumedBy.url.href
       );
       // when there are duplicate resolutions, first we try to find the
-      // resolution whose consumedBy is actually the bundleHref, if there
-      // are none, then first one alphabetically by consumer href wins
+      // resolution whose consumedBy is actually the bundleHref, if there are
+      // none, then chose the resolution whose consumedBy is the earliest module
+      // when all modules in the bundle are sorted in dependency order.
       let winningSideEffectConsumer: string | undefined;
       let consumerHrefs = Object.keys(dupeSideEffectResolutions);
       if (consumerHrefs.length > 1) {
@@ -358,7 +360,11 @@ export class DependencyResolver {
         // our own bundle as a consumer has the lowest priority
         consumerHrefs = consumerHrefs.filter((h) => h !== this.bundle.href);
         if (!winningSideEffectConsumer) {
-          consumerHrefs.sort((a, b) => a.localeCompare(b));
+          consumerHrefs.sort(
+            (a, b) =>
+              this.resolutionsInDepOrder.findIndex((m) => m.url.href === a) -
+              this.resolutionsInDepOrder.findIndex((m) => m.url.href === b)
+          );
           winningSideEffectConsumer = consumerHrefs.shift()!;
         }
       } else {
@@ -409,7 +415,7 @@ export class DependencyResolver {
           }
           // when there are duplicate resolutions, first we try to find the
           // resolution whose consumedBy is actually the bundleHref, if there
-          // are none, then first one alphabetically by consumer href wins
+          // are none, then first one when sorted by dependency order wins
           let winningResolution = dupeResolutions.find(
             (r) =>
               r.bundleHref === r.consumedBy.url.href ||
@@ -419,7 +425,12 @@ export class DependencyResolver {
           if (!winningResolution) {
             dupeResolutions.sort(
               ({ consumedBy: consumedByA }, { consumedBy: consumedByB }) =>
-                consumedByA.url.href.localeCompare(consumedByB.url.href)
+                this.resolutionsInDepOrder.findIndex(
+                  (m) => m.url.href === consumedByA.url.href
+                ) -
+                this.resolutionsInDepOrder.findIndex(
+                  (m) => m.url.href === consumedByB.url.href
+                )
             );
             winningResolution = dupeResolutions.shift()!;
           }
