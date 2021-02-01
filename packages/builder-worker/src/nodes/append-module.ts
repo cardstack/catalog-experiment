@@ -166,17 +166,22 @@ export class FinishAppendModulesNode implements BuilderNode {
         dependsOn: new Set(),
       },
     ];
+    let ownAssignments = this.bundleAssignments.filter(
+      (a) => a.bundleURL.href === this.bundle.href
+    );
 
     let start = Date.now();
     let importAssignments = assignedImports(
       this.bundle,
       this.bundleAssignments,
+      ownAssignments,
       this.state,
       this.depResolver
     );
     let exportAssignments = assignedExports(
       this.bundle,
       this.bundleAssignments,
+      ownAssignments,
       this.state,
       this.depResolver
     );
@@ -192,7 +197,7 @@ export class FinishAppendModulesNode implements BuilderNode {
       regions,
       prevSibling,
       this.state,
-      this.bundleAssignments,
+      ownAssignments,
       bundleDeclarations,
       this.depResolver,
       this.bundle
@@ -205,6 +210,7 @@ export class FinishAppendModulesNode implements BuilderNode {
       bundleDeclarations,
       referenceMappings,
       completedNamespaceAssignments,
+      ownAssignments,
       this.bundle,
       this.state,
       this.dependencies,
@@ -290,14 +296,11 @@ function buildManufacturedCode(
   regions: CodeRegion[],
   prevSibling: RegionPointer | undefined,
   state: HeadState,
-  assignments: BundleAssignment[],
+  ownAssignments: BundleAssignment[],
   bundleDeclarations: DeclarationRegionMap,
   depResolver: DependencyResolver,
   bundle: URL
 ): RegionPointer | undefined {
-  let ownAssignments = assignments.filter(
-    (a) => a.bundleURL.href === bundle.href
-  );
   let declarations: Map<string, Map<string, string>> = new Map(); // namespaceBindingName => <exportedName => assignedName>
   for (let { module } of state.visited) {
     for (let exportDesc of [...module.desc.exports.values()].filter(
@@ -924,6 +927,7 @@ function buildBundleBody(
   bundleDeclarations: DeclarationRegionMap,
   referenceMappings: ReferenceMappings,
   completedNamespaceAssignments: Set<string>,
+  ownAssignments: BundleAssignment[],
   bundle: URL,
   state: HeadState,
   dependencies: Dependencies,
@@ -1054,6 +1058,7 @@ function buildBundleBody(
       referenceMappings,
       module,
       state,
+      ownAssignments,
       bundle
     );
 
@@ -1160,8 +1165,9 @@ function setReferenceMappings(
   offset: number,
   bundleDeclarations: DeclarationRegionMap,
   referenceMappings: ReferenceMappings,
-  module: ModuleResolution,
+  origModule: ModuleResolution,
   state: HeadState,
+  ownAssignments: BundleAssignment[],
   bundle: URL
 ) {
   for (let region of regions.filter(
@@ -1177,6 +1183,7 @@ function setReferenceMappings(
   }
 
   for (let [pointer, region] of regions.entries()) {
+    let module: ModuleResolution | undefined = origModule;
     if (region.type !== "reference") {
       continue;
     }
@@ -1203,10 +1210,10 @@ function setReferenceMappings(
     }
     let originalName: string | undefined;
     if (declarationPointer < 0) {
-      declarationRegion = module.desc.regions[-1 * declarationPointer];
+      declarationRegion = module.desc.regions[-declarationPointer];
       assertDeclarationRegion(
         declarationRegion,
-        declarationPointer,
+        -declarationPointer,
         module,
         bundle
       );
@@ -1219,12 +1226,21 @@ function setReferenceMappings(
         module,
         bundle
       );
-      originalName = state.usedNames.get(
+      let firstUsage = state.usedNames.get(
         declarationRegion.declaration.declaredName
-      )?.name;
-      if (!originalName) {
+      );
+      if (!firstUsage) {
         throw new Error(
-          `cannot determine original name for the assigned name '${declarationRegion.declaration.declaredName}' from module ${module.url.href} when making bundle ${bundle.href}`
+          `cannot determine original usage for the assigned name '${declarationRegion.declaration.declaredName}' from module ${module.url.href} when making bundle ${bundle.href}`
+        );
+      }
+      originalName = firstUsage.name;
+      module = ownAssignments.find(
+        (a) => a.module.url.href === firstUsage!.moduleHref
+      )?.module;
+      if (!module) {
+        throw new Error(
+          `the module for the original usage of '${originalName}' in module ${firstUsage.moduleHref} is not assigned to bundle ${bundle.href}`
         );
       }
     }
@@ -1752,6 +1768,7 @@ function setExportDescription(
 function assignedExports(
   bundle: URL,
   assignments: BundleAssignment[],
+  ownAssignments: BundleAssignment[],
   state: HeadState,
   depResolver: DependencyResolver
 ): {
@@ -1762,9 +1779,6 @@ function assignedExports(
   let exports: Map<string, string> = new Map();
   let reexports: Map<string, Map<string, string>> = new Map();
   let exportAlls: Set<string> = new Set();
-  let ownAssignments = assignments.filter(
-    (a) => a.bundleURL.href === bundle.href
-  );
   for (let assignment of ownAssignments) {
     let { module } = assignment;
     for (let [original, exposedAs] of assignment.exposedNames.entries()) {
@@ -1909,6 +1923,7 @@ function isSideEffectMarker(value: any): value is SideEffectMarker {
 function assignedImports(
   bundle: URL,
   assignments: BundleAssignment[],
+  ownAssignments: BundleAssignment[],
   state: HeadState,
   depResolver: DependencyResolver
 ): Map<
@@ -1920,9 +1935,6 @@ function assignedImports(
     string,
     Map<string | NamespaceMarker | SideEffectMarker, string | null>
   > = new Map();
-  let ownAssignments = assignments.filter(
-    (a) => a.bundleURL.href === bundle.href
-  );
   for (let { module, editor } of state.visited) {
     // sort the regions by position in file to get correct order
     let regionInfo = editor
