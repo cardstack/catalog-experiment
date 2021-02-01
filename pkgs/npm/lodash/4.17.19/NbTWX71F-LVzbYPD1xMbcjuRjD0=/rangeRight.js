@@ -1,6 +1,0 @@
-import { default as createRange } from "./dist/24.js";
-var rangeRight = createRange(true);
-export { rangeRight as default };
-/*====catalogjs annotation start====
-k5GVwqwuL2Rpc3QvMjQuanMDwsCBp2RlZmF1bHSUoWyqcmFuZ2VSaWdodAvAnZehbwAAA8CRBsCZoWQJAALAkQLAwpihaatjcmVhdGVSYW5nZZICCcAAp2RlZmF1bHTAwJihcgsLwMCRAcDCnKFpABcBBJDAwgDCwMCXoW8BAAUKkMCYoWcAAQbAkMDCmaFkBAAHwJMHBQjAwpihbKpyYW5nZVJpZ2h0kgcMwMDABdlKV25wbS9sb2Rhc2gvNC4xNy4xOS83S0E5OC1vRzY0SmM0SnRWdE5Pamk5cDlSNEk9L19fYnVpbGRfc3JjL3JhbmdlUmlnaHQuanOYoXIACsAIkQbAwpihZwMGCcCRCcDCmKFyAAvAwJEBwMKYoWcBAwvAkMDCmKFnCQsMwJEMwMKYoXIACsDAkQbAwg==
-====catalogjs annotation end====*/

@@ -1,9 +1,0 @@
-var arrayProto = Array.prototype;
-var nativeReverse = arrayProto.reverse;
-function reverse(array) {
-  return array == null ? array : nativeReverse.call(array);
-}
-export { reverse as default };
-/*====catalogjs annotation start====
-k5CBp2RlZmF1bHSUoWyncmV2ZXJzZQ3An5ehbwAAAcCQwJehbwAAAgyQwJihZwABAwWQwMKZoWQEEgTAkgQCwMKYoWyqYXJyYXlQcm90b5IECMDAwALZR1ducG0vbG9kYXNoLzQuMTcuMTkvN0tBOTgtb0c2NEpjNEp0VnROT2ppOXA5UjRJPS9fX2J1aWxkX3NyYy9yZXZlcnNlLmpzmKFyAArAwJEDwMKYoWcBAQYJkMDCmaFkBAgHwJQIBwUDwMKYoWytbmF0aXZlUmV2ZXJzZZIHC8DAwAXZR1ducG0vbG9kYXNoLzQuMTcuMTkvN0tBOTgtb0c2NEpjNEp0VnROT2ppOXA5UjRJPS9fX2J1aWxkX3NyYy9yZXZlcnNlLmpzmKFyAA3ACJEGwMKYoXIDCsDAkQPAwpmhZAEPCsCTCwoGwMKYoWyncmV2ZXJzZZIKDsDAwMDZR1ducG0vbG9kYXNoLzQuMTcuMTkvN0tBOTgtb0c2NEpjNEp0VnROT2ppOXA5UjRJPS9fX2J1aWxkX3NyYy9yZXZlcnNlLmpzmKFyCQfAC5EJwMKYoXIrDcDAkQbAwpihZwEDDcCQwMKYoWcJCw7AkQ7AwpihcgAHwMCRCcDC
-====catalogjs annotation end====*/

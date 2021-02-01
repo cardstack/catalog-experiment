@@ -1,6 +1,0 @@
-import { default as createCaseFirst } from "./dist/18.js";
-var lowerFirst = createCaseFirst('toLowerCase');
-export { lowerFirst as default };
-/*====catalogjs annotation start====
-k5GVwqwuL2Rpc3QvMTguanMDwsCBp2RlZmF1bHSUoWyqbG93ZXJGaXJzdAvAnZehbwAAA8CRBsCZoWQJAALAkQLAwpihaa9jcmVhdGVDYXNlRmlyc3SSAgnAAKdkZWZhdWx0wMCYoXILD8DAkQHAwpyhaQAXAQSQwMIAwsDAl6FvAQAFCpDAmKFnAAEGwJDAwpmhZAQAB8CTBwUIwMKYoWyqbG93ZXJGaXJzdJIHDMDAwAXZSlducG0vbG9kYXNoLzQuMTcuMTkvN0tBOTgtb0c2NEpjNEp0VnROT2ppOXA5UjRJPS9fX2J1aWxkX3NyYy9sb3dlckZpcnN0LmpzmKFyAArACJEGwMKYoWcDDwnAkQnAwpihcgAPwMCRAcDCmKFnAQMLwJDAwpihZwkLDMCRDMDCmKFyAArAwJEGwMI=
-====catalogjs annotation end====*/
