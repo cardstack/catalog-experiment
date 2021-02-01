@@ -1,0 +1,10 @@
+import { default as baseClamp } from "./dist/148.js";
+import { default as toInteger } from "./toInteger.js";
+var MAX_ARRAY_LENGTH = 4294967295;
+function toLength(value) {
+  return value ? baseClamp(toInteger(value), 0, MAX_ARRAY_LENGTH) : 0;
+}
+export { toLength as default };
+/*====catalogjs annotation start====
+k5KVwq0uL2Rpc3QvMTQ4LmpzA8LAlcKuLi90b0ludGVnZXIuanMGwsCBp2RlZmF1bHSUoWyodG9MZW5ndGgRwNwAE5ehbwAAA8CQwJmhZAkAAsCRAsDCmKFpqWJhc2VDbGFtcJICDcAAp2RlZmF1bHTAwJihcgsJwMCRAcDCnKFpABgBBpDAwgDCwMCZoWQJAAXAkQXAwpihaal0b0ludGVnZXKSBQ7AAadkZWZhdWx0wMCYoXILCcDAkQTAwpyhaQEZBAeQwMIBwsDAl6FvAQAIEJDAmKFnAAEJC5DAwpmhZAQNCsCSCgjAwpihbLBNQVhfQVJSQVlfTEVOR1RIkgoPwMDACNlIV25wbS9sb2Rhc2gvNC4xNy4xOS83S0E5OC1vRzY0SmM0SnRWdE5Pamk5cDlSNEk9L19fYnVpbGRfc3JjL3RvTGVuZ3RoLmpzmKFyABDAwJEJwMKZoWQBCAzAlQ0ODwwJwMKYoWyodG9MZW5ndGiSDBLAwMDA2UhXbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvdG9MZW5ndGguanOYoXIJCMANkQvAwpihchsJwA6RAcDCmKFyAQnAD5EEwMKYoXIMEMDAkQnAwpihZwEDEcCQwMKYoWcJCxLAkRLAwpihcgAIwMCRC8DC
+====catalogjs annotation end====*/

@@ -1,0 +1,13 @@
+import { default as hasPath } from "./dist/15.js";
+var objectProto = Object.prototype;
+var hasOwnProperty = objectProto.hasOwnProperty;
+function baseHas(object, key) {
+  return object != null && hasOwnProperty.call(object, key);
+}
+function has(object, path) {
+  return object != null && hasPath(object, path, baseHas);
+}
+export { has as default };
+/*====catalogjs annotation start====
+k5GVwqwuL2Rpc3QvMTUuanMDwsCBp2RlZmF1bHSUoWyjaGFzFcDcABeXoW8AAAPAkMCZoWQJAALAkQLAwpihaadoYXNQYXRokgISwACnZGVmYXVsdMDAmKFyCwfAwJEBwMKcoWkAFwEEkMDCAMLAwJehbwEABQ+QwJihZwABBgiQwMKZoWQEEwfAkgcFwMKYoWyrb2JqZWN0UHJvdG+SBwvAwMAF2UhXbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvX2Jhc2VIYXMuanOYoXIAC8DAkQbAwpihZwEBCQyQwMKZoWQEDwrAlAsKCAbAwpihbK5oYXNPd25Qcm9wZXJ0eZIKDsDAwAjZSFducG0vbG9kYXNoLzQuMTcuMTkvN0tBOTgtb0c2NEpjNEp0VnROT2ppOXA5UjRJPS9fX2J1aWxkX3NyYy9fYmFzZUhhcy5qc5ihcgAOwAuRCcDCmKFyAwvAwJEGwMKZoWQBFQ3Akw4NCcDCmKFsp2Jhc2VIYXOSDRPAwMDA2UhXbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvX2Jhc2VIYXMuanOYoXIJB8AOkQzAwpihcisOwMCRCcDCl6FvAQAQFJDAmaFkAAQRwJMSExHAwpihbKNoYXOSERbAwMDA2UNXbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvaGFzLmpzmKFyCQPAEpEQwMKYoXIsB8ATkQHAwpihcg8HwMCRDMDCmKFnAQMVwJDAwpihZwkLFsCRFsDCmKFyAAPAwJEQwMI=
+====catalogjs annotation end====*/
