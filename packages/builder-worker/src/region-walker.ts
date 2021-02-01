@@ -49,22 +49,21 @@ export class RegionWalker {
       ownAssignments.find(({ module }) => module.url.href === m.url.href)
     );
     let walkStart = Date.now();
-    // marry up the document regions to the exposed regions in dependency order
+    // process the exposed regions in module dependency order
     for (let module of ownResolutions) {
       // we walk the exposed API of the module
       for (let pointer of exposed
         .filter(({ module: m }) => m.url.href === module.url.href)
         .map(({ pointer }) => pointer)) {
-        this.walk(module, pointer);
+        this.withSideEffects(module, [], (stack) =>
+          this.walk(module, pointer, stack)
+        );
       }
     }
     // We also walk the side effects of the entrypoint module since the bundle
     // may not have any exports.
     let [entrypointModule] = ownResolutions.slice(-1);
-    for (let pointer of entrypointModule.desc.regions[documentPointer]
-      .dependsOn) {
-      this.walk(entrypointModule, pointer);
-    }
+    this.withSideEffects(entrypointModule);
 
     if (typeof process?.stdout?.write === "function") {
       console.log();
@@ -91,7 +90,7 @@ export class RegionWalker {
   private walk(
     module: Resolution,
     pointer: RegionPointer,
-    sideEffectStack: string[] = [],
+    sideEffectStack: string[],
     originalId = regionId(module, pointer)
   ): string | undefined {
     let id = regionId(module, pointer);
@@ -171,7 +170,7 @@ export class RegionWalker {
               originalId
             );
             for (let visitedModule of source.moduleStack.slice(1)) {
-              this.withSideEffects(visitedModule, stack, () => undefined);
+              this.withSideEffects(visitedModule, stack);
             }
             return innerId;
           }
@@ -199,7 +198,7 @@ export class RegionWalker {
                 originalId
               );
               for (let visitedModule of source.moduleStack.slice(1)) {
-                this.withSideEffects(visitedModule, stack, () => undefined);
+                this.withSideEffects(visitedModule, stack);
               }
               return innerId;
             }
@@ -357,11 +356,7 @@ export class RegionWalker {
         }
 
         // This is an import for side-effects only.
-        return this.withSideEffects(
-          importedModule,
-          sideEffectStack,
-          () => undefined
-        );
+        return this.withSideEffects(importedModule, sideEffectStack);
       } else {
         // we mark the external bundle import region as something we want to keep
         // as a signal to the Append nodes that this import is consumed and to
@@ -425,7 +420,7 @@ export class RegionWalker {
             (s) => {
               let id = this.walk(sourceModule, pointer, s);
               for (let visitedModule of source.moduleStack.slice(1)) {
-                this.withSideEffects(visitedModule, s, () => undefined);
+                this.withSideEffects(visitedModule, s);
               }
               return id;
             }
@@ -491,8 +486,8 @@ export class RegionWalker {
 
   private withSideEffects(
     module: Resolution,
-    sideEffectStack: string[],
-    walk: (sideEffectStack: string[]) => string | undefined
+    sideEffectStack: string[] = [],
+    walk: (sideEffectStack: string[]) => string | undefined = () => undefined
   ): string | undefined {
     if (sideEffectStack.includes(module.url.href)) {
       // we are already in the midsts of processing side effects for this
