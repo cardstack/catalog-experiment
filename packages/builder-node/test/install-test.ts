@@ -445,10 +445,10 @@ QUnit.module("Install from npm", function () {
               "dependencies",
               \`const {
   a
-} = dependencies[0]();
+} = dependencies[0];
 const {
   dep
-} = dependencies[1]();
+} = dependencies[1];
 function doSomething() {
   console.log(\\\`\\\${a}\\\${dep}\\\`);
 }
@@ -494,7 +494,7 @@ module.exports = {
         src,
         `
         import implementation from "./index.js$cjs$";
-        export default implementation;
+        export default implementation();
         `
       );
       src = await (
@@ -504,7 +504,7 @@ module.exports = {
         src,
         `
         import implementation from "./a.js$cjs$";
-        export default implementation;
+        export default implementation();
         `
       );
     });
@@ -528,11 +528,11 @@ module.exports = {
               "module",
               "exports",
               "dependencies",
-              \`const dep1 = dependencies[0]().dep;
-const dep2 = dependencies[1]().dep2;
+              \`const dep1 = dependencies[0].dep;
+const dep2 = dependencies[1].dep2;
 const {
   a
-} = dependencies[2]();
+} = dependencies[2];
 function doSomething() {
   console.log(\\\`\\\${a}\\\${dep1}\\\${dep2}\\\`);
 }
@@ -566,7 +566,7 @@ module.exports = {
               "dependencies0",
               \`const {
   dep
-} = dependencies0[0]();
+} = dependencies0[0];
 let dependencies = "don't collide with me" + dep;
 module.exports.default = dependencies;\`
             )(module, module.exports, [test_pkg_depFactory]);
@@ -595,7 +595,7 @@ module.exports.default = dependencies;\`
               "exports",
               "dependencies",
               \`module.exports.boom = function (file) {
-  dependencies[0]();
+  dependencies[0];
 };\`,
             )(module, module.exports, [requireHasNonStringLiteralSpecifier("test-pkg", "1.2.3", "d.js")]);
           }
@@ -622,7 +622,7 @@ module.exports.default = dependencies;\`
               "module",
               "exports",
               "dependencies",
-              \`const fs = dependencies[0]();
+              \`const fs = dependencies[0];
 module.exports.nope = function (filename) {
   return fs.readFileSync(filename);
 };\`
@@ -651,7 +651,7 @@ module.exports.nope = function (filename) {
               "module",
               "exports",
               "dependencies",
-              \`const sample = dependencies[0]();
+              \`const sample = dependencies[0];
 module.exports.foo = sample.foo;\`
             )(module, module.exports, [getSampleJSON]);
           }

@@ -217,7 +217,7 @@ function remapRequires(
     editor.keepRegion(pointer);
   }
   for (let [index, require] of desc.requires.entries()) {
-    editor.replace(require.requireRegion, `${depBindingName}[${index}]()`);
+    editor.replace(require.requireRegion, `${depBindingName}[${index}]`);
   }
   return editor.serialize().code;
 }
@@ -407,7 +407,7 @@ class ESModuleShimNode implements BuilderNode {
       );
       if (nonDefaultExports.length > 0) {
         exports.push(
-          `const { ${nonDefaultExports.join(", ")} } = implementation;`
+          `const { ${nonDefaultExports.join(", ")} } = implementation();`
         );
         exports.push(`export { ${nonDefaultExports.join(", ")} };`);
       }
@@ -418,7 +418,7 @@ class ESModuleShimNode implements BuilderNode {
 ${exports.join("\n")}`;
     } else {
       src = `import implementation from "./${basename}$cjs$";
-export default implementation;`;
+export default implementation();`;
     }
     return {
       node: new AllNode([
