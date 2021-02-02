@@ -29,7 +29,6 @@ import {
 import { PackageSrcNode, buildSrcDir } from "./package";
 // @ts-ignore repl.builtinModules is a new API added in node 14.5.0, looks like TS lint has not caught up
 import { builtinModules } from "repl";
-// @ts-ignore
 import difference from "lodash/difference";
 
 const polyfills = [
