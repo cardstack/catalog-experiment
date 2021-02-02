@@ -159,9 +159,11 @@ class FinishPackagePreparationNode implements BuilderNode {
         esCompliance,
         // all node builds have the runtime loader package available as a
         // dependency, so that runtime loading situations (e.g. a dynamic
-        // require specifier) can be handled if they arise
+        // require specifier) can be handled if they arise, as well as a
+        // polyfills package to polyfill node-isms
         {
           "@catalogjs/loader": "^0.0.1",
+          "@catalogjs/polyfills": "^0.0.1",
         }
       ),
       esCompliance,

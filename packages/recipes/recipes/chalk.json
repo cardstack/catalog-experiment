@@ -5,9 +5,7 @@
       "semverRange": "*",
       "macros": {
         "process\\.env": "{ TERM: '' }",
-        "process\\.platform": "''",
-        "process\\.stdout": "undefined",
-        "process\\.stderr": "undefined"
+        "process\\.platform": "''"
       }
     }
   ]

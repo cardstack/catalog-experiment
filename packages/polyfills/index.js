@@ -6,4 +6,5 @@ export { default as path } from "./path";
 export { default as url } from "./url";
 export { default as querystring } from "./querystring";
 export { default as punycode } from "./punycode";
-export { default as fs } from "./fs-stub";
+export { default as fs } from "./fs";
+export { default as os } from "./os";
