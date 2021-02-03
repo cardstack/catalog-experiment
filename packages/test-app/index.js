@@ -12,16 +12,16 @@ export async function boot(rootElement) {
 
   // rootElement.append(
   //   introspectESModule(`
-  // import { bar, bloop } from "foo";
+  //     import { bar, bloop } from "foo";
 
-  // const vanGogh = "Van Gogh";
-  // const mango = "Mango";
-  // function cutestPuppies() {
-  //   return [ vanGogh, mango, bar, bloop ];
-  // }
+  //     const vanGogh = "Van Gogh";
+  //     const mango = "Mango";
+  //     function cutestPuppies() {
+  //       return [ vanGogh, mango, bar, bloop ];
+  //     }
 
-  // export { vanGogh, mango, cutestPuppies };
-  // `)
+  //     export { vanGogh, mango, cutestPuppies };
+  //   `)
   // );
 }
 

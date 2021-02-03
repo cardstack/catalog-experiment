@@ -138,6 +138,11 @@ QUnit.module("Install from npm", function () {
           pkgName: "@catalogjs/loader",
           range: "^0.0.1",
         },
+        "@catalogjs/polyfills": {
+          type: "npm",
+          pkgName: "@catalogjs/polyfills",
+          range: "^0.0.1",
+        },
       });
 
       let cEntrypoints = JSON.parse(
@@ -152,6 +157,11 @@ QUnit.module("Install from npm", function () {
         "@catalogjs/loader": {
           type: "npm",
           pkgName: "@catalogjs/loader",
+          range: "^0.0.1",
+        },
+        "@catalogjs/polyfills": {
+          type: "npm",
+          pkgName: "@catalogjs/polyfills",
           range: "^0.0.1",
         },
       });
@@ -202,6 +212,11 @@ QUnit.module("Install from npm", function () {
           pkgName: "@catalogjs/loader",
           range: "^0.0.1",
         },
+        "@catalogjs/polyfills": {
+          type: "npm",
+          pkgName: "@catalogjs/polyfills",
+          range: "^0.0.1",
+        },
       });
 
       let { e: pkgEURL } = aLock;
@@ -216,6 +231,11 @@ QUnit.module("Install from npm", function () {
         "@catalogjs/loader": {
           type: "npm",
           pkgName: "@catalogjs/loader",
+          range: "^0.0.1",
+        },
+        "@catalogjs/polyfills": {
+          type: "npm",
+          pkgName: "@catalogjs/polyfills",
           range: "^0.0.1",
         },
       });
@@ -250,6 +270,11 @@ QUnit.module("Install from npm", function () {
           pkgName: "@catalogjs/loader",
           range: "^0.0.1",
         },
+        "@catalogjs/polyfills": {
+          type: "npm",
+          pkgName: "@catalogjs/polyfills",
+          range: "^0.0.1",
+        },
       });
       assert.notOk(d1Entrypoints.html);
       let dLock = JSON.parse(
@@ -278,6 +303,11 @@ QUnit.module("Install from npm", function () {
         "@catalogjs/loader": {
           type: "npm",
           pkgName: "@catalogjs/loader",
+          range: "^0.0.1",
+        },
+        "@catalogjs/polyfills": {
+          type: "npm",
+          pkgName: "@catalogjs/polyfills",
           range: "^0.0.1",
         },
       });
@@ -362,9 +392,9 @@ QUnit.module("Install from npm", function () {
             require(file);
           }`,
         "e.js": `
-          const fs = require('fs');
-          module.exports.nope = function(filename) {
-            return fs.readFileSync(filename);
+          const tty = require('tty');
+          module.exports.nope = function() {
+            return tty.something();
           }`,
         "f.js": `
           const sample = require('./sample.json');
@@ -372,6 +402,11 @@ QUnit.module("Install from npm", function () {
         "sample.json": `{
           "foo": "bar"
         }`,
+        "g.js": `
+          const assert = require('assert');
+          module.exports.ok = function(value) {
+            assert(value, "value is truthy");
+          }`,
         "es-module.js": `
           import { foo } from "./sample2.json";
           export { bleep } from "./sample3.json";
@@ -607,7 +642,7 @@ module.exports.default = dependencies;\`
       );
     });
 
-    test("it includes a special runtime loader for require() of node builtin module", async function (assert) {
+    test("it includes a special runtime loader for require() of of non-polyfilled nodejs builtin module", async function (assert) {
       let [testPkgURL] = packageURLs;
       let src = await (
         await fs.openFile(new URL(`${buildSrcDir}e.cjs.js`, testPkgURL))
@@ -624,11 +659,40 @@ module.exports.default = dependencies;\`
               "module",
               "exports",
               "dependencies",
-              \`const fs = dependencies[0]();
-module.exports.nope = function (filename) {
-  return fs.readFileSync(filename);
+              \`const tty = dependencies[0]();
+module.exports.nope = function () {
+  return tty.something();
 };\`
-            )(module, module.exports, [requireNodeBuiltin("fs")]);
+            )(module, module.exports, [requireNodeBuiltin("tty")]);
+          }
+          return module.exports;
+        }
+        export { implementation as default, implementation as cjs};`
+      );
+    });
+
+    test("it polyfills node builtin module when we have polyfill available", async function (assert) {
+      let [testPkgURL] = packageURLs;
+      let src = await (
+        await fs.openFile(new URL(`${buildSrcDir}g.cjs.js`, testPkgURL))
+      ).readText();
+      assert.codeEqual(
+        src,
+        `
+        import assert from "@catalogjs/polyfills/assert";
+        let module;
+        function implementation() {
+          if (!module) {
+            module = { exports: {} };
+            Function(
+              "module",
+              "exports",
+              "dependencies",
+              \`const assert = dependencies[0]();
+module.exports.ok = function (value) {
+  assert(value, "value is truthy");
+};\`
+            )(module, module.exports, [() => assert]);
           }
           return module.exports;
         }

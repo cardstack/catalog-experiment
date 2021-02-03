@@ -1,6 +1,7 @@
 import { transform } from "@babel/core";
 import { NodePath } from "@babel/traverse";
 import { StringLiteral } from "@babel/types";
+import { createPatch } from "diff";
 
 declare global {
   interface Assert {
@@ -32,11 +33,23 @@ function codeEqual(
   expected: string,
   message?: string
 ) {
+  let parsedActual = standardize(actual)!;
+  let parsedExpected = standardize(expected)!;
+  let msg: string = "code is not equal.";
+  //@ts-ignore this is just a check to see if we are in nodejs
+  if (typeof window === "undefined") {
+    msg = `${msg}
+${createPatch("", parsedExpected, parsedActual)
+  .split("\n")
+  .slice(4)
+  .join("\n")}`;
+  }
+
   this.pushResult({
-    result: standardize(actual) === standardize(expected),
-    actual: actual,
-    expected: expected,
-    message: message ?? "source code comparison",
+    result: parsedActual === parsedExpected,
+    actual,
+    expected,
+    message: message ?? msg,
   });
 }
 

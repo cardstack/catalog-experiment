@@ -29,6 +29,20 @@ import {
 import { PackageSrcNode, buildSrcDir } from "./package";
 // @ts-ignore repl.builtinModules is a new API added in node 14.5.0, looks like TS lint has not caught up
 import { builtinModules } from "repl";
+import difference from "lodash/difference";
+
+const polyfills = [
+  "assert",
+  "buffer",
+  "process",
+  "util",
+  "path",
+  "url",
+  "querystring",
+  "punycode",
+  // "fs", our fs is just a shim. we should not try to polyfill this, and let it throw if this is actually evaluated.
+  "os",
+];
 
 export class MakePkgESCompliantNode implements BuilderNode {
   cacheKey: string;
@@ -258,6 +272,7 @@ class RewriteCJSNode implements BuilderNode {
   async deps() {}
 
   async run(): Promise<NodeOutput<void[]>> {
+    let nonPolyfilledBuiltins = difference(builtinModules, polyfills);
     let jsonSpecifiers = new Set<string>();
     let imports = new Set<string>(
       this.desc.requires.map(({ specifier }) => {
@@ -265,9 +280,14 @@ class RewriteCJSNode implements BuilderNode {
           return `import { requireHasNonStringLiteralSpecifier } from "@catalogjs/loader";`;
         }
         let pkgInfo = pkgInfoFromSpecifier(specifier);
-        // TODO polyfill what we can...
-        if (builtinModules.includes(pkgInfo?.pkgName)) {
+        if (
+          pkgInfo?.pkgName &&
+          nonPolyfilledBuiltins.includes(pkgInfo.pkgName)
+        ) {
           return `import { requireNodeBuiltin } from "@catalogjs/loader";`;
+        }
+        if (pkgInfo?.pkgName && polyfills.includes(pkgInfo.pkgName)) {
+          return `import ${pkgInfo.pkgName} from "@catalogjs/polyfills/${pkgInfo.pkgName}";`;
         }
         if (isLocalJSON(specifier)) {
           jsonSpecifiers.add(specifier); // side-effecty, but we're right here anyways...
@@ -291,8 +311,11 @@ class RewriteCJSNode implements BuilderNode {
         })`;
       }
       let pkgInfo = pkgInfoFromSpecifier(specifier);
-      if (builtinModules.includes(pkgInfo?.pkgName)) {
-        return `requireNodeBuiltin("${pkgInfo!.pkgName}")`;
+      if (pkgInfo?.pkgName && nonPolyfilledBuiltins.includes(pkgInfo.pkgName)) {
+        return `requireNodeBuiltin("${pkgInfo.pkgName}")`;
+      }
+      if (pkgInfo?.pkgName && polyfills.includes(pkgInfo.pkgName)) {
+        return `() => ${pkgInfo.pkgName}`;
       }
       if (isLocalJSON(specifier)) {
         return `get${upperFirst(depJSONName(specifier))}`;

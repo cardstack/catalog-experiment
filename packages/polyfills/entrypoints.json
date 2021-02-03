@@ -10,6 +10,7 @@
     "./url.js",
     "./querystring.js",
     "./punycode.js",
-    "./fs-stub.js"
+    "./fs.js",
+    "./os.js"
   ]
 }
