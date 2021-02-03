@@ -1,0 +1,11 @@
+{
+  "$schema": "../recipe-schema.json",
+  "recipes": [
+    {
+      "semverRange": "<3.0.2",
+      "srcRepo": {
+        "version": "v3.0.2"
+      }
+    }
+  ]
+}
