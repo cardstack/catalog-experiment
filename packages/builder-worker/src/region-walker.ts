@@ -3,6 +3,7 @@ import {
   CodeRegion,
   documentPointer,
   isNamespaceMarker,
+  LocalDeclarationDescription,
   NamespaceMarker,
   RegionPointer,
 } from "./code-region";
@@ -36,6 +37,7 @@ export class RegionWalker {
   private dependenciesOf: RegionGraph = new Map();
   private leaves: Set<string> = new Set();
   private resolvedRegions: Map<string, string> = new Map();
+  private declarationInitializers: Map<string, string> = new Map();
   private seenRegions: Set<string> = new Set();
   private assigner: EditorAssigner;
   constructor(
@@ -90,7 +92,7 @@ export class RegionWalker {
   private walk(
     module: Resolution,
     pointer: RegionPointer,
-    sideEffectStack: string[],
+    stack: string[],
     originalId = regionId(module, pointer)
   ): string | undefined {
     let id = regionId(module, pointer);
@@ -98,10 +100,13 @@ export class RegionWalker {
 
     if (this.keptRegions.has(id)) {
       this.resolvedRegions.set(originalId, id);
-      return id;
+      return this.declarationInitializers.get(id) ?? id;
     }
     if (this.seenRegions.has(id)) {
-      return this.resolvedRegions.get(id);
+      let resolvedId = this.resolvedRegions.get(id);
+      return resolvedId
+        ? this.declarationInitializers.get(resolvedId) ?? resolvedId
+        : undefined;
     }
 
     this.seenRegions.add(id);
@@ -153,28 +158,23 @@ export class RegionWalker {
       let source = this.depResolver.resolveDeclaration(
         importedName,
         importedModule,
-        module,
-        this.ownAssignments
+        module
       );
       if (source.type === "resolved") {
         let sourceModule = source.module;
         let sourcePointer = source.pointer;
-        return this.withSideEffects(
-          source.moduleStack[0],
-          sideEffectStack,
-          (stack) => {
-            let innerId = this.walk(
-              sourceModule,
-              sourcePointer,
-              stack,
-              originalId
-            );
-            for (let visitedModule of source.moduleStack.slice(1)) {
-              this.withSideEffects(visitedModule, stack);
-            }
-            return innerId;
+        return this.withSideEffects(source.moduleStack[0], stack, (_stack) => {
+          let innerId = this.walk(
+            sourceModule,
+            sourcePointer,
+            _stack,
+            originalId
+          );
+          for (let visitedModule of source.moduleStack.slice(1)) {
+            this.withSideEffects(visitedModule, _stack);
           }
-        );
+          return innerId;
+        });
       } else {
         // declarations that are "unresolved" are either namespace imports
         // (internal or external) or external imports
@@ -189,16 +189,16 @@ export class RegionWalker {
           let sourcePointer = source.resolution.consumedByPointer;
           return this.withSideEffects(
             source.moduleStack[0],
-            sideEffectStack,
-            (stack) => {
+            stack,
+            (_stack) => {
               let innerId = this.walk(
                 sourceModule,
                 sourcePointer,
-                stack,
+                _stack,
                 originalId
               );
               for (let visitedModule of source.moduleStack.slice(1)) {
-                this.withSideEffects(visitedModule, stack);
+                this.withSideEffects(visitedModule, _stack);
               }
               return innerId;
             }
@@ -237,7 +237,7 @@ export class RegionWalker {
           let namespaceMarker = this.visitNamespace(
             source.resolution?.importedSource?.declaredIn ??
               source.importedFromModule,
-            sideEffectStack
+            stack
           );
           this.keepRegion(originalId, id, new Set([namespaceMarker]));
           return id;
@@ -276,7 +276,7 @@ export class RegionWalker {
         return this.walk(
           resolvedConsumingModule,
           resolvedConsumingPointer,
-          sideEffectStack,
+          stack,
           originalId
         );
       }
@@ -294,9 +294,9 @@ export class RegionWalker {
         let namespaceModule = resolution.importedSource.declaredIn;
         return this.withSideEffects(
           resolvedConsumingModule,
-          sideEffectStack,
-          (stack) => {
-            let namespaceMarker = this.visitNamespace(namespaceModule, stack);
+          stack,
+          (_stack) => {
+            let namespaceMarker = this.visitNamespace(namespaceModule, _stack);
             this.keepRegion(originalId, id, new Set([namespaceMarker]));
             return id;
           }
@@ -306,18 +306,8 @@ export class RegionWalker {
       // In this case the region that we entered our walk with is actually the
       // winning resolution, so we keep this region and continue our journey.
       else {
-        return this.withSideEffects(
-          resolvedConsumingModule,
-          sideEffectStack,
-          (stack) => {
-            let deps: Set<string> = this.walkDeps(
-              resolvedConsumingModule,
-              region,
-              stack
-            );
-            this.keepRegion(originalId, id, deps);
-            return id;
-          }
+        return this.withSideEffects(resolvedConsumingModule, stack, (_stack) =>
+          this.walkNext(resolvedConsumingModule, region, id, originalId, _stack)
         );
       }
     }
@@ -347,8 +337,8 @@ export class RegionWalker {
             );
           }
           if (isNamespaceMarker(exportDesc.name)) {
-            return this.withSideEffects(module, sideEffectStack, (stack) => {
-              let namespaceMarker = this.visitNamespace(importedModule, stack);
+            return this.withSideEffects(module, stack, (_stack) => {
+              let namespaceMarker = this.visitNamespace(importedModule, _stack);
               this.keepRegion(originalId, id, new Set([namespaceMarker]));
               return id;
             });
@@ -356,7 +346,7 @@ export class RegionWalker {
         }
 
         // This is an import for side-effects only.
-        return this.withSideEffects(importedModule, sideEffectStack);
+        return this.withSideEffects(importedModule, stack);
       } else {
         // we mark the external bundle import region as something we want to keep
         // as a signal to the Append nodes that this import is consumed and to
@@ -371,22 +361,42 @@ export class RegionWalker {
     // recording our deps as regions that we indeed depend upon as part of our
     // walk.
     else {
-      return this.withSideEffects(module, sideEffectStack, (stack) => {
-        let deps = this.walkDeps(module, region, stack);
-        this.keepRegion(originalId, id, deps);
-        return id;
-      });
+      return this.withSideEffects(module, stack, (_stack) =>
+        this.walkNext(module, region, id, originalId, _stack)
+      );
     }
+  }
+
+  private walkNext(
+    module: Resolution,
+    region: CodeRegion,
+    id: string,
+    originalId: string,
+    stack: string[]
+  ): string {
+    let deps = this.walkDeps(module, region, stack);
+    this.keepRegion(originalId, id, deps);
+    if (region.type === "declaration" && region.declaration.type === "local") {
+      let consumers = this.walkConsumers(module, region.declaration, stack);
+      if (consumers.size > 0) {
+        let consumerMarker = regionId(module, { consumes: id });
+        this.keepRegion(consumerMarker, consumerMarker, new Set(consumers));
+        this.declarationInitializers.set(id, consumerMarker);
+        this.declarationInitializers.set(originalId, consumerMarker);
+        return consumerMarker;
+      }
+    }
+    return id;
   }
 
   private walkDeps(
     module: Resolution,
     region: CodeRegion,
-    sideEffectStack: string[]
+    stack: string[]
   ): Set<string> {
     let deps: Set<string> = new Set();
     for (let depId of orderDependencies(region.dependsOn, module)) {
-      let resolvedDepId = this.walk(module, depId, sideEffectStack);
+      let resolvedDepId = this.walk(module, depId, stack);
       if (resolvedDepId != null) {
         deps.add(resolvedDepId);
       }
@@ -394,19 +404,30 @@ export class RegionWalker {
     return deps;
   }
 
-  private visitNamespace(
+  private walkConsumers(
     module: Resolution,
-    sideEffectStack: string[]
-  ): string {
+    declaration: LocalDeclarationDescription,
+    stack: string[]
+  ): Set<string> {
+    let consumers: Set<string> = new Set();
+    for (let consumerId of declaration.initializedBy) {
+      let resolvedConsumerId = this.walk(module, consumerId, stack);
+      if (resolvedConsumerId != null) {
+        consumers.add(resolvedConsumerId);
+      }
+    }
+    return consumers;
+  }
+
+  private visitNamespace(module: Resolution, stack: string[]): string {
     let exports = getExports(module);
     let namespaceItemIds: string[] = [];
-    return this.withSideEffects(module, sideEffectStack, (stack) => {
+    return this.withSideEffects(module, stack, (_stack) => {
       for (let [exportName, { module: sourceModule }] of exports.entries()) {
         let source = this.depResolver.resolveDeclaration(
           exportName,
           sourceModule,
-          module,
-          this.ownAssignments
+          module
         );
 
         // this is the scenario where we were able to resolve the namespace item
@@ -416,7 +437,7 @@ export class RegionWalker {
           let pointer: RegionPointer = source.pointer;
           let itemId = this.withSideEffects(
             source.moduleStack[0],
-            stack,
+            _stack,
             (s) => {
               let id = this.walk(sourceModule, pointer, s);
               for (let visitedModule of source.moduleStack.slice(1)) {
@@ -458,7 +479,7 @@ export class RegionWalker {
             );
             let namespaceMarker = this.visitNamespace(
               source.importedFromModule,
-              stack
+              _stack
             );
             this.keepRegion(
               namespaceImport,
@@ -486,18 +507,18 @@ export class RegionWalker {
 
   private withSideEffects(
     module: Resolution,
-    sideEffectStack: string[] = [],
-    walk: (sideEffectStack: string[]) => string | undefined = () => undefined
+    stack: string[] = [],
+    walk: (tack: string[]) => string | undefined = () => undefined
   ): string | undefined {
-    if (sideEffectStack.includes(module.url.href)) {
+    if (stack.includes(module.url.href)) {
       // we are already in the midsts of processing side effects for this
       // module, so just do the walk
-      return walk(sideEffectStack);
+      return walk(stack);
     }
 
     let regions = module.desc.regions;
     let sideEffects = regions[documentPointer].dependsOn;
-    let newStack = [module.url.href, ...sideEffectStack];
+    let newStack = [module.url.href, ...stack];
     for (let sideEffect of sideEffects) {
       if (regions[sideEffect].type !== "declaration") {
         this.walk(module, sideEffect, newStack);
@@ -507,15 +528,7 @@ export class RegionWalker {
     let result = walk(newStack);
 
     // walk the side-effectful declarations last so that we can step through the
-    // declaration in its natural order if it is consumed in our walk.
-
-    // I'm thinking that is this probably not going to be sufficient as-is. I
-    // could almost see doing a 2 pass walk. The first pass is to derive all the
-    // resolutions and understand what resolved regions consume what, and a 2nd
-    // pass to actually perform the walk, where side effects that are consume
-    // the region that actually brought you to the module actually go last
-    // here... I'll let the next issue we find in this area drive this work so
-    // we have a solid scenario to test against.
+    // declaration in its natural order if it is consumed in our walk above.
     for (let sideEffect of sideEffects) {
       if (regions[sideEffect].type === "declaration") {
         this.walk(module, sideEffect, newStack);
@@ -529,10 +542,6 @@ export class RegionWalker {
     resolvedId: string,
     deps: Set<string>
   ) {
-    // document regions are inherently retained.
-    if (idParts(resolvedId).pointer === documentPointer) {
-      return;
-    }
     this.keptRegions.set(resolvedId, deps);
     this.resolvedRegions.set(originalId, resolvedId);
     if (deps.size === 0) {
@@ -661,10 +670,10 @@ class EditorAssigner {
 
     for (let [regionId, { editors: editors }] of this.assignmentMap) {
       let { pointer } = idParts(regionId);
-      if (isNamespaceMarker(pointer)) {
-        // the namespace marker is just a grouping mechanism that allows the
-        // constituent namespace items to be co-located in the same
-        // editor--there is nothing to write out here.
+      if (isNamespaceMarker(pointer) || isConsumerMarker(pointer)) {
+        // these markers are just grouping mechanisms that allow the constituent
+        // namespace items, or declaration and it's initializer regions to be
+        // co-located in the same editor--there is nothing to write out here.
         continue;
       }
       for (let editorId of editors) {
@@ -866,25 +875,51 @@ class EditorAssigner {
   }
 }
 
+interface ConsumerMarker {
+  consumes: string;
+}
+function isConsumerMarker(value: any): value is ConsumerMarker {
+  return (
+    typeof value === "object" &&
+    "consumes" in value &&
+    typeof value.consumes === "string"
+  );
+}
+
 function regionId(
   module: Resolution | string,
-  pointer: RegionPointer | NamespaceMarker
+  pointer: RegionPointer | NamespaceMarker | ConsumerMarker
 ) {
-  let _pointer = isNamespaceMarker(pointer) ? -1 : pointer;
+  let _pointer = isNamespaceMarker(pointer)
+    ? -1
+    : isConsumerMarker(pointer)
+    ? `${idParts(pointer.consumes).moduleHref};;${
+        idParts(pointer.consumes).pointer
+      }`
+    : pointer;
   if (typeof module === "string") {
-    return `${module}:${_pointer}`;
+    return `${module}::${_pointer}`;
   }
-  return `${module.url.href}:${_pointer}`;
+  return `${module.url.href}::${_pointer}`;
 }
 
 function idParts(
   regionId: string
-): { moduleHref: string; pointer: RegionPointer | NamespaceMarker } {
-  let index = regionId.lastIndexOf(":");
+): {
+  moduleHref: string;
+  pointer: RegionPointer | NamespaceMarker | ConsumerMarker;
+} {
+  let index = regionId.lastIndexOf("::");
   let moduleHref = regionId.slice(0, index);
-  let pointer = parseInt(regionId.slice(index + 1)) as RegionPointer;
-  if (pointer === -1) {
-    return { moduleHref, pointer: NamespaceMarker };
+  let pointerPart = regionId.slice(index + 2);
+  let pointer: RegionPointer | ConsumerMarker;
+  if (pointerPart.includes(";;")) {
+    pointer = { consumes: pointerPart.replace(";;", "::") };
+  } else {
+    pointer = parseInt(pointerPart) as RegionPointer;
+    if (pointer === -1) {
+      return { moduleHref, pointer: NamespaceMarker };
+    }
   }
   return { moduleHref, pointer };
 }
@@ -894,7 +929,7 @@ function getRegionFromId(
   ownAssignments: BundleAssignment[]
 ): {
   module: ModuleResolution;
-  pointer: RegionPointer | NamespaceMarker;
+  pointer: RegionPointer | NamespaceMarker | ConsumerMarker;
   region: CodeRegion | undefined;
 } {
   let { moduleHref, pointer } = idParts(regionId);
@@ -905,7 +940,7 @@ function getRegionFromId(
       `cannot resolve regionId ${regionId}, unable to resolve the module ${moduleHref} to an assigned module for the bundle ${ownAssignments[0].bundleURL}`
     );
   }
-  if (isNamespaceMarker(pointer)) {
+  if (isNamespaceMarker(pointer) || isConsumerMarker(pointer)) {
     return { module, pointer, region: undefined };
   }
 

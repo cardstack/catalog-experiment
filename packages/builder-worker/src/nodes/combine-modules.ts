@@ -202,8 +202,7 @@ function exposedRegions(
       let source = depResolver.resolveDeclaration(
         original,
         importedFrom,
-        sourceModule,
-        ownAssignments
+        sourceModule
       );
       if (source.type === "resolved") {
         let exposedInfo = {

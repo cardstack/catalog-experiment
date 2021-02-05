@@ -8,6 +8,7 @@ import {
   bundle,
   bundleSource,
   makeEditor,
+  bundleDescription,
 } from "./helpers/bundle";
 import { Builder, Rebuilder, explainAsDot } from "../src/builder";
 import { FileSystem } from "../src/filesystem";
@@ -15,8 +16,10 @@ import { flushEvents, removeAllEventListeners } from "../src/event-bus";
 import { Logger } from "../src/logger";
 import { recipesURL } from "../src/recipes";
 import {
+  documentPointer,
   ImportCodeRegion,
   isNamespaceMarker,
+  LocalDeclarationDescription,
   NamespaceMarker,
 } from "../src/code-region";
 import { RegionEditor } from "../src/region-editor";
@@ -2461,6 +2464,56 @@ QUnit.module("module builder", function (origHooks) {
         export {};
         `
       );
+    });
+
+    test("bundle can describe the declaration consumers for local declaration", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          const a = 'a';
+          const b = 'b';
+          console.log(a);
+          export { a, b };
+        `,
+      });
+
+      let desc = await bundleDescription(assert.fs);
+      let sideEffects = [...desc.regions[documentPointer].dependsOn];
+      assert.equal(sideEffects.length, 1);
+      let [sideEffect] = sideEffects;
+      let a = desc.declarations.get("a")!
+        .declaration as LocalDeclarationDescription;
+      assert.deepEqual(a.initializedBy, [sideEffect]);
+      let b = desc.declarations.get("b")!
+        .declaration as LocalDeclarationDescription;
+      assert.deepEqual(b.initializedBy, []);
+    });
+
+    test("bundle can describe the declaration consumers for internal import with side effect in source module", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          import { a } from './a.js';
+          import { b } from './b.js';
+          export { a, b };
+        `,
+        "a.js": `
+          export const a = 'a';
+          console.log(a);
+        `,
+        "b.js": `export const b = 'b';`,
+      });
+
+      let desc = await bundleDescription(assert.fs);
+      let sideEffects = [...desc.regions[documentPointer].dependsOn];
+      assert.equal(sideEffects.length, 1);
+      let [sideEffect] = sideEffects;
+      let a = desc.declarations.get("a")!
+        .declaration as LocalDeclarationDescription;
+      assert.deepEqual(a.initializedBy, [sideEffect]);
+      let b = desc.declarations.get("b")!
+        .declaration as LocalDeclarationDescription;
+      assert.deepEqual(b.initializedBy, []);
     });
 
     test("bundle contains module description", async function (assert) {

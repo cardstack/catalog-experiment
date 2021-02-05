@@ -93,6 +93,7 @@ export class DependencyResolver {
   >;
   // consumingModuleHref => importedFromModuleHref => importedName => ResolvedResult | UnresolvedResult
   private declarationResolutionCache: DeclarationResolutionCache = new Map();
+  private ownAssignments: BundleAssignment[];
   constructor(
     dependencies: Dependencies,
     assignments: BundleAssignment[],
@@ -106,6 +107,9 @@ export class DependencyResolver {
       | undefined,
     private bundle: URL
   ) {
+    this.ownAssignments = assignments.filter(
+      (a) => a.bundleURL.href === bundle.href
+    );
     this.consumedDeps = gatherDependencies(
       dependencies,
       assignments,
@@ -122,14 +126,13 @@ export class DependencyResolver {
     importedName: string | NamespaceMarker,
     importedFromModule: Resolution,
     consumingModule: Resolution,
-    ownAssignments: BundleAssignment[],
     importedPointer?: RegionPointer // if you have this handy it saves work passing it in--otherwise we'll calculate it
   ): ResolvedResult | UnresolvedResult {
     return resolveDeclaration(
       importedName,
       importedFromModule,
       consumingModule,
-      ownAssignments,
+      this.ownAssignments,
       this.declarationResolutionCache,
       this,
       importedPointer

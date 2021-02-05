@@ -59,3 +59,24 @@ export function rangeIntersection(...ranges: string[]): string {
   }
   return intersect(...cleansedRanges);
 }
+
+export function setIntersection<T>(...sets: Set<T>[]): Set<T> {
+  let output: Set<T> = new Set();
+  let [first, ...rest] = sets;
+  for (let element of first) {
+    if (rest.every((s) => s.has(element))) {
+      output.add(element);
+    }
+  }
+  return output;
+}
+
+export function hasIntersection<T>(...sets: Set<T>[]): Boolean {
+  let [first, ...rest] = sets;
+  for (let element of first) {
+    if (rest.every((s) => s.has(element))) {
+      return true;
+    }
+  }
+  return false;
+}

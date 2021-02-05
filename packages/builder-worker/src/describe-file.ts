@@ -41,6 +41,7 @@ import {
 } from "./nodes/resolution";
 import { NamespaceMarker } from "./code-region";
 import { assignCodeRegionPositions } from "./region-editor";
+import { hasIntersection } from "./utils";
 
 export interface ExportAllMarker {
   exportAllFrom: string;
@@ -392,6 +393,7 @@ export function describeFile(ast: File, filename: string): FileDescription {
           declaratorOfRegion,
           references,
           declaredName: name,
+          initializedBy: [],
         },
         regionDeps
       );
@@ -550,7 +552,13 @@ export function describeFile(ast: File, filename: string): FileDescription {
       ) {
         if (currentModuleScopedDeclaration) {
           currentModuleScopedDeclaration.consumes.add(path.node.name);
-        } else if (path.parent.type !== "ExportSpecifier") {
+        } else if (
+          ![
+            "ExportSpecifier",
+            "ExportDefaultDeclaration",
+            "ExportNamespaceSpecifier",
+          ].includes(path.parent.type)
+        ) {
           consumedByModule.add(path.node.name);
         }
       }
@@ -978,17 +986,19 @@ export function describeFile(ast: File, filename: string): FileDescription {
     return builder.createCodeRegion(paths, "general");
   });
 
-  let document = builder!.regions[documentPointer];
+  let document = regions[documentPointer];
   document.dependsOn = new Set([...document.dependsOn, ...sideEffectPointers]);
-  cleanUpSideEffects(desc!.regions);
+  cleanUpSideEffects(regions);
 
   // clean up any dependencies on ourself--this may happen because at the time
   // we didn't realize that we were identical to a code region that was
   // already created--different paths can have identical code regions, e.g. an
   // LVal declarator and an identifier for the declarator
-  cleanupSelfDependencies(desc!.regions);
+  cleanupSelfDependencies(regions);
 
-  assignCodeRegionPositions(desc!.regions);
+  setDeclarationInitializers(regions);
+
+  assignCodeRegionPositions(regions);
 
   if (!isES6Module) {
     let { requires } = desc!;
@@ -997,6 +1007,28 @@ export function describeFile(ast: File, filename: string): FileDescription {
   } else {
     let { imports, exports } = desc!;
     return { regions, imports, exports, declarations };
+  }
+}
+
+// Gathers all the side effect regions that consume a local declaration in the
+// module.
+function setDeclarationInitializers(regions: FileDescription["regions"]) {
+  let sideEffects = regions[documentPointer].dependsOn;
+  for (let [pointer, region] of regions.entries()) {
+    if (region.type !== "declaration" || region.declaration.type !== "local") {
+      continue;
+    }
+    let { declaration } = region;
+    declaration.initializedBy = [];
+    let references = new Set(declaration.references);
+    for (let sideEffectPointer of sideEffects) {
+      if (
+        sideEffectPointer !== pointer &&
+        hasIntersection(references, regions[sideEffectPointer].dependsOn)
+      ) {
+        declaration.initializedBy.push(sideEffectPointer);
+      }
+    }
   }
 }
 

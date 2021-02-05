@@ -90,6 +90,7 @@ const declarationLegend = [
   "importIndex", // number | null
   "importedName", // string | { n: true }
   "declaratorOfRegion", // number | null
+  "initializedBy", // [number]
   "source", // string | null
 ];
 
@@ -342,6 +343,7 @@ function decodeModuleDescription(encoded: string): ModuleDescription {
         );
     }
   }
+
   assignCodeRegionPositions(regions);
 
   return {
