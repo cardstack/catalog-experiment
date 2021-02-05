@@ -16,6 +16,7 @@ import {
   HTMLEntrypoint,
   Dependencies,
 } from "./entrypoint";
+import { setIntersection as intersection } from "../utils";
 import { makeURLEndInDir } from "../path";
 import { Resolver } from "../resolver";
 import { LockEntries } from "./lock-file";
@@ -301,7 +302,7 @@ export class Assigner {
     // we need to be our own bundle
     let bundleURL = this.internalBundleURL();
     let enclosingBundles = intersection(
-      consumers.map((c) => c.internalAssignment.enclosingBundles)
+      ...consumers.map((c) => c.internalAssignment.enclosingBundles)
     );
     enclosingBundles.add(bundleURL.href); // we are also enclosed by our own bundle
     let internalAssignment = {
@@ -482,17 +483,6 @@ function setConsumersOf(
     consumersOf.set(consumed.href, new Set());
   }
   consumersOf.get(consumed.href)!.add({ isDynamic, module: consumer });
-}
-
-function intersection<T>(sets: Set<T>[]): Set<T> {
-  let output: Set<T> = new Set();
-  let [first, ...rest] = sets;
-  for (let element of first) {
-    if (rest.every((s) => s.has(element))) {
-      output.add(element);
-    }
-  }
-  return output;
 }
 
 export interface TestingOptions {

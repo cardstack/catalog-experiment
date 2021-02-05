@@ -64,6 +64,7 @@ export interface LocalDeclarationDescription
   type: "local";
   declaratorOfRegion: RegionPointer | undefined;
   source: string;
+  initializedBy: RegionPointer[];
   original?: {
     bundleHref: string;
     range: string;

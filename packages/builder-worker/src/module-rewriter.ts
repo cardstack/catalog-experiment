@@ -111,6 +111,14 @@ export class HeadState {
   // track of the modules that have already had name assignment performed.
   readonly assignedModules: Set<string> = new Set();
 
+  // This is a map of all the initializedBy regions so that we can marry up the
+  // regions to their declarations in the resulting bundle.
+  // moduleHref =>  assignedName => initializers
+  readonly assignedDeclarationInitializers: Map<
+    string,
+    Map<string, RegionPointer[]>
+  > = new Map();
+
   readonly visited: Editor[] = [];
   private queue: Editor[] = [];
   private regionHashes: Map<string, number> = new Map();
@@ -146,6 +154,7 @@ export class HeadState {
       assignedNamespaces,
       assignedModules,
       namespaceMemberAssignment,
+      assignedDeclarationInitializers,
       queue,
     } = this;
     // Creating summary objects, as otherwise the nesting nature of
@@ -185,6 +194,7 @@ export class HeadState {
         assignedNamespacesSummary,
         assignedModules,
         namespaceMemberAssignment,
+        assignedDeclarationInitializers,
         queueSummary,
       },
       {
@@ -283,8 +293,12 @@ export class ModuleRewriter {
     this.assignSpecifiersForDynamicImports();
   }
 
-  serialize(): { code: string; regions: CodeRegion[] } {
-    let { code, regions } = this.editor.serialize();
+  serialize(): {
+    code: string;
+    regions: CodeRegion[];
+    regionMapping: Map<RegionPointer, RegionPointer>;
+  } {
+    let { code, regions, regionMapping } = this.editor.serialize();
     for (let region of regions.filter(
       (r) => r.type === "declaration"
     ) as DeclarationCodeRegion[]) {
@@ -302,7 +316,7 @@ export class ModuleRewriter {
         }
       }
     }
-    return { code, regions };
+    return { code, regions, regionMapping };
   }
 
   setAssignedNames(): void {
@@ -364,7 +378,6 @@ export class ModuleRewriter {
             localDesc.importedName,
             importedModule,
             this.module,
-            this.ownAssignments,
             pointer
           );
           assignedName = this.maybeAssignImportNameFromResolution(
@@ -481,6 +494,14 @@ export class ModuleRewriter {
         );
       }
       this.claimAndRename(localName, assignedName);
+      if (localDesc.type === "local") {
+        setDoubleNestedMapping(
+          this.module.url.href,
+          assignedName,
+          localDesc.initializedBy,
+          this.state.assignedDeclarationInitializers
+        );
+      }
     }
   }
 
@@ -566,8 +587,7 @@ export class ModuleRewriter {
         let source = this.depResolver.resolveDeclaration(
           desc.importedName,
           importedModule,
-          this.module,
-          this.ownAssignments
+          this.module
         );
 
         if (source.type === "resolved") {
@@ -688,8 +708,7 @@ export class ModuleRewriter {
         let namespaceItemSource = this.depResolver.resolveDeclaration(
           exportedName,
           sourceModule,
-          sourceModule,
-          this.ownAssignments
+          sourceModule
         );
         if (namespaceItemSource.type === "resolved") {
           let assignedName: string;

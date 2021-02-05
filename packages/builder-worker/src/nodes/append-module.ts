@@ -152,6 +152,7 @@ export class FinishAppendModulesNode implements BuilderNode {
   async run(): Promise<Value<{ code: string; desc: ModuleDescription }>> {
     let bundleDeclarations: DeclarationRegionMap = new Map();
     let referenceMappings: ReferenceMappings = new Map();
+    let declarationInitializers: Map<string, Set<RegionPointer>> = new Map();
     let completedNamespaceAssignments = new Set<string>();
     let code: string[] = [];
     let regions: CodeRegion[] = [
@@ -209,6 +210,7 @@ export class FinishAppendModulesNode implements BuilderNode {
       this.rewriters,
       bundleDeclarations,
       referenceMappings,
+      declarationInitializers,
       completedNamespaceAssignments,
       ownAssignments,
       this.bundle,
@@ -247,6 +249,9 @@ export class FinishAppendModulesNode implements BuilderNode {
       this.depResolver,
       this.bundle
     );
+
+    setDeclarationInitializers(regions, declarationInitializers);
+
     let { exportRegions, exportSpecifierRegions } = buildExports(
       code,
       regions,
@@ -333,8 +338,7 @@ function buildManufacturedCode(
         let source = depResolver.resolveDeclaration(
           outsideName,
           importedModule,
-          module,
-          ownAssignments
+          module
         );
         if (
           source.type === "unresolved" &&
@@ -440,6 +444,7 @@ function buildManufacturedCode(
                 type: "local",
                 declaredName: assignedName,
                 declaratorOfRegion: declarationPointer,
+                initializedBy: [] as RegionPointer[],
                 references: [
                   referencePointer,
                   // this will be populated as we build the body for the bundle
@@ -926,6 +931,7 @@ function buildBundleBody(
   rewriters: ModuleRewriter[],
   bundleDeclarations: DeclarationRegionMap,
   referenceMappings: ReferenceMappings,
+  declarationConsumers: Map<string, Set<RegionPointer>>,
   completedNamespaceAssignments: Set<string>,
   ownAssignments: BundleAssignment[],
   bundle: URL,
@@ -974,7 +980,11 @@ function buildBundleBody(
     }
 
     let offset = regions.length;
-    let { code: moduleCode, regions: moduleRegions } = rewriter.serialize();
+    let {
+      code: moduleCode,
+      regions: moduleRegions,
+      regionMapping,
+    } = rewriter.serialize();
 
     // if the serialized output is empty but we have a namespace object, we need
     // to make a document region that would have otherwise been returned
@@ -1061,6 +1071,27 @@ function buildBundleBody(
       ownAssignments,
       bundle
     );
+
+    // gather up the declaration initializers and map to their new pointers in
+    // the resulting bundle
+    let consumersMapping = state.assignedDeclarationInitializers.get(
+      module.url.href
+    );
+    if (consumersMapping) {
+      for (let [assignedName, origConsumers] of consumersMapping) {
+        let consumers = declarationConsumers.get(assignedName);
+        if (!consumers) {
+          consumers = new Set();
+          declarationConsumers.set(assignedName, consumers);
+        }
+        for (let origPointer of origConsumers) {
+          let newPointer = regionMapping.get(origPointer);
+          if (newPointer != null) {
+            consumers.add(newPointer + offset);
+          }
+        }
+      }
+    }
 
     // wire up the individual module's code regions to each other
     if (prevModuleStartPointer != null) {
@@ -1329,6 +1360,21 @@ function setReferences(
   }
 }
 
+function setDeclarationInitializers(
+  regions: CodeRegion[],
+  declarationInitializers: Map<string, Set<RegionPointer>>
+) {
+  for (let region of regions) {
+    if (region.type !== "declaration" || region.declaration.type !== "local") {
+      continue;
+    }
+    let { declaration } = region;
+    let initializers =
+      declarationInitializers.get(declaration.declaredName) ?? [];
+    declaration.initializedBy = [...initializers];
+  }
+}
+
 function buildNamespaces(
   code: string[],
   offset: number,
@@ -1407,6 +1453,7 @@ function buildNamespaces(
             source: importedModule.url.href,
             declaredName: assignedName,
             declaratorOfRegion: declarationPointer,
+            initializedBy: [],
             references: [
               referencePointer,
               // this will be populated as we build the body for the bundle
@@ -1645,6 +1692,9 @@ function adjustCodeRegionByOffset(regions: CodeRegion[], offset: number) {
         (r) => offsetPointer(r, offset)!
       );
       if (region.declaration.type === "local") {
+        region.declaration.initializedBy = region.declaration.initializedBy.map(
+          (r) => offsetPointer(r, offset)!
+        );
         region.declaration.declaratorOfRegion = offsetPointer(
           region.declaration.declaratorOfRegion,
           offset
@@ -1814,8 +1864,7 @@ function assignedExports(
       let source = depResolver.resolveDeclaration(
         original,
         importedFrom,
-        module,
-        ownAssignments
+        module
       );
       if (source.type === "resolved") {
         // this is an export from within our own bundle
@@ -2024,8 +2073,7 @@ function assignedImports(
       let source = depResolver.resolveDeclaration(
         desc.importedName,
         importedModule,
-        module,
-        ownAssignments
+        module
       );
       if (source.type === "resolved") {
         continue;

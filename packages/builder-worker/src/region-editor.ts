@@ -180,9 +180,14 @@ export class RegionEditor {
     }
   }
 
-  serialize(): { code: string; regions: CodeRegion[] } {
+  serialize(): {
+    code: string;
+    regions: CodeRegion[];
+    regionMapping: Map<RegionPointer, RegionPointer>;
+  } {
+    let regionMapping = new Map();
     if (this.regions.length === 0) {
-      return { code: this.src, regions: [] };
+      return { code: this.src, regions: [], regionMapping };
     }
 
     this.cursor = 0;
@@ -194,8 +199,14 @@ export class RegionEditor {
     this.innerSerialize(documentPointer);
 
     let newRegions = remapRegions([...this.outputRegions]);
+    for (let [
+      newPointer,
+      { originalPointer },
+    ] of this.outputRegions.entries()) {
+      regionMapping.set(originalPointer, newPointer);
+    }
     if (newRegions.length === 0) {
-      return { code: "", regions: [] };
+      return { code: "", regions: [], regionMapping };
     } else {
       let newCode = this.outputCode.join("");
       assignCodeRegionPositions(newRegions);
@@ -204,6 +215,7 @@ export class RegionEditor {
       return {
         code: newCode.trim(),
         regions: newRegions,
+        regionMapping,
       };
     }
   }
@@ -473,6 +485,7 @@ export class RegionEditor {
         source: this.bundle.href,
         declaredName: name,
         declaratorOfRegion: declarationPointer,
+        initializedBy: [],
         references: [referencePointer],
       },
     };
@@ -886,6 +899,9 @@ function remapRegions(outputRegions: OutputRegion[]): CodeRegion[] {
         .map((p) => newPointer(p, outputRegions))
         .filter((p) => p != null) as RegionPointer[];
       if (region.declaration.type === "local") {
+        region.declaration.initializedBy = region.declaration.initializedBy
+          .map((p) => newPointer(p, outputRegions))
+          .filter((p) => p != null) as RegionPointer[];
         region.declaration.declaratorOfRegion = newPointer(
           region.declaration.declaratorOfRegion,
           outputRegions
