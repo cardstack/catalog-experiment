@@ -139,7 +139,7 @@ class IntrospectSrcNode implements BuilderNode {
           region.isDynamic &&
           region.specifierForDynamicImport == null
         ) {
-          editor = editor ?? new RegionEditor(src, desc!, url);
+          editor = editor ?? new RegionEditor(src, desc!, url.href);
           for (let [p] of editor.regions.entries()) {
             editor.keepRegion(p);
           }
@@ -226,7 +226,7 @@ function remapRequires(
   depBindingName: string,
   url: URL
 ): string {
-  let editor = new RegionEditor(origSrc, desc, url);
+  let editor = new RegionEditor(origSrc, desc, url.href);
   for (let [pointer] of editor.regions.entries()) {
     editor.keepRegion(pointer);
   }
