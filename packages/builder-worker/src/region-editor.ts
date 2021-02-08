@@ -65,7 +65,7 @@ export class RegionEditor {
   constructor(
     private src: string,
     private desc: FileDescription,
-    private bundle: URL
+    private moduleHref: string
   ) {
     // Regions are assumed to be removed unless .keepRegion() is explicitly
     // called for a region.
@@ -482,7 +482,7 @@ export class RegionEditor {
       preserveGaps: false,
       declaration: {
         type: "local",
-        source: this.bundle.href,
+        source: this.moduleHref,
         declaredName: name,
         declaratorOfRegion: declarationPointer,
         initializedBy: [],

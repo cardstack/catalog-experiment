@@ -78,7 +78,7 @@ export function makeRebuilder(
 export function makeEditor(
   source: string,
   desc: FileDescription,
-  bundle: URL = url("output/index.js")
+  moduleURL: URL = url("index.js")
 ) {
-  return new RegionEditor(source, desc, bundle);
+  return new RegionEditor(source, desc, moduleURL.href);
 }

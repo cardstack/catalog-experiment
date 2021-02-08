@@ -100,7 +100,6 @@ export class RegionWalker {
       this.leaves,
       this.ownAssignments,
       ownResolutions,
-      this.bundle,
       exposed
     );
   }
@@ -667,7 +666,6 @@ class EditorAssigner {
     leaves: Set<string>,
     private ownAssignments: BundleAssignment[],
     resolutionsInDepOrder: ModuleResolution[],
-    private bundle: URL,
     exposed: ExposedRegionInfo[]
   ) {
     this.exposedIds = exposed.map(({ module: m, pointer: p }) =>
@@ -702,7 +700,7 @@ class EditorAssigner {
           let editor = new RegionEditor(
             module.source,
             module.desc,
-            this.bundle
+            module.url.href
           );
           item = {
             editor,

@@ -20,7 +20,7 @@ export function describeFile(
   let desc = astDescribeFile(parsed, filename);
   return {
     desc,
-    editor: new RegionEditor(js, desc, url("output/index.js")),
+    editor: new RegionEditor(js, desc, filename),
   };
 }
 
