@@ -72,14 +72,14 @@ export class RegionWalker {
     // and have given the declarations with side-effects every opportunity to be
     // consumed, we can walk explicitly on the unconsumed declarations with side
     // effects. If we try to walk on these regions before we know they are not
-    // consumed, then act of walking on this region could lead us into a cycle in the
-    // case were this declaration actually is consumed but we just didn't
-    // know it at the time we took our "step". the ramification of the cycle is that we clip an edge to
-    // eliminate the cycle that reverses the ordering of the declaration and
-    // consumer when we go to assign the regions to their region editors.
-    // Another thought here is a 2 pass approach, where the first pass can sort
-    // out whether these declarations are consumed or not, and the 2nd pass
-    // actually records the walk.
+    // consumed, then act of walking on this region could lead us into a cycle
+    // in the case were this declaration actually is consumed but we just didn't
+    // know it at the time we took our "step". the ramification of the cycle is
+    // that we clip an edge to eliminate the cycle that reverses the ordering of
+    // the declaration and consumer when we go to assign the regions to their
+    // region editors. Another thought here is a 2 pass approach, where the
+    // first pass can sort out whether these declarations are consumed or not,
+    // and the 2nd pass actually records the walk.
     for (let [id, module] of this.sideEffectfulDeclarations) {
       let pointer = idParts(id).pointer;
       if (!isConsumerMarker(pointer) && !isNamespaceMarker(pointer)) {
