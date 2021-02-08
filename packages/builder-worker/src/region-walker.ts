@@ -40,6 +40,7 @@ export class RegionWalker {
   private declarationInitializers: Map<string, string> = new Map();
   private seenRegions: Set<string> = new Set();
   private assigner: EditorAssigner;
+  private sideEffectfulDeclarations: Map<string, Resolution> = new Map();
   constructor(
     exposed: ExposedRegionInfo[],
     private bundle: URL,
@@ -66,6 +67,25 @@ export class RegionWalker {
     // may not have any exports.
     let [entrypointModule] = ownResolutions.slice(-1);
     this.withSideEffects(entrypointModule);
+
+    // Now that we have walked through all the consumed regions of the bundle,
+    // and have given the declarations with side-effects every opportunity to be
+    // consumed, we can walk explicitly on the unconsumed declarations with side
+    // effects. If we try to walk on these regions before we know they are not
+    // consumed, then act of walking on this region could lead us into a cycle
+    // in the case were this declaration actually is consumed but we just didn't
+    // know it at the time we took our "step". the ramification of the cycle is
+    // that we clip an edge to eliminate the cycle that reverses the ordering of
+    // the declaration and consumer when we go to assign the regions to their
+    // region editors. Another thought here is a 2 pass approach, where the
+    // first pass can sort out whether these declarations are consumed or not,
+    // and the 2nd pass actually records the walk.
+    for (let [id, module] of this.sideEffectfulDeclarations) {
+      let pointer = idParts(id).pointer;
+      if (!isConsumerMarker(pointer) && !isNamespaceMarker(pointer)) {
+        this.walk(module, pointer, []);
+      }
+    }
 
     if (typeof process?.stdout?.write === "function") {
       console.log();
@@ -522,19 +542,18 @@ export class RegionWalker {
     for (let sideEffect of sideEffects) {
       if (regions[sideEffect].type !== "declaration") {
         this.walk(module, sideEffect, newStack);
+      } else {
+        // we are denoting the side effectful declarations so that we can walk
+        // them last such that we give them every opportunity to be walked in
+        // their natural order in the case that they are consumed.
+        this.sideEffectfulDeclarations.set(
+          regionId(module, sideEffect),
+          module
+        );
       }
     }
 
-    let result = walk(newStack);
-
-    // walk the side-effectful declarations last so that we can step through the
-    // declaration in its natural order if it is consumed in our walk above.
-    for (let sideEffect of sideEffects) {
-      if (regions[sideEffect].type === "declaration") {
-        this.walk(module, sideEffect, newStack);
-      }
-    }
-    return result;
+    return walk(newStack);
   }
 
   private keepRegion(
