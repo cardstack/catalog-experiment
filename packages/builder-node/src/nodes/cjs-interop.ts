@@ -40,7 +40,7 @@ const polyfills = [
   "url",
   "querystring",
   "punycode",
-  // "fs", our fs is just a shim. we should not try to polyfill this, and let it throw if this is actually evaluated.
+  "fs",
   "os",
 ];
 
