@@ -50,6 +50,7 @@
     "diff": "^5.0.0",
     "dom-serializer": "^0.2.2",
     "fast-stable-stringify": "^1.0.0",
+    "globals": "^13.5.0",
     "htmlparser2": "^4.1.0",
     "imurmurhash": "^0.1.4",
     "json-stable-stringify": "^1.0.1",

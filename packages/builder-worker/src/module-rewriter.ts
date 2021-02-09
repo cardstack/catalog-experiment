@@ -38,6 +38,7 @@ import {
 import { maybeRelativeURL } from "./path";
 import { pkgInfoFromCatalogJsURL } from "./resolver";
 import MurmurHash from "imurmurhash";
+import globals from "globals";
 
 export interface Editor {
   editor: RegionEditor;
@@ -861,7 +862,9 @@ export class ModuleRewriter {
     let { declarations } = this.module.desc;
     while (
       (candidate !== name && declarations.has(candidate)) ||
-      this.state.usedNames.has(candidate)
+      this.state.usedNames.has(candidate) ||
+      candidate in globals.browser ||
+      candidate in globals.es2021
     ) {
       candidate = `${name}${counter++}`;
     }

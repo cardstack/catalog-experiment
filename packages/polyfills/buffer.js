@@ -263,7 +263,9 @@ var INSPECT_MAX_BYTES = 50;
  * get the Object implementation, which is slower but behaves correctly.
  */
 Buffer.TYPED_ARRAY_SUPPORT =
-  window.TYPED_ARRAY_SUPPORT !== undefined ? window.TYPED_ARRAY_SUPPORT : true;
+  globalThis.TYPED_ARRAY_SUPPORT !== undefined
+    ? globalThis.TYPED_ARRAY_SUPPORT
+    : true;
 
 /*
  * Export kMaxLength after typed array support is determined.
@@ -280,7 +282,7 @@ function createBuffer(that, length) {
   }
   if (Buffer.TYPED_ARRAY_SUPPORT) {
     // Return an augmented `Uint8Array` instance, for best performance
-    that = new window.Uint8Array(length);
+    that = new Uint8Array(length);
     that.__proto__ = Buffer.prototype;
   } else {
     // Fallback: Return an object instance of the Buffer class
@@ -357,8 +359,8 @@ Buffer.from = function (value, encodingOrOffset, length) {
 };
 
 if (Buffer.TYPED_ARRAY_SUPPORT) {
-  Buffer.prototype.__proto__ = window.Uint8Array.prototype;
-  Buffer.__proto__ = window.Uint8Array;
+  Buffer.prototype.__proto__ = Uint8Array.prototype;
+  Buffer.__proto__ = Uint8Array;
 }
 
 function assertSize(size) {
@@ -462,11 +464,11 @@ function fromArrayBuffer(that, array, byteOffset, length) {
   }
 
   if (byteOffset === undefined && length === undefined) {
-    array = new window.Uint8Array(array);
+    array = new Uint8Array(array);
   } else if (length === undefined) {
-    array = new window.Uint8Array(array, byteOffset);
+    array = new Uint8Array(array, byteOffset);
   } else {
-    array = new window.Uint8Array(array, byteOffset, length);
+    array = new Uint8Array(array, byteOffset, length);
   }
 
   if (Buffer.TYPED_ARRAY_SUPPORT) {
@@ -925,20 +927,12 @@ function bidirectionalIndexOf(buffer, val, byteOffset, encoding, dir) {
     val = val & 0xff; // Search for a byte value [0-255]
     if (
       Buffer.TYPED_ARRAY_SUPPORT &&
-      typeof window.Uint8Array.prototype.indexOf === "function"
+      typeof Uint8Array.prototype.indexOf === "function"
     ) {
       if (dir) {
-        return window.Uint8Array.prototype.indexOf.call(
-          buffer,
-          val,
-          byteOffset
-        );
+        return Uint8Array.prototype.indexOf.call(buffer, val, byteOffset);
       } else {
-        return window.Uint8Array.prototype.lastIndexOf.call(
-          buffer,
-          val,
-          byteOffset
-        );
+        return Uint8Array.prototype.lastIndexOf.call(buffer, val, byteOffset);
       }
     }
     return arrayIndexOf(buffer, [val], byteOffset, encoding, dir);
@@ -1891,7 +1885,7 @@ Buffer.prototype.copy = function copy(target, targetStart, start, end) {
       target[i + targetStart] = this[i + start];
     }
   } else {
-    window.Uint8Array.prototype.set.call(
+    Uint8Array.prototype.set.call(
       target,
       this.subarray(start, start + len),
       targetStart
