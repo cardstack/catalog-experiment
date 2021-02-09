@@ -8466,9 +8466,6 @@ QUnit.module("module builder", function (origHooks) {
       assert.codeEqual(
         source,
         `
-        function parse() {
-          doParse();
-        }
         const context = { };
         function loadConfig() {
           return doThings(context);
@@ -8476,6 +8473,9 @@ QUnit.module("module builder", function (origHooks) {
         function transform(args) {
           loadConfig();
           doTransform(args);
+        }
+        function parse() {
+          doParse();
         }
         context["transform"] = transform;
         context["parse"] = parse;
@@ -8491,9 +8491,6 @@ QUnit.module("module builder", function (origHooks) {
         assert.codeEqual(
           editor.serialize().code,
           `
-          function parse() {
-            doParse();
-          }
           const renamedContext = { };
           function loadConfig() {
             return doThings(renamedContext);
@@ -8501,6 +8498,9 @@ QUnit.module("module builder", function (origHooks) {
           function renamedTransform(args) {
             loadConfig();
             doTransform(args);
+          }
+          function parse() {
+            doParse();
           }
           renamedContext["transform"] = renamedTransform;
           renamedContext["parse"] = parse;

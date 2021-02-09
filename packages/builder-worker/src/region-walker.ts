@@ -442,8 +442,13 @@ export class RegionWalker {
   private visitNamespace(module: Resolution, stack: string[]): string {
     let exports = getExports(module);
     let namespaceItemIds: string[] = [];
+    let isCycle =
+      isCyclicModuleResolution(module) &&
+      [...stack, this.ownAssignments[0].entrypointModuleURL.href].includes(
+        module.url.href
+      );
     return this.withSideEffects(module, stack, (_stack) => {
-      if (!isCyclicModuleResolution(module)) {
+      if (!isCycle) {
         for (let [exportName, { module: sourceModule }] of exports.entries()) {
           let source = this.depResolver.resolveDeclaration(
             exportName,
