@@ -17,6 +17,7 @@ import { Editor } from "./module-rewriter";
 import { BundleAssignment } from "./nodes/bundle";
 import { ExposedRegionInfo } from "./nodes/combine-modules";
 import {
+  isCyclicModuleResolution,
   makeNonCyclic,
   ModuleResolution,
   Resolution,
@@ -442,74 +443,76 @@ export class RegionWalker {
     let exports = getExports(module);
     let namespaceItemIds: string[] = [];
     return this.withSideEffects(module, stack, (_stack) => {
-      for (let [exportName, { module: sourceModule }] of exports.entries()) {
-        let source = this.depResolver.resolveDeclaration(
-          exportName,
-          sourceModule,
-          module
-        );
-
-        // this is the scenario where we were able to resolve the namespace item
-        // to a local declaration
-        if (source.type === "resolved") {
-          let sourceModule: Resolution = source.module;
-          let pointer: RegionPointer = source.pointer;
-          let itemId = this.withSideEffects(
-            source.moduleStack[0],
-            _stack,
-            (s) => {
-              let id = this.walk(sourceModule, pointer, s);
-              for (let visitedModule of source.moduleStack.slice(1)) {
-                this.withSideEffects(visitedModule, s);
-              }
-              return id;
-            }
+      if (!isCyclicModuleResolution(module)) {
+        for (let [exportName, { module: sourceModule }] of exports.entries()) {
+          let source = this.depResolver.resolveDeclaration(
+            exportName,
+            sourceModule,
+            module
           );
-          if (itemId) {
-            namespaceItemIds.push(itemId);
-          }
-        }
 
-        // in this case the namespace item is either a nested namespace import or
-        // comes from an external bundle.
-        else {
-          let { importedPointer } = source;
-          if (importedPointer == null) {
-            throw new Error(
-              `bug: could not determine code region pointer for import of ${JSON.stringify(
-                source.importedAs
-              )} from ${source.importedFromModule.url.href} in module ${
-                source.consumingModule.url.href
-              }`
+          // this is the scenario where we were able to resolve the namespace item
+          // to a local declaration
+          if (source.type === "resolved") {
+            let sourceModule: Resolution = source.module;
+            let pointer: RegionPointer = source.pointer;
+            let itemId = this.withSideEffects(
+              source.moduleStack[0],
+              _stack,
+              (s) => {
+                let id = this.walk(sourceModule, pointer, s);
+                for (let visitedModule of source.moduleStack.slice(1)) {
+                  this.withSideEffects(visitedModule, s);
+                }
+                return id;
+              }
             );
+            if (itemId) {
+              namespaceItemIds.push(itemId);
+            }
           }
-          // we mark the namespace import region as something we want to keep as a
-          // signal to the Append nodes to manufacture a namespace object for this
-          // import--ultimately, though, we will not include this region.
-          if (isNamespaceMarker(source.importedAs)) {
-            if (source.importedPointer == null) {
+
+          // in this case the namespace item is either a nested namespace import or
+          // comes from an external bundle.
+          else {
+            let { importedPointer } = source;
+            if (importedPointer == null) {
               throw new Error(
-                `unable to determine the region for a namespace import of ${source.importedFromModule.url.href} from the consuming module ${source.consumingModule.url.href} in bundle ${this.bundle.href}`
+                `bug: could not determine code region pointer for import of ${JSON.stringify(
+                  source.importedAs
+                )} from ${source.importedFromModule.url.href} in module ${
+                  source.consumingModule.url.href
+                }`
               );
             }
-            let namespaceImport = regionId(
-              source.consumingModule,
-              source.importedPointer
-            );
-            let namespaceMarker = this.visitNamespace(
-              source.importedFromModule,
-              _stack
-            );
-            this.keepRegion(
-              namespaceImport,
-              namespaceImport,
-              new Set([namespaceMarker])
-            );
-            namespaceItemIds.push(namespaceImport);
-          } else {
-            let itemId = regionId(module, importedPointer);
-            this.keepRegion(itemId, itemId, new Set());
-            namespaceItemIds.push(itemId);
+            // we mark the namespace import region as something we want to keep as a
+            // signal to the Append nodes to manufacture a namespace object for this
+            // import--ultimately, though, we will not include this region.
+            if (isNamespaceMarker(source.importedAs)) {
+              if (source.importedPointer == null) {
+                throw new Error(
+                  `unable to determine the region for a namespace import of ${source.importedFromModule.url.href} from the consuming module ${source.consumingModule.url.href} in bundle ${this.bundle.href}`
+                );
+              }
+              let namespaceImport = regionId(
+                source.consumingModule,
+                source.importedPointer
+              );
+              let namespaceMarker = this.visitNamespace(
+                source.importedFromModule,
+                _stack
+              );
+              this.keepRegion(
+                namespaceImport,
+                namespaceImport,
+                new Set([namespaceMarker])
+              );
+              namespaceItemIds.push(namespaceImport);
+            } else {
+              let itemId = regionId(module, importedPointer);
+              this.keepRegion(itemId, itemId, new Set());
+              namespaceItemIds.push(itemId);
+            }
           }
         }
       }
