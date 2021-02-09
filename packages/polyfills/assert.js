@@ -85,7 +85,7 @@ function isView(arrbuf) {
   if (isBuffer(arrbuf)) {
     return false;
   }
-  if (typeof window.ArrayBuffer !== "function") {
+  if (typeof ArrayBuffer !== "function") {
     return false;
   }
   if (typeof ArrayBuffer.isView === "function") {
@@ -309,8 +309,8 @@ function _deepEqual(actual, expected, strict, memos) {
   ) {
     return (
       compare(
-        new window.Uint8Array(actual.buffer),
-        new window.Uint8Array(expected.buffer)
+        new Uint8Array(actual.buffer),
+        new Uint8Array(expected.buffer)
       ) === 0
     );
 

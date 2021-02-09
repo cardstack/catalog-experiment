@@ -12,9 +12,7 @@
         "./src/index.js"
       ],
       "macros": {
-        "process\\.env\\.BABEL_TYPES_8_BREAKING": "false",
-        "Symbol\\.for\\(": "window.Symbol.for(",
-        "new Set\\(": "new window.Set("
+        "process\\.env\\.BABEL_TYPES_8_BREAKING": "false"
       },
       "babelPlugins": [
         "@babel/plugin-transform-flow-strip-types",

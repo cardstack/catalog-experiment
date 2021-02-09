@@ -12,8 +12,7 @@
         "./src/index.js"
       ],
       "macros": {
-        "process\\.env\\.NODE_ENV": "'production'",
-        "new WeakMap\\(": "new window.WeakMap("
+        "process\\.env\\.NODE_ENV": "'production'"
       },
       "babelPlugins": [
         "@babel/plugin-transform-flow-strip-types",

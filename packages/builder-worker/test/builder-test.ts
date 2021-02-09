@@ -174,6 +174,27 @@ QUnit.module("module builder", function (origHooks) {
       );
     });
 
+    test("it prevents collisions with builtin javascript names", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["index.js"] }`,
+        "index.js": `
+          let Map = 'map';
+          let Symbol = 'symbol';
+          console.log(Map + Symbol);
+          export {};
+        `,
+      });
+      assert.codeEqual(
+        await bundleCode(assert.fs),
+        `
+          let Map0 = 'map';
+          let Symbol0 = 'symbol';
+          console.log(Map0 + Symbol0);
+          export {};
+        `
+      );
+    });
+
     test("it prevents collisions between module-scoped bindings", async function (assert) {
       await assert.setupFiles({
         "entrypoints.json": `{ "js": ["index.js"] }`,
@@ -1825,13 +1846,13 @@ QUnit.module("module builder", function (origHooks) {
         `,
         "lib.js": `
           export function i() { return 1; }
-          class Cache {
+          class MyCache {
             constructor(opts) {
               window.__cache = { bar: opts};
             }
           }
           let b = 'foo';
-          let a = new Cache(b);
+          let a = new MyCache(b);
           function getCache() {
             return a;
           }
@@ -1844,13 +1865,13 @@ QUnit.module("module builder", function (origHooks) {
         `
         function i() { return 1; }
         console.log(i());
-        class Cache {
+        class MyCache {
           constructor(opts) {
             window.__cache = { bar: opts};
           }
         }
         let b = 'foo';
-        let unused_a = new Cache(b);
+        let unused_a = new MyCache(b);
         export {};
         `
       );
