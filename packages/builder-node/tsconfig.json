@@ -2,6 +2,7 @@
   "compilerOptions": {
     "declaration": true,
     "esModuleInterop": true,
+    "resolveJsonModule": true,
     "module": "es6",
     "moduleResolution": "Node",
     "pretty": true,

@@ -193,7 +193,7 @@ export class FinishAppendModulesNode implements BuilderNode {
       bundleDeclarations,
       this.bundle
     );
-    prevSibling = buildManufacturedCode(
+    prevSibling = buildInteriorExportAll(
       code,
       regions,
       prevSibling,
@@ -296,7 +296,7 @@ export class FinishAppendModulesNode implements BuilderNode {
 // This manufactures declarations for "export *" that we converted into an
 // "import *" because the "export *" was included in a module that is not an
 // entrypoint for the bundle--and hence does not effect the bundle's API.
-function buildManufacturedCode(
+function buildInteriorExportAll(
   code: string[],
   regions: CodeRegion[],
   prevSibling: RegionPointer | undefined,
