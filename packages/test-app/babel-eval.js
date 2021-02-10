@@ -5,7 +5,7 @@ import flatMap from "https://local-disk/pkgs/npm/lodash/4.17.19/NbTWX71F-LVzbYPD
 
 export function introspectESModule(code) {
   debugger;
-  let file = parseSync(code);
+  let file = parseSync(code, { configFile: false });
   let body = file.program.body;
   let importDeclarations = body.filter((s) => s.type === "ImportDeclaration");
   let exportNamedDeclarations = body.filter(
