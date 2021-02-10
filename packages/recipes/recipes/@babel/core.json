@@ -22,7 +22,8 @@
         "inherits": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/inherits.js"
       },
       "macros": {
-        "process\\.env\\.NODE_ENV": "'production'"
+        "process\\.env\\.NODE_ENV": "'production'",
+        "process\\.env\\.BABEL_ENV": "'production'"
       },
       "babelPlugins": [
         "@babel/plugin-transform-flow-strip-types",
