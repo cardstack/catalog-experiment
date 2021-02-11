@@ -107,6 +107,7 @@ export interface ReexportExportDescription {
   importIndex: number;
   name: string | NamespaceMarker;
   exportRegion: RegionPointer;
+  reexportSpecifierRegion: RegionPointer;
 }
 
 // this is `export * from 'foo';` which appends the exports of foo (excluding
@@ -862,7 +863,15 @@ export function describeFile(ast: File, filename: string): FileDescription {
             region: exportRegion,
           });
         }
-        for (let spec of path.node.specifiers) {
+        let specifiers = new Set<RegionPointer>();
+        for (let specPath of path.get("specifiers")) {
+          let reexportSpecifierRegion = builder.createCodeRegion(
+            specPath as NodePath,
+            "reexport-specifier",
+            new Set([exportRegion])
+          );
+          specifiers.add(reexportSpecifierRegion);
+          let spec = specPath.node;
           switch (spec.type) {
             case "ExportDefaultSpecifier":
               desc.exports.set(spec.exported.name, {
@@ -870,6 +879,7 @@ export function describeFile(ast: File, filename: string): FileDescription {
                 name: "default",
                 importIndex,
                 exportRegion,
+                reexportSpecifierRegion,
               });
               break;
             case "ExportSpecifier":
@@ -878,6 +888,7 @@ export function describeFile(ast: File, filename: string): FileDescription {
                 name: spec.local.name,
                 importIndex,
                 exportRegion,
+                reexportSpecifierRegion,
               });
               break;
             case "ExportNamespaceSpecifier":
@@ -886,12 +897,14 @@ export function describeFile(ast: File, filename: string): FileDescription {
                 name: NamespaceMarker,
                 importIndex,
                 exportRegion,
+                reexportSpecifierRegion,
               });
               break;
             default:
               assertNever(spec);
           }
         }
+        builder.regions[exportRegion].dependsOn = specifiers;
       } else {
         // we are not reexporting
         let exportRegion = builder.createCodeRegion(path as NodePath);

@@ -21,6 +21,7 @@ import {
   isNamespaceMarker,
   LocalDeclarationDescription,
   NamespaceMarker,
+  RegionPointer,
 } from "../src/code-region";
 import { RegionEditor } from "../src/region-editor";
 import {
@@ -3442,7 +3443,10 @@ QUnit.module("module builder", function (origHooks) {
         assert.equal(desc.exports.size, 2);
         let foo = desc.exports.get("foo")!;
         assert.equal(foo.type, "reexport");
+        let fooSpecifier: RegionPointer | undefined;
         if (foo.type === "reexport") {
+          fooSpecifier = foo.reexportSpecifierRegion;
+          assert.ok(fooSpecifier != null, "has reexport specifier code region");
           assert.equal(foo.importIndex, 0);
           assert.equal(foo.name, "foo");
           assert.ok(foo.exportRegion != null, "export region exists in desc");
@@ -3458,7 +3462,13 @@ QUnit.module("module builder", function (origHooks) {
         }
         let fleep = desc.exports.get("fleep")!;
         assert.equal(fleep.type, "reexport");
+        let fleepSpecifier: RegionPointer | undefined;
         if (fleep.type === "reexport") {
+          fleepSpecifier = fleep.reexportSpecifierRegion;
+          assert.ok(
+            fleepSpecifier != null,
+            "has reexport specifier code region"
+          );
           assert.equal(fleep.importIndex, 0);
           assert.equal(fleep.name, "fleep");
           assert.ok(fleep.exportRegion != null, "export region exists in desc");
@@ -3472,16 +3482,18 @@ QUnit.module("module builder", function (origHooks) {
             "reexport"
           );
         }
+        assert.notEqual(fooSpecifier!, fleepSpecifier!);
 
         let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("bar", "renamedBar");
+        editor.replace(fleepSpecifier!, "/* CODE REGION */");
         assert.codeEqual(
           editor.serialize().code,
           `
           const renamedBar = 'bar';
           console.log(renamedBar);
-          export { foo, fleep } from './b.js';
+          export { foo, /* CODE REGION */ } from './b.js';
           `
         );
       }
@@ -4585,6 +4597,7 @@ QUnit.module("module builder", function (origHooks) {
       let puppiesBundle3Href = `https://catalogjs.com/pkgs/npm/puppies/7.9.5/YlH+lolVTSWK+5-BU47+UKzCFKI=`;
       let puppiesBundle4Href = `https://catalogjs.com/pkgs/npm/puppies/7.9.6/BlH+lolVTSWK+5-BU47+UKzCFKI=`;
       let puppiesBundle5Href = `https://catalogjs.com/pkgs/npm/puppies/7.9.7/AlH+lolVTSWK+5-BU47+UKzCFKI=`;
+      let puppiesBundle6Href = `https://catalogjs.com/pkgs/npm/puppies/7.10.0/ClH+lolVTSWK+5-BU47+UKzCFKI=`;
 
       hooks.beforeEach(async (assert) => {
         await assert.setupFiles({
@@ -4613,6 +4626,14 @@ QUnit.module("module builder", function (origHooks) {
 
           [`${puppiesBundle5Href}/entrypoints.json`]: `{"js": ["index.js"] }`,
           [`${puppiesBundle5Href}/index.js`]: `export const puppies = ["mango", "van gogh"];`,
+
+          [`${puppiesBundle6Href}/entrypoints.json`]: `{"js": ["index.js"] }`,
+          [`${puppiesBundle6Href}/index.js`]: `
+            export const puppies = ["mango", "van gogh"];
+            export function display(arg) {
+              console.log(arg);
+            }
+          `,
         });
       });
 
@@ -6435,6 +6456,93 @@ QUnit.module("module builder", function (origHooks) {
           );
           assert.equal(puppies.declaration.original?.range, "^7.9.3");
           assert.equal(puppies.declaration.original?.importedAs, "puppies");
+        }
+      });
+
+      test("can resolve a package dependency through a reexport of multiple bindings", async function (assert) {
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["index.js"],
+            "dependencies": {
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "^7.10.0"
+              }
+            }
+          }`,
+          "catalogjs.lock": `{ "puppies": "${puppiesBundle6Href}/index.js" }`, // ver 7.9.2
+          "index.js": `
+            import { puppies, display } from "puppies";
+            export { puppies, display };
+          `,
+        });
+        let bundle1Src = await bundleSource(assert.fs);
+        let lib1BundleHref =
+          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+        await assert.setupFiles({
+          "entrypoints.json": `{
+            "js": ["driver.js"],
+            "dependencies": {
+              "lib1": {
+                "type": "npm",
+                "pkgName": "lib1",
+                "range": "^1.0.0"
+              },
+              "puppies": {
+                "type": "npm",
+                "pkgName": "puppies",
+                "range": "^7.10.0"
+              }
+            }
+          }`,
+          "catalogjs.lock": `{
+            "lib1": "${lib1BundleHref}/lib.js",
+            "puppies": "${puppiesBundle6Href}/index.js"
+          }`,
+          "driver.js": `
+            import { puppies, display } from "./a.js";
+            display(puppies);
+          `,
+          "a.js": `
+            export { puppies, display } from "puppies";
+          `,
+          [`${lib1BundleHref}/entrypoints.json`]: `{"js": ["lib.js"] }`,
+          [`${lib1BundleHref}/lib.js`]: bundle1Src,
+        });
+        let { source, desc } = await bundle(assert.fs, url("output/driver.js"));
+
+        assert.codeEqual(
+          source,
+          `
+          const puppies = ["mango", "van gogh"];
+          function display(arg) {
+            console.log(arg);
+          }
+          display(puppies);
+          export {};
+          `
+        );
+
+        let puppies = desc!.declarations.get("puppies");
+        let display = desc!.declarations.get("display");
+        assert.equal(puppies?.declaration.type, "local");
+        if (puppies?.declaration.type === "local") {
+          assert.equal(
+            puppies.declaration.original?.bundleHref,
+            `${puppiesBundle6Href}/index.js`
+          );
+          assert.equal(puppies.declaration.original?.range, "^7.10.0");
+          assert.equal(puppies.declaration.original?.importedAs, "puppies");
+        }
+        assert.equal(display?.declaration.type, "local");
+        if (display?.declaration.type === "local") {
+          assert.equal(
+            display.declaration.original?.bundleHref,
+            `${puppiesBundle6Href}/index.js`
+          );
+          assert.equal(display.declaration.original?.range, "^7.10.0");
+          assert.equal(display.declaration.original?.importedAs, "display");
         }
       });
 

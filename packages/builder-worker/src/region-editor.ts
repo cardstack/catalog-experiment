@@ -548,7 +548,8 @@ export class RegionEditor {
     if (
       siblingDispositions.length > 0 &&
       parentRegion.type !== "document" &&
-      (parentRegion.type === "reference" || !parentRegion.preserveGaps) &&
+      (parentRegion.type === "reference" ||
+        (parentRegion.type === "general" && !parentRegion.preserveGaps)) &&
       (previousSiblingDisposition.state === "removed" ||
         siblingDispositions.every((d) => d.state === "removed"))
     ) {

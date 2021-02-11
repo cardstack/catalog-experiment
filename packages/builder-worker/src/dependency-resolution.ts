@@ -692,7 +692,7 @@ function resolveDeclaration(
     if (pkgURL) {
       let resolution = depResolver.resolutionByConsumptionRegion(
         sourceModule,
-        exportDesc.exportRegion,
+        exportDesc.reexportSpecifierRegion,
         pkgURL
       );
       assertDeclarationResolution(
@@ -1005,7 +1005,7 @@ function gatherDependencies(
               },
               bundleHref,
               consumedBy: module,
-              consumedByPointer: exportDesc.exportRegion,
+              consumedByPointer: exportDesc.reexportSpecifierRegion,
               name: NamespaceMarker,
               source: pkgModule.url.href,
               range: dependency.range,
@@ -1068,7 +1068,7 @@ function gatherDependencies(
               },
               bundleHref,
               consumedBy: module,
-              consumedByPointer: exportDesc.exportRegion,
+              consumedByPointer: exportDesc.reexportSpecifierRegion,
               name: resolutionBindingName(exportDesc.name, source.module),
               source: source.declaration.source,
               range: dependency.range,
