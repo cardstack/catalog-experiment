@@ -43,6 +43,15 @@
     {
       "type": "node",
       "request": "launch",
+      "name": "Run control-test",
+      "cwd": "${workspaceRoot}/packages/builder-node",
+      "env": {},
+      "program": "${workspaceRoot}/packages/builder-node/bin/control-test.js",
+      "args": []
+    },
+    {
+      "type": "node",
+      "request": "launch",
       "name": "Run node build",
       "cwd": "${workspaceRoot}",
       "env": {},

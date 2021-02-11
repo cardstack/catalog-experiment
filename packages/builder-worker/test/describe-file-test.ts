@@ -13,6 +13,7 @@ import {
   documentPointer,
   NamespaceMarker,
   notFoundPointer,
+  RegionPointer,
 } from "../src/code-region";
 import { RegionEditor } from "../src/region-editor";
 import { intersection } from "lodash";
@@ -818,12 +819,13 @@ QUnit.module("describe-file", function () {
   });
 
   test("pure reexport examples", function (assert) {
-    let { desc } = describeESModule(`
-      export { foo } from './bar';
-      export { x as y } from './baz';
+    let { desc, editor } = describeESModule(`
+      export { foo, fleep } from './bar';
+      export { x as y, floop as flerp } from './baz';
       function bar() {};
       export { bar };
     `);
+    keepAll(desc, editor);
     assert.ok(desc.exports.has("foo"), "foo in exportedNames");
     assert.equal(
       desc.exports.get("bar")?.type,
@@ -833,23 +835,61 @@ QUnit.module("describe-file", function () {
     assert.ok(desc.exports.has("y"), "y in exportedNames");
     assert.ok(desc.exports.has("foo"), "foo is a reexport");
 
-    let exportDesc = desc.exports.get("foo")! as
+    let fooDesc = desc.exports.get("foo")! as
       | LocalExportDescription
       | ReexportExportDescription;
-    assert.equal(exportDesc.type, "reexport");
-    assert.equal(exportDesc.name, "foo", "foo is not named");
-    if (exportDesc.type === "reexport") {
-      assert.equal(exportDesc.importIndex, 0);
+    let fleepDesc = desc.exports.get("fleep")! as
+      | LocalExportDescription
+      | ReexportExportDescription;
+    assert.equal(fooDesc.type, "reexport");
+    assert.equal(fooDesc.name, "foo", "foo is not named");
+    let fooSpecifier: RegionPointer;
+    if (fooDesc.type === "reexport") {
+      assert.equal(fooDesc.importIndex, 0);
+      fooSpecifier = fooDesc.reexportSpecifierRegion;
+      assert.ok(fooSpecifier != null, "reexport specifier region is set");
     }
+    assert.equal(fleepDesc.type, "reexport");
+    let fleepSpecifier: RegionPointer;
+    if (fleepDesc.type === "reexport") {
+      fleepSpecifier = fleepDesc.reexportSpecifierRegion;
+      assert.ok(fleepSpecifier != null, "reexport specifier region is set");
+    }
+    assert.notEqual(fooSpecifier!, fleepSpecifier!);
 
-    exportDesc = desc.exports.get("y")! as
+    let yDesc = desc.exports.get("y")! as
       | LocalExportDescription
       | ReexportExportDescription;
-    assert.equal(exportDesc.type, "reexport", "y is a reexport");
-    assert.equal(exportDesc.name, "x");
-    if (exportDesc.type === "reexport") {
-      assert.equal(exportDesc.importIndex, 1);
+    let flerpDesc = desc.exports.get("flerp")! as
+      | LocalExportDescription
+      | ReexportExportDescription;
+    assert.equal(yDesc.type, "reexport", "y is a reexport");
+    assert.equal(yDesc.name, "x");
+    let ySpecifier: RegionPointer;
+    if (yDesc.type === "reexport") {
+      assert.equal(yDesc.importIndex, 1);
+      ySpecifier = yDesc.reexportSpecifierRegion;
+      assert.ok(ySpecifier != null, "reexport specifier region is set");
     }
+    assert.equal(flerpDesc.type, "reexport");
+    let flerpSpecifier: RegionPointer;
+    if (flerpDesc.type === "reexport") {
+      flerpSpecifier = flerpDesc.reexportSpecifierRegion;
+      assert.ok(flerpSpecifier != null, "reexport specifier region is set");
+    }
+    assert.notEqual(ySpecifier!, flerpSpecifier!);
+
+    editor.replace(fleepSpecifier!, "/* CODE REGION 1*/");
+    editor.replace(flerpSpecifier!, "/* CODE REGION 2*/");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+      export { foo, /* CODE REGION 1*/ } from './bar';
+      export { x as y, /* CODE REGION 2*/ } from './baz';
+      function bar() {};
+      export { bar };
+      `
+    );
   });
 
   test("export name is different than module-scoped name", function (assert) {

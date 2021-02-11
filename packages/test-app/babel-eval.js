@@ -1,10 +1,7 @@
 import { parseSync } from "https://local-disk/pkgs/npm/@babel/core/7.9.0/r2olrUApBIDwEqYQtp6rOMlGKH8=/src/index.js";
 import flatMap from "https://local-disk/pkgs/npm/lodash/4.17.19/NbTWX71F-LVzbYPD1xMbcjuRjD0=/flatMap.js";
 
-// TODO test a bundle built from CJS sources as well
-
 export function introspectESModule(code) {
-  debugger;
   let file = parseSync(code, { configFile: false });
   let body = file.program.body;
   let importDeclarations = body.filter((s) => s.type === "ImportDeclaration");

@@ -20,6 +20,7 @@ import {
   LocalDeclarationDescription,
   DeclarationDescription,
   DocumentCodeRegion,
+  ReexportSpecifierCodeRegion,
 } from "../code-region";
 import { RegionEditor, assignCodeRegionPositions } from "../region-editor";
 import { BundleAssignment } from "./bundle";
@@ -252,7 +253,11 @@ export class FinishAppendModulesNode implements BuilderNode {
 
     setDeclarationInitializers(regions, declarationInitializers);
 
-    let { exportRegions, exportSpecifierRegions } = buildExports(
+    let {
+      exportRegions,
+      exportSpecifierRegions,
+      reexportRegions,
+    } = buildExports(
       code,
       regions,
       prevSibling,
@@ -280,6 +285,7 @@ export class FinishAppendModulesNode implements BuilderNode {
       exportAssignments,
       exportSpecifierRegions,
       exportRegions,
+      reexportRegions,
       this.bundle
     );
 
@@ -718,10 +724,12 @@ function buildExports(
   bundleDeclarations: DeclarationRegionMap,
   bundle: URL
 ): {
+  reexportRegions: Map<string, RegionPointer>;
   exportRegions: Map<string, RegionPointer>;
   exportSpecifierRegions: Map<string, RegionPointer>;
 } {
   let { exports, reexports, exportAlls } = exportAssignments!;
+  let reexportRegions: Map<string, RegionPointer> = new Map();
   let exportRegions: Map<string, RegionPointer> = new Map();
   let exportSpecifierRegions: Map<string, RegionPointer> = new Map();
 
@@ -788,20 +796,52 @@ function buildExports(
       if (importIndex === -1) {
         importIndex = importAssignments.size + reexportIndex;
       }
-      regions.push({
+      let reexportDeclarationPointer: RegionPointer = regions.length;
+      let reexportDeclarationRegion: ImportCodeRegion = {
         type: "import",
         position: 0,
-        firstChild: undefined,
+        firstChild: reexportDeclarationPointer + 1,
         nextSibling: undefined,
         start: 1, // newline
         end: reexportDeclaration.length,
-        dependsOn: new Set(),
+        dependsOn: new Set(
+          [...[...mapping.keys()].entries()].map(
+            ([index]) => reexportDeclarationPointer + 1 + index
+          )
+        ),
         preserveGaps: false,
         isDynamic: false,
         exportType: "reexport",
         specifierForDynamicImport: undefined,
         importIndex,
-      });
+      };
+
+      let reexportSpecifierRegions: ReexportSpecifierCodeRegion[] = [];
+      for (let [index, [outsideName, insideName]] of [...mapping].entries()) {
+        reexportRegions.set(
+          outsideName,
+          reexportDeclarationPointer + index + 1
+        );
+        reexportSpecifierRegions.push({
+          type: "reexport-specifier",
+          position: 0,
+          firstChild: undefined,
+          nextSibling:
+            index === mapping.size - 1
+              ? undefined
+              : reexportDeclarationPointer + index + 2,
+          start: index === 0 ? 9 /* "export { " */ : 2 /* ", " */,
+          end:
+            insideName === outsideName
+              ? outsideName.length
+              : outsideName.length +
+                insideName.length +
+                4 /* "insideName as outsideName" */,
+          dependsOn: new Set([reexportDeclarationPointer]),
+        });
+      }
+
+      regions.push(reexportDeclarationRegion, ...reexportSpecifierRegions);
     }
   }
 
@@ -851,7 +891,7 @@ function buildExports(
     code.push(emptyExport);
     regions[0].end += emptyExport.length + 1; // add one char for the newline
   }
-  return { exportRegions, exportSpecifierRegions };
+  return { exportRegions, exportSpecifierRegions, reexportRegions };
 }
 
 function buildExportNamedDeclaration(
@@ -1776,6 +1816,7 @@ function setExportDescription(
   },
   exportSpecifierRegions: Map<string, RegionPointer>,
   exportRegions: Map<string, RegionPointer>,
+  reexportRegions: Map<string, RegionPointer>,
   bundle: URL
 ) {
   let exportDesc: ModuleDescription["exports"] = new Map();
@@ -1789,6 +1830,7 @@ function setExportDescription(
   for (let [bundleHref, mapping] of reexports.entries()) {
     let exportRegion = exportRegions.get(bundleHref)!;
     for (let [outsideName, insideName] of mapping.entries()) {
+      let reexportSpecifierRegion = reexportRegions.get(outsideName)!;
       exportDesc.set(outsideName, {
         type: "reexport",
         importIndex: ensureImportSpecifier(
@@ -1799,6 +1841,7 @@ function setExportDescription(
         ),
         name: insideName,
         exportRegion: exportRegions.get(bundleHref)!,
+        reexportSpecifierRegion,
       });
     }
   }

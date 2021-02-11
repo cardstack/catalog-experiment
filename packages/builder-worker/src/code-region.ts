@@ -24,6 +24,7 @@ export type CodeRegion =
   | DocumentCodeRegion
   | GeneralCodeRegion
   | ImportCodeRegion
+  | ReexportSpecifierCodeRegion
   | DeclarationCodeRegion
   | ReferenceCodeRegion;
 
@@ -141,6 +142,19 @@ export function isImportCodeRegion(region: any): region is ImportCodeRegion {
   );
 }
 
+export interface ReexportSpecifierCodeRegion extends BaseCodeRegion {
+  type: "reexport-specifier";
+}
+export function isReexportSpecifierCodeRegion(
+  region: any
+): region is ReexportSpecifierCodeRegion {
+  return (
+    typeof region === "object" &&
+    "type" in region &&
+    region.type === "reexport-specifier"
+  );
+}
+
 // When a reference region is inserted, or another region is inserted around a
 // reference region, then the parent of the reference region will automatically
 // depend on the reference region.
@@ -174,7 +188,8 @@ export function isCodeRegion(region: any): region is CodeRegion {
     isGeneralCodeRegion(region) ||
     isDeclarationCodeRegion(region) ||
     isReferenceCodeRegion(region) ||
-    isImportCodeRegion(region)
+    isImportCodeRegion(region) ||
+    isReexportSpecifierCodeRegion(region)
   );
 }
 

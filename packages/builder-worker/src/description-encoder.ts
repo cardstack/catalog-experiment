@@ -20,9 +20,11 @@ import isEqual from "lodash/isEqual";
 import invert from "lodash/invert";
 import {
   DeclarationCodeRegion,
+  DocumentCodeRegion,
   GeneralCodeRegion,
   ImportCodeRegion,
   NamespaceMarker,
+  ReexportSpecifierCodeRegion,
   ReferenceCodeRegion,
 } from "./code-region";
 import { assignCodeRegionPositions } from "./region-editor";
@@ -40,6 +42,7 @@ const regionTypeShorthand = {
   import: "i",
   declaration: "d",
   document: "o",
+  "reexport-specifier": "s",
 };
 
 // TODO need to make a shorthand for URLs, all of our URLs start with https://catalogjs.com/pkgs/
@@ -82,6 +85,8 @@ const referenceCodeRegionLegend = [
 
 const documentCodeRegionLegend = [...baseCodeRegionLegend];
 
+const reexportSpecifierCodeRegionLegend = [...baseCodeRegionLegend];
+
 const declarationLegend = [
   "type", // "l" = local, "i" = import
   "declaredName", // string,
@@ -107,6 +112,7 @@ const exportDescLegend = [
   "name", // string | { n: true }
   "exportRegion", // number
   "importIndex", // number | null
+  "reexportSpecifierRegion", // number | null
 ];
 
 interface Pojo {
@@ -185,6 +191,10 @@ function encodeModuleDescription(desc: ModuleDescription): string {
                 });
               case "document":
                 return encodeObj(r, documentCodeRegionLegend, {
+                  type: { ...regionTypeShorthand },
+                });
+              case "reexport-specifier":
+                return encodeObj(r, reexportSpecifierCodeRegionLegend, {
                   type: { ...regionTypeShorthand },
                 });
               case "import":
@@ -297,7 +307,16 @@ function decodeModuleDescription(encoded: string): ModuleDescription {
                   type: { ...regionTypeShorthand },
                 },
                 { dependsOn: "Set" }
-              ) as ReferenceCodeRegion;
+              ) as DocumentCodeRegion;
+            case "reexport-specifier":
+              return decodeArray(
+                v,
+                reexportSpecifierCodeRegionLegend,
+                {
+                  type: { ...regionTypeShorthand },
+                },
+                { dependsOn: "Set" }
+              ) as ReexportSpecifierCodeRegion;
             case "import":
               return decodeArray(
                 v,
