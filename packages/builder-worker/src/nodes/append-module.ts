@@ -91,7 +91,7 @@ export class AppendModuleNode implements BuilderNode {
         rewriters
       );
 
-      if (typeof process?.stdout?.write === "function") {
+      if (typeof process?.stdout?.write === "function" && !process?.env.CI) {
         process.stdout.write(
           `  creating append builder node for module ${this.state.visited.length} for bundle ${this.bundle.href}\r`
         );

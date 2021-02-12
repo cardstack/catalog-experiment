@@ -88,7 +88,7 @@ export class RegionWalker {
       }
     }
 
-    if (typeof process?.stdout?.write === "function") {
+    if (typeof process?.stdout?.write === "function" && !process?.env.CI) {
       console.log();
     }
     log(
@@ -130,7 +130,7 @@ export class RegionWalker {
     }
 
     this.seenRegions.add(id);
-    if (typeof process?.stdout?.write === "function") {
+    if (typeof process?.stdout?.write === "function" && !process?.env.CI) {
       process.stdout.write(
         `  visited ${this.seenRegions.size} regions for bundle ${this.bundle.href}\r`
       );
