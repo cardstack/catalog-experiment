@@ -29,3 +29,19 @@ jobs:
 
       - name: test
         run: yarn test
+
+  acceptance:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v2-beta
+        with:
+          node-version: "14.5.0"
+
+      - name: install
+        run: yarn install
+
+      - name: test
+        run: yarn acceptance-test

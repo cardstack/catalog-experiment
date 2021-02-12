@@ -24,9 +24,11 @@ export function introspectESModule(code) {
   let codeEl = document.createElement("pre");
   codeEl.textContent = code;
   let importsMsg = document.createElement("p");
-  importsMsg.textContent = `Named imports: ${namedImports.join()}`;
+  importsMsg.textContent = `Named imports: ${namedImports.join(", ")}`;
+  importsMsg.className = "named-imports";
   let exportsMsg = document.createElement("p");
-  exportsMsg.textContent = `Named exports: ${namedExports.join()}`;
+  exportsMsg.textContent = `Named exports: ${namedExports.join(", ")}`;
+  exportsMsg.className = "named-exports";
 
   let demo = document.createElement("div");
   demo.append(title);

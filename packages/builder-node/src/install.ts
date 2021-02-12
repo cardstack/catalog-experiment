@@ -40,7 +40,7 @@ let projectDir = resolve(join(process.cwd(), project));
   // very expensive task, so it is beneficial to retain this directory for
   // future executions of this command
   let workingDir = join(process.cwd(), "working");
-  let cdnDir = join(workingDir, "cdn");
+  let cdnDir = join(workingDir, "cdn", "pkgs");
   ensureDirSync(cdnDir);
 
   let fs = new FileSystem();
