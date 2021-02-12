@@ -1,0 +1,6 @@
+import { default as createBaseFor } from "./160.js";
+var baseForRight = createBaseFor(true);
+export { baseForRight as default };
+/*====catalogjs annotation start====
+k5GVwqguLzE2MC5qcwPCwIGnZGVmYXVsdJWhbKxiYXNlRm9yUmlnaHQLwMCdl6FvAAADwJEGwJmhZAkAAsCRAsDCmaFprWNyZWF0ZUJhc2VGb3KSAgnAAKdkZWZhdWx0wMDAmKFyCw3AwJEBwMKcoWkAEwEEkMDCAMLAwJehbwEABQqQwJihZwABBsCQwMKZoWQEAAfAkwcFCMDCmaFsrGJhc2VGb3JSaWdodJIHDMDAwAWQ2U1XbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvX2Jhc2VGb3JSaWdodC5qc5ihcgAMwAiRBsDCmKFnAwYJwJEJwMKYoXIADcDAkQHAwpihZwEDC8CQwMKYoWcJCwzAkQzAwpihcgAMwMCRBsDC
+====catalogjs annotation end====*/

@@ -1,0 +1,19 @@
+import { default as arrayFilter } from "./150.js";
+import { default as stubArray } from "../stubArray.js";
+var objectProto = Object.prototype;
+var propertyIsEnumerable0 = objectProto.propertyIsEnumerable;
+var nativeGetSymbols = Object.getOwnPropertySymbols;
+var getSymbols = !nativeGetSymbols ? stubArray : function (object) {
+  if (object == null) {
+    return [];
+  }
+
+  object = Object(object);
+  return arrayFilter(nativeGetSymbols(object), function (symbol) {
+    return propertyIsEnumerable0.call(object, symbol);
+  });
+};
+export { getSymbols as default };
+/*====catalogjs annotation start====
+k5KVwqguLzE1MC5qcwPCwJXCry4uL3N0dWJBcnJheS5qcwbCwIGnZGVmYXVsdJWhbKpnZXRTeW1ib2xzG8DA3AAdl6FvAAADwJDAmaFkCQACwJECwMKZoWmrYXJyYXlGaWx0ZXKSAhfAAKdkZWZhdWx0wMDAmKFyCwvAwJEBwMKcoWkAEwEGkMDCAMLAwJmhZAkABcCRBcDCmaFpqXN0dWJBcnJheZIFFsABp2RlZmF1bHTAwMCYoXILCcDAkQTAwpyhaQEaBAeQwMIBwsDAl6FvAQAIGpDAmKFnAAEJC5DAwpmhZAQTCsCSCgjAwpmhbKtvYmplY3RQcm90b5IKDsDAwAiQ2UtXbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvX2dldFN5bWJvbHMuanOYoXIAC8DAkQnAwpihZwEBDA+QwMKZoWQEFQ3AlA4NCwnAwpmhbLVwcm9wZXJ0eUlzRW51bWVyYWJsZTCSDRnAwMALkNlLV25wbS9sb2Rhc2gvNC4xNy4xOS83S0E5OC1vRzY0SmM0SnRWdE5Pamk5cDlSNEk9L19fYnVpbGRfc3JjL19nZXRTeW1ib2xzLmpzmKFyABXADpEMwMKYoXIDC8DAkQnAwpihZwEBEBKQwMKZoWQEHxHAkhEPwMKZoWywbmF0aXZlR2V0U3ltYm9sc5MRFRjAwMAPkNlLV25wbS9sb2Rhc2gvNC4xNy4xOS83S0E5OC1vRzY0SmM0SnRWdE5Pamk5cDlSNEk9L19fYnVpbGRfc3JjL19nZXRTeW1ib2xzLmpzmKFyABDAwJEQwMKYoWcBARPAkMDCmaFkBB4UwJkVFhcYGRQSEAzAwpmhbKpnZXRTeW1ib2xzkhQcwMDAEpDZS1ducG0vbG9kYXNoLzQuMTcuMTkvN0tBOTgtb0c2NEpjNEp0VnROT2ppOXA5UjRJPS9fX2J1aWxkX3NyYy9fZ2V0U3ltYm9scy5qc5ihcgAKwBWRE8DCmKFyBBDAFpEQwMKYoXIDCcAXkQTAwpihcmcLwBiRAcDCmKFyARDAGZEQwMKYoXIpFcDAkQzAwpihZwEDG8CQwMKYoWcJCxzAkRzAwpihcgAKwMCRE8DC
+====catalogjs annotation end====*/

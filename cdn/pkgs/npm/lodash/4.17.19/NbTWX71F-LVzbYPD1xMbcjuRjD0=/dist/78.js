@@ -1,0 +1,7 @@
+import { default as baseForOwnRight } from "./79.js";
+import { default as createBaseEach } from "./81.js";
+var baseEachRight = createBaseEach(baseForOwnRight, true);
+export { baseEachRight as default };
+/*====catalogjs annotation start====
+k5KVwqcuLzc5LmpzA8LAlcKnLi84MS5qcwbCwIGnZGVmYXVsdJWhbK1iYXNlRWFjaFJpZ2h0D8DA3AARl6FvAAADwJEJwJmhZAkAAsCRAsDCmaFpr2Jhc2VGb3JPd25SaWdodJICDcAAp2RlZmF1bHTAwMCYoXILD8DAkQHAwpyhaQASAQaQwMIAwsDAmaFkCQAFwJEFwMKZoWmuY3JlYXRlQmFzZUVhY2iSBQzAAadkZWZhdWx0wMDAmKFyCw7AwJEEwMKcoWkBEgQHkMDCAcLAwJehbwEACA6QwJihZwABCcCQwMKZoWQEAArAkwoIC8DCmaFsrWJhc2VFYWNoUmlnaHSSChDAwMAIkNlOV25wbS9sb2Rhc2gvNC4xNy4xOS83S0E5OC1vRzY0SmM0SnRWdE5Pamk5cDlSNEk9L19fYnVpbGRfc3JjL19iYXNlRWFjaFJpZ2h0LmpzmKFyAA3AC5EJwMKYoWcDBwzAkgwNwMKYoXIADsANkQTAwpihcgEPwMCRAcDCmKFnAQMPwJDAwpihZwkLEMCREMDCmKFyAA3AwJEJwMI=
+====catalogjs annotation end====*/

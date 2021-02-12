@@ -1,0 +1,10 @@
+import { default as baseClone } from "./dist/40.js";
+import { default as baseMatches } from "./dist/41.js";
+var CLONE_DEEP_FLAG = 1;
+function matches(source) {
+  return baseMatches(baseClone(source, CLONE_DEEP_FLAG));
+}
+export { matches as default };
+/*====catalogjs annotation start====
+k5KVwqwuL2Rpc3QvNDAuanMDwsCVwqwuL2Rpc3QvNDEuanMGwsCBp2RlZmF1bHSVoWynbWF0Y2hlcxHAwNwAE5ehbwAAA8CQwJmhZAkAAsCRAsDCmaFpqWJhc2VDbG9uZZICDsAAp2RlZmF1bHTAwMCYoXILCcDAkQHAwpyhaQAXAQaQwMIAwsDAmaFkCQAFwJEFwMKZoWmrYmFzZU1hdGNoZXOSBQ3AAadkZWZhdWx0wMDAmKFyCwvAwJEEwMKcoWkBFwQHkMDCAcLAwJehbwEACBCQwJihZwABCQuQwMKZoWQEBArAkgoIwMKZoWyvQ0xPTkVfREVFUF9GTEFHkgoPwMDACJDZR1ducG0vbG9kYXNoLzQuMTcuMTkvN0tBOTgtb0c2NEpjNEp0VnROT2ppOXA5UjRJPS9fX2J1aWxkX3NyYy9tYXRjaGVzLmpzmKFyAA/AwJEJwMKZoWQBBQzAlQ0ODwwJwMKZoWynbWF0Y2hlc5IMEsDAwMCQ2UdXbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvbWF0Y2hlcy5qc5ihcgkHwA2RC8DCmKFyFAvADpEEwMKYoXIBCcAPkQHAwpihcgkPwMCRCcDCmKFnAQMRwJDAwpihZwkLEsCREsDCmKFyAAfAwJELwMI=
+====catalogjs annotation end====*/

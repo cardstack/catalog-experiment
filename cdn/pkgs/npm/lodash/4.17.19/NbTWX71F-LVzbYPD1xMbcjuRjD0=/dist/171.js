@@ -1,0 +1,9 @@
+var nativeFloor = Math.floor,
+    nativeRandom = Math.random;
+function baseRandom(lower, upper) {
+  return lower + nativeFloor(nativeRandom() * (upper - lower + 1));
+}
+export { baseRandom as default };
+/*====catalogjs annotation start====
+k5CBp2RlZmF1bHSVoWyqYmFzZVJhbmRvbQzAwJ6XoW8AAAHAkMCXoW8AAAILkMCYoWcAAQMHkMDCmaFkBA0EBZIEAsDCmaFsq25hdGl2ZUZsb29ykgQJwMDAApDZS1ducG0vbG9kYXNoLzQuMTcuMTkvN0tBOTgtb0c2NEpjNEp0VnROT2ppOXA5UjRJPS9fX2J1aWxkX3NyYy9fYmFzZVJhbmRvbS5qc5ihcgALwMCRA8DCmaFkBg4GwJIGAsDCmaFsrG5hdGl2ZVJhbmRvbZIGCsDAwAKQ2UtXbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvX2Jhc2VSYW5kb20uanOYoXIADMDAkQXAwpmhZAEcCMCVCQoIAwXAwpmhbKpiYXNlUmFuZG9tkggNwMDAwJDZS1ducG0vbG9kYXNoLzQuMTcuMTkvN0tBOTgtb0c2NEpjNEp0VnROT2ppOXA5UjRJPS9fX2J1aWxkX3NyYy9fYmFzZVJhbmRvbS5qc5ihcgkKwAmRB8DCmKFyIgvACpEDwMKYoXIBDMDAkQXAwpihZwEDDMCQwMKYoWcJCw3AkQ3AwpihcgAKwMCRB8DC
+====catalogjs annotation end====*/

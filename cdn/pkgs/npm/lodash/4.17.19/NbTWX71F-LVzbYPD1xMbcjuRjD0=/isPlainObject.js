@@ -1,0 +1,27 @@
+import { default as baseGetTag } from "./dist/86.js";
+import { default as getPrototype } from "./dist/137.js";
+import { default as isObjectLike } from "./isObjectLike.js";
+var objectTag = '[object Object]';
+var funcProto = Function.prototype,
+    objectProto = Object.prototype;
+var funcToString = funcProto.toString;
+var hasOwnProperty0 = objectProto.hasOwnProperty;
+var objectCtorString = funcToString.call(Object);
+function isPlainObject(value) {
+  if (!isObjectLike(value) || baseGetTag(value) != objectTag) {
+    return false;
+  }
+
+  var proto = getPrototype(value);
+
+  if (proto === null) {
+    return true;
+  }
+
+  var Ctor = hasOwnProperty0.call(proto, 'constructor') && proto.constructor;
+  return typeof Ctor == 'function' && Ctor instanceof Ctor && funcToString.call(Ctor) == objectCtorString;
+}
+export { isPlainObject as default };
+/*====catalogjs annotation start====
+k5OVwqwuL2Rpc3QvODYuanMDwsCVwq0uL2Rpc3QvMTM3LmpzBsLAlcKxLi9pc09iamVjdExpa2UuanMJwsCBp2RlZmF1bHSVoWytaXNQbGFpbk9iamVjdCrAwNwALJehbwAAA8CRHMCZoWQJAALAkQLAwpmhaapiYXNlR2V0VGFnkgIjwACnZGVmYXVsdMDAwJihcgsKwMCRAcDCnKFpABcBBpDAwgDCwMCZoWQJAAXAkQXAwpmhaaxnZXRQcm90b3R5cGWSBSXAAadkZWZhdWx0wMDAmKFyCwzAwJEEwMKcoWkBGAQJkMDCAcLAwJmhZAkACMCRCMDCmaFprGlzT2JqZWN0TGlrZZIIIsACp2RlZmF1bHTAwMCYoXILDMDAkQfAwpyhaQEcBwqQwMICwsDAl6FvAQALKZDAmKFnAAEMDpDAwpmhZAQUDcCSDQvAwpmhbKlvYmplY3RUYWeSDSTAwMALkNlNV25wbS9sb2Rhc2gvNC4xNy4xOS83S0E5OC1vRzY0SmM0SnRWdE5Pamk5cDlSNEk9L19fYnVpbGRfc3JjL2lzUGxhaW5PYmplY3QuanOYoXIACcDAkQzAwpihZwEBDxOQwMKZoWQEFRARkhAOwMKZoWypZnVuY1Byb3RvkhAWwMDADpDZTVducG0vbG9kYXNoLzQuMTcuMTkvN0tBOTgtb0c2NEpjNEp0VnROT2ppOXA5UjRJPS9fX2J1aWxkX3NyYy9pc1BsYWluT2JqZWN0LmpzmKFyAAnAwJEPwMKZoWQGExLAkhIOwMKZoWyrb2JqZWN0UHJvdG+SEhrAwMAOkNlNV25wbS9sb2Rhc2gvNC4xNy4xOS83S0E5OC1vRzY0SmM0SnRWdE5Pamk5cDlSNEk9L19fYnVpbGRfc3JjL2lzUGxhaW5PYmplY3QuanOYoXIAC8DAkRHAwpihZwEBFBeQwMKZoWQECRXAlBYVEw/AwpmhbKxmdW5jVG9TdHJpbmeTFR8nwMDAE5DZTVducG0vbG9kYXNoLzQuMTcuMTkvN0tBOTgtb0c2NEpjNEp0VnROT2ppOXA5UjRJPS9fX2J1aWxkX3NyYy9pc1BsYWluT2JqZWN0LmpzmKFyAAzAFpEUwMKYoXIDCcDAkQ/AwpihZwEBGBuQwMKZoWQEDxnAlBoZFxHAwpmhbK9oYXNPd25Qcm9wZXJ0eTCSGSbAwMAXkNlNV25wbS9sb2Rhc2gvNC4xNy4xOS83S0E5OC1vRzY0SmM0SnRWdE5Pamk5cDlSNEk9L19fYnVpbGRfc3JjL2lzUGxhaW5PYmplY3QuanOYoXIAD8AakRjAwpihcgMLwMCREcDCmKFnAQEcIJDAwpmhZAQAHcCUHRseFMDCmaFssG9iamVjdEN0b3JTdHJpbmeSHSjAwMAbkNlNV25wbS9sb2Rhc2gvNC4xNy4xOS83S0E5OC1vRzY0SmM0SnRWdE5Pamk5cDlSNEk9L19fYnVpbGRfc3JjL2lzUGxhaW5PYmplY3QuanOYoXIAEMAekRzAwpihZwMNH8CRH8DCmKFyAAzAwJEUwMKZoWQBAyHAnCIjJCUmJyghDBgUHMDCmaFsrWlzUGxhaW5PYmplY3SSISvAwMDAkNlNV25wbS9sb2Rhc2gvNC4xNy4xOS83S0E5OC1vRzY0SmM0SnRWdE5Pamk5cDlSNEk9L19fYnVpbGRfc3JjL2lzUGxhaW5PYmplY3QuanOYoXIJDcAikSDAwpihchEMwCORB8DCmKFyCwrAJJEBwMKYoXILCcAlkQzAwpihcikMwCaRBMDCmKFyRQ/AJ5EYwMKYoXJwDMAokRTAwpihcg8QwMCRHMDCmKFnAQMqwJDAwpihZwkLK8CRK8DCmKFyAA3AwJEgwMI=
+====catalogjs annotation end====*/

@@ -1,0 +1,7 @@
+import { default as baseForOwn } from "./77.js";
+import { default as createBaseEach } from "./81.js";
+var baseEach = createBaseEach(baseForOwn);
+export { baseEach as default };
+/*====catalogjs annotation start====
+k5KVwqcuLzc3LmpzA8LAlcKnLi84MS5qcwbCwIGnZGVmYXVsdJWhbKhiYXNlRWFjaA/AwNwAEZehbwAAA8CRCcCZoWQJAALAkQLAwpmhaapiYXNlRm9yT3dukgINwACnZGVmYXVsdMDAwJihcgsKwMCRAcDCnKFpABIBBpDAwgDCwMCZoWQJAAXAkQXAwpmhaa5jcmVhdGVCYXNlRWFjaJIFDMABp2RlZmF1bHTAwMCYoXILDsDAkQTAwpyhaQESBAeQwMIBwsDAl6FvAQAIDpDAmKFnAAEJwJDAwpmhZAQACsCTCggLwMKZoWyoYmFzZUVhY2iSChDAwMAIkNlJV25wbS9sb2Rhc2gvNC4xNy4xOS83S0E5OC1vRzY0SmM0SnRWdE5Pamk5cDlSNEk9L19fYnVpbGRfc3JjL19iYXNlRWFjaC5qc5ihcgAIwAuRCcDCmKFnAwEMwJIMDcDCmKFyAA7ADZEEwMKYoXIBCsDAkQHAwpihZwEDD8CQwMKYoWcJCxDAkRDAwpihcgAIwMCRCcDC
+====catalogjs annotation end====*/
