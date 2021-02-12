@@ -1,0 +1,10 @@
+import { default as baseFlatten } from "./dist/85.js";
+import { default as map } from "./map.js";
+var INFINITY = 1 / 0;
+function flatMapDeep(collection, iteratee) {
+  return baseFlatten(map(collection, iteratee), INFINITY);
+}
+export { flatMapDeep as default };
+/*====catalogjs annotation start====
+k5KVwqwuL2Rpc3QvODUuanMDwsCVwqguL21hcC5qcwbCwIGnZGVmYXVsdJWhbKtmbGF0TWFwRGVlcBHAwNwAE5ehbwAAA8CQwJmhZAkAAsCRAsDCmaFpq2Jhc2VGbGF0dGVukgINwACnZGVmYXVsdMDAwJihcgsLwMCRAcDCnKFpABcBBpDAwgDCwMCZoWQJAAXAkQXAwpmhaaNtYXCSBQ7AAadkZWZhdWx0wMDAmKFyCwPAwJEEwMKcoWkBEwQHkMDCAcLAwJehbwEACBCQwJihZwABCQuQwMKZoWQECArAkgoIwMKZoWyoSU5GSU5JVFmSCg/AwMAIkNlLV25wbS9sb2Rhc2gvNC4xNy4xOS83S0E5OC1vRzY0SmM0SnRWdE5Pamk5cDlSNEk9L19fYnVpbGRfc3JjL2ZsYXRNYXBEZWVwLmpzmKFyAAjAwJEJwMKZoWQBBAzAlQ0ODwwJwMKZoWyrZmxhdE1hcERlZXCSDBLAwMDAkNlLV25wbS9sb2Rhc2gvNC4xNy4xOS83S0E5OC1vRzY0SmM0SnRWdE5Pamk5cDlSNEk9L19fYnVpbGRfc3JjL2ZsYXRNYXBEZWVwLmpzmKFyCQvADZELwMKYoXIiC8AOkQHAwpihcgEDwA+RBMDCmKFyGAjAwJEJwMKYoWcBAxHAkMDCmKFnCQsSwJESwMKYoXIAC8DAkQvAwg==
+====catalogjs annotation end====*/

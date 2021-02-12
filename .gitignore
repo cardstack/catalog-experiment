@@ -5,6 +5,7 @@
 /packages/builder-worker/assets
 /packages/builder-node/test/testing
 /working
+/test-working
 
 /packages/*/node_modules
 /packages/*/dist
@@ -34,4 +35,4 @@
 /packages/shared/**/*.js.map
 
 !webpack.config.js
-!/bundles/**/dist
+!/cdn/**/dist

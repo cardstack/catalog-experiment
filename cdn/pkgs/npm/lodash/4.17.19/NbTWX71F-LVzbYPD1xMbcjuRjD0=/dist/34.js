@@ -1,0 +1,7 @@
+import { default as baseSetData } from "./35.js";
+import { default as shortOut } from "./118.js";
+var setData = shortOut(baseSetData);
+export { setData as default };
+/*====catalogjs annotation start====
+k5KVwqcuLzM1LmpzA8LAlcKoLi8xMTguanMGwsCBp2RlZmF1bHSVoWync2V0RGF0YQ/AwNwAEZehbwAAA8CRCcCZoWQJAALAkQLAwpmhaatiYXNlU2V0RGF0YZICDcAAp2RlZmF1bHTAwMCYoXILC8DAkQHAwpyhaQASAQaQwMIAwsDAmaFkCQAFwJEFwMKZoWmoc2hvcnRPdXSSBQzAAadkZWZhdWx0wMDAmKFyCwjAwJEEwMKcoWkBEwQHkMDCAcLAwJehbwEACA6QwJihZwABCcCQwMKZoWQEAArAkwoIC8DCmaFsp3NldERhdGGSChDAwMAIkNlIV25wbS9sb2Rhc2gvNC4xNy4xOS83S0E5OC1vRzY0SmM0SnRWdE5Pamk5cDlSNEk9L19fYnVpbGRfc3JjL19zZXREYXRhLmpzmKFyAAfAC5EJwMKYoWcDAQzAkgwNwMKYoXIACMANkQTAwpihcgELwMCRAcDCmKFnAQMPwJDAwpihZwkLEMCREMDCmKFyAAfAwJEJwMI=
+====catalogjs annotation end====*/

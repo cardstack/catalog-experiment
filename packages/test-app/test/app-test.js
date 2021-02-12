@@ -36,4 +36,15 @@ module("application test bed", function (hooks) {
     let response = await fetch("/images/bike.jpg");
     assert.ok(response.ok);
   });
+
+  test("@babel/core and lodash bundles evaluate", async function (assert) {
+    await renderApp();
+    let [importsEl] = document.getElementsByClassName("named-imports");
+    let [exportsEl] = document.getElementsByClassName("named-exports");
+    assert.equal(importsEl.textContent, `Named imports: bar, bloop`);
+    assert.equal(
+      exportsEl.textContent,
+      `Named exports: vanGogh, mango, cutestPuppies`
+    );
+  });
 });

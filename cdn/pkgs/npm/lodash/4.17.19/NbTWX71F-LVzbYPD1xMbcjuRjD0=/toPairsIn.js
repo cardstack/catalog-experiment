@@ -1,0 +1,7 @@
+import { default as createToPairs } from "./dist/44.js";
+import { default as keysIn } from "./keysIn.js";
+var toPairsIn = createToPairs(keysIn);
+export { toPairsIn as default };
+/*====catalogjs annotation start====
+k5KVwqwuL2Rpc3QvNDQuanMDwsCVwqsuL2tleXNJbi5qcwbCwIGnZGVmYXVsdJWhbKl0b1BhaXJzSW4PwMDcABGXoW8AAAPAkQnAmaFkCQACwJECwMKZoWmtY3JlYXRlVG9QYWlyc5ICDMAAp2RlZmF1bHTAwMCYoXILDcDAkQHAwpyhaQAXAQaQwMIAwsDAmaFkCQAFwJEFwMKZoWmma2V5c0lukgUNwAGnZGVmYXVsdMDAwJihcgsGwMCRBMDCnKFpARYEB5DAwgHCwMCXoW8BAAgOkMCYoWcAAQnAkMDCmaFkBAAKwJMKCAvAwpmhbKl0b1BhaXJzSW6SChDAwMAIkNlJV25wbS9sb2Rhc2gvNC4xNy4xOS83S0E5OC1vRzY0SmM0SnRWdE5Pamk5cDlSNEk9L19fYnVpbGRfc3JjL3RvUGFpcnNJbi5qc5ihcgAJwAuRCcDCmKFnAwEMwJIMDcDCmKFyAA3ADZEBwMKYoXIBBsDAkQTAwpihZwEDD8CQwMKYoWcJCxDAkRDAwpihcgAJwMCRCcDC
+====catalogjs annotation end====*/

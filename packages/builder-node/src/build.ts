@@ -19,7 +19,7 @@ Logger.setLogLevel("info");
 let outputDir = join(process.cwd(), "dist");
 let projectRoots: [URL, URL][] = [];
 
-let { project: rawProjects, overlay } = yargs
+let { project: rawProjects, overlay, cdn: cdnPath } = yargs
   .usage(
     "Usage: $0 --project=<filePath_1>,<outputURL_1> ... --project=<filePath_N>,<outputURL_N>"
   )
@@ -29,6 +29,12 @@ let { project: rawProjects, overlay } = yargs
       type: "string",
       description:
         "the project to include as a comma separated string of file path (where the input lives on disk) and output URL (where other projects can find this project). Use the output URL of http://build-output to write to the dist/ folder.",
+    },
+    cdn: {
+      alias: "c",
+      type: "string",
+      description:
+        "a mock CDN which is a local path that contains catalogjs built packages that would otherwise be found on the catalogjs CDN",
     },
     overlay: {
       alias: "o",
@@ -67,6 +73,11 @@ let fs = new FileSystem();
 
 async function prepare() {
   let count = 0;
+  if (cdnPath) {
+    let driver = new NodeFileSystemDriver(resolve(cdnPath));
+    await fs.mount(new URL(`https://local-disk`), driver);
+  }
+
   for (let project of projects) {
     let [path, outputHref] = project.split(",");
     if (!path || !outputHref) {

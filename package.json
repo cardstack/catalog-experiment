@@ -41,8 +41,10 @@
     "test:file-daemon-client": "cd packages/file-daemon-client && yarn test",
     "test:builder-worker": "cd packages/builder-worker && yarn test",
     "test:builder-node": "cd packages/builder-worker && yarn webpack && yarn qunit assets/node-test.js",
-    "test:test-app": "node ./packages/builder-node/bin/build.js --project=packages/test-app,http://build-output --project=packages/test-lib,http://localhost:4200/test-lib/ --overlay && testem ci",
-    "test:test-lib": "node ./packages/builder-node/bin/build.js --project=packages/test-lib,http://build-output && testem ci",
+    "acceptance-test": "yarn acceptance-test:init && yarn acceptance-test:bundle && yarn acceptance-test:run",
+    "acceptance-test:init": "rm -rf ./test-working && mkdir ./test-working",
+    "acceptance-test:bundle": "cd ./test-working && node ../packages/builder-node/bin/install.js --project=.. @babel/core",
+    "acceptance-test:run": "cd ./test-working && node ../packages/builder-node/bin/build.js --project=../packages/test-app,http://build-output --project=../packages/test-lib,http://localhost:4200/test-lib/ --cdn ./working/cdn --overlay && testem ci -f ../testem.json -p 7358",
     "builder": "cd packages/builder-worker && yarn start",
     "serve": "cd packages/test-app && yarn start",
     "ui": "cd packages/ui && yarn start"

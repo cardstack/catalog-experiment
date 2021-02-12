@@ -1,0 +1,7 @@
+import { default as baseLt } from "./dist/166.js";
+import { default as createRelationalOperation } from "./dist/25.js";
+var lt = createRelationalOperation(baseLt);
+export { lt as default };
+/*====catalogjs annotation start====
+k5KVwq0uL2Rpc3QvMTY2LmpzA8LAlcKsLi9kaXN0LzI1LmpzBsLAgadkZWZhdWx0laFsomx0D8DA3AARl6FvAAADwJEJwJmhZAkAAsCRAsDCmaFppmJhc2VMdJICDcAAp2RlZmF1bHTAwMCYoXILBsDAkQHAwpyhaQAYAQaQwMIAwsDAmaFkCQAFwJEFwMKZoWm5Y3JlYXRlUmVsYXRpb25hbE9wZXJhdGlvbpIFDMABp2RlZmF1bHTAwMCYoXILGcDAkQTAwpyhaQEXBAeQwMIBwsDAl6FvAQAIDpDAmKFnAAEJwJDAwpmhZAQACsCTCggLwMKZoWyibHSSChDAwMAIkNlCV25wbS9sb2Rhc2gvNC4xNy4xOS83S0E5OC1vRzY0SmM0SnRWdE5Pamk5cDlSNEk9L19fYnVpbGRfc3JjL2x0LmpzmKFyAALAC5EJwMKYoWcDAQzAkgwNwMKYoXIAGcANkQTAwpihcgEGwMCRAcDCmKFnAQMPwJDAwpihZwkLEMCREMDCmKFyAALAwJEJwMI=
+====catalogjs annotation end====*/

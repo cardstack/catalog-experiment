@@ -1,0 +1,7 @@
+import { default as createFind } from "./dist/3.js";
+import { default as findLastIndex } from "./findLastIndex.js";
+var findLast = createFind(findLastIndex);
+export { findLast as default };
+/*====catalogjs annotation start====
+k5KVwqsuL2Rpc3QvMy5qcwPCwJXCsi4vZmluZExhc3RJbmRleC5qcwbCwIGnZGVmYXVsdJWhbKhmaW5kTGFzdA/AwNwAEZehbwAAA8CRCcCZoWQJAALAkQLAwpmhaapjcmVhdGVGaW5kkgIMwACnZGVmYXVsdMDAwJihcgsKwMCRAcDCnKFpABYBBpDAwgDCwMCZoWQJAAXAkQXAwpmhaa1maW5kTGFzdEluZGV4kgUNwAGnZGVmYXVsdMDAwJihcgsNwMCRBMDCnKFpAR0EB5DAwgHCwMCXoW8BAAgOkMCYoWcAAQnAkMDCmaFkBAAKwJMKCAvAwpmhbKhmaW5kTGFzdJIKEMDAwAiQ2UhXbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvZmluZExhc3QuanOYoXIACMALkQnAwpihZwMBDMCSDA3AwpihcgAKwA2RAcDCmKFyAQ3AwJEEwMKYoWcBAw/AkMDCmKFnCQsQwJEQwMKYoXIACMDAkQnAwg==
+====catalogjs annotation end====*/

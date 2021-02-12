@@ -1,0 +1,7 @@
+import { default as arrayEvery } from "./dist/163.js";
+import { default as createOver } from "./dist/5.js";
+var overEvery = createOver(arrayEvery);
+export { overEvery as default };
+/*====catalogjs annotation start====
+k5KVwq0uL2Rpc3QvMTYzLmpzA8LAlcKrLi9kaXN0LzUuanMGwsCBp2RlZmF1bHSVoWypb3ZlckV2ZXJ5D8DA3AARl6FvAAADwJEJwJmhZAkAAsCRAsDCmaFpqmFycmF5RXZlcnmSAg3AAKdkZWZhdWx0wMDAmKFyCwrAwJEBwMKcoWkAGAEGkMDCAMLAwJmhZAkABcCRBcDCmaFpqmNyZWF0ZU92ZXKSBQzAAadkZWZhdWx0wMDAmKFyCwrAwJEEwMKcoWkBFgQHkMDCAcLAwJehbwEACA6QwJihZwABCcCQwMKZoWQEAArAkwoIC8DCmaFsqW92ZXJFdmVyeZIKEMDAwAiQ2UlXbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvb3ZlckV2ZXJ5LmpzmKFyAAnAC5EJwMKYoWcDAQzAkgwNwMKYoXIACsANkQTAwpihcgEKwMCRAcDCmKFnAQMPwJDAwpihZwkLEMCREMDCmKFyAAnAwJEJwMI=
+====catalogjs annotation end====*/

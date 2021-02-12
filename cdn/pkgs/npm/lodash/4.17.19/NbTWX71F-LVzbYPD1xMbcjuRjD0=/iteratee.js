@@ -1,0 +1,10 @@
+import { default as baseClone } from "./dist/40.js";
+import { default as baseIteratee } from "./dist/6.js";
+var CLONE_DEEP_FLAG = 1;
+function iteratee(func) {
+  return baseIteratee(typeof func == 'function' ? func : baseClone(func, CLONE_DEEP_FLAG));
+}
+export { iteratee as default };
+/*====catalogjs annotation start====
+k5KVwqwuL2Rpc3QvNDAuanMDwsCVwqsuL2Rpc3QvNi5qcwbCwIGnZGVmYXVsdJWhbKhpdGVyYXRlZRHAwNwAE5ehbwAAA8CQwJmhZAkAAsCRAsDCmaFpqWJhc2VDbG9uZZICDsAAp2RlZmF1bHTAwMCYoXILCcDAkQHAwpyhaQAXAQaQwMIAwsDAmaFkCQAFwJEFwMKZoWmsYmFzZUl0ZXJhdGVlkgUNwAGnZGVmYXVsdMDAwJihcgsMwMCRBMDCnKFpARYEB5DAwgHCwMCXoW8BAAgQkMCYoWcAAQkLkMDCmaFkBAQKwJIKCMDCmaFsr0NMT05FX0RFRVBfRkxBR5IKD8DAwAiQ2UhXbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvaXRlcmF0ZWUuanOYoXIAD8DAkQnAwpmhZAEFDMCVDQ4PDAnAwpmhbKhpdGVyYXRlZZIMEsDAwMCQ2UhXbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvaXRlcmF0ZWUuanOYoXIJCMANkQvAwpihchIMwA6RBMDCmKFyJAnAD5EBwMKYoXIHD8DAkQnAwpihZwEDEcCQwMKYoWcJCxLAkRLAwpihcgAIwMCRC8DC
+====catalogjs annotation end====*/

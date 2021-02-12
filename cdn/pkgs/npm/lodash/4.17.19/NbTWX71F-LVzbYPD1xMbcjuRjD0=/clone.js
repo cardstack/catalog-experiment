@@ -1,0 +1,9 @@
+import { default as baseClone } from "./dist/40.js";
+var CLONE_SYMBOLS_FLAG = 4;
+function clone(value) {
+  return baseClone(value, CLONE_SYMBOLS_FLAG);
+}
+export { clone as default };
+/*====catalogjs annotation start====
+k5GVwqwuL2Rpc3QvNDAuanMDwsCBp2RlZmF1bHSVoWylY2xvbmUNwMCfl6FvAAADwJDAmaFkCQACwJECwMKZoWmpYmFzZUNsb25lkgIKwACnZGVmYXVsdMDAwJihcgsJwMCRAcDCnKFpABcBBJDAwgDCwMCXoW8BAAUMkMCYoWcAAQYIkMDCmaFkBAQHwJIHBcDCmaFsskNMT05FX1NZTUJPTFNfRkxBR5IHC8DAwAWQ2UVXbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvY2xvbmUuanOYoXIAEsDAkQbAwpmhZAEECcCUCgsJBsDCmaFspWNsb25lkgkOwMDAwJDZRVducG0vbG9kYXNoLzQuMTcuMTkvN0tBOTgtb0c2NEpjNEp0VnROT2ppOXA5UjRJPS9fX2J1aWxkX3NyYy9jbG9uZS5qc5ihcgkFwAqRCMDCmKFyEwnAC5EBwMKYoXIIEsDAkQbAwpihZwEDDcCQwMKYoWcJCw7AkQ7AwpihcgAFwMCRCMDC
+====catalogjs annotation end====*/
