@@ -7,14 +7,14 @@ import {
   BundleAssignmentsNode,
   BundleNode,
   BundleAssignment,
-  TestingOptions,
+  BundleOptions,
 } from "./bundle";
 import { Resolver } from "../resolver";
 import { LockEntries } from "./lock-file";
 import { mapValues } from "lodash";
 
 export interface Options {
-  testing?: TestingOptions;
+  bundle?: BundleOptions;
   seededResolutions?: { [specifier: string]: string };
 }
 
@@ -62,7 +62,7 @@ export class MakeProjectNode implements BuilderNode<LockEntries> {
         this.projectOutputRoot,
         this.resolver,
         seededResolutions,
-        this.optsWithDefaults.testing
+        this.optsWithDefaults.bundle
       ),
     };
   }
@@ -133,7 +133,7 @@ class FinishProjectNode implements BuilderNode<LockEntries> {
             this.resolver,
             this.lockEntries,
             dependencies,
-            this.options.testing
+            this.options.bundle
           ),
           bundleURL
         )

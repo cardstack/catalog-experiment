@@ -29,12 +29,14 @@ import {
   LocalExportDescription,
   ModuleDescription,
 } from "../src/describe-file";
+import { FileDescriptor } from "../src/filesystem-drivers/filesystem-driver";
+import { extractDescriptionFromSource } from "../src/description-encoder";
 
 Logger.setLogLevel("debug");
 Logger.echoInConsole(true);
 
 QUnit.module("module builder", function (origHooks) {
-  let { test } = installFileAssertions(origHooks);
+  let { test, skip, hooks } = installFileAssertions(origHooks);
   let builder: Builder<unknown> | undefined;
   let rebuilder: Rebuilder<unknown> | undefined;
 
@@ -68,6 +70,10 @@ QUnit.module("module builder", function (origHooks) {
   origHooks.beforeEach(async () => {
     builder = undefined;
     rebuilder = undefined;
+  });
+
+  hooks.beforeEach(async (assert) => {
+    assert.resetFilesystem();
   });
 
   origHooks.afterEach(async () => {
@@ -483,12 +489,14 @@ QUnit.module("module builder", function (origHooks) {
 
       assert.codeEqual(
         await bundleCode(assert.fs, undefined, {
-          testing: {
-            origin,
-            exports: {
-              a: {
-                file: "a.js",
-                name: "a",
+          bundle: {
+            testing: {
+              origin,
+              exports: {
+                a: {
+                  file: "a.js",
+                  name: "a",
+                },
               },
             },
           },
@@ -521,16 +529,18 @@ QUnit.module("module builder", function (origHooks) {
 
       assert.codeEqual(
         await bundleCode(assert.fs, undefined, {
-          testing: {
-            origin,
-            exports: {
-              a: {
-                file: "lib.js",
-                name: "a",
-              },
-              b: {
-                file: "lib.js",
-                name: "b",
+          bundle: {
+            testing: {
+              origin,
+              exports: {
+                a: {
+                  file: "lib.js",
+                  name: "a",
+                },
+                b: {
+                  file: "lib.js",
+                  name: "b",
+                },
               },
             },
           },
@@ -562,16 +572,18 @@ QUnit.module("module builder", function (origHooks) {
 
       assert.codeEqual(
         await bundleCode(assert.fs, undefined, {
-          testing: {
-            origin,
-            exports: {
-              a: {
-                file: "lib.js",
-                name: "a",
-              },
-              b: {
-                file: "lib.js",
-                name: "b",
+          bundle: {
+            testing: {
+              origin,
+              exports: {
+                a: {
+                  file: "lib.js",
+                  name: "a",
+                },
+                b: {
+                  file: "lib.js",
+                  name: "b",
+                },
               },
             },
           },
@@ -601,12 +613,14 @@ QUnit.module("module builder", function (origHooks) {
 
       assert.codeEqual(
         await bundleCode(assert.fs, undefined, {
-          testing: {
-            origin,
-            exports: {
-              a: {
-                file: "a.js",
-                name: "a",
+          bundle: {
+            testing: {
+              origin,
+              exports: {
+                a: {
+                  file: "a.js",
+                  name: "a",
+                },
               },
             },
           },
@@ -636,12 +650,14 @@ QUnit.module("module builder", function (origHooks) {
 
       assert.codeEqual(
         await bundleCode(assert.fs, undefined, {
-          testing: {
-            origin,
-            exports: {
-              a: {
-                file: "a.js",
-                name: "a",
+          bundle: {
+            testing: {
+              origin,
+              exports: {
+                a: {
+                  file: "a.js",
+                  name: "a",
+                },
               },
             },
           },
@@ -670,12 +686,14 @@ QUnit.module("module builder", function (origHooks) {
 
       assert.codeEqual(
         await bundleCode(assert.fs, undefined, {
-          testing: {
-            origin,
-            exports: {
-              a: {
-                file: "a.js",
-                name: "a",
+          bundle: {
+            testing: {
+              origin,
+              exports: {
+                a: {
+                  file: "a.js",
+                  name: "a",
+                },
               },
             },
           },
@@ -708,12 +726,14 @@ QUnit.module("module builder", function (origHooks) {
 
       assert.codeEqual(
         await bundleCode(assert.fs, undefined, {
-          testing: {
-            origin,
-            exports: {
-              c: {
-                file: "index.js",
-                name: "c",
+          bundle: {
+            testing: {
+              origin,
+              exports: {
+                c: {
+                  file: "index.js",
+                  name: "c",
+                },
               },
             },
           },
@@ -7684,7 +7704,7 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file("output/index.html").exists();
       await assert
         .file("output/index.html")
-        .matches(/src=\"\.\/dist\/0.js\"/, "file contents are correct");
+        .matches(/src=\"\.\/dist\/0\.js\"/, "file contents are correct");
     });
 
     test("can process multiple app entrypoints", async function (assert) {
@@ -7700,11 +7720,11 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file("output/index.html").exists();
       await assert
         .file("output/index.html")
-        .matches(/src=\"\.\/dist\/0.js\"/, "file contents are correct");
+        .matches(/src=\"\.\/dist\/0\.js\"/, "file contents are correct");
       await assert.file("output/test/index.html").exists();
       await assert
         .file("output/test/index.html")
-        .matches(/src=\"\.\.\/dist\/1.js\"/, "file contents are correct");
+        .matches(/src=\"\.\.\/dist\/1\.js\"/, "file contents are correct");
     });
 
     test("an HTML entrypoint can consume another HTML entrypoint", async function (assert) {
@@ -7727,11 +7747,11 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file("output/index.html").exists();
       await assert
         .file("output/index.html")
-        .matches(/src=\"\.\/dist\/0.js\"/, "file contents are correct");
+        .matches(/src=\"\.\/dist\/0\.js\"/, "file contents are correct");
       await assert.file("output/test/index.html").exists();
       await assert
         .file("output/test/index.html")
-        .matches(/src=\"\.\.\/dist\/1.js\"/, "file contents are correct");
+        .matches(/src=\"\.\.\/dist\/1\.js\"/, "file contents are correct");
       await assert.file("output/dist/1.js").matches(/import "\.\/0\.js";/);
     });
 
@@ -7804,7 +7824,7 @@ QUnit.module("module builder", function (origHooks) {
         .matches(/src="\.\/index\.js"/, "file contents are correct");
       await assert
         .file("/index.html")
-        .doesNotMatch(/src=\"\/dist\/0.js\"/, "file contents are correct");
+        .doesNotMatch(/src=\"\/dist\/0\.js\"/, "file contents are correct");
       await assert
         .file("/index.js")
         .matches(/hello world/, "file contents are correct");
@@ -7833,7 +7853,7 @@ QUnit.module("module builder", function (origHooks) {
       await builder.build();
       await assert
         .file("output/index.html")
-        .matches(/src=\"\.\/dist\/0.js\"/, "file contents are correct");
+        .matches(/src=\"\.\/dist\/0\.js\"/, "file contents are correct");
     });
 
     test("can process scripts that originate from the same origin", async function (assert) {
@@ -7846,7 +7866,7 @@ QUnit.module("module builder", function (origHooks) {
       await builder.build();
       await assert
         .file("output/index.html")
-        .matches(/src=\"\.\/dist\/0.js\"/, "file contents are correct");
+        .matches(/src=\"\.\/dist\/0\.js\"/, "file contents are correct");
     });
 
     test("can process scripts that live at the root of the DOM", async function (assert) {
@@ -7861,7 +7881,7 @@ QUnit.module("module builder", function (origHooks) {
       await builder.build();
       await assert
         .file("output/index.html")
-        .matches(/src=\"\.\/dist\/0.js\"/, "file contents are correct");
+        .matches(/src=\"\.\/dist\/0\.js\"/, "file contents are correct");
     });
 
     test("modules within the app get bundled together", async function (assert) {
@@ -9512,7 +9532,7 @@ QUnit.module("module builder", function (origHooks) {
       await assert.file(`${outputOrigin}/output/index.html`).exists();
       await assert
         .file(`${outputOrigin}/output/index.html`)
-        .matches(/src=\"\.\/dist\/0.js\"/, "file contents are correct");
+        .matches(/src=\"\.\/dist\/0\.js\"/, "file contents are correct");
       await assert
         .file(`${outputOrigin}/output/dist/0.js`)
         .matches(/Hello world/);
@@ -9562,5 +9582,161 @@ QUnit.module("module builder", function (origHooks) {
         );
       }
     });
+  });
+
+  QUnit.module("assigners", function () {
+    test("it can build an application using a 'default' bundles assigner", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "html": ["index.html"] }`,
+        "index.html": `<html><script type="module" src="./index.js"></script></html>`,
+        "index.js": `
+          import { helloWorld } from "./hello.js";
+          import { goodbye } from "./goodbye.js";
+          document.body.append(helloWorld());
+          document.body.append(goodbye());
+        `,
+        "hello.js": `
+          export function helloWorld() {
+            let el = document.createElement("div");
+            el.textContent = "Hello world";
+            return el;
+          }
+        `,
+        "goodbye.js": `
+          export function goodbye() {
+            let el = document.createElement("div");
+            el.textContent = "Goodbye";
+            return el;
+          }
+        `,
+      });
+      builder = makeBuilder(assert.fs);
+      await builder.build();
+      await assert.file("output/index.html").exists();
+      await assert.file("output/dist/0.js").exists();
+      await assert.file("output/index.js").doesNotExist();
+      await assert.file("output/dist/index.js").doesNotExist();
+      await assert.file("output/hello.js").doesNotExist();
+      await assert.file("output/dist/hello.js").doesNotExist();
+      await assert.file("output/goodbye.js").doesNotExist();
+      await assert.file("output/dist/goodbye.js").doesNotExist();
+      await assert
+        .file("output/index.html")
+        .matches(/src=\"\.\/dist\/0\.js\"/, "file contents are correct");
+
+      let fd: FileDescriptor | undefined;
+      try {
+        fd = await assert.fs.openFile(url("output/dist/0.js"));
+      } finally {
+        await fd?.close();
+      }
+      let { source } = extractDescriptionFromSource(await fd.readText());
+      assert.codeEqual(
+        source,
+        `
+        function helloWorld() {
+          let el = document.createElement("div");
+          el.textContent = "Hello world";
+          return el;
+        }
+        function goodbye() {
+          let el = document.createElement("div");
+          el.textContent = "Goodbye";
+          return el;
+        }
+        document.body.append(helloWorld());
+        document.body.append(goodbye());
+        export {};
+        `
+      );
+    });
+
+    test("it can build an application using a 'maximum' bundles assigner", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "html": ["index.html"] }`,
+        "index.html": `<html><script type="module" src="./index.js"></script></html>`,
+        "index.js": `
+          import { helloWorld } from "./hello.js";
+          import { goodbye } from "./goodbye.js";
+          document.body.append(helloWorld());
+          document.body.append(goodbye());
+        `,
+        "hello.js": `
+          export function helloWorld() {
+            let el = document.createElement("div");
+            el.textContent = "Hello world";
+            return el;
+          }
+        `,
+        "goodbye.js": `
+          export function goodbye() {
+            let el = document.createElement("div");
+            el.textContent = "Goodbye";
+            return el;
+          }
+        `,
+      });
+      builder = makeBuilder(assert.fs, undefined, {
+        bundle: { assigner: "maximum" },
+      });
+      await builder.build();
+      await assert.file("output/index.html").exists();
+      await assert.file("output/dist/0.js").doesNotExist();
+      await assert.file("output/index.js").exists();
+      await assert.file("output/hello.js").exists();
+      await assert.file("output/goodbye.js").exists();
+      await assert
+        .file("output/index.html")
+        .matches(/src=\"\.\/index\.js\"/, "file contents are correct");
+
+      {
+        let fd = await assert.fs.openFile(url("output/index.js"));
+        let { source } = extractDescriptionFromSource(await fd.readText());
+        assert.codeEqual(
+          source,
+          `
+          import { helloWorld } from "./hello.js";
+          import { goodbye } from "./goodbye.js";
+          document.body.append(helloWorld());
+          document.body.append(goodbye());
+          `
+        );
+      }
+
+      {
+        let fd = await assert.fs.openFile(url("output/hello.js"));
+        let { source } = extractDescriptionFromSource(await fd.readText());
+        assert.codeEqual(
+          source,
+          `
+          function helloWorld() {
+            let el = document.createElement("div");
+            el.textContent = "Hello world";
+            return el;
+          }
+          export { helloWorld };
+          `
+        );
+      }
+
+      {
+        let fd = await assert.fs.openFile(url("output/goodbye.js"));
+        let { source } = extractDescriptionFromSource(await fd.readText());
+        assert.codeEqual(
+          source,
+          `
+          function goodbye() {
+            let el = document.createElement("div");
+            el.textContent = "Goodbye";
+            return el;
+          }
+          export { goodbye };
+          `
+        );
+      }
+    });
+
+    skip("it can build library using a 'minimum' bundles assigner", async function () {});
+    skip("a minimum bundle assigner falls back to a default bundle assigner when dynamic imports exist in project", async function () {});
   });
 });
