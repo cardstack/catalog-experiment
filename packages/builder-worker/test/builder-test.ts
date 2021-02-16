@@ -9709,12 +9709,11 @@ QUnit.module("module builder", function (origHooks) {
         assert.codeEqual(
           source,
           `
-          function helloWorld() {
+          export function helloWorld() {
             let el = document.createElement("div");
             el.textContent = "Hello world";
             return el;
           }
-          export { helloWorld };
           `
         );
       }
@@ -9725,12 +9724,11 @@ QUnit.module("module builder", function (origHooks) {
         assert.codeEqual(
           source,
           `
-          function goodbye() {
+          export function goodbye() {
             let el = document.createElement("div");
             el.textContent = "Goodbye";
             return el;
           }
-          export { goodbye };
           `
         );
       }

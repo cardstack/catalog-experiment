@@ -74,7 +74,9 @@ export class BundleAssignmentsNode implements BuilderNode {
     private seededResolutions: LockEntries,
     private opts?: BundleOptions
   ) {
-    this.cacheKey = `bundle-assignments:input=${projectInput.href},output=${projectOutput.href}`;
+    this.cacheKey = `bundle-assignments:input=${projectInput.href},output=${
+      projectOutput.href
+    },assigner=${opts?.assigner ?? "default"}`;
   }
 
   async deps() {
@@ -146,16 +148,31 @@ export class BundleNode implements BuilderNode {
     private resolver: Resolver,
     private lockEntries: LockEntries,
     private dependencies: Dependencies,
-    private testingOpts?: BundleOptions
+    private opts?: BundleOptions
   ) {
     this.cacheKey = `bundle-node:url=${this.bundle.href},inputRoot=${
       this.inputRoot.href
     },outputRoot=${this.outputRoot.href},dependencies=${JSON.stringify(
       dependencies
-    )}`;
+    )},assigner=${opts?.assigner ?? "default"}`;
   }
 
   async deps() {
+    if (this.opts?.assigner === "maximum") {
+      // there there is a 1:1 relationship between modules and bundles, we can
+      // skip the build tree related to combining modules, and just emit the
+      // code of our bundle's sole module
+      return {
+        optimizedResult: new BundleAssignmentsNode(
+          this.inputRoot,
+          this.outputRoot,
+          this.resolver,
+          this.lockEntries,
+          this.opts
+        ),
+      };
+    }
+
     return {
       result: new CombineModulesNode(
         this.bundle,
@@ -166,18 +183,42 @@ export class BundleNode implements BuilderNode {
           this.outputRoot,
           this.resolver,
           this.lockEntries,
-          this.testingOpts
+          this.opts
         )
       ),
     };
   }
 
   async run({
-    result: { code, desc },
+    result,
+    optimizedResult,
   }: {
-    result: { code: string; desc: ModuleDescription };
+    result?: { code: string; desc: ModuleDescription };
+    optimizedResult?: {
+      assignments: BundleAssignment[];
+    };
   }): Promise<Value<string>> {
-    let value = addDescriptionToSource(desc, code);
+    let value: string;
+    if (result) {
+      value = addDescriptionToSource(result.desc, result.code);
+    } else if (optimizedResult) {
+      let ourAssignments = optimizedResult.assignments.filter(
+        (a) => a.bundleURL.href === this.bundle.href
+      );
+      if (ourAssignments.length !== 1) {
+        throw new Error(
+          `should never get here: the maximum assigner should only ever have one module per bundle for the bundle. The bundle: ${
+            this.bundle.href
+          } contains ${ourAssignments.map((a) => a.module.url.href).join(", ")}`
+        );
+      }
+      let [{ module }] = ourAssignments;
+      value = addDescriptionToSource(module.desc, module.source);
+    } else {
+      throw new Error(
+        `should never get here: there was no BundleNode dep resolution for ${this.cacheKey}`
+      );
+    }
     return { value };
   }
 }

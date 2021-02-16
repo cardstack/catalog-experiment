@@ -40,7 +40,9 @@ export class MakeProjectNode implements BuilderNode<LockEntries> {
     private resolver: Resolver,
     private options?: Partial<Options>
   ) {
-    this.cacheKey = `project:input=${inputRoot.href},output=${projectOutputRoot.href}`;
+    this.cacheKey = `project:input=${inputRoot.href},output=${
+      projectOutputRoot.href
+    },options=${JSON.stringify(options)}`;
     this.optsWithDefaults = {
       ...options,
     };
@@ -103,7 +105,9 @@ class FinishProjectNode implements BuilderNode<LockEntries> {
     private lockEntries: LockEntries = {},
     private options: Options
   ) {
-    this.cacheKey = `finish-project:input=${inputRoot.href},output=${projectOutputRoot.href}`;
+    this.cacheKey = `finish-project:input=${inputRoot.href},output=${
+      projectOutputRoot.href
+    },options=${JSON.stringify(options)}`;
   }
 
   async deps() {
