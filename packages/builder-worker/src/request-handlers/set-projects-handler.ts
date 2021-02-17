@@ -1,23 +1,29 @@
 import { Handler } from "./request-handler";
 import { BuildManager } from "../build-manager";
+import { BundleAssignment } from "../nodes/bundle";
+import { localDiskPkgsHref } from "../resolver";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 
-export function handleSetProjects(buildManager: BuildManager) {
+export function handleConfigure(buildManager: BuildManager) {
   return (async ({ request }) => {
     let requestURL = new URL(request.url);
     if (requestURL.origin !== worker.origin) {
       return;
     }
     if (
-      requestURL.pathname.startsWith("/projects") &&
+      requestURL.pathname.startsWith("/config") &&
       request.method === "POST"
     ) {
-      let projects = await request.json();
+      let { projects, assigner } = await request.json();
       assertProjectLike(projects);
+      assertAssigner(assigner);
       buildManager.setProjects(
         projects.map(([input, output]) => [new URL(input), new URL(output)])
       );
+      buildManager.setOptions({
+        bundle: { assigner, mountedPkgSource: new URL(localDiskPkgsHref) },
+      });
       await buildManager.rebuilder!.build();
       let status = buildManager.rebuilder?.status;
       if (status && status.name === "failed") {
@@ -47,5 +53,18 @@ function assertProjectLike(data: any): asserts data is [string, string][] {
     throw new Error(
       `each project in the projects array must be a string array with 2 items`
     );
+  }
+}
+
+function assertAssigner(
+  data: string
+): asserts data is BundleAssignment["assigner"] {
+  switch (data) {
+    case "default":
+    case "maximum":
+    case "minimum":
+      return;
+    default:
+      throw new Error(`'${data}' is not a valid bundle assigner`);
   }
 }

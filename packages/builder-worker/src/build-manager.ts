@@ -1,3 +1,4 @@
+import { merge } from "lodash";
 import { Rebuilder } from "./builder";
 import { FileSystem } from "./filesystem";
 import { warn } from "./logger";
@@ -24,6 +25,20 @@ export class BuildManager {
       projects,
       this.recipesURL,
       this.options,
+      this.whenIdle
+    );
+  }
+
+  setOptions(options: Partial<Options>) {
+    if (!this._projects) {
+      throw new Error(`must first call setProjects()`);
+    }
+    this.options = merge({}, this.options, options);
+    this._rebuilder = Rebuilder.forProjects(
+      this.fs,
+      this._projects,
+      this.recipesURL,
+      options,
       this.whenIdle
     );
   }

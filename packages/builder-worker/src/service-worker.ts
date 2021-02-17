@@ -15,8 +15,9 @@ import { Handler } from "./request-handlers/request-handler";
 import { HttpFileSystemDriver } from "./filesystem-drivers/http-driver";
 import { BuildManager } from "./build-manager";
 import { handleListing } from "./request-handlers/project-listing-handler";
-import { handleSetProjects } from "./request-handlers/set-projects-handler";
+import { handleConfigure } from "./request-handlers/set-projects-handler";
 import { explainAsDot } from "./builder";
+import { localDiskPkgsHref } from "./resolver";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 const fs = new FileSystem();
@@ -78,7 +79,7 @@ async function activate() {
   buildManager = new BuildManager(
     fs,
     new URL("https://local-disk/recipes/"),
-    undefined,
+    { bundle: { mountedPkgSource: new URL(localDiskPkgsHref) } },
     () => {
       let dot = explainAsDot(buildManager.rebuilder!.explain());
       console.log(dot);
@@ -112,7 +113,7 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
         let stack: Handler[] = [
           handleClientRegister(eventHandler, volume),
           handleListing(fs, buildManager),
-          handleSetProjects(buildManager),
+          handleConfigure(buildManager),
           handleBuilderRestart(buildManager),
           handleLogLevel(),
           handleFile(fs, buildManager),

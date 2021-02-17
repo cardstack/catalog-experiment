@@ -47,6 +47,7 @@ export abstract class AbstractAssigner implements Assigner {
     resolutions: ModuleResolution[],
     entrypoints: Entrypoint[],
     private usesInternalBundleURLs: boolean,
+    private mountedPkgSource: URL,
     htmlJSEntrypointURLs?: URL[]
   ) {
     if (htmlJSEntrypointURLs) {
@@ -71,11 +72,11 @@ export abstract class AbstractAssigner implements Assigner {
   protected abstract doAssignments(leaves: Set<ModuleResolution>): void;
 
   protected inputToOutput(href: string): URL {
-    return new URL(
-      href.replace(
-        makeURLEndInDir(this.projectInput).href,
-        makeURLEndInDir(this.projectOutput).href
-      )
+    return inputToOutput(
+      href,
+      this.mountedPkgSource,
+      this.projectInput,
+      this.projectOutput
     );
   }
 
@@ -140,6 +141,7 @@ export class DefaultAssigner extends AbstractAssigner {
     projectOutput: URL,
     resolutions: ModuleResolution[],
     entrypoints: Entrypoint[],
+    mountedPkgSource: URL,
     htmlJSEntrypointURLs?: URL[]
   ) {
     super(
@@ -149,6 +151,7 @@ export class DefaultAssigner extends AbstractAssigner {
       resolutions,
       entrypoints,
       true,
+      mountedPkgSource,
       htmlJSEntrypointURLs
     );
   }
@@ -396,6 +399,24 @@ export function ensureExposed(exported: string, assignment: BundleAssignment) {
       defaultName(exported, assignment.module)
     );
   }
+}
+export function inputToOutput(
+  href: string,
+  mountedPkgSource: URL,
+  projectInput: URL,
+  projectOutput: URL
+): URL {
+  return new URL(
+    href
+      .replace(
+        makeURLEndInDir(mountedPkgSource).href,
+        makeURLEndInDir(new URL("pkgs/", projectOutput)).href
+      )
+      .replace(
+        makeURLEndInDir(projectInput).href,
+        makeURLEndInDir(projectOutput).href
+      )
+  );
 }
 
 function defaultName(

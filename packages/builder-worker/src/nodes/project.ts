@@ -9,7 +9,7 @@ import {
   BundleAssignment,
   BundleOptions,
 } from "./bundle";
-import { Resolver } from "../resolver";
+import { catalogjsHref, Resolver } from "../resolver";
 import { LockEntries } from "./lock-file";
 import { mapValues } from "lodash";
 
@@ -44,6 +44,12 @@ export class MakeProjectNode implements BuilderNode<LockEntries> {
       projectOutputRoot.href
     },options=${JSON.stringify(options)}`;
     this.optsWithDefaults = {
+      ...{
+        bundle: {
+          assigner: "default",
+          mountedPkgSource: new URL(catalogjsHref),
+        },
+      },
       ...options,
     };
   }

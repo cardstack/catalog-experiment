@@ -11,6 +11,7 @@ export default class ProjectSelectorComponent extends Component {
   defaultOrigin = location.origin;
   @service projects!: ProjectsService;
   @tracked selectedProjects: [string, string][] = [];
+  @tracked selectedStrategy: string = "maximum";
 
   constructor(owner: unknown, args: any) {
     super(owner, args);
@@ -30,7 +31,20 @@ export default class ProjectSelectorComponent extends Component {
   }
 
   startSelectedProject() {
-    this.projects.start.perform(this.selectedProjects);
+    this.projects.start.perform(this.selectedProjects, this.selectedStrategy);
+  }
+
+  @action
+  initStrategy(el: HTMLElement) {
+    let input = el.querySelector(
+      `.assigner .${this.selectedStrategy}-assigner`
+    ) as HTMLInputElement;
+    input.checked = true;
+  }
+
+  @action
+  setStrategy(strategy: string) {
+    this.selectedStrategy = strategy;
   }
 
   @action

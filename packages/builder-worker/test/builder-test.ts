@@ -2930,9 +2930,18 @@ QUnit.module("module builder", function (origHooks) {
         let a = desc.declarations.get("a")!;
         assert.equal(a.declaration.declaredName, "a");
         assert.equal(a.declaration.type, "import");
+        let aSource: RegionPointer;
         if (a.declaration.type === "import") {
           assert.equal(a.declaration.importIndex, 0);
           assert.equal(isNamespaceMarker(a.declaration.importedName), true);
+          assert.equal(desc.imports[0].isDynamic, false);
+          if (!desc.imports[0].isDynamic) {
+            let sources = [
+              ...desc.regions[desc.imports[0].region].dependsOn,
+            ].filter((p) => desc!.regions[p].type === "general");
+            assert.equal(sources.length, 1);
+            aSource = sources[0];
+          }
         }
         let b = desc.declarations.get("b")!;
         assert.equal(b.declaration.declaredName, "b");
@@ -2946,10 +2955,11 @@ QUnit.module("module builder", function (origHooks) {
         keepAll(desc, editor);
         editor.rename("a", "renamedA");
         editor.rename("b", "renamedB");
+        editor.replace(aSource!, `'./replacedA.js'`);
         assert.codeEqual(
           editor.serialize().code,
           `
-          import * as renamedA from './a.js';
+          import * as renamedA from './replacedA.js';
           import * as renamedB from './b.js';
           console.log(renamedA.foo + renamedB.bleep);
           `
@@ -3445,12 +3455,18 @@ QUnit.module("module builder", function (origHooks) {
       );
 
       if (desc) {
+        let reexportSource: RegionPointer;
         assert.equal(desc.declarations.size, 1);
         assert.equal(desc.imports.length, 1);
         let [reexport] = desc.imports;
 
         assert.equal(reexport.isDynamic, false);
         if (!reexport.isDynamic) {
+          let sources = [...desc.regions[reexport.region].dependsOn].filter(
+            (p) => desc!.regions[p].type === "general"
+          );
+          assert.equal(sources.length, 1);
+          reexportSource = sources[0];
           assert.equal(reexport.specifier, "./b.js");
           assert.equal(reexport.isReexport, true);
           assert.equal(desc.regions[reexport.region].type, "import");
@@ -3508,12 +3524,13 @@ QUnit.module("module builder", function (origHooks) {
         keepAll(desc, editor);
         editor.rename("bar", "renamedBar");
         editor.replace(fleepSpecifier!, "/* CODE REGION */");
+        editor.replace(reexportSource!, `'./replacedB.js'`);
         assert.codeEqual(
           editor.serialize().code,
           `
           const renamedBar = 'bar';
           console.log(renamedBar);
-          export { foo, /* CODE REGION */ } from './b.js';
+          export { foo, /* CODE REGION */ } from './replacedB.js';
           `
         );
       }
@@ -4062,7 +4079,13 @@ QUnit.module("module builder", function (origHooks) {
             exportName.exportAllFrom === "./b.js"
         )!;
         assert.equal(barExport.type, "export-all");
+        let sourcePointer: RegionPointer;
         if (barExport.type === "export-all") {
+          let sources = [
+            ...desc.regions[barExport.exportRegion].dependsOn,
+          ].filter((p) => desc!.regions[p].type === "general");
+          assert.equal(sources.length, 1);
+          sourcePointer = sources[0];
           assert.equal(barExport.importIndex, 0);
           assert.ok(
             barExport.exportRegion != null,
@@ -4084,12 +4107,13 @@ QUnit.module("module builder", function (origHooks) {
         let editor = makeEditor(source, desc);
         keepAll(desc, editor);
         editor.rename("bar", "renamedBar");
+        editor.replace(sourcePointer!, `"./replacedB.js"`);
         assert.codeEqual(
           editor.serialize().code,
           `
           const renamedBar = (function() { return 'bar'; });
           console.log(renamedBar);
-          export * from "./b.js";
+          export * from "./replacedB.js";
           `
         );
       }
@@ -4198,11 +4222,17 @@ QUnit.module("module builder", function (origHooks) {
 
       assert.ok(desc, "bundle description exists");
       if (desc) {
+        let cSource: RegionPointer;
         assert.equal(desc.imports.length, 2);
         let [cImport, bImport] = desc.imports;
 
         assert.equal(cImport.isDynamic, false);
         if (!cImport.isDynamic) {
+          let sources = [...desc.regions[cImport.region].dependsOn].filter(
+            (p) => desc!.regions[p].type === "general"
+          );
+          assert.equal(sources.length, 1);
+          cSource = sources[0];
           assert.equal(cImport.specifier, "./c.js");
           assert.equal(cImport.isReexport, false);
           assert.equal(desc.regions[cImport.region].type, "import");
@@ -4227,10 +4257,11 @@ QUnit.module("module builder", function (origHooks) {
         keepAll(desc, editor);
         editor.rename("a", "renamedA");
         editor.rename("b", "renamedB");
+        editor.replace(cSource!, `'./replacedC.js'`);
         assert.codeEqual(
           editor.serialize().code,
           `
-          import './c.js';
+          import './replacedC.js';
           import './b.js';
           const renamedA = 'a';
           console.log(renamedA);
@@ -4331,6 +4362,7 @@ QUnit.module("module builder", function (origHooks) {
       );
 
       if (desc) {
+        let bSource: RegionPointer;
         assert.equal(desc.declarations.size, 3);
         let foo = desc.declarations.get("foo");
         assert.equal(foo?.declaration.declaredName, "foo");
@@ -4352,6 +4384,11 @@ QUnit.module("module builder", function (origHooks) {
 
         assert.equal(defaultImport.isDynamic, false);
         if (!defaultImport.isDynamic) {
+          let sources = [
+            ...desc.regions[defaultImport.region].dependsOn,
+          ].filter((p) => desc!.regions[p].type === "general");
+          assert.equal(sources.length, 1);
+          bSource = sources[0];
           assert.equal(defaultImport.specifier, "./b.js");
           assert.equal(defaultImport.isReexport, false);
           assert.equal(desc.regions[defaultImport.region].type, "import");
@@ -4366,10 +4403,11 @@ QUnit.module("module builder", function (origHooks) {
         editor.rename("foo", "renamedFoo");
         editor.rename("fleep", "renamedFleep");
         editor.rename("bar", "renamedBar");
+        editor.replace(bSource!, `'./replacedB.js'`);
         assert.codeEqual(
           editor.serialize().code,
           `
-          import { foo as renamedFoo, fleep as renamedFleep } from './b.js';
+          import { foo as renamedFoo, fleep as renamedFleep } from './replacedB.js';
           function renamedBar() { console.log(renamedFoo() + renamedFleep()); }
           console.log(renamedBar());
           `

@@ -639,11 +639,18 @@ export function describeFile(ast: File, filename: string): FileDescription {
       // description that imports from the same module. Different import
       // descriptions can have different regions even if they refer to the same
       // module.
+      let sourceRegion = builder.createCodeRegion(
+        path.get("source") as NodePath
+      );
       let importDesc = {
         specifier: path.node.source.value,
         isDynamic: false,
         isReexport: false,
-        region: builder.createCodeRegion(path as NodePath, desc.imports.length),
+        region: builder.createCodeRegion(
+          path as NodePath,
+          desc.imports.length,
+          new Set([sourceRegion])
+        ),
       } as ImportDescription;
       desc.imports.push(importDesc);
       if (path.node.specifiers.length === 0) {
@@ -770,12 +777,19 @@ export function describeFile(ast: File, filename: string): FileDescription {
       );
       let importExists = importIndex > -1;
       importIndex = importIndex === -1 ? desc.imports.length : importIndex;
-      let exportRegion = builder.createCodeRegion(path as NodePath, {
-        importIndex,
-        exportType: "export-all",
-        specifierForDynamicImport: undefined,
-        isDynamic: false,
-      });
+      let sourceRegion = builder.createCodeRegion(
+        path.get("source") as NodePath
+      );
+      let exportRegion = builder.createCodeRegion(
+        path as NodePath,
+        {
+          importIndex,
+          exportType: "export-all",
+          specifierForDynamicImport: undefined,
+          isDynamic: false,
+        },
+        new Set([sourceRegion])
+      );
       if (!importExists) {
         desc.imports.push({
           specifier,
@@ -849,12 +863,19 @@ export function describeFile(ast: File, filename: string): FileDescription {
         );
         let importExists = importIndex > -1;
         importIndex = importIndex === -1 ? desc.imports.length : importIndex;
-        let exportRegion = builder.createCodeRegion(path as NodePath, {
-          importIndex,
-          exportType: "reexport",
-          specifierForDynamicImport: undefined,
-          isDynamic: false,
-        });
+        let sourceRegion = builder.createCodeRegion(
+          path.get("source") as NodePath
+        );
+        let exportRegion = builder.createCodeRegion(
+          path as NodePath,
+          {
+            importIndex,
+            exportType: "reexport",
+            specifierForDynamicImport: undefined,
+            isDynamic: false,
+          },
+          new Set()
+        );
         if (!importExists) {
           desc.imports.push({
             specifier,
@@ -863,14 +884,14 @@ export function describeFile(ast: File, filename: string): FileDescription {
             region: exportRegion,
           });
         }
-        let specifiers = new Set<RegionPointer>();
+        let dependsOn = new Set<RegionPointer>([sourceRegion]);
         for (let specPath of path.get("specifiers")) {
           let reexportSpecifierRegion = builder.createCodeRegion(
             specPath as NodePath,
             "reexport-specifier",
             new Set([exportRegion])
           );
-          specifiers.add(reexportSpecifierRegion);
+          dependsOn.add(reexportSpecifierRegion);
           let spec = specPath.node;
           switch (spec.type) {
             case "ExportDefaultSpecifier":
@@ -904,7 +925,7 @@ export function describeFile(ast: File, filename: string): FileDescription {
               assertNever(spec);
           }
         }
-        builder.regions[exportRegion].dependsOn = specifiers;
+        builder.regions[exportRegion].dependsOn = dependsOn;
       } else {
         // we are not reexporting
         let exportRegion = builder.createCodeRegion(path as NodePath);

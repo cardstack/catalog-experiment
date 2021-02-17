@@ -860,6 +860,11 @@ QUnit.module("describe-file", function () {
     let yDesc = desc.exports.get("y")! as
       | LocalExportDescription
       | ReexportExportDescription;
+    let reexportBazSources = [
+      ...desc.regions[yDesc.exportRegion].dependsOn,
+    ].filter((p) => desc.regions[p].type === "general");
+    assert.equal(reexportBazSources.length, 1);
+    let [reexportBazSource] = reexportBazSources;
     let flerpDesc = desc.exports.get("flerp")! as
       | LocalExportDescription
       | ReexportExportDescription;
@@ -881,11 +886,12 @@ QUnit.module("describe-file", function () {
 
     editor.replace(fleepSpecifier!, "/* CODE REGION 1*/");
     editor.replace(flerpSpecifier!, "/* CODE REGION 2*/");
+    editor.replace(reexportBazSource, "'./replacedBaz'");
     assert.codeEqual(
       editor.serialize().code,
       `
       export { foo, /* CODE REGION 1*/ } from './bar';
-      export { x as y, /* CODE REGION 2*/ } from './baz';
+      export { x as y, /* CODE REGION 2*/ } from './replacedBaz';
       function bar() {};
       export { bar };
       `
@@ -1003,9 +1009,10 @@ QUnit.module("describe-file", function () {
   });
 
   test("imported names are discovered", function (assert) {
-    let { desc } = describeESModule(`
+    let { desc, editor } = describeESModule(`
       import { x } from 'somewhere';
     `);
+    keepAll(desc, editor);
     let out = desc.declarations.get("x");
     assert.equal(out?.declaration.type, "import");
     if (out?.declaration.type === "import") {
@@ -1014,6 +1021,26 @@ QUnit.module("describe-file", function () {
     }
     let document = desc.regions[documentPointer];
     assert.equal(document.dependsOn.size, 0);
+
+    assert.equal(desc.imports.length, 1);
+    let [importDesc] = desc.imports;
+    assert.equal(importDesc.isDynamic, false);
+    let importSource: RegionPointer;
+    if (!importDesc.isDynamic) {
+      let sources = [...desc.regions[importDesc.region].dependsOn].filter(
+        (p) => desc.regions[p].type === "general"
+      );
+      assert.equal(sources.length, 1);
+      importSource = sources[0];
+    }
+
+    editor.replace(importSource!, "'replaced'");
+    assert.codeEqual(
+      editor.serialize().code,
+      `
+      import { x } from 'replaced';
+      `
+    );
   });
 
   test("imported namespace is discovered", function (assert) {

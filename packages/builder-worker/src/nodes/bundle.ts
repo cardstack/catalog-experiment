@@ -3,10 +3,13 @@ import { ModuleResolutionsNode, ModuleResolution } from "./resolution";
 import { ModuleDescription } from "../describe-file";
 import { EntrypointsJSONNode, Entrypoint, Dependencies } from "./entrypoint";
 import { getAssigner } from "../assigners";
-import { Resolver } from "../resolver";
+import { catalogjsHref, Resolver } from "../resolver";
 import { LockEntries } from "./lock-file";
 import { CombineModulesNode } from "./combine-modules";
 import { addDescriptionToSource } from "../description-encoder";
+import { RegionEditor } from "../region-editor";
+import { stringifyReplacer } from "../utils";
+import { inputToOutput } from "../assigners/default";
 
 export interface BundleAssignment {
   // which bundle are we in
@@ -56,6 +59,7 @@ export interface BundleAssignment {
 }
 export interface BundleOptions {
   assigner?: BundleAssignment["assigner"];
+  mountedPkgSource?: URL;
   testing?: {
     origin: string;
     exports?: {
@@ -66,7 +70,6 @@ export interface BundleOptions {
 
 export class BundleAssignmentsNode implements BuilderNode {
   cacheKey: string;
-
   constructor(
     private projectInput: URL,
     private projectOutput: URL,
@@ -112,7 +115,8 @@ export class BundleAssignmentsNode implements BuilderNode {
       this.projectInput,
       this.projectOutput,
       resolutions,
-      entrypoints
+      entrypoints,
+      this.opts?.mountedPkgSource ?? new URL(catalogjsHref)
     );
     let { assignments, resolutionsInDepOrder } = assigner;
 
@@ -213,7 +217,12 @@ export class BundleNode implements BuilderNode {
         );
       }
       let [{ module }] = ourAssignments;
-      value = addDescriptionToSource(module.desc, module.source);
+      value = rewriteImportURLs(
+        module,
+        this.opts?.mountedPkgSource ?? new URL(catalogjsHref),
+        this.inputRoot,
+        this.outputRoot
+      );
     } else {
       throw new Error(
         `should never get here: there was no BundleNode dep resolution for ${this.cacheKey}`
@@ -221,4 +230,47 @@ export class BundleNode implements BuilderNode {
     }
     return { value };
   }
+}
+
+function rewriteImportURLs(
+  module: ModuleResolution,
+  mountedPkgSource: URL,
+  projectInput: URL,
+  projectOutput: URL
+): string {
+  if (module.desc.imports.length === 0) {
+    return module.source;
+  }
+
+  let editor = new RegionEditor(module.source, module.desc, module.url.href);
+  for (let [pointer, region] of module.desc.regions.entries()) {
+    if (editor.dispositions[pointer].state === "removed") {
+      editor.keepRegion(pointer);
+    }
+    if (region.type !== "import") {
+      continue;
+    }
+    // all the import regions depend on their source region, which will be the
+    // only "general" region they depend on
+    let sourcePointer = [...region.dependsOn].find(
+      (p) => module.desc.regions[p].type === "general"
+    );
+    if (sourcePointer == null) {
+      throw new Error(
+        `the source pointer for the import region is not specified. '${pointer}' in ${
+          module.url.href
+        }: region=${JSON.stringify(region, stringifyReplacer)}`
+      );
+    }
+    let sourceURL = module.resolvedImports[region.importIndex].url;
+    let outputSourceURL = inputToOutput(
+      sourceURL.href,
+      mountedPkgSource,
+      projectInput,
+      projectOutput
+    );
+    editor.keepRegion(sourcePointer);
+    editor.replace(sourcePointer, `"${outputSourceURL.href}"`);
+  }
+  return editor.serialize().code;
 }
