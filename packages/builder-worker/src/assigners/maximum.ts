@@ -57,13 +57,6 @@ export class MaximumAssigner extends AbstractAssigner {
 
     // every module is a bundle in this assigner
     let bundleURL = this.inputToOutput(module.url.href);
-    if (
-      bundleURL.href ===
-      "https://local-disk/pkgs/npm/@babel/core/7.9.0/r2olrUApBIDwEqYQtp6rOMlGKH8=/src/index.js"
-    ) {
-      debugger;
-    }
-
     let internalAssignment = {
       assignment: {
         assigner: this.type,

@@ -167,7 +167,7 @@ export class BundleNode implements BuilderNode {
       // skip the build tree related to combining modules, and just emit the
       // code of our bundle's sole module
       return {
-        optimizedResult: new BundleAssignmentsNode(
+        skipCombineResult: new BundleAssignmentsNode(
           this.inputRoot,
           this.outputRoot,
           this.resolver,
@@ -195,18 +195,18 @@ export class BundleNode implements BuilderNode {
 
   async run({
     result,
-    optimizedResult,
+    skipCombineResult,
   }: {
     result?: { code: string; desc: ModuleDescription };
-    optimizedResult?: {
+    skipCombineResult?: {
       assignments: BundleAssignment[];
     };
   }): Promise<Value<string>> {
     let value: string;
     if (result) {
       value = addDescriptionToSource(result.desc, result.code);
-    } else if (optimizedResult) {
-      let ourAssignments = optimizedResult.assignments.filter(
+    } else if (skipCombineResult) {
+      let ourAssignments = skipCombineResult.assignments.filter(
         (a) => a.bundleURL.href === this.bundle.href
       );
       if (ourAssignments.length !== 1) {
