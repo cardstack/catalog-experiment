@@ -21,7 +21,13 @@ Logger.setLogLevel("info");
 let outputDir = join(process.cwd(), "dist");
 let projectRoots: [URL, URL][] = [];
 
-let { project: rawProjects, overlay, cdn: cdnPath, assigner } = yargs
+let {
+  project: rawProjects,
+  overlay,
+  cdn: cdnPath,
+  assigner,
+  outputOrigin,
+} = yargs
   .usage(
     "Usage: $0 --project=<filePath_1>,<outputURL_1> ... --project=<filePath_N>,<outputURL_N>"
   )
@@ -30,7 +36,7 @@ let { project: rawProjects, overlay, cdn: cdnPath, assigner } = yargs
       alias: "p",
       type: "string",
       description:
-        "the project to include as a comma separated string of file path (where the input lives on disk) and output URL (where other projects can find this project). Use the output URL of http://build-output to write to the dist/ folder.",
+        "the project to include as a comma separated string of file path (where the input lives on disk) and output URL (where other projects can find this project). Use the output URL of http://build-output to write to the dist/ folder in the situation where you don't care what the output origin is (this would be normal when using the default bundle assigner, in which case all imports are relative).",
     },
     cdn: {
       alias: "c",
@@ -53,10 +59,18 @@ let { project: rawProjects, overlay, cdn: cdnPath, assigner } = yargs
       description:
         "the name of the bundle assignment strategy to use. Possible assigners are: 'default', 'minimum', and 'maximum'.",
     },
+    outputOrigin: {
+      alias: "r",
+      type: "string",
+      default: "http://build-output",
+      description:
+        "the origin URL for the output. This defaults to http://build-output, which is compatible for the default assigner. But if you are using the maximum assigner, you will want to set this value to the origin you are hosting your app from. This is the origin that will be used for any rewritten imports and should reflect the URL that you are hosting your application from.",
+    },
   })
   .boolean("overlay")
   .array("project")
   .string("assigner")
+  .string("outputOrigin")
   .demandOption(["project"]).argv;
 
 if (!rawProjects || rawProjects.filter(Boolean).length === 0) {
@@ -119,10 +133,7 @@ async function build() {
   );
   removeSync(outputDir);
   ensureDirSync(outputDir);
-  await fs.mount(
-    new URL("http://build-output"),
-    new NodeFileSystemDriver(outputDir)
-  );
+  await fs.mount(new URL(outputOrigin), new NodeFileSystemDriver(outputDir));
   if (overlay) {
     await doOverlay();
   }
