@@ -44,7 +44,7 @@
     "acceptance-test": "npm-run-all acceptance-test:*",
     "acceptance-test:init": "rm -rf ./test-working && mkdir ./test-working",
     "acceptance-test:bundle": "cd ./test-working && node ../packages/builder-node/bin/install.js --project=.. @babel/core",
-    "acceptance-test:default-assigner": "cd ./test-working && node ../packages/builder-node/bin/build.js --project=../packages/test-app,http://build-output --project=../packages/test-lib,http://localhost:4200/test-lib/ --cdn ./working/cdn --overlay && testem ci -f ../testem.json -p 7357",
+    "acceptance-test:default-assigner": "cd ./test-working && node ../packages/builder-node/bin/build.js --project=../packages/test-app,http://build-output --project=../packages/test-lib,http://localhost:4200/test-lib/ --cdn ./working/cdn --overlay && testem ci -f ../testem.json",
     "acceptance-test:reset-test": "rm -rf ./test-working/dist",
     "acceptance-test:maximum-assigner": "cd ./test-working && node ../packages/builder-node/bin/build.js --project=../packages/test-app,http://localhost:4200 --project=../packages/test-lib,http://localhost:4200/test-lib/ --outputOrigin http://localhost:4200 --assigner maximum --cdn ./working/cdn --overlay && testem ci -f ../testem.json -p 4200",
     "builder": "cd packages/builder-worker && yarn start",
