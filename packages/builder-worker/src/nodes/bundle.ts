@@ -1,39 +1,85 @@
 import { BuilderNode, Value } from "./common";
-import {
-  ModuleResolutionsNode,
-  ModuleResolution,
-  isCyclicModuleResolution,
-  Resolution,
-} from "./resolution";
-import { getExports, ModuleDescription } from "../describe-file";
-import {
-  ImportedDeclarationDescription,
-  NamespaceMarker,
-} from "../code-region";
-import {
-  EntrypointsJSONNode,
-  Entrypoint,
-  HTMLEntrypoint,
-  Dependencies,
-} from "./entrypoint";
-import { setIntersection as intersection } from "../utils";
-import { makeURLEndInDir } from "../path";
-import { Resolver } from "../resolver";
+import { ModuleResolutionsNode, ModuleResolution } from "./resolution";
+import { ModuleDescription } from "../describe-file";
+import { EntrypointsJSONNode, Entrypoint, Dependencies } from "./entrypoint";
+import { getAssigner } from "../assigners";
+import { catalogjsHref, Resolver } from "../resolver";
 import { LockEntries } from "./lock-file";
 import { CombineModulesNode } from "./combine-modules";
 import { addDescriptionToSource } from "../description-encoder";
+import { RegionEditor } from "../region-editor";
+import { stringifyReplacer } from "../utils";
+import { inputToOutput } from "../assigners/default";
+
+export interface BundleAssignment {
+  // which bundle are we in
+  bundleURL: URL;
+
+  // the bundle's entrypoint module
+  entrypointModuleURL: URL;
+
+  // which module are we talking about
+  module: ModuleResolution;
+
+  // from name-as-originally exported to name-as-exposed-in-this-bundle, if any.
+  // Not every export from every module will be publicly exposed by a bundle.
+  exposedNames: Map<string, string>;
+
+  // the assigner controls how aggressively we inline modules into
+  // bundles.
+
+  // "default": The default assigner, which will be used if "assigner" is not
+  // specified. This is an optimizing bundle assignment strategy in which each
+  // module is assigned to only 1 bundle, where there is a bundle for each
+  // entrypoint (so a module does not appear duplicated across different
+  // bundles). Entrypoint bundles that share common modules would have the
+  // common modules assigned to a common bundle that is shared by both
+  // entrypoint bundles. In the case of dynamic imports, these modules will
+  // always be segregated into separate bundles, along with any of the
+  // dynamically imported module's static dependencies.
+
+  // "maximum": In this assigner each module effectively is a
+  // bundle (aka "snowpack" style). This mode is meant for a development
+  // environment. This is not an optimizing bundle strategy.
+
+  // "minimum": This is also an optimizing bundle strategy. In this assigner we
+  // endeavor to have just a single bundle for each entrypoint and there are no
+  // shared statically imported bundles. We can only use this mode when all
+  // module imports within a project are static. This means that modules may be
+  // assigned to multiple bundles (if these bundles are later combined, the
+  // overlapping portions would be removed). No common bundles would be used for
+  // static imports. Note that if there are any dynamic imports within the
+  // project, then we fallback to the "default" assigner, since for correctness
+  // reasons, separate bundles need to be maintained.
+
+  // TODO consider a 4th assigner where there a tunable minimum bundle
+  // size. If a bundle ends up smaller than that, it gets inlined into its
+  // consumers
+  assigner: "default" | "maximum" | "minimum";
+}
+export interface BundleOptions {
+  assigner?: BundleAssignment["assigner"];
+  mountedPkgSource?: URL;
+  testing?: {
+    origin: string;
+    exports?: {
+      [outsideName: string]: { file: string; name: string };
+    };
+  };
+}
 
 export class BundleAssignmentsNode implements BuilderNode {
   cacheKey: string;
-
   constructor(
     private projectInput: URL,
     private projectOutput: URL,
     private resolver: Resolver,
     private seededResolutions: LockEntries,
-    private testingOpts?: TestingOptions
+    private opts?: BundleOptions
   ) {
-    this.cacheKey = `bundle-assignments:input=${projectInput.href},output=${projectOutput.href}`;
+    this.cacheKey = `bundle-assignments:input=${projectInput.href},output=${
+      projectOutput.href
+    },assigner=${opts?.assigner ?? "default"}`;
   }
 
   async deps() {
@@ -64,19 +110,21 @@ export class BundleAssignmentsNode implements BuilderNode {
       lockEntries: LockEntries;
     }>
   > {
-    let assigner = new Assigner(
+    let assigner = getAssigner(
+      this.opts?.assigner ?? "default",
       this.projectInput,
       this.projectOutput,
       resolutions,
-      entrypoints
+      entrypoints,
+      this.opts?.mountedPkgSource ?? new URL(catalogjsHref)
     );
     let { assignments, resolutionsInDepOrder } = assigner;
 
-    if (this.testingOpts?.exports) {
+    if (this.opts?.testing?.exports) {
       for (let [outsideName, { file, name }] of Object.entries(
-        this.testingOpts.exports
+        this.opts.testing?.exports
       )) {
-        let fileURL = new URL(file, this.testingOpts.origin);
+        let fileURL = new URL(file, this.opts.testing?.origin);
         let assignment = assignments.find(
           (a) => a.module.url.href === fileURL.href
         );
@@ -94,241 +142,6 @@ export class BundleAssignmentsNode implements BuilderNode {
   }
 }
 
-interface InternalAssignment {
-  assignment: BundleAssignment;
-  enclosingBundles: Set<string>;
-}
-
-export class Assigner {
-  private assignmentMap: Map<string, InternalAssignment> = new Map();
-  private entrypoints: Map<string, { url: URL; isLibrary: boolean }>;
-  private internalBundleCount = 0;
-  private consumersOf: Consumers;
-  private requestedEntrypointURLs: URL[] = [];
-  private resolutions: ModuleResolution[];
-
-  constructor(
-    private projectInput: URL,
-    private projectOutput: URL,
-    resolutions: ModuleResolution[],
-    entrypoints: Entrypoint[],
-    htmlJSEntrypointURLs?: URL[]
-  ) {
-    if (htmlJSEntrypointURLs) {
-      this.requestedEntrypointURLs = [...htmlJSEntrypointURLs];
-    }
-    this.entrypoints = this.mapEntrypoints(entrypoints);
-    let { consumersOf, leaves, resolutionsInDepOrder } = invertDependencies(
-      resolutions
-    );
-    this.consumersOf = consumersOf;
-    this.resolutions = [...resolutionsInDepOrder];
-    for (let leaf of leaves) {
-      this.assignModule(leaf);
-    }
-  }
-
-  get assignments(): BundleAssignment[] {
-    return [...this.assignmentMap.values()].map((v) => v.assignment);
-  }
-  get resolutionsInDepOrder(): ModuleResolution[] {
-    return [...this.resolutions];
-  }
-
-  private inputToOutput(href: string): URL {
-    return new URL(
-      href.replace(
-        makeURLEndInDir(this.projectInput).href,
-        makeURLEndInDir(this.projectOutput).href
-      )
-    );
-  }
-
-  private mapEntrypoints(
-    entrypoints: Entrypoint[]
-  ): Map<string, { url: URL; isLibrary: boolean }> {
-    let jsEntrypoints: Map<
-      string,
-      { url: URL; isLibrary: boolean }
-    > = new Map();
-    for (let entrypoint of entrypoints) {
-      if (entrypoint instanceof HTMLEntrypoint) {
-        for (let script of entrypoint.jsEntrypoints.keys()) {
-          let url =
-            this.requestedEntrypointURLs.length > 0
-              ? this.requestedEntrypointURLs.shift()!
-              : this.internalBundleURL();
-          jsEntrypoints.set(script, {
-            url,
-            isLibrary: false,
-          });
-        }
-      } else {
-        jsEntrypoints.set(entrypoint.url.href, {
-          url: this.inputToOutput(entrypoint.url.href),
-          isLibrary: true,
-        });
-      }
-    }
-    return jsEntrypoints;
-  }
-
-  private assignModule(module: ModuleResolution): InternalAssignment {
-    let alreadyAssigned = this.assignmentMap.get(module.url.href);
-    if (alreadyAssigned) {
-      return alreadyAssigned;
-    }
-
-    // entrypoints can be consumed by other entrypoints, so it's important that
-    // we assign consumers first, even if we are an entrypoint.
-    let consumers = [...(this.consumersOf.get(module.url.href) ?? [])].map(
-      (consumer) => ({
-        module: consumer.module,
-        isDynamic: consumer.isDynamic,
-        internalAssignment: this.assignModule(consumer.module),
-      })
-    );
-
-    let entrypoint = this.entrypoints.get(module.url.href);
-    if (entrypoint) {
-      // base case: we are an entrypoint
-      let internalAssignment = {
-        assignment: {
-          bundleURL: entrypoint.url,
-          module,
-          exposedNames: new Map(),
-          entrypointModuleURL: module.url,
-        },
-        enclosingBundles: new Set([entrypoint.url.href]),
-      };
-      this.assignmentMap.set(module.url.href, internalAssignment);
-      if (entrypoint.isLibrary) {
-        for (let [exportedName] of getExports(module)) {
-          ensureExposed(exportedName, internalAssignment.assignment);
-        }
-      } else {
-        for (let consumer of consumers) {
-          let { declarations } = consumer.module.desc;
-          let myIndex = consumer.module.resolvedImports.findIndex(
-            (m) => m.url.href === module.url.href
-          );
-          for (let importDeclaration of [...declarations.values()]
-            .filter(
-              ({ declaration }) =>
-                declaration.type === "import" &&
-                declaration.importIndex === myIndex
-            )
-            .map(
-              ({ declaration }) => declaration
-            ) as ImportedDeclarationDescription[]) {
-            let [exportedName] =
-              [...getExports(module).entries()].find(
-                ([, { desc: exportDesc }]) =>
-                  exportDesc.name === importDeclaration.importedName
-              ) ?? [];
-            if (!exportedName) {
-              throw new Error(
-                `cannot find export of binding '${importDeclaration.importedName}' in ${module.url.href}`
-              );
-            }
-            ensureExposed(exportedName, internalAssignment.assignment);
-          }
-        }
-      }
-      return internalAssignment;
-    }
-
-    // trying each consumers to see if we can merge into it
-    for (let consumer of consumers) {
-      if (
-        consumers.every(
-          (otherConsumer) =>
-            !otherConsumer.isDynamic &&
-            otherConsumer.internalAssignment.enclosingBundles.has(
-              consumer.internalAssignment.assignment.bundleURL.href
-            )
-        )
-      ) {
-        // we can merge with this consumer
-        let {
-          bundleURL,
-          entrypointModuleURL,
-        } = consumer.internalAssignment.assignment;
-        let internalAssignment = {
-          assignment: {
-            bundleURL,
-            module,
-            exposedNames: new Map(),
-            entrypointModuleURL,
-          },
-          enclosingBundles: consumer.internalAssignment.enclosingBundles,
-        };
-        this.assignmentMap.set(module.url.href, internalAssignment);
-
-        // Expose the exports that are consumed by modules in different bundles.
-        // Your consumers will have already been assigned to bundles, since the
-        // assignment recursing into your consumers happened when you when to
-        // get the 'consumers' above.
-        for (let externalConsumer of consumers.filter(
-          (c) =>
-            c.internalAssignment.assignment.bundleURL.href !== bundleURL.href
-        )) {
-          let { declarations } = externalConsumer.module.desc;
-          for (let [name, { declaration }] of declarations.entries()) {
-            if (
-              declaration.type !== "import" ||
-              externalConsumer.module.resolvedImports[declaration.importIndex]
-                .url.href !== module.url.href
-            ) {
-              continue;
-            }
-            let [exportedName] =
-              [...getExports(module).entries()].find(
-                ([, { desc: exportDesc }]) => exportDesc.name === name
-              ) ?? [];
-            if (!exportedName) {
-              throw new Error(
-                `cannot find export of binding '${name}' in ${module.url.href}`
-              );
-            }
-            ensureExposed(exportedName, internalAssignment.assignment);
-          }
-        }
-
-        return consumer.internalAssignment;
-      }
-    }
-
-    // we need to be our own bundle
-    let bundleURL = this.internalBundleURL();
-    let enclosingBundles = intersection(
-      ...consumers.map((c) => c.internalAssignment.enclosingBundles)
-    );
-    enclosingBundles.add(bundleURL.href); // we are also enclosed by our own bundle
-    let internalAssignment = {
-      assignment: {
-        bundleURL,
-        module,
-        exposedNames: new Map(),
-        entrypointModuleURL: module.url,
-      },
-      enclosingBundles,
-    };
-    this.assignmentMap.set(module.url.href, internalAssignment);
-    for (let [exportedName] of getExports(module)) {
-      ensureExposed(exportedName, internalAssignment.assignment);
-    }
-    return internalAssignment;
-  }
-
-  private internalBundleURL(): URL {
-    return new URL(
-      `./dist/${this.internalBundleCount++}.js`,
-      this.projectOutput
-    );
-  }
-}
-
 export class BundleNode implements BuilderNode {
   cacheKey: string;
 
@@ -339,16 +152,31 @@ export class BundleNode implements BuilderNode {
     private resolver: Resolver,
     private lockEntries: LockEntries,
     private dependencies: Dependencies,
-    private testingOpts?: TestingOptions
+    private opts?: BundleOptions
   ) {
     this.cacheKey = `bundle-node:url=${this.bundle.href},inputRoot=${
       this.inputRoot.href
     },outputRoot=${this.outputRoot.href},dependencies=${JSON.stringify(
       dependencies
-    )}`;
+    )},assigner=${opts?.assigner ?? "default"}`;
   }
 
   async deps() {
+    if (this.opts?.assigner === "maximum") {
+      // there there is a 1:1 relationship between modules and bundles, we can
+      // skip the build tree related to combining modules, and just emit the
+      // code of our bundle's sole module
+      return {
+        skipCombineResult: new BundleAssignmentsNode(
+          this.inputRoot,
+          this.outputRoot,
+          this.resolver,
+          this.lockEntries,
+          this.opts
+        ),
+      };
+    }
+
     return {
       result: new CombineModulesNode(
         this.bundle,
@@ -359,135 +187,90 @@ export class BundleNode implements BuilderNode {
           this.outputRoot,
           this.resolver,
           this.lockEntries,
-          this.testingOpts
+          this.opts
         )
       ),
     };
   }
 
   async run({
-    result: { code, desc },
+    result,
+    skipCombineResult,
   }: {
-    result: { code: string; desc: ModuleDescription };
+    result?: { code: string; desc: ModuleDescription };
+    skipCombineResult?: {
+      assignments: BundleAssignment[];
+    };
   }): Promise<Value<string>> {
-    let value = addDescriptionToSource(desc, code);
+    let value: string;
+    if (result) {
+      value = addDescriptionToSource(result.desc, result.code);
+    } else if (skipCombineResult) {
+      let ourAssignments = skipCombineResult.assignments.filter(
+        (a) => a.bundleURL.href === this.bundle.href
+      );
+      if (ourAssignments.length !== 1) {
+        throw new Error(
+          `should never get here: the maximum assigner should only ever have one module per bundle for the bundle. The bundle: ${
+            this.bundle.href
+          } contains ${ourAssignments.map((a) => a.module.url.href).join(", ")}`
+        );
+      }
+      let [{ module }] = ourAssignments;
+      value = rewriteImportURLs(
+        module,
+        this.opts?.mountedPkgSource ?? new URL(catalogjsHref),
+        this.inputRoot,
+        this.outputRoot
+      );
+    } else {
+      throw new Error(
+        `should never get here: there was no BundleNode dep resolution for ${this.cacheKey}`
+      );
+    }
     return { value };
   }
 }
 
-export interface BundleAssignment {
-  // which bundle are we in
-  bundleURL: URL;
-
-  // the bundle's entrypoint module
-  entrypointModuleURL: URL;
-
-  // which module are we talking about
-  module: ModuleResolution;
-
-  // from name-as-originally exported to name-as-exposed-in-this-bundle, if any.
-  // Not every export from every module will be publicly exposed by a bundle.
-  exposedNames: Map<string, string>;
-}
-
-function ensureExposed(exported: string, assignment: BundleAssignment) {
-  if (!assignment.exposedNames.has(exported)) {
-    assignment.exposedNames.set(
-      exported,
-      defaultName(exported, assignment.module)
-    );
-  }
-}
-
-function defaultName(
-  exported: string | NamespaceMarker,
-  module: ModuleResolution
+function rewriteImportURLs(
+  module: ModuleResolution,
+  mountedPkgSource: URL,
+  projectInput: URL,
+  projectOutput: URL
 ): string {
-  if (typeof exported === "string") {
-    return exported;
+  if (module.desc.imports.length === 0) {
+    return module.source;
   }
-  let match = /([a-zA-Z]\w+)(?:\.[jt]s)?$/i.exec(module.url.href);
-  if (match) {
-    return match[1];
-  }
-  return "a";
-}
 
-type Consumers = Map<
-  string,
-  Set<{ isDynamic: boolean; module: ModuleResolution }>
->;
-
-function invertDependencies(
-  resolutions: Resolution[],
-  consumersOf: Consumers = new Map(),
-  leaves: Set<ModuleResolution> = new Set(),
-  resolutionsInDepOrder: Set<ModuleResolution> = new Set()
-): {
-  consumersOf: Consumers;
-  leaves: Set<ModuleResolution>;
-  resolutionsInDepOrder: Set<ModuleResolution>;
-} {
-  for (let resolution of resolutions) {
-    if (!isCyclicModuleResolution(resolution)) {
-      if (resolution.resolvedImportsWithCyclicGroups.length > 0) {
-        invertDependencies(
-          resolution.resolvedImports,
-          consumersOf,
-          leaves,
-          resolutionsInDepOrder
-        );
-        // since we are handling this on the exit of the recursion, all your deps
-        // will have entries in the identity map
-        for (let [
-          index,
-          dep,
-        ] of resolution.resolvedImportsWithCyclicGroups.entries()) {
-          if (Array.isArray(dep)) {
-            let cycle = [...dep];
-            let consumer = resolution;
-            while (cycle.length > 0) {
-              let consumed = cycle.shift()!;
-              let consumedIndex = consumer.resolvedImports.findIndex(
-                (m) => m.url.href === consumed.url.href
-              );
-              let isDynamic = consumer.desc.imports[consumedIndex].isDynamic;
-              setConsumersOf(consumed.url, consumer, isDynamic, consumersOf);
-              if (cycle.length === 0) {
-                leaves.add(consumed);
-              }
-              consumer = consumed;
-            }
-          } else {
-            let isDynamic = resolution.desc.imports[index].isDynamic;
-            setConsumersOf(dep.url, resolution, isDynamic, consumersOf);
-          }
-          resolutionsInDepOrder.add(resolution);
-        }
-      } else {
-        leaves.add(resolution);
-        resolutionsInDepOrder.add(resolution);
-      }
+  let editor = new RegionEditor(module.source, module.desc, module.url.href);
+  for (let [pointer, region] of module.desc.regions.entries()) {
+    if (editor.dispositions[pointer].state === "removed") {
+      editor.keepRegion(pointer);
     }
+    if (region.type !== "import") {
+      continue;
+    }
+    // all the import regions depend on their source region, which will be the
+    // only "general" region they depend on
+    let sourcePointer = [...region.dependsOn].find(
+      (p) => module.desc.regions[p].type === "general"
+    );
+    if (sourcePointer == null) {
+      throw new Error(
+        `the source pointer for the import region is not specified. '${pointer}' in ${
+          module.url.href
+        }: region=${JSON.stringify(region, stringifyReplacer)}`
+      );
+    }
+    let sourceURL = module.resolvedImports[region.importIndex].url;
+    let outputSourceURL = inputToOutput(
+      sourceURL.href,
+      mountedPkgSource,
+      projectInput,
+      projectOutput
+    );
+    editor.keepRegion(sourcePointer);
+    editor.replace(sourcePointer, `"${outputSourceURL.href}"`);
   }
-  return { consumersOf, leaves, resolutionsInDepOrder };
-}
-
-function setConsumersOf(
-  consumed: URL,
-  consumer: ModuleResolution,
-  isDynamic: boolean,
-  consumersOf: Consumers
-) {
-  if (!consumersOf.has(consumed.href)) {
-    consumersOf.set(consumed.href, new Set());
-  }
-  consumersOf.get(consumed.href)!.add({ isDynamic, module: consumer });
-}
-
-export interface TestingOptions {
-  origin: string;
-  exports?: {
-    [outsideName: string]: { file: string; name: string };
-  };
+  return editor.serialize().code;
 }

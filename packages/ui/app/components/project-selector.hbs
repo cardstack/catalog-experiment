@@ -9,25 +9,38 @@
       <dl>
         <dt>
           <label>
-            <Input @type="checkbox" @checked={{has-project project this.activeProjects}}
-              {{on 'click' (fn this.toggleProject project)}} />
+            <Input @type="checkbox" @checked={{has-project project this.activeProjects}} {{on 'click' (fn
+              this.toggleProject project)}} />
             <span class="project-input">{{project}}</span>
           </label>
         </dt>
         <dd>
           output URL:
-          <Input @type="text" size="50" @value={{project-output-url project this.selectedProjects}}
-            @key-up={{fn this.setProjectOutput project}} />
+          <Input @type="text" size="50" @value={{project-output-url project this.selectedProjects}} @key-up={{fn
+            this.setProjectOutput project}} />
         </dd>
       </dl>
     </div>
     {{/each}}
   </div>
+  <div class="bundling-strategy" {{did-insert this.initStrategy}}>
+    <h3>Bundling Strategy:</h3>
+    <label class="assigner">
+      <Input @type="radio" @name="bundle-strategy" class="maximum-assigner" @checked={{eq
+        this.selectedStrategy "maximum" }} {{on 'click' (fn this.setStrategy "maximum" )}} />
+      <span class="bundle-strategy">Maximum amount of bundles (aka snowpack)</span>
+    </label>
+    <label class="assigner">
+      <Input @type="radio" @name="bundle-strategy" class="default-assigner" @checked={{eq
+        this.selectedStrategy "default" }} {{on 'click' (fn this.setStrategy "default" )}} />
+      <span class="bundle-strategy">Optimized bundles (modules combined into bundles)</span>
+    </label>
+  </div>
   {{#if this.projects.start.isRunning}}
   <div>Starting...</div>
   {{else}}
-  <button onclick={{action startSelectedProject}}
-    disabled={{if (eq this.selectedProjects.length 0) 'true'}}>Start</button>
+  <button onclick={{action startSelectedProject}} disabled={{if (eq this.selectedProjects.length 0) 'true'
+    }}>Start</button>
   {{/if}}
   {{/if}}
 </div>

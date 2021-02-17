@@ -502,25 +502,35 @@ function buildImports(
     for (let [declarationIndex, [importedAs, localName]] of [
       ...mapping.entries(),
     ].entries()) {
+      let importSource = maybeRelativeURL(new URL(importSourceHref), bundle);
       if (isSideEffectMarker(importedAs)) {
         let currentImportDeclarationPointer = regions.length;
-        let importCode = `import "${maybeRelativeURL(
-          new URL(importSourceHref),
-          bundle
-        )}";`;
+        let importCode = `import "${importSource}";`;
         importDeclarations.push(importCode);
-        regions.push({
-          type: "import",
-          importIndex,
-          exportType: undefined,
-          start: importIndex === 0 ? 0 : 1, // newline
-          end: importCode.length,
-          firstChild: undefined,
-          nextSibling: undefined,
-          position: 0,
-          dependsOn: new Set(),
-          preserveGaps: false,
-        } as ImportCodeRegion);
+        regions.push(
+          {
+            type: "import",
+            importIndex,
+            exportType: undefined,
+            start: importIndex === 0 ? 0 : 1, // newline
+            end: 1 /* ";" */,
+            firstChild: regions.length + 1,
+            nextSibling: undefined,
+            position: 0,
+            dependsOn: new Set([regions.length + 1]),
+            preserveGaps: false,
+          } as ImportCodeRegion,
+          {
+            type: "general",
+            start: 7 /* "import " */,
+            end: importSource.length + 2 /* "importSource" */,
+            firstChild: undefined,
+            nextSibling: undefined,
+            preserveGaps: false,
+            position: 0,
+            dependsOn: new Set(),
+          } as GeneralCodeRegion
+        );
         // this import is a bundle side effect
         regions[documentPointer].dependsOn.add(currentImportDeclarationPointer);
         if (lastImportDeclarationPointer != null) {
@@ -549,33 +559,39 @@ function buildImports(
               `bug: missing first import specifier region pointer for '${importDeclaration}' in bundle ${bundle.href}`
             );
           }
+          if (lastSpecifierPointer == null) {
+            throw new Error(
+              `bug: missing last import specifier region pointer for '${importDeclaration}' in bundle ${bundle.href}`
+            );
+          }
           flushImportDeclarationRegion(
             regions,
             importIndex,
             importSourceHref,
             firstSpecifierPointer,
+            lastSpecifierPointer,
             lastImportDeclarationPointer,
             bundle
           );
           firstSpecifierPointer = undefined;
         }
-        let importSource = maybeRelativeURL(new URL(importSourceHref), bundle);
         importDeclarations.push(
           `import * as ${localName} from "${importSource}";`
         );
         let currentImportDeclarationPointer = regions.length;
         let specifierPointer = currentImportDeclarationPointer + 1;
         let referencePointer = specifierPointer + 1;
+        let sourcePointer = referencePointer + 1;
         let importDeclarationRegion: ImportCodeRegion = {
           type: "import",
           importIndex,
           isDynamic: false,
           start: importIndex === 0 ? 0 : 1, // newline
-          end: importSource.length + 9, // " from 'importSource';"
+          end: 1, // ";"
           firstChild: specifierPointer,
           nextSibling: undefined,
           position: 0,
-          dependsOn: new Set(),
+          dependsOn: new Set([sourcePointer]),
           exportType: undefined,
           preserveGaps: false,
           specifierForDynamicImport: undefined,
@@ -598,16 +614,30 @@ function buildImports(
             importIndex,
           },
         };
-        regions.push(importDeclarationRegion, specifierRegion, {
-          type: "reference",
-          start: 5 /* "* as " */,
-          end: localName.length,
-          firstChild: undefined,
-          nextSibling: undefined,
-          shorthand: false,
-          position: 0,
-          dependsOn: new Set([specifierPointer]),
-        } as ReferenceCodeRegion);
+        regions.push(
+          importDeclarationRegion,
+          specifierRegion,
+          {
+            type: "reference",
+            start: 5 /* "* as " */,
+            end: localName.length,
+            firstChild: undefined,
+            nextSibling: sourcePointer,
+            shorthand: false,
+            position: 0,
+            dependsOn: new Set([specifierPointer]),
+          } as ReferenceCodeRegion,
+          {
+            type: "general",
+            start: 6 /* " from " */,
+            end: importSource.length + 2 /* "importSource" */,
+            firstChild: undefined,
+            nextSibling: undefined,
+            preserveGaps: false,
+            position: 0,
+            dependsOn: new Set(),
+          } as GeneralCodeRegion
+        );
 
         bundleDeclarations.set(localName, {
           pointer: specifierPointer,
@@ -690,12 +720,18 @@ function buildImports(
           `bug: missing first import specifier region pointer for '${importDeclaration}' in bundle ${bundle.href}`
         );
       }
+      if (lastSpecifierPointer == null) {
+        throw new Error(
+          `bug: missing last import specifier region pointer for '${importDeclaration}' in bundle ${bundle.href}`
+        );
+      }
       let currentImportDeclarationPointer = regions.length;
       flushImportDeclarationRegion(
         regions,
         importIndex,
         importSourceHref,
         firstSpecifierPointer,
+        lastSpecifierPointer,
         lastImportDeclarationPointer,
         bundle
       );
@@ -797,18 +833,21 @@ function buildExports(
         importIndex = importAssignments.size + reexportIndex;
       }
       let reexportDeclarationPointer: RegionPointer = regions.length;
+      let sourcePointer: RegionPointer =
+        reexportDeclarationPointer + mapping.size + 1;
       let reexportDeclarationRegion: ImportCodeRegion = {
         type: "import",
         position: 0,
         firstChild: reexportDeclarationPointer + 1,
         nextSibling: undefined,
         start: 1, // newline
-        end: reexportDeclaration.length,
-        dependsOn: new Set(
-          [...[...mapping.keys()].entries()].map(
+        end: 1, // ";"
+        dependsOn: new Set([
+          ...[...[...mapping.keys()].entries()].map(
             ([index]) => reexportDeclarationPointer + 1 + index
-          )
-        ),
+          ),
+          sourcePointer,
+        ]),
         preserveGaps: false,
         isDynamic: false,
         exportType: "reexport",
@@ -828,7 +867,7 @@ function buildExports(
           firstChild: undefined,
           nextSibling:
             index === mapping.size - 1
-              ? undefined
+              ? sourcePointer
               : reexportDeclarationPointer + index + 2,
           start: index === 0 ? 9 /* "export { " */ : 2 /* ", " */,
           end:
@@ -840,8 +879,22 @@ function buildExports(
           dependsOn: new Set([reexportDeclarationPointer]),
         });
       }
+      let sourceRegion: GeneralCodeRegion = {
+        type: "general",
+        start: 8 /* " } from " */,
+        end: source.length + 2 /* "source" */,
+        firstChild: undefined,
+        nextSibling: undefined,
+        position: 0,
+        preserveGaps: false,
+        dependsOn: new Set(),
+      };
 
-      regions.push(reexportDeclarationRegion, ...reexportSpecifierRegions);
+      regions.push(
+        reexportDeclarationRegion,
+        ...reexportSpecifierRegions,
+        sourceRegion
+      );
     }
   }
 
@@ -864,20 +917,32 @@ function buildExports(
       if (importIndex === -1) {
         importIndex = importAssignments.size + exportAllIndex;
       }
-      regions.push({
-        type: "import",
-        position: 0,
-        firstChild: undefined,
-        nextSibling: undefined,
-        start: 1, // newline
-        end: exportAllDeclaration.length,
-        dependsOn: new Set(),
-        preserveGaps: false,
-        isDynamic: false,
-        exportType: "export-all",
-        specifierForDynamicImport: undefined,
-        importIndex,
-      });
+      regions.push(
+        {
+          type: "import",
+          position: 0,
+          firstChild: regions.length + 1,
+          nextSibling: undefined,
+          start: 1, // newline
+          end: 1, // ";"
+          dependsOn: new Set([regions.length + 1]),
+          preserveGaps: false,
+          isDynamic: false,
+          exportType: "export-all",
+          specifierForDynamicImport: undefined,
+          importIndex,
+        } as ImportCodeRegion,
+        {
+          type: "general",
+          start: 14 /* "export * from " */,
+          end: source.length + 2 /* "source" */,
+          firstChild: undefined,
+          nextSibling: undefined,
+          preserveGaps: false,
+          position: 0,
+          dependsOn: new Set(),
+        } as GeneralCodeRegion
+      );
     }
   }
 
@@ -1691,26 +1756,43 @@ function flushImportDeclarationRegion(
   importIndex: number,
   importSourceHref: string,
   firstSpecifierPointer: RegionPointer,
+  lastSpecifierPointer: RegionPointer,
   lastImportDeclarationPointer: RegionPointer | undefined,
   bundle: URL
 ) {
   let currentImportDeclarationPointer = regions.length;
+  let sourcePointer = currentImportDeclarationPointer + 1;
   let importSource = maybeRelativeURL(new URL(importSourceHref), bundle);
-  regions.push({
-    type: "import",
-    importIndex,
-    exportType: undefined,
-    start: importIndex === 0 ? 0 : 1, // newline
-    end: importSource.length + 11, // " } from 'importSource';"
-    firstChild: firstSpecifierPointer,
-    nextSibling: undefined,
-    position: 0,
-    isDynamic: false,
-    dependsOn: new Set(),
-    shorthand: false,
-    preserveGaps: false,
-    specifierForDynamicImport: undefined,
-  } as ImportCodeRegion);
+  regions.push(
+    {
+      type: "import",
+      importIndex,
+      exportType: undefined,
+      start: importIndex === 0 ? 0 : 1, // newline
+      end: 1, // ";"
+      firstChild: firstSpecifierPointer,
+      nextSibling: undefined,
+      position: 0,
+      isDynamic: false,
+      dependsOn: new Set([sourcePointer]),
+      shorthand: false,
+      preserveGaps: false,
+      specifierForDynamicImport: undefined,
+    } as ImportCodeRegion,
+    {
+      type: "general",
+      start: 8 /* " } from " */,
+      end: importSource.length + 2 /* "importSource" */,
+      firstChild: undefined,
+      nextSibling: undefined,
+      preserveGaps: false,
+      position: 0,
+      dependsOn: new Set(),
+    } as GeneralCodeRegion
+  );
+
+  regions[lastSpecifierPointer].nextSibling = sourcePointer;
+
   if (lastImportDeclarationPointer != null) {
     regions[
       lastImportDeclarationPointer

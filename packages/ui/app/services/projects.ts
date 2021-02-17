@@ -30,12 +30,16 @@ export default class ProjectsService extends Service {
     }
   }).drop() as any;
 
-  start = task(function* (this: ProjectsService, projects: [string, string][]) {
+  start = task(function* (
+    this: ProjectsService,
+    projects: [string, string][],
+    assigner: string
+  ) {
     yield this.initialize.lastPerformed;
 
-    yield fetch("/projects", {
+    yield fetch("/config", {
       method: "POST",
-      body: JSON.stringify(projects),
+      body: JSON.stringify({ projects, assigner }),
     });
 
     // doing this instead of reloading as we shouldn't assume what the current

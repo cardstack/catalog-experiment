@@ -35,18 +35,24 @@ function codeEqual(
 ) {
   let parsedActual = standardize(actual)!;
   let parsedExpected = standardize(expected)!;
-  let msg: string = "code is not equal.";
-  //@ts-ignore this is just a check to see if we are in nodejs
-  if (typeof window === "undefined") {
-    msg = `${msg}
+
+  let result = parsedActual === parsedExpected;
+  let msg: string;
+  if (!result) {
+    msg = "code is not equal.";
+    //@ts-ignore this is just a check to see if we are in nodejs
+    if (typeof window === "undefined") {
+      msg = `${msg}
 ${createPatch("", parsedExpected, parsedActual)
   .split("\n")
   .slice(4)
   .join("\n")}`;
+    }
+  } else {
+    msg = "code is equal";
   }
-
   this.pushResult({
-    result: parsedActual === parsedExpected,
+    result,
     actual,
     expected,
     message: message ?? msg,

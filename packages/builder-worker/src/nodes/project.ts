@@ -7,14 +7,14 @@ import {
   BundleAssignmentsNode,
   BundleNode,
   BundleAssignment,
-  TestingOptions,
+  BundleOptions,
 } from "./bundle";
-import { Resolver } from "../resolver";
+import { catalogjsHref, Resolver } from "../resolver";
 import { LockEntries } from "./lock-file";
 import { mapValues } from "lodash";
 
 export interface Options {
-  testing?: TestingOptions;
+  bundle?: BundleOptions;
   seededResolutions?: { [specifier: string]: string };
 }
 
@@ -40,8 +40,16 @@ export class MakeProjectNode implements BuilderNode<LockEntries> {
     private resolver: Resolver,
     private options?: Partial<Options>
   ) {
-    this.cacheKey = `project:input=${inputRoot.href},output=${projectOutputRoot.href}`;
+    this.cacheKey = `project:input=${inputRoot.href},output=${
+      projectOutputRoot.href
+    },options=${JSON.stringify(options)}`;
     this.optsWithDefaults = {
+      ...{
+        bundle: {
+          assigner: "default",
+          mountedPkgSource: new URL(catalogjsHref),
+        },
+      },
       ...options,
     };
   }
@@ -62,7 +70,7 @@ export class MakeProjectNode implements BuilderNode<LockEntries> {
         this.projectOutputRoot,
         this.resolver,
         seededResolutions,
-        this.optsWithDefaults.testing
+        this.optsWithDefaults.bundle
       ),
     };
   }
@@ -103,7 +111,9 @@ class FinishProjectNode implements BuilderNode<LockEntries> {
     private lockEntries: LockEntries = {},
     private options: Options
   ) {
-    this.cacheKey = `finish-project:input=${inputRoot.href},output=${projectOutputRoot.href}`;
+    this.cacheKey = `finish-project:input=${inputRoot.href},output=${
+      projectOutputRoot.href
+    },options=${JSON.stringify(options)}`;
   }
 
   async deps() {
@@ -133,7 +143,7 @@ class FinishProjectNode implements BuilderNode<LockEntries> {
             this.resolver,
             this.lockEntries,
             dependencies,
-            this.options.testing
+            this.options.bundle
           ),
           bundleURL
         )
