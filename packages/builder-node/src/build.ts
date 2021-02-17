@@ -21,12 +21,7 @@ Logger.setLogLevel("info");
 let outputDir = join(process.cwd(), "dist");
 let projectRoots: [URL, URL][] = [];
 
-let {
-  project: rawProjects,
-  overlay,
-  cdn: cdnPath,
-  assigner = "default",
-} = yargs
+let { project: rawProjects, overlay, cdn: cdnPath, assigner } = yargs
   .usage(
     "Usage: $0 --project=<filePath_1>,<outputURL_1> ... --project=<filePath_N>,<outputURL_N>"
   )
@@ -53,7 +48,8 @@ let {
     assigner: {
       alias: "a",
       type: "string",
-      default: false,
+      default: "default",
+      choices: ["default", "minimum", "maximum"],
       description:
         "the name of the bundle assignment strategy to use. Possible assigners are: 'default', 'minimum', and 'maximum'.",
     },

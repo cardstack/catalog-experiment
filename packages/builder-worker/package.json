@@ -23,7 +23,7 @@
   "scripts": {
     "start": "webpack-dev-server",
     "test": "yarn start-server-and-test start http-get://localhost:8080 test:headless",
-    "test:headless": "yarn node-qunit-puppeteer http://localhost:8080"
+    "test:headless": "yarn node-qunit-puppeteer http://localhost:8080 60000"
   },
   "dependencies": {
     "@babel/core": "^7.9.0",

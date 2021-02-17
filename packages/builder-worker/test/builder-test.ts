@@ -9733,8 +9733,8 @@ QUnit.module("module builder", function (origHooks) {
         assert.codeEqual(
           source,
           `
-          import { helloWorld } from "./hello.js";
-          import { goodbye } from "./goodbye.js";
+          import { helloWorld } from "${url("/output/hello.js").href}";
+          import { goodbye } from "${url("/output/goodbye.js").href}";
           document.body.append(helloWorld());
           document.body.append(goodbye());
           `
