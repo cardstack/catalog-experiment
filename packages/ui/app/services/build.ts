@@ -8,9 +8,9 @@ interface Projects {
   availableProjects: string[];
 }
 
-export default class ProjectsService extends Service {
+export default class BuildService extends Service {
   @tracked listing: Projects | undefined;
-  initialize = task(function* (this: ProjectsService) {
+  initialize = task(function* (this: BuildService) {
     if (!navigator.serviceWorker.controller) {
       navigator.serviceWorker.register("/service-worker.js", {
         scope: "/",
@@ -31,13 +31,13 @@ export default class ProjectsService extends Service {
   }).drop() as any;
 
   start = task(function* (
-    this: ProjectsService,
+    this: BuildService,
     projects: [string, string][],
     assigner: string
   ) {
     yield this.initialize.lastPerformed;
 
-    yield fetch("/config", {
+    yield fetch("/build", {
       method: "POST",
       body: JSON.stringify({ projects, assigner }),
     });

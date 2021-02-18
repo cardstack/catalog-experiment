@@ -1,5 +1,10 @@
 import { FileSystem, isFileEvent, ListingEntry } from "./filesystem";
-import { addEventListener, Event, dispatchEvent } from "./event-bus";
+import {
+  addEventListener,
+  Event,
+  dispatchEvent,
+  removeEventListener,
+} from "./event-bus";
 import bind from "bind-decorator";
 import {
   OutputTypes,
@@ -112,7 +117,9 @@ class BuildRunner<Input> {
     private roots: Input,
     private recipesURL: URL,
     private inputDidChange?: () => void
-  ) {}
+  ) {
+    addEventListener(this.fileDidChange);
+  }
 
   explain(): Explanation {
     let explanation: Explanation = new Map();
@@ -160,6 +167,10 @@ class BuildRunner<Input> {
     this.currentContext = undefined;
     log(`completed build in ${Date.now() - start}ms`);
     return result.values;
+  }
+
+  destroy() {
+    removeEventListener(this.fileDidChange);
   }
 
   @bind
@@ -383,7 +394,6 @@ class BuildRunner<Input> {
   @bind
   private ensureWatching(url: URL) {
     if (!this.watchedFiles.has(url.href)) {
-      addEventListener(this.fileDidChange);
       this.watchedFiles.add(url.href);
     }
   }
@@ -476,7 +486,8 @@ export class Rebuilder<Input> {
     fs: FileSystem,
     roots: Input,
     recipesURL: URL,
-    private whenIdle?: () => void
+    private whenIdle?: () => void,
+    private hasAlreadyBuilt = false
   ) {
     this.runner = new BuildRunner(fs, roots, recipesURL, this.inputDidChange);
   }
@@ -487,7 +498,8 @@ export class Rebuilder<Input> {
     roots: [URL, URL][],
     recipesURL: URL,
     options?: Partial<Options>,
-    whenIdle?: () => void
+    whenIdle?: () => void,
+    hasAlreadyBuilt = false
   ) {
     for (let [input, output] of roots) {
       if (input.origin === output.origin) {
@@ -500,7 +512,8 @@ export class Rebuilder<Input> {
       fs,
       projectsToNodes(roots, fs, options),
       recipesURL,
-      whenIdle
+      whenIdle,
+      hasAlreadyBuilt
     );
   }
 
@@ -565,10 +578,11 @@ export class Rebuilder<Input> {
         case "working":
           try {
             await this.runner.build();
-            if (this.state.name === "working") {
-              this.setState({ name: "idle", lastBuildSucceeded: true });
+            if (this.state.name === "working" && this.hasAlreadyBuilt) {
               dispatchEvent({ reload: true } as Event);
             }
+            this.hasAlreadyBuilt = true;
+            this.setState({ name: "idle", lastBuildSucceeded: true });
           } catch (err) {
             if (this.state.name === "working") {
               this.setState({
@@ -615,6 +629,7 @@ export class Rebuilder<Input> {
     while (this.state.name !== "shutdown") {
       await this.nextState.promise;
     }
+    this.runner.destroy();
   }
 
   explain(): Explanation {

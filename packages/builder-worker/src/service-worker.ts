@@ -5,7 +5,7 @@ import {
 } from "../../file-daemon-client/src/index";
 import { FileSystem } from "./filesystem";
 import { addEventListener } from "./event-bus";
-import { log, error, Logger } from "./logger";
+import { debug, log, error, Logger } from "./logger";
 import { handleFile } from "./request-handlers/file-request-handler";
 import { handleClientRegister } from "./request-handlers/client-register-handler";
 import { handleLogLevel } from "./request-handlers/log-level-handler";
@@ -15,7 +15,7 @@ import { Handler } from "./request-handlers/request-handler";
 import { HttpFileSystemDriver } from "./filesystem-drivers/http-driver";
 import { BuildManager } from "./build-manager";
 import { handleListing } from "./request-handlers/project-listing-handler";
-import { handleConfigure } from "./request-handlers/set-projects-handler";
+import { handleBuild } from "./request-handlers/run-build-handler";
 import { explainAsDot } from "./builder";
 import { localDiskPkgsHref } from "./resolver";
 
@@ -33,7 +33,7 @@ let activated: () => void;
 let activating: Promise<void>;
 
 Logger.echoInConsole(true);
-Logger.setLogLevel("debug");
+Logger.setLogLevel("info");
 console.log(`service worker evaluated`);
 
 worker.addEventListener("install", () => {
@@ -82,11 +82,13 @@ async function activate() {
     { bundle: { mountedPkgSource: new URL(localDiskPkgsHref) } },
     () => {
       let dot = explainAsDot(buildManager.rebuilder!.explain());
-      console.log(dot);
+      debug(dot);
     }
   );
   await fs.displayListing(log);
   activated();
+
+  // TODO tell the client to show the dashbaord
 }
 
 worker.addEventListener("fetch", (event: FetchEvent) => {
@@ -113,7 +115,7 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
         let stack: Handler[] = [
           handleClientRegister(eventHandler, volume),
           handleListing(fs, buildManager),
-          handleConfigure(buildManager),
+          handleBuild(buildManager),
           handleBuilderRestart(buildManager),
           handleLogLevel(),
           handleFile(fs, buildManager),

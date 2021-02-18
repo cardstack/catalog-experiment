@@ -5,25 +5,22 @@ import { localDiskPkgsHref } from "../resolver";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 
-export function handleConfigure(buildManager: BuildManager) {
+export function handleBuild(buildManager: BuildManager) {
   return (async ({ request }) => {
     let requestURL = new URL(request.url);
     if (requestURL.origin !== worker.origin) {
       return;
     }
-    if (
-      requestURL.pathname.startsWith("/config") &&
-      request.method === "POST"
-    ) {
+    if (requestURL.pathname.startsWith("/build") && request.method === "POST") {
       let { projects, assigner } = await request.json();
       assertProjectLike(projects);
       assertAssigner(assigner);
-      buildManager.setProjects(
-        projects.map(([input, output]) => [new URL(input), new URL(output)])
+      await buildManager.configure(
+        projects.map(([input, output]) => [new URL(input), new URL(output)]),
+        {
+          bundle: { assigner, mountedPkgSource: new URL(localDiskPkgsHref) },
+        }
       );
-      buildManager.setOptions({
-        bundle: { assigner, mountedPkgSource: new URL(localDiskPkgsHref) },
-      });
       await buildManager.rebuilder!.build();
       let status = buildManager.rebuilder?.status;
       if (status && status.name === "failed") {

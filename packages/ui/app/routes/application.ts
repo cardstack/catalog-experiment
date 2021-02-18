@@ -1,11 +1,11 @@
 import Route from "@ember/routing/route";
 import { inject as service } from "@ember/service";
-import ProjectsService from "ui/services/projects";
+import BuildService from "ui/services/build";
 
 export default class CatalogJsUI extends Route {
-  @service projects!: ProjectsService;
+  @service build!: BuildService;
 
   async beforeModel() {
-    this.projects.initialize.perform();
+    this.build.initialize.perform();
   }
 }

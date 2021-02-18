@@ -5,6 +5,7 @@ import { warn } from "./logger";
 import { Options } from "./nodes/project";
 
 export class BuildManager {
+  private hasAlreadyBuilt = false;
   private _rebuilder: Rebuilder<unknown> | undefined;
   private _projects: [URL, URL][] | undefined;
   constructor(
@@ -18,27 +19,17 @@ export class BuildManager {
     return this._projects ? [...this._projects] : undefined;
   }
 
-  setProjects(projects: [URL, URL][]) {
+  async configure(projects: [URL, URL][], options: Partial<Options> = {}) {
+    if (this._rebuilder) {
+      await this._rebuilder.shutdown();
+    }
     this._projects = projects;
+    this.options = merge({}, this.options, options);
     this._rebuilder = Rebuilder.forProjects(
       this.fs,
       projects,
       this.recipesURL,
       this.options,
-      this.whenIdle
-    );
-  }
-
-  setOptions(options: Partial<Options>) {
-    if (!this._projects) {
-      throw new Error(`must first call setProjects()`);
-    }
-    this.options = merge({}, this.options, options);
-    this._rebuilder = Rebuilder.forProjects(
-      this.fs,
-      this._projects,
-      this.recipesURL,
-      options,
       this.whenIdle
     );
   }
@@ -51,19 +42,16 @@ export class BuildManager {
     if (!this.rebuilder) {
       return Promise.resolve();
     }
-    return this.rebuilder.isIdle();
+    await this.rebuilder.isIdle();
+    this.hasAlreadyBuilt = true;
+    return;
   }
 
-  async reload(options?: Partial<Options>): Promise<void> {
+  async reload(): Promise<void> {
     if (!this._projects || !this._rebuilder) {
       throw new Error(`must set projects first before reloading the builder`);
     }
-    this.options = options;
-    warn(
-      `reloading builder with options: ${
-        options ? JSON.stringify(options) : "none"
-      }`
-    );
+    warn(`reloading builder with options: ${JSON.stringify(this.options)}`);
     await this._rebuilder.shutdown();
 
     this._rebuilder = Rebuilder.forProjects(
@@ -71,7 +59,8 @@ export class BuildManager {
       this._projects,
       this.recipesURL,
       this.options,
-      this.whenIdle
+      this.whenIdle,
+      this.hasAlreadyBuilt
     );
     this._rebuilder.start();
   }
