@@ -2,9 +2,9 @@
   "$schema": "../recipe-schema.json",
   "recipes": [
     {
-      "semverRange": ">=4.17.15",
+      "semverRange": "<=4.17.15 || >=4.17.20",
       "srcRepo": {
-        "version": "4.17.15-es"
+        "version": "$major$.$minor$.$patch$-es"
       },
       "entrypoints": [
         "./lodash.js",
@@ -332,9 +332,9 @@
       ]
     },
     {
-      "semverRange": "<4.17.15",
+      "semverRange": "4.17.16 - 4.17.19",
       "srcRepo": {
-        "version": "$major$.$minor$.$patch$-es"
+        "version": "4.17.20-es"
       },
       "entrypoints": [
         "./lodash.js",
