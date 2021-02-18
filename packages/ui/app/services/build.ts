@@ -10,7 +10,11 @@ interface Projects {
 
 export default class BuildService extends Service {
   @tracked listing: Projects | undefined;
+  @tracked assigner: string = "maximum";
   initialize = task(function* (this: BuildService) {
+    // we're using local storage here because we need to communicate this local
+    // state across different ember app instances
+    this.assigner = localStorage.getItem("assigner") ?? this.assigner;
     if (!navigator.serviceWorker.controller) {
       navigator.serviceWorker.register("/service-worker.js", {
         scope: "/",
@@ -35,6 +39,8 @@ export default class BuildService extends Service {
     projects: [string, string][],
     assigner: string
   ) {
+    localStorage.setItem("assigner", assigner);
+    this.assigner = assigner;
     yield this.initialize.lastPerformed;
 
     yield fetch("/build", {

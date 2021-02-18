@@ -8,14 +8,14 @@ import { baseName } from "../helpers/base-name";
 import { task } from "ember-concurrency";
 
 export default class ProjectSelectorComponent extends Component {
-  defaultOrigin = location.origin;
   @service build!: BuildService;
   @tracked selectedProjects: [string, string][] = [];
-  @tracked selectedStrategy: string = "maximum";
+  @tracked selectedStrategy: string;
 
   constructor(owner: unknown, args: any) {
     super(owner, args);
     this.initialize.perform();
+    this.selectedStrategy = this.build.assigner;
   }
 
   initialize = task(function* (this: ProjectSelectorComponent) {

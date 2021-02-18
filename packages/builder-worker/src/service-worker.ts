@@ -98,11 +98,6 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
   }
 
   event.respondWith(
-    //TODO I think there might be a race condition on the outside of this
-    //evaluated async block while a new version of the service working is being
-    //installed that results in a 404. I think we need to also consider how the
-    //old service worker can detect a new service worker is being installed and
-    //block until the new service worker can take over.
     (async () => {
       try {
         await activating;
@@ -130,10 +125,6 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
         error(`An unhandled error occurred`, err);
       }
 
-      // instead of returning a 404, we should return some kind of response to
-      // signal to the UI to display a "Loading..." message. And then the
-      // service worker can send a "ready" signal to the client when install and
-      // activation is complete that will trigger the client to reload the page.
       return new Response("Not Found", { status: 404 });
     })()
   );
