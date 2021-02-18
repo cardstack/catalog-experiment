@@ -1,9 +1,11 @@
 import { default as compareAscending } from "./29.js";
 import { default as arrayMap } from "./98.js";
+import { default as baseGet } from "./14.js";
 import { default as baseIteratee } from "./6.js";
 import { default as baseMap } from "./74.js";
 import { default as baseUnary } from "./135.js";
 import { default as identity } from "../identity.js";
+import { default as isArray } from "../isArray.js";
 function baseSortBy(array, comparer) {
   var length = array.length;
   array.sort(comparer);
@@ -37,8 +39,22 @@ function compareMultiple(object, other, orders) {
   return object.index - other.index;
 }
 function baseOrderBy(collection, iteratees, orders) {
+  if (iteratees.length) {
+    iteratees = arrayMap(iteratees, function (iteratee) {
+      if (isArray(iteratee)) {
+        return function (value) {
+          return baseGet(value, iteratee.length === 1 ? iteratee[0] : iteratee);
+        };
+      }
+
+      return iteratee;
+    });
+  } else {
+    iteratees = [identity];
+  }
+
   var index = -1;
-  iteratees = arrayMap(iteratees.length ? iteratees : [identity], baseUnary(baseIteratee));
+  iteratees = arrayMap(iteratees, baseUnary(baseIteratee));
   var result = baseMap(collection, function (value, key, collection) {
     var criteria = arrayMap(iteratees, function (iteratee) {
       return iteratee(value);
@@ -55,5 +71,5 @@ function baseOrderBy(collection, iteratees, orders) {
 }
 export { baseOrderBy as default };
 /*====catalogjs annotation start====
-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
+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
 ====catalogjs annotation end====*/

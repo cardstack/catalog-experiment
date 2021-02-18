@@ -817,7 +817,7 @@ function lazyValue() {
 
 
 
-var VERSION = '4.17.15';
+var VERSION = '4.17.20';
 var WRAP_BIND_KEY_FLAG = 2;
 var LAZY_FILTER_FLAG = 1,
     LAZY_WHILE_FLAG = 3;
