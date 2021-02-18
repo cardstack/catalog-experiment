@@ -4,8 +4,8 @@ import {
   FileDaemonClientDriver,
 } from "../../file-daemon-client/src/index";
 import { FileSystem } from "./filesystem";
-import { addEventListener } from "./event-bus";
-import { log, error, Logger } from "./logger";
+import { addEventListener, dispatchEvent } from "./event-bus";
+import { debug, log, error, Logger } from "./logger";
 import { handleFile } from "./request-handlers/file-request-handler";
 import { handleClientRegister } from "./request-handlers/client-register-handler";
 import { handleLogLevel } from "./request-handlers/log-level-handler";
@@ -15,7 +15,7 @@ import { Handler } from "./request-handlers/request-handler";
 import { HttpFileSystemDriver } from "./filesystem-drivers/http-driver";
 import { BuildManager } from "./build-manager";
 import { handleListing } from "./request-handlers/project-listing-handler";
-import { handleConfigure } from "./request-handlers/set-projects-handler";
+import { handleBuild } from "./request-handlers/run-build-handler";
 import { explainAsDot } from "./builder";
 import { localDiskPkgsHref } from "./resolver";
 
@@ -33,15 +33,16 @@ let activated: () => void;
 let activating: Promise<void>;
 
 Logger.echoInConsole(true);
-Logger.setLogLevel("debug");
+Logger.setLogLevel("info");
 console.log(`service worker evaluated`);
 
 worker.addEventListener("install", () => {
   activating = new Promise<void>((res) => (activated = res));
   eventHandler = new ClientEventHandler();
   addEventListener(eventHandler.handleEvent.bind(eventHandler));
+  dispatchEvent({ uiManager: { type: "home" } });
 
-  log(`installing service worker`);
+  log(`Installing service worker`);
   websocketURL = new URL(defaultWebsocketURL);
 
   // force moving on to activation even if another service worker had control
@@ -81,8 +82,10 @@ async function activate() {
     new URL("https://local-disk/recipes/"),
     { bundle: { mountedPkgSource: new URL(localDiskPkgsHref) } },
     () => {
-      let dot = explainAsDot(buildManager.rebuilder!.explain());
-      console.log(dot);
+      if (Logger.getInstance().logLevel === "debug") {
+        let dot = explainAsDot(buildManager.rebuilder!.explain());
+        debug(dot);
+      }
     }
   );
   await fs.displayListing(log);
@@ -97,11 +100,6 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
   }
 
   event.respondWith(
-    //TODO I think there might be a race condition on the outside of this
-    //evaluated async block while a new version of the service working is being
-    //installed that results in a 404. I think we need to also consider how the
-    //old service worker can detect a new service worker is being installed and
-    //block until the new service worker can take over.
     (async () => {
       try {
         await activating;
@@ -113,7 +111,7 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
         let stack: Handler[] = [
           handleClientRegister(eventHandler, volume),
           handleListing(fs, buildManager),
-          handleConfigure(buildManager),
+          handleBuild(buildManager),
           handleBuilderRestart(buildManager),
           handleLogLevel(),
           handleFile(fs, buildManager),
@@ -129,10 +127,6 @@ worker.addEventListener("fetch", (event: FetchEvent) => {
         error(`An unhandled error occurred`, err);
       }
 
-      // instead of returning a 404, we should return some kind of response to
-      // signal to the UI to display a "Loading..." message. And then the
-      // service worker can send a "ready" signal to the client when install and
-      // activation is complete that will trigger the client to reload the page.
       return new Response("Not Found", { status: 404 });
     })()
   );

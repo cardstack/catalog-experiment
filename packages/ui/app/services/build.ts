@@ -8,9 +8,13 @@ interface Projects {
   availableProjects: string[];
 }
 
-export default class ProjectsService extends Service {
+export default class BuildService extends Service {
   @tracked listing: Projects | undefined;
-  initialize = task(function* (this: ProjectsService) {
+  @tracked assigner: string = "maximum";
+  initialize = task(function* (this: BuildService) {
+    // we're using local storage here because we need to communicate this local
+    // state across different ember app instances
+    this.assigner = localStorage.getItem("assigner") ?? this.assigner;
     if (!navigator.serviceWorker.controller) {
       navigator.serviceWorker.register("/service-worker.js", {
         scope: "/",
@@ -31,13 +35,15 @@ export default class ProjectsService extends Service {
   }).drop() as any;
 
   start = task(function* (
-    this: ProjectsService,
+    this: BuildService,
     projects: [string, string][],
     assigner: string
   ) {
+    localStorage.setItem("assigner", assigner);
+    this.assigner = assigner;
     yield this.initialize.lastPerformed;
 
-    yield fetch("/config", {
+    yield fetch("/build", {
       method: "POST",
       body: JSON.stringify({ projects, assigner }),
     });

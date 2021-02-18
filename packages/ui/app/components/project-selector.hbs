@@ -36,7 +36,7 @@
       <span class="bundle-strategy">Optimized bundles (modules combined into bundles)</span>
     </label>
   </div>
-  {{#if this.projects.start.isRunning}}
+  {{#if this.build.start.isRunning}}
   <div>Starting...</div>
   {{else}}
   <button onclick={{action startSelectedProject}} disabled={{if (eq this.selectedProjects.length 0) 'true'

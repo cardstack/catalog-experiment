@@ -2,36 +2,36 @@ import Component from "@glimmer/component";
 import { inject as service } from "@ember/service";
 import { tracked } from "@glimmer/tracking";
 import { action } from "@ember/object";
-import ProjectsService from "../services/projects";
+import BuildService from "../services/build";
 import { baseName } from "../helpers/base-name";
 // @ts-ignore
 import { task } from "ember-concurrency";
 
 export default class ProjectSelectorComponent extends Component {
-  defaultOrigin = location.origin;
-  @service projects!: ProjectsService;
+  @service build!: BuildService;
   @tracked selectedProjects: [string, string][] = [];
-  @tracked selectedStrategy: string = "maximum";
+  @tracked selectedStrategy: string;
 
   constructor(owner: unknown, args: any) {
     super(owner, args);
     this.initialize.perform();
+    this.selectedStrategy = this.build.assigner;
   }
 
   initialize = task(function* (this: ProjectSelectorComponent) {
-    yield this.projects.initialize.last;
+    yield this.build.initialize.last;
     this.selectedProjects = [...this.activeProjects!];
   }) as any;
 
   get availableProjects() {
-    return this.projects.listing?.availableProjects;
+    return this.build.listing?.availableProjects;
   }
   get activeProjects() {
-    return this.projects.listing?.activeProjects;
+    return this.build.listing?.activeProjects;
   }
 
   startSelectedProject() {
-    this.projects.start.perform(this.selectedProjects, this.selectedStrategy);
+    this.build.start.perform(this.selectedProjects, this.selectedStrategy);
   }
 
   @action

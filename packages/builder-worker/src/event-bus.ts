@@ -79,7 +79,7 @@ export class EventBus {
     while (this.eventQueue.length > 0) {
       let item = this.eventQueue.shift()!;
       let { event, listener } = item;
-      let dispatched: () => void;
+      let dispatched: (value?: unknown) => void;
       let waitForDispatch = new Promise((res) => (dispatched = res));
       setTimeout(() => {
         listener(event);
