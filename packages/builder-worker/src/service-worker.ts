@@ -82,8 +82,10 @@ async function activate() {
     new URL("https://local-disk/recipes/"),
     { bundle: { mountedPkgSource: new URL(localDiskPkgsHref) } },
     () => {
-      let dot = explainAsDot(buildManager.rebuilder!.explain());
-      debug(dot);
+      if (Logger.getInstance().logLevel === "debug") {
+        let dot = explainAsDot(buildManager.rebuilder!.explain());
+        debug(dot);
+      }
     }
   );
   await fs.displayListing(log);
