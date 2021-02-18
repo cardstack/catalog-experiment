@@ -52,6 +52,7 @@
     "fast-stable-stringify": "^1.0.0",
     "globals": "^13.5.0",
     "htmlparser2": "^4.1.0",
+    "idb-keyval": "^5.0.2",
     "imurmurhash": "^0.1.4",
     "json-stable-stringify": "^1.0.1",
     "lodash": "^4.17.19",

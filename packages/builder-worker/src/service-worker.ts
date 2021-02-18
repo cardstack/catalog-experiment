@@ -4,7 +4,7 @@ import {
   FileDaemonClientDriver,
 } from "../../file-daemon-client/src/index";
 import { FileSystem } from "./filesystem";
-import { addEventListener } from "./event-bus";
+import { addEventListener, dispatchEvent } from "./event-bus";
 import { debug, log, error, Logger } from "./logger";
 import { handleFile } from "./request-handlers/file-request-handler";
 import { handleClientRegister } from "./request-handlers/client-register-handler";
@@ -40,8 +40,9 @@ worker.addEventListener("install", () => {
   activating = new Promise<void>((res) => (activated = res));
   eventHandler = new ClientEventHandler();
   addEventListener(eventHandler.handleEvent.bind(eventHandler));
+  dispatchEvent({ uiManager: { type: "home" } });
 
-  log(`installing service worker`);
+  log(`Installing service worker`);
   websocketURL = new URL(defaultWebsocketURL);
 
   // force moving on to activation even if another service worker had control
@@ -87,8 +88,6 @@ async function activate() {
   );
   await fs.displayListing(log);
   activated();
-
-  // TODO tell the client to show the dashbaord
 }
 
 worker.addEventListener("fetch", (event: FetchEvent) => {
