@@ -334,7 +334,7 @@
     {
       "semverRange": "4.17.15 - 4.17.19",
       "srcRepo": {
-        "version": "4.17.15-es"
+        "version": "4.17.20-es"
       },
       "entrypoints": [
         "./lodash.js",
