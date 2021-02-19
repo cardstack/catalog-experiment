@@ -5,6 +5,9 @@
   "private": true,
   "scripts": {
     "start-pkg": "node ../file-daemon/dist/main.js . ../recipes ../../cdn/pkgs",
-    "start": "node ../file-daemon/bin/file-daemon . ../recipes ../../cdn/pkgs"
+    "start": "node ../file-daemon/bin/file-daemon --builderServer http://localhost:8080 --uiServer http://localhost:4300/catalogjs/ui/ . ../recipes ../../cdn/pkgs"
+  },
+  "volta": {
+    "node": "14.5.0"
   }
 }

@@ -7,11 +7,28 @@
     {
       "type": "node",
       "request": "launch",
+      "name": "Serve test-app from packaged catalogjs",
+      "cwd": "${workspaceRoot}/packages/test-app",
+      "env": {},
+      "console": "integratedTerminal",
+      "program": "${workspaceRoot}/dist/file-daemon/main.js",
+      "args": [".", "../test-lib", "../recipes", "../../cdn/pkgs"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
       "name": "Serve test-app",
       "cwd": "${workspaceRoot}/packages/test-app",
       "env": {},
       "program": "${workspaceRoot}/packages/file-daemon/bin/file-daemon.js",
-      "args": [".", "../test-lib"]
+      "args": [
+        "--builderServer=http://localhost:8080",
+        "--uiServer=http://localhost:4300/catalogjs/ui/",
+        ".",
+        "../test-lib",
+        "../recipes",
+        "../../cdn/pkgs"
+      ]
     },
     {
       "type": "node",
@@ -20,7 +37,13 @@
       "cwd": "${workspaceRoot}/packages/test-lib",
       "env": {},
       "program": "${workspaceRoot}/packages/file-daemon/index.js",
-      "args": ["."]
+      "args": [
+        "--builderServer=http://localhost:8080",
+        "--uiServer=http://localhost:4300/catalogjs/ui/",
+        ".",
+        "../recipes",
+        "../../cdn/pkgs"
+      ]
     },
     {
       "type": "node",

@@ -21,7 +21,7 @@ import { localDiskPkgsHref } from "./resolver";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 const fs = new FileSystem();
-const uiURL = new URL("http://localhost:4300/catalogjs/ui/");
+const uiURL = new URL("http://localhost:4200/catalogjs/ui/");
 
 let websocketURL: URL;
 let isDisabled = false;

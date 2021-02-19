@@ -47,6 +47,11 @@
     "acceptance-test:default-assigner": "cd ./test-working && node ../packages/builder-node/bin/build.js --project=../packages/test-app,http://build-output --project=../packages/test-lib,http://localhost:4200/test-lib/ --cdn ./working/cdn --overlay && testem ci -f ../testem.json",
     "acceptance-test:reset-test": "rm -rf ./test-working/dist",
     "acceptance-test:maximum-assigner": "cd ./test-working && node ../packages/builder-node/bin/build.js --project=../packages/test-app,http://localhost:4200 --project=../packages/test-lib,http://localhost:4200/test-lib/ --outputOrigin http://localhost:4200 --assigner maximum --cdn ./working/cdn --overlay && testem ci -f ../testem.json -p 4200",
+    "pkg": "npm-run-all pkg:*",
+    "pkg:clean": "rm -rf ./dist && mkdir ./dist",
+    "pkg:build-ui": "cd ./packages/ui && yarn build && cp -r ./dist ../../dist/ui",
+    "pkg:build-service-worker": "cd ./packages/builder-worker && webpack && cp -r ./assets ../../dist/builder",
+    "pkg:build-file-daemon": "cd ./packages/file-daemon && webpack && cp -r ./dist ../../dist/file-daemon",
     "builder": "cd packages/builder-worker && yarn start",
     "serve": "cd packages/test-app && yarn start",
     "ui": "cd packages/ui && yarn start"
