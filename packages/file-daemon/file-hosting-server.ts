@@ -20,13 +20,18 @@ import proxy from "koa-proxies";
 import flatMap from "lodash/flatMap";
 import { ProjectMapping } from "./daemon";
 
+const catalogjsDist = resolve(join(__dirname, ".."));
+const builderDist = join(catalogjsDist, "builder");
+const uiDist = join(catalogjsDist, "ui");
+
 // polyfill
 global = Object.assign(global, webStreams);
 
-const builderServer = "http://localhost:8080";
-const uiServer = "http://localhost:4300/catalogjs/ui/";
-
-export function serveFiles(mapping: ProjectMapping) {
+export function serveFiles(
+  mapping: ProjectMapping,
+  builderServer?: string,
+  uiServer?: string
+) {
   return compose([
     ...flatMap([...mapping.nameToPath.entries()], ([localName, dir]) => {
       return [
@@ -44,38 +49,61 @@ export function serveFiles(mapping: ProjectMapping) {
       ctxt.res.setHeader("content-type", "application/x-tar");
       ctxt.body = streamFileSystem(mapping);
     }),
-    proxy("/catalogjs/builder", {
-      target: builderServer,
-      rewrite(path: string) {
-        return path.slice("/catalogjs/builder".length);
-      },
-    }),
-    proxy("/main.js", {
-      target: builderServer,
-    }),
-    proxy("/service-worker.js", {
-      target: builderServer,
-    }),
 
-    // UI is being served from /catalogjs/ui/ from ember-cli, this proxy handles
-    // the asset references from the ember apps's index.html. We serve the ember
-    // app in ember-cli in a root path that matches how the UI is mounted in the
-    // filesystem abstration so that the asset references in index.html line up
-    // with path that they can be found in the filesytem abstraction. otherwise
-    // index.html will have references to UI assets that don't exist in the file
-    // system (e.g.: http://localhost:4200/assets/vendor.js vs
-    // http://localhost:4200/catalogjs/ui/assets/vendor.js)
-    proxy("/catalogjs/ui", {
-      target: uiServer,
-      rewrite(path: string) {
-        return path.slice("/catalogjs/ui".length);
-      },
-    }),
+    !builderServer
+      ? route.get("/catalogjs/builder/(.*)", (ctxt: KoaRoute.Context) => {
+          return send(ctxt, ctxt.routeParams[0], { root: builderDist });
+        })
+      : proxy("/catalogjs/builder", {
+          target: builderServer,
+          rewrite(path: string) {
+            return path.slice("/catalogjs/builder".length);
+          },
+        }),
+    !builderServer
+      ? route.get("/main.js", (ctxt: KoaRoute.Context) => {
+          return send(ctxt, "main.js", { root: builderDist });
+        })
+      : proxy("/main.js", {
+          target: builderServer,
+        }),
+    !builderServer
+      ? route.get("/service-worker.js", (ctxt: KoaRoute.Context) => {
+          return send(ctxt, "service-worker.js", { root: builderDist });
+        })
+      : proxy("/service-worker.js", {
+          target: builderServer,
+        }),
+
+    !uiServer
+      ? route.get("/catalogjs/ui/(.*)", (ctxt: KoaRoute.Context) => {
+          let segment = ctxt.routeParams[0] ?? "index.html";
+          return send(ctxt, segment, { root: uiDist });
+        })
+      : // UI is being served from /catalogjs/ui/ from ember-cli, this proxy handles
+        // the asset references from the ember app's index.html. We serve the ember
+        // app in ember-cli in a root path that matches how the UI is mounted in the
+        // filesystem abstraction so that the asset references in index.html line up
+        // with path that they can be found in the filesystem abstraction. otherwise
+        // index.html will have references to UI assets that don't exist in the file
+        // system (e.g.: http://localhost:4200/assets/vendor.js vs
+        // http://localhost:4200/catalogjs/ui/assets/vendor.js)
+        proxy("/catalogjs/ui", {
+          target: uiServer,
+          rewrite(path: string) {
+            return path.slice("/catalogjs/ui".length);
+          },
+        }),
     // this proxy handles the request for the UI's /index.html and any other
     // fall-through conditions
-    proxy("/", {
-      target: uiServer,
-    }),
+    !uiServer
+      ? route.get("/(.*)", (ctxt: KoaRoute.Context) => {
+          let segment = ctxt.routeParams[0] ?? "index.html";
+          return send(ctxt, segment, { root: uiDist });
+        })
+      : proxy("/", {
+          target: uiServer,
+        }),
   ]);
 }
 
