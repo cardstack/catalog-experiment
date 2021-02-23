@@ -174,11 +174,11 @@ QUnit.module("Install from npm", function () {
       );
       assert.deepEqual(lock, {
         "@catalogjs/loader":
-          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/index.js",
+          "https://pkgs.catalogjs.com/@catalogjs/loader/0.0.1/index.js",
         b:
-          "https://catalogjs.com/pkgs/npm/b/4.5.6/vuLeHhy9XcA1s76b5DYNGAuEpGY=/b.js",
+          "https://pkgs.catalogjs.com/npm/b/4.5.6/PtIhn49gud3eqjYtaW13q0xOe8w=/b.js",
         e:
-          "https://catalogjs.com/pkgs/npm/e/2.3.4/BUZOzJTxcd8z2LGoiXV858H4-xg=/index.js",
+          "https://pkgs.catalogjs.com/npm/e/2.3.4/MnY-wg1FP1yX9e-XB1pfre-6taU=/index.js",
       });
 
       lock = JSON.parse(
@@ -186,9 +186,9 @@ QUnit.module("Install from npm", function () {
       );
       assert.deepEqual(lock, {
         "@catalogjs/loader":
-          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/index.js",
+          "https://pkgs.catalogjs.com/@catalogjs/loader/0.0.1/index.js",
         b:
-          "https://catalogjs.com/pkgs/npm/b/7.8.9/3xSsBvcctg1anboYO407-hDuLak=/index.js",
+          "https://pkgs.catalogjs.com/npm/b/7.8.9/3pZkpufuHbjmEi9YcSOQPTI60bs=/index.js",
       });
     });
 
@@ -244,7 +244,7 @@ QUnit.module("Install from npm", function () {
       );
       assert.deepEqual(eLock, {
         "@catalogjs/loader":
-          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/index.js",
+          "https://pkgs.catalogjs.com/@catalogjs/loader/0.0.1/index.js",
       });
 
       let b1Lock = JSON.parse(
@@ -254,8 +254,8 @@ QUnit.module("Install from npm", function () {
       );
       assert.deepEqual(b1Lock, {
         "@catalogjs/loader":
-          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/index.js",
-        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/6qYXPJtbTZQbzaBwr8tu6JSH3+w=/index.js`,
+          "https://pkgs.catalogjs.com/@catalogjs/loader/0.0.1/index.js",
+        d: `https://pkgs.catalogjs.com/npm/d/10.11.12/MgiRsb7KcP5h054WXsspz9Lu8mA=/index.js`,
       });
       let { d: pkgD1URL } = b1Lock;
       let d1Entrypoints = JSON.parse(
@@ -284,7 +284,7 @@ QUnit.module("Install from npm", function () {
       );
       assert.deepEqual(dLock, {
         "@catalogjs/loader":
-          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/index.js",
+          "https://pkgs.catalogjs.com/@catalogjs/loader/0.0.1/index.js",
       });
 
       let cLock = JSON.parse(
@@ -319,8 +319,8 @@ QUnit.module("Install from npm", function () {
       );
       assert.deepEqual(b2Lock, {
         "@catalogjs/loader":
-          "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/index.js",
-        d: `https://catalogjs.com/pkgs/npm/d/10.11.12/6qYXPJtbTZQbzaBwr8tu6JSH3+w=/index.js`,
+          "https://pkgs.catalogjs.com/@catalogjs/loader/0.0.1/index.js",
+        d: `https://pkgs.catalogjs.com/npm/d/10.11.12/MgiRsb7KcP5h054WXsspz9Lu8mA=/index.js`,
       });
       let { d: pkgD2URL } = b2Lock;
       assert.deepEqual(pkgD2URL, pkgD1URL);
@@ -338,7 +338,7 @@ QUnit.module("Install from npm", function () {
       if (nameDesc.type === "local") {
         assert.equal(
           nameDesc.original?.bundleHref,
-          "https://catalogjs.com/pkgs/npm/e/2.3.4/BUZOzJTxcd8z2LGoiXV858H4-xg=/index.js"
+          "https://pkgs.catalogjs.com/npm/e/2.3.4/MnY-wg1FP1yX9e-XB1pfre-6taU=/index.js"
         );
       }
 
@@ -347,7 +347,7 @@ QUnit.module("Install from npm", function () {
       if (nameDesc.type === "local") {
         assert.equal(
           nameDesc.original?.bundleHref,
-          "https://catalogjs.com/pkgs/npm/b/4.5.6/vuLeHhy9XcA1s76b5DYNGAuEpGY=/b.js"
+          "https://pkgs.catalogjs.com/npm/b/4.5.6/PtIhn49gud3eqjYtaW13q0xOe8w=/b.js"
         );
       }
     });

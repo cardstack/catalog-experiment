@@ -50,7 +50,7 @@
         "resolutions": {
           "$ref": "#/definitions/resolutions",
           "title": "Resolutions",
-          "description": "If you wish to override the resolver and provide a specific resolution, then use the \"resolution\" property. This is an object whose keys are specifier strings that appear in the import statements you wish to resolve yourself. The values are the catalogjs URLs to modules you would like the specifier to resolve to. For instance, in order to add a resolution for the builtin node module \"assert\" to leverage the catalogjs assert polyfill you can specify:\n \"assert\": \"https://catalogjs.com/pkgs/@catalogjs/polyfills/assert.js\""
+          "description": "If you wish to override the resolver and provide a specific resolution, then use the \"resolution\" property. This is an object whose keys are specifier strings that appear in the import statements you wish to resolve yourself. The values are the catalogjs URLs to modules you would like the specifier to resolve to. For instance, in order to add a resolution for the builtin node module \"assert\" to leverage the catalogjs assert polyfill you can specify:\n \"assert\": \"https://pkgs.catalogjs.com/@catalogjs/polyfills/assert.js\""
         },
         "dependencies": {
           "$ref": "#/definitions/dependencies",

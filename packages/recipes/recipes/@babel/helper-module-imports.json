@@ -12,11 +12,11 @@
         "./src/index.js"
       ],
       "resolutions": {
-        "assert": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/assert.js",
-        "buffer": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/buffer.js",
-        "process": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/process.js",
-        "util": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/util.js",
-        "inherits": "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/inherits.js"
+        "assert": "https://pkgs.catalogjs.com/@catalogjs/polyfills/0.0.1/assert.js",
+        "buffer": "https://pkgs.catalogjs.com/@catalogjs/polyfills/0.0.1/buffer.js",
+        "process": "https://pkgs.catalogjs.com/@catalogjs/polyfills/0.0.1/process.js",
+        "util": "https://pkgs.catalogjs.com/@catalogjs/polyfills/0.0.1/util.js",
+        "inherits": "https://pkgs.catalogjs.com/@catalogjs/polyfills/0.0.1/inherits.js"
       },
       "babelPlugins": [
         "@babel/plugin-transform-flow-strip-types",

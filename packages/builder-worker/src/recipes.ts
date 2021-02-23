@@ -70,7 +70,7 @@ export interface Recipe {
   // specifier to resolve to. For instance, in order to add a resolution for the
   // builtin node module "assert" to leverage the catalogjs assert polyfill you
   // can specify:
-  //   "assert":  "https://catalogjs.com/pkgs/@catalogjs/polyfills/0.0.1/assert.js"
+  //   "assert":  "https://pkgs.catalogjs.com/@catalogjs/polyfills/0.0.1/assert.js"
   resolutions?: {
     [specifier: string]: string;
   };

@@ -4,7 +4,7 @@ import { BuilderNode, ConstantNode } from "./nodes/common";
 import { LockEntries } from "./nodes/lock-file";
 import { makeURLEndInDir } from "./path";
 
-export const catalogjsHref = "https://catalogjs.com/pkgs/";
+export const catalogjsHref = "https://pkgs.catalogjs.com/";
 export const localDiskPkgsHref = "https://local-disk/pkgs/";
 export const workingHref = "https://working/";
 
