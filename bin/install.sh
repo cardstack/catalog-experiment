@@ -12,11 +12,9 @@ CATALOGJS_BIN=".catalogjs/bin"
 get_tarball() {
   printf "$cyan> Downloading tarball...$reset\n"
   url=https://install.catalogjs.com/catalogjs.tgz
-  # Get both the tarball and its GPG signature
   tarball_tmp=$(mktemp -t catalogjs.tgz.temp)
   if curl --fail -L -o "$tarball_tmp" "$url"; then
     printf "$cyan> Extracting to ~/.catalogjs...$reset\n"
-    # All this dance is because `tar --strip=1` does not work everywhere
     temp=$(mktemp -d catalogjs.XXXXXXXXXX)
     tar zxf $tarball_tmp -C "$temp"
     rm -rf .catalogjs
