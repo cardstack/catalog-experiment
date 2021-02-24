@@ -29,7 +29,6 @@ export default class FileWatcherServer {
 
   async start() {
     const wss = new WebSocket.Server({ port: this.port });
-    console.log(`Websocket server listening on port: ${this.port}`);
     wss.on("connection", (ws) => {
       console.log("socket connected!");
       this.sockets.add(ws);

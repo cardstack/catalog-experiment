@@ -38,6 +38,7 @@ export function start(opts: Options) {
   new FileWatcherServer(websocketPort, mapping).start();
   let app = server({ mapping }, opts.builderServer, opts.uiServer);
   app.listen(port);
+  console.log(`server listening on port: ${port}`);
 }
 
 export function server(
