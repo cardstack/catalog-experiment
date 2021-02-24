@@ -1,6 +1,5 @@
 #!/bin/sh
 set -e
-set -x
 
 reset="\033[0m"
 red="\033[31m"
