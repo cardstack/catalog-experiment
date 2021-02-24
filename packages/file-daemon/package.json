@@ -33,7 +33,6 @@
     "mime-types": "^2.1.26",
     "qs": "^6.9.3",
     "sane": "^4.1.0",
-    "semver": "^7.3.4",
     "supertest": "^4.0.2",
     "typescript": "^3.9.3",
     "typescript-memoize": "^1.0.0-alpha.3",

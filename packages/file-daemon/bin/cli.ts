@@ -1,13 +1,6 @@
 import yargs from "yargs";
 import { resolve } from "path";
 import { start } from "../daemon";
-import { gte } from "semver";
-
-if (!gte(process.version, "14.5.0")) {
-  console.error(
-    `NodeJS version 14.5.0 or greater is required. Currently ${process.version} is being used.`
-  );
-}
 
 const argv = yargs.options({
   port: {
