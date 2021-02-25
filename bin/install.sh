@@ -54,7 +54,7 @@ make_link() {
       printf "   $SOURCE_STR$reset\n"
     fi
 
-    printf "$green> Successfully installed CatalogJs! Please open another terminal where the \`catalogjs.sh\` command will now be available.$reset\n"
+    printf "$green> Successfully installed CatalogJs! Please open another terminal where the \`catalogjs\` command will now be available.$reset\n"
   fi
 }
 

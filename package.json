@@ -52,7 +52,7 @@
     "pkg:build-ui": "cd ./packages/ui && yarn build && cp -r ./dist ../../dist/ui",
     "pkg:build-service-worker": "cd ./packages/builder-worker && webpack && cp -r ./assets ../../dist/builder",
     "pkg:build-file-daemon": "cd ./packages/file-daemon && webpack && cp -r ./dist ../../dist/file-daemon",
-    "pkg:launch-script": "mkdir -p ./dist/bin && cp ./bin/catalogjs.sh ./dist/bin",
+    "pkg:launch-script": "mkdir -p ./dist/bin && cp ./bin/catalogjs ./dist/bin",
     "pkg:tar": "cd ./dist && tar -cvzf catalogjs.tgz --exclude=catalogjs.tgz .",
     "pub": "npm-run-all pub:*",
     "pub:tarball": "aws s3 cp ./dist/catalogjs.tgz s3://catalogjs-install",
