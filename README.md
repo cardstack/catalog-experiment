@@ -4,6 +4,22 @@ This repo proves out ideas for "CatalogJS", our planned JS CDN that eliminates
 the need for running `npm`/`yarn` and eliminating maintaining a `node_modules`
 folder in your web projects.
 
+## Installing it
+To install CatalogJS run the following command:
+```
+curl -o- -L https://install.catalogjs.com/install.sh | bash
+```
+This will install catalogjs to your `~/.catalogjs` folder, as well as add the catalogJS bin to your `$PATH` env var.
+
+## Running it
+After installing CatalogJS you can run it by changing directories to your project, and executing `catalogjs` followed by the directories that you want available to the catalogjs build environment. This would be your project directory and any other local dependencies your project has (e.g. another library your project consumes that you also want built by CatalogJS). For example:
+```
+catalogjs . ../test-lib ../recipes ../../cdn/pkgs
+```
+where `../test-lib`, `../recipes`, and `../../cdn/pkgs` are directories that you want to make available to the CatalogJS build environment.
+
+After the CatalogJS file server starts, you can open your browser with the URL displayed on the command line (http://localhost:4200 is the default).
+
 ## Building it
 
 Setup all the npm dependencies:
@@ -12,14 +28,13 @@ Setup all the npm dependencies:
 yarn install
 ```
 
-## Running it
+## Running it (for purposes of development)
 
 1. Perform typescript compilation:
 
    ```sh
    yarn build
    ```
-
 2. Start serving the builder:
    ```sh
    yarn builder
@@ -41,25 +56,11 @@ projects when you open the VS Code workspace for this project. You'll need to
 first confirm that you want to run the auto tasks, which you can enable in the
 `Tasks: Manage Automatic Tasks in Folder` from the Command Palette.
 
-Conversely, if you want to use webpack to package up the file-daemon's js into a
-single bundle and run the file daemon from the webpack generated package, then:
-
-1. Run the webpack for the file-daemon:
-   ```sh
-   cd ./packages/file-daemon && yarn start
-   ```
-2. Start serving the builder:
-   ```sh
-   yarn builder
-   ```
-3. Start serving the CatalogJS UI:
-   ```
-   yarn ui
-   ```
-4. Start serving the from the webpack package:
-   ```sh
-   cd ./package/app && yarn start-pkg
-   ```
+Conversely, if you want to run the standalone version of CatalogJS (the same version that users download and install), you can run:
+```
+yarn pkg
+```
+And the package will be created in the `./dist` folder. From there the `./dist/catalogjs` script can be executed.
 
 ## Testing it
 
@@ -72,15 +73,11 @@ yarn test
 
 To run the tests from the browser:
 
-1. Start the test server
-   ```sh
-   yarn test-server
-   ```
-2. Start the builder (which also serves the tests)
+1. Start the builder (which also serves the tests)
    ```sh
    yarn builder
    ```
-3. Open the URL `http://localhost:8080` in your browser
+2. Open the URL `http://localhost:8080` in your browser
 
 Note that the tests leverage a test server that runs a ports meant just for
 testing. If you run tests from the CLI, QUnit tests that happen to be open in
@@ -99,6 +96,13 @@ To run the node tests:
    ```sh
    yarn qunit assets/node-test.js
    ```
+
+## Releasing it
+
+To package CatalogJS for standalone consumption. Run the following command providing AWS env var credentials for the catalogjs hosting environment:
+```
+AWS_PROFILE=your_aws_creds yarn release
+```
 
 ## Explanation
 
