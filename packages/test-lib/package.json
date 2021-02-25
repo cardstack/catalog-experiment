@@ -4,7 +4,10 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "start-pkg": "node ../file-daemon/dist/main.js . ../recipes ../../cdn/pkgs",
-    "start": "node ../file-daemon/bin/file-daemon . ../recipes ../../cdn/pkgs"
+    "start-pkg": "node ../file-daemon/dist/main.js . ../../cdn/pkgs",
+    "start": "node ../file-daemon/bin/file-daemon --builderServer http://localhost:8080 --uiServer http://localhost:4300/catalogjs/ui/ . ../../cdn/pkgs"
+  },
+  "volta": {
+    "node": "14.5.0"
   }
 }

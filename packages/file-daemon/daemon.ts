@@ -10,6 +10,8 @@ interface Options {
   port: number;
   websocketPort: number;
   directories: string[];
+  builderServer?: string;
+  uiServer?: string;
   key?: string;
 }
 
@@ -34,11 +36,16 @@ export function start(opts: Options) {
   let { port, websocketPort, directories } = opts;
   let mapping = new ProjectMapping(directories);
   new FileWatcherServer(websocketPort, mapping).start();
-  let app = server({ mapping });
+  let app = server({ mapping }, opts.builderServer, opts.uiServer);
   app.listen(port);
+  console.log(`server listening on port: ${port}`);
 }
 
-export function server({ mapping }: { mapping: ProjectMapping }) {
+export function server(
+  { mapping }: { mapping: ProjectMapping },
+  builderServer?: string,
+  uiServer?: string
+) {
   let app = new Koa();
   app.use(
     compose([
@@ -48,7 +55,7 @@ export function server({ mapping }: { mapping: ProjectMapping }) {
       route.get("/catalogjs/alive", (ctxt: KoaRoute.Context) => {
         ctxt.status = 200;
       }),
-      serveFiles(mapping),
+      serveFiles(mapping, builderServer, uiServer),
     ])
   );
   return app;

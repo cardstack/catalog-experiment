@@ -165,7 +165,7 @@ class CoreBuildNode implements BuilderNode {
           // require specifier) can be handled if they arise
           seededResolutions: {
             "@catalogjs/loader":
-              "https://catalogjs.com/pkgs/@catalogjs/loader/0.0.1/index.js",
+              "https://pkgs.catalogjs.com/@catalogjs/loader/0.0.1/index.js",
           },
         }
       ),

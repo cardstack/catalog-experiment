@@ -2764,7 +2764,7 @@ QUnit.module("module builder", function (origHooks) {
     });
 
     test("bundle contains module description with an exported default function", async function (assert) {
-      let doerBundleHref = `https://catalogjs.com/pkgs/npm/doer/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=`;
+      let doerBundleHref = `https://pkgs.catalogjs.com/npm/doer/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=`;
       await assert.setupFiles({
         [`${doerBundleHref}/entrypoints.json`]: `{ "js": ["index.js"] }`,
         [`${doerBundleHref}/index.js`]: `
@@ -4650,12 +4650,12 @@ QUnit.module("module builder", function (origHooks) {
     QUnit.module("pkg consumption", function (_hooks) {
       let { test, hooks } = installFileAssertions(_hooks);
 
-      let puppiesBundle1Href = `https://catalogjs.com/pkgs/npm/puppies/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=`;
-      let puppiesBundle2Href = `https://catalogjs.com/pkgs/npm/puppies/7.9.2/ZlH+lolVTSWK+5-BU47+UKzCFKI=`;
-      let puppiesBundle3Href = `https://catalogjs.com/pkgs/npm/puppies/7.9.5/YlH+lolVTSWK+5-BU47+UKzCFKI=`;
-      let puppiesBundle4Href = `https://catalogjs.com/pkgs/npm/puppies/7.9.6/BlH+lolVTSWK+5-BU47+UKzCFKI=`;
-      let puppiesBundle5Href = `https://catalogjs.com/pkgs/npm/puppies/7.9.7/AlH+lolVTSWK+5-BU47+UKzCFKI=`;
-      let puppiesBundle6Href = `https://catalogjs.com/pkgs/npm/puppies/7.10.0/ClH+lolVTSWK+5-BU47+UKzCFKI=`;
+      let puppiesBundle1Href = `https://pkgs.catalogjs.com/npm/puppies/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=`;
+      let puppiesBundle2Href = `https://pkgs.catalogjs.com/npm/puppies/7.9.2/ZlH+lolVTSWK+5-BU47+UKzCFKI=`;
+      let puppiesBundle3Href = `https://pkgs.catalogjs.com/npm/puppies/7.9.5/YlH+lolVTSWK+5-BU47+UKzCFKI=`;
+      let puppiesBundle4Href = `https://pkgs.catalogjs.com/npm/puppies/7.9.6/BlH+lolVTSWK+5-BU47+UKzCFKI=`;
+      let puppiesBundle5Href = `https://pkgs.catalogjs.com/npm/puppies/7.9.7/AlH+lolVTSWK+5-BU47+UKzCFKI=`;
+      let puppiesBundle6Href = `https://pkgs.catalogjs.com/npm/puppies/7.10.0/ClH+lolVTSWK+5-BU47+UKzCFKI=`;
 
       hooks.beforeEach(async (assert) => {
         await assert.setupFiles({
@@ -4827,7 +4827,7 @@ QUnit.module("module builder", function (origHooks) {
         });
         let bundleSrc = await bundleSource(assert.fs);
         let libBundleHref =
-          "https://catalogjs.com/pkgs/npm/lib/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -4940,9 +4940,9 @@ QUnit.module("module builder", function (origHooks) {
         let bundle2Src = await bundleSource(assert.fs);
 
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         let lib2BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib2/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib2/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -5049,9 +5049,9 @@ QUnit.module("module builder", function (origHooks) {
         let bundle2Src = await bundleSource(assert.fs);
 
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         let lib2BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib2/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib2/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -5156,9 +5156,9 @@ QUnit.module("module builder", function (origHooks) {
         let bundle2Src = await bundleSource(assert.fs);
 
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         let lib2BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib2/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib2/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -5256,9 +5256,9 @@ QUnit.module("module builder", function (origHooks) {
         let bundle2Src = await bundleSource(assert.fs);
 
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         let lib2BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib2/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib2/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -5337,7 +5337,7 @@ QUnit.module("module builder", function (origHooks) {
         let bundle1Src = await bundleSource(assert.fs);
 
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -5432,9 +5432,9 @@ QUnit.module("module builder", function (origHooks) {
         let bundle2Src = await bundleSource(assert.fs);
 
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         let lib2BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib2/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib2/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -5513,7 +5513,7 @@ QUnit.module("module builder", function (origHooks) {
         let bundle1Src = await bundleSource(assert.fs);
 
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -5589,7 +5589,7 @@ QUnit.module("module builder", function (origHooks) {
         let bundle1Src = await bundleSource(assert.fs);
 
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -5685,9 +5685,9 @@ QUnit.module("module builder", function (origHooks) {
         let bundle2Src = await bundleSource(assert.fs);
 
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         let lib2BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib2/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib2/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -5786,9 +5786,9 @@ QUnit.module("module builder", function (origHooks) {
         let bundle2Src = await bundleSource(assert.fs);
 
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         let lib2BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib2/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib2/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -5890,7 +5890,7 @@ QUnit.module("module builder", function (origHooks) {
         });
         let bundle1Src = await bundleSource(assert.fs);
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -5990,9 +5990,9 @@ QUnit.module("module builder", function (origHooks) {
         let bundle2Src = await bundleSource(assert.fs);
 
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         let lib2BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib2/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib2/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -6105,9 +6105,9 @@ QUnit.module("module builder", function (origHooks) {
         let bundle2Src = await bundleSource(assert.fs);
 
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         let lib2BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib2/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib2/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -6217,7 +6217,7 @@ QUnit.module("module builder", function (origHooks) {
         });
         let bundle1Src = await bundleSource(assert.fs);
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -6298,7 +6298,7 @@ QUnit.module("module builder", function (origHooks) {
         });
         let bundle1Src = await bundleSource(assert.fs);
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -6376,7 +6376,7 @@ QUnit.module("module builder", function (origHooks) {
         });
         let bundle1Src = await bundleSource(assert.fs);
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -6460,7 +6460,7 @@ QUnit.module("module builder", function (origHooks) {
         });
         let bundle1Src = await bundleSource(assert.fs);
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -6537,7 +6537,7 @@ QUnit.module("module builder", function (origHooks) {
         });
         let bundle1Src = await bundleSource(assert.fs);
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -6628,7 +6628,7 @@ QUnit.module("module builder", function (origHooks) {
         });
         let bundle1Src = await bundleSource(assert.fs);
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -6685,7 +6685,7 @@ QUnit.module("module builder", function (origHooks) {
 
       test("can serialize a namespace import of pkg dependency that is imported in multiple modules", async function (assert) {
         let typesBundleHref =
-          "https://catalogjs.com/pkgs/npm/types/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/types/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           [`${typesBundleHref}/entrypoints.json`]: `{"js": ["index.js"] }`,
           [`${typesBundleHref}/index.js`]: `
@@ -6820,7 +6820,7 @@ QUnit.module("module builder", function (origHooks) {
         });
         let bundle1Src = await bundleSource(assert.fs);
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -6881,7 +6881,7 @@ QUnit.module("module builder", function (origHooks) {
         });
         let bundle1Src = await bundleSource(assert.fs);
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -6959,7 +6959,7 @@ QUnit.module("module builder", function (origHooks) {
         });
         let bundle1Src = await bundleSource(assert.fs);
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -7089,11 +7089,11 @@ QUnit.module("module builder", function (origHooks) {
         let bundle3Src = await bundleSource(assert.fs);
 
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         let lib2BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib2/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib2/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         let lib3BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib3/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib3/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -7227,11 +7227,11 @@ QUnit.module("module builder", function (origHooks) {
         let bundle3Src = await bundleSource(assert.fs);
 
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         let lib2BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib2/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib2/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         let lib3BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib3/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib3/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -7341,7 +7341,7 @@ QUnit.module("module builder", function (origHooks) {
         });
         let bundle1Src = await bundleSource(assert.fs);
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -7433,7 +7433,7 @@ QUnit.module("module builder", function (origHooks) {
         });
         let bundle1Src = await bundleSource(assert.fs);
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -7539,7 +7539,7 @@ QUnit.module("module builder", function (origHooks) {
         });
         let bundle1Src = await bundleSource(assert.fs);
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -7644,7 +7644,7 @@ QUnit.module("module builder", function (origHooks) {
         });
         let bundle1Src = await bundleSource(assert.fs);
         let lib1BundleHref =
-          "https://catalogjs.com/pkgs/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
+          "https://pkgs.catalogjs.com/npm/lib1/1.0.0/SlH+urkVTSWK+5-BU47+UKzCFKI=";
         await assert.setupFiles({
           "entrypoints.json": `{
             "js": ["driver.js"],
@@ -9336,14 +9336,14 @@ QUnit.module("module builder", function (origHooks) {
             }
           }
         }`,
-        "catalogjs.lock": `{ "a": "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/dist/a-es6.js" }`,
+        "catalogjs.lock": `{ "a": "https://pkgs.catalogjs.com/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/dist/a-es6.js" }`,
         "index.js": `
           import a from "a";
           export default function() { a(); }
         `,
-        "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/entrypoints.json": `{"js": ["dist/a-es6.js"] }`,
-        "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/catalogjs.lock": `{ }`,
-        "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/dist/a-es6.js": `
+        "https://pkgs.catalogjs.com/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/entrypoints.json": `{"js": ["dist/a-es6.js"] }`,
+        "https://pkgs.catalogjs.com/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/catalogjs.lock": `{ }`,
+        "https://pkgs.catalogjs.com/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/dist/a-es6.js": `
           export default function() { console.log('hi'); }
         `,
       });
@@ -9372,14 +9372,14 @@ QUnit.module("module builder", function (origHooks) {
             }
           }
         }`,
-        "catalogjs.lock": `{ "@mango/a": "https://catalogjs.com/pkgs/npm/@mango/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/dist/a-es6.js" }`,
+        "catalogjs.lock": `{ "@mango/a": "https://pkgs.catalogjs.com/npm/@mango/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/dist/a-es6.js" }`,
         "index.js": `
           import a from "@mango/a";
           export default function() { a(); }
         `,
-        "https://catalogjs.com/pkgs/npm/@mango/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/entrypoints.json": `{"js": ["dist/a-es6.js"] }`,
-        "https://catalogjs.com/pkgs/npm/@mango/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/catalogjs.lock": `{ }`,
-        "https://catalogjs.com/pkgs/npm/@mango/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/dist/a-es6.js": `
+        "https://pkgs.catalogjs.com/npm/@mango/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/entrypoints.json": `{"js": ["dist/a-es6.js"] }`,
+        "https://pkgs.catalogjs.com/npm/@mango/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/catalogjs.lock": `{ }`,
+        "https://pkgs.catalogjs.com/npm/@mango/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/dist/a-es6.js": `
           export default function() { console.log('hi'); }
         `,
       });
@@ -9409,19 +9409,19 @@ QUnit.module("module builder", function (origHooks) {
           }
         }`,
         "catalogjs.lock": `{
-          "a": "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/a.js",
-          "a/b": "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/b.js"
+          "a": "https://pkgs.catalogjs.com/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/a.js",
+          "a/b": "https://pkgs.catalogjs.com/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/b.js"
         }`,
         "index.js": `
           import a from "a/b";
           export default function() { a(); }
         `,
-        "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/entrypoints.json": `{"js": ["./a.js", "./b.js"] }`,
-        "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/catalogjs.lock": `{ }`,
-        "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/a.js": `
+        "https://pkgs.catalogjs.com/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/entrypoints.json": `{"js": ["./a.js", "./b.js"] }`,
+        "https://pkgs.catalogjs.com/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/catalogjs.lock": `{ }`,
+        "https://pkgs.catalogjs.com/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/a.js": `
           export default function() { console.log('hi'); }
         `,
-        "https://catalogjs.com/pkgs/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/b.js": `
+        "https://pkgs.catalogjs.com/npm/a/7.9.4/SlH+urkVTSWK+5-BU47+UKzCFKI=/b.js": `
           export default function() { console.log('bye'); }
         `,
       });

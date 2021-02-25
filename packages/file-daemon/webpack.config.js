@@ -8,6 +8,9 @@ module.exports = {
     main: "./webpack-entrypoint.ts",
   },
   devServer: {},
+  node: {
+    __dirname: false,
+  },
   output: {
     filename: "main.js",
     path: path.resolve(__dirname, "dist"),

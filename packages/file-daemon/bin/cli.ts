@@ -21,6 +21,16 @@ const argv = yargs.options({
     description:
       "Specify a key to use when testing file daemon to permit modifications to the underlying file system",
   },
+  builderServer: {
+    type: "string",
+    description:
+      "For active development of catalogjs, instead of relying upon the bundled builder service worker code, you can point the file daemon at a server that is hosting the service worker. This is nice for auto-rebuilds of the service worker as you are developing catalogjs.",
+  },
+  uiServer: {
+    type: "string",
+    description:
+      "For active development of catalogjs, instead of relying upon the bundled catalogjs UI code, you can point the file daemon at a server that is hosting the ui. This is nice for auto rebuilds of the UI as you are developing catalogjs.",
+  },
 }).argv;
 
 if (argv._.length === 0) {

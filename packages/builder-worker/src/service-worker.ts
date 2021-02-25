@@ -18,10 +18,15 @@ import { handleListing } from "./request-handlers/project-listing-handler";
 import { handleBuild } from "./request-handlers/run-build-handler";
 import { explainAsDot } from "./builder";
 import { localDiskPkgsHref } from "./resolver";
+import { recipesURL } from "./recipes";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 const fs = new FileSystem();
-const uiURL = new URL("http://localhost:4300/catalogjs/ui/");
+const uiURL = new URL("http://localhost:4200/catalogjs/ui/");
+const githubRecipesURL = new URL(
+  "https://raw.githubusercontent.com/cardstack/catalog-experiment/master/packages/recipes/index.js"
+);
+const localRecipesURL = new URL("https://local-disk/recipes/");
 
 let websocketURL: URL;
 let isDisabled = false;
@@ -62,11 +67,24 @@ worker.addEventListener("activate", () => {
 
 async function activate() {
   let uiDriver = new HttpFileSystemDriver(uiURL);
+  let recipesDriver = new HttpFileSystemDriver(githubRecipesURL);
   let clientDriver = new FileDaemonClientDriver(originURL, websocketURL);
   let [, clientVolume] = await Promise.all([
     fs.mount(new URL(`/catalogjs/ui/`, originURL), uiDriver),
     fs.mount(new URL("https://local-disk/"), clientDriver),
+    fs.mount(recipesURL, recipesDriver),
   ]);
+
+  let useLocalRecipes = false;
+  try {
+    await fs.openDirectory(localRecipesURL);
+    useLocalRecipes = true;
+  } catch (e) {
+    if (e.code !== "NOT_FOUND") {
+      throw e;
+    }
+  }
+
   // TODO refactor how we handle client volumes events such that we don't need
   // to get a handle on the "Volume" instance. Consider writing a file for the
   // connected and sync events in a special folder that we can monitor.
@@ -79,7 +97,7 @@ async function activate() {
   // is something you can specify in the UI?
   buildManager = new BuildManager(
     fs,
-    new URL("https://local-disk/recipes/"),
+    useLocalRecipes ? localRecipesURL : recipesURL,
     { bundle: { mountedPkgSource: new URL(localDiskPkgsHref) } },
     () => {
       if (Logger.getInstance().logLevel === "debug") {

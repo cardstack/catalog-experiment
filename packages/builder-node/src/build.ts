@@ -103,6 +103,8 @@ async function prepare() {
     await fs.mount(new URL(`https://local-disk`), driver);
   }
 
+  let recipesPath = join(resolveNodePkg("@catalogjs/recipes"), "recipes");
+  await fs.mount(recipesURL, new NodeFileSystemDriver(recipesPath));
   for (let project of projects) {
     let [path, outputHref] = project.split(",");
     if (!path || !outputHref) {
@@ -114,8 +116,6 @@ async function prepare() {
     let inputURL = new URL(`http://project-src${count++}`);
     let driver = new NodeFileSystemDriver(resolve(path));
     await fs.mount(inputURL, driver);
-    let recipesPath = join(resolveNodePkg("@catalogjs/recipes"), "recipes");
-    await fs.mount(recipesURL, new NodeFileSystemDriver(recipesPath));
     projectRoots.push([inputURL, new URL(outputHref)]);
   }
 }

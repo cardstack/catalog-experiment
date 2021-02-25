@@ -4,6 +4,7 @@ import { resolve, join } from "path";
 import { FileSystem } from "../../builder-worker/src/filesystem";
 import { Builder } from "../../builder-worker/src/builder";
 import { NpmImportPackagesNode } from "./nodes/npm-import";
+import { resolveNodePkg } from "./pkg-resolve";
 import { ensureDirSync } from "fs-extra";
 import fetch from "node-fetch";
 import { closeAll, NodeFileSystemDriver } from "./node-filesystem-driver";
@@ -53,6 +54,8 @@ let projectDir = resolve(join(process.cwd(), project));
     workingDir,
     resolver
   );
+  let recipesPath = join(resolveNodePkg("@catalogjs/recipes"), "recipes");
+  await fs.mount(recipesURL, new NodeFileSystemDriver(recipesPath));
   let builder = new Builder(fs, [builderRoot], recipesURL);
   await builder.build();
 
