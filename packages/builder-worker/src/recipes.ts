@@ -2,7 +2,7 @@ import { satisfies, coerce } from "semver";
 import { FileSystem } from "./filesystem";
 import { FileDescriptor } from "./filesystem-drivers/filesystem-driver";
 
-export const recipesURL = new URL(`https://catalogjs.com/recipes/`);
+export const recipesURL = new URL(`https://recipes/`);
 
 export interface Recipe {
   semverRange: string;
