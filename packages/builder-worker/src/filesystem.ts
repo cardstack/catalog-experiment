@@ -88,15 +88,18 @@ export class FileSystem {
     await destParent.close();
   }
 
-  async copy(sourceURL: URL, destURL: URL): Promise<void> {
+  async copy(sourceURL: URL, destURL: URL, exclude?: string): Promise<void> {
     if (sourceURL.href === destURL.href) {
       return; // nothing to do
+    }
+    if (exclude && new RegExp(exclude).test(sourceURL.href)) {
+      return;
     }
     let source = await this.open(sourceURL);
 
     if (source.type === "file") {
       let clone = await this.openFile(destURL, true);
-      await clone.write(await source.getReadbleStream());
+      await clone.write(await source.getReadableStream());
       await clone.close();
     } else {
       await (await this.open(destURL, true)).close();
@@ -105,7 +108,8 @@ export class FileSystem {
       for (let childName of [...(await source.children())]) {
         await this.copy(
           new URL(childName, sourceURL),
-          new URL(childName, destURL)
+          new URL(childName, destURL),
+          exclude
         );
       }
     }

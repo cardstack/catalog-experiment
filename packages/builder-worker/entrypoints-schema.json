@@ -19,8 +19,22 @@
     },
     "dependencies": {
       "type": "object",
-      "additionalProperties": {
-        "type": "string"
+      "properties": {
+        "type": {
+          "type": "string",
+          "title": "Repository Source",
+          "description": "valid values are 'npm' or 'catalogjs'"
+        },
+        "pkgName": {
+          "type": "string",
+          "title": "Package Name",
+          "description": "the name of the package"
+        },
+        "range": {
+          "type": "string",
+          "title": "Semver Range",
+          "description": "For npm packages this is the valid semver range allowed for this dependency"
+        }
       }
     }
   },

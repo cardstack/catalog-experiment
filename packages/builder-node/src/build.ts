@@ -2,13 +2,14 @@ import yargs from "yargs";
 import { Logger, log, error } from "../../builder-worker/src/logger";
 import { resolve, join } from "path";
 import { NodeFileSystemDriver, closeAll } from "./node-filesystem-driver";
+import { HttpFileSystemDriver } from "../../builder-worker/src/filesystem-drivers/http-driver";
 import { FileSystem } from "../../builder-worker/src/filesystem";
 import { Builder } from "../../builder-worker/src/builder";
 import { resolveNodePkg } from "./pkg-resolve";
 import { ensureDirSync, removeSync } from "fs-extra";
 import fetch from "node-fetch";
 import { recipesURL } from "../../builder-worker/src/recipes";
-import { localDiskPkgsHref } from "../../builder-worker/src/resolver";
+import { catalogjsHref } from "../../builder-worker/src/resolver";
 import { BundleAssignment } from "../../builder-worker/src/nodes/bundle";
 
 if (!globalThis.fetch) {
@@ -20,14 +21,9 @@ Logger.setLogLevel("info");
 
 let outputDir = join(process.cwd(), "dist");
 let projectRoots: [URL, URL][] = [];
+let registryURL = new URL(catalogjsHref);
 
-let {
-  project: rawProjects,
-  overlay,
-  cdn: cdnPath,
-  assigner,
-  outputOrigin,
-} = yargs
+let { project: rawProjects, overlay, pkgsPath, assigner, outputOrigin } = yargs
   .usage(
     "Usage: $0 --project=<filePath_1>,<outputURL_1> ... --project=<filePath_N>,<outputURL_N>"
   )
@@ -38,11 +34,10 @@ let {
       description:
         "the project to include as a comma separated string of file path (where the input lives on disk) and output URL (where other projects can find this project). Use the output URL of http://build-output to write to the dist/ folder in the situation where you don't care what the output origin is (this would be normal when using the default bundle assigner, in which case all imports are relative).",
     },
-    cdn: {
-      alias: "c",
+    pkgPath: {
       type: "string",
       description:
-        "a mock CDN which is a local path that contains catalogjs built packages that would otherwise be found on the catalogjs CDN",
+        "the path that contains packages to be served by a mock CDN which that would otherwise be found on the catalogjs CDN",
     },
     overlay: {
       alias: "o",
@@ -71,6 +66,7 @@ let {
   .array("project")
   .string("assigner")
   .string("outputOrigin")
+  .string("pkgsPath")
   .demandOption(["project"]).argv;
 
 if (!rawProjects || rawProjects.filter(Boolean).length === 0) {
@@ -98,9 +94,12 @@ let fs = new FileSystem();
 
 async function prepare() {
   let count = 0;
-  if (cdnPath) {
-    let driver = new NodeFileSystemDriver(resolve(cdnPath));
-    await fs.mount(new URL(`https://local-disk`), driver);
+  if (pkgsPath) {
+    let driver = new NodeFileSystemDriver(resolve(pkgsPath));
+    await fs.mount(registryURL, driver);
+  } else {
+    let driver = new HttpFileSystemDriver(registryURL);
+    await fs.mount(registryURL, driver);
   }
 
   let recipesPath = join(resolveNodePkg("@catalogjs/recipes"), "recipes");
@@ -122,7 +121,7 @@ async function prepare() {
 
 async function doOverlay() {
   for (let [input, output] of projectRoots) {
-    await fs.copy(input, output);
+    await fs.copy(input, output, ".*catalogjs.lock");
   }
 }
 
@@ -139,10 +138,7 @@ async function build() {
   }
 
   let builder = Builder.forProjects(fs, projectRoots, recipesURL, {
-    bundle: {
-      mountedPkgSource: new URL(localDiskPkgsHref),
-      assigner,
-    },
+    bundle: { assigner },
   });
   await builder.build();
 }

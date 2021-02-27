@@ -1,5 +1,5 @@
-import { parseSync } from "https://local-disk/pkgs/npm/@babel/core/7.9.0/8dF0ufvmOS8l-8S703WOWw8XTbA=/src/index.js";
-import flatMap from "https://local-disk/pkgs/npm/lodash/4.17.19/D+sAl39M6XPSe0sFT6ZU+RGGp3E=/flatMap.js";
+import { parseSync } from "@babel/core";
+import flatMap from "lodash/flatMap";
 
 export function introspectESModule(code) {
   let file = parseSync(code, { configFile: false });

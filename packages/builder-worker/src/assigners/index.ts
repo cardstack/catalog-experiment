@@ -11,7 +11,6 @@ export function getAssigner(
   projectOutput: URL,
   resolutions: ModuleResolution[],
   entrypoints: Entrypoint[],
-  mountedPkgSource: URL,
   htmlJSEntrypointURLs?: URL[]
 ): Assigner {
   switch (type) {
@@ -22,7 +21,6 @@ export function getAssigner(
         projectOutput,
         resolutions,
         entrypoints,
-        mountedPkgSource,
         htmlJSEntrypointURLs
       );
     case "maximum":
@@ -31,7 +29,6 @@ export function getAssigner(
         projectOutput,
         resolutions,
         entrypoints,
-        mountedPkgSource,
         htmlJSEntrypointURLs
       );
     default:

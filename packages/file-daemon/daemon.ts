@@ -5,6 +5,7 @@ import compose from "koa-compose";
 import route, { KoaRoute } from "koa-better-route";
 import { cors, serverLog, errorHandler } from "./koa-util";
 import { basename } from "path";
+import send from "koa-send";
 
 interface Options {
   port: number;
@@ -13,6 +14,7 @@ interface Options {
   builderServer?: string;
   uiServer?: string;
   key?: string;
+  pkgsPath?: string;
 }
 
 export class ProjectMapping {
@@ -33,11 +35,17 @@ export class ProjectMapping {
 }
 
 export function start(opts: Options) {
-  let { port, websocketPort, directories } = opts;
+  let { port, websocketPort, directories, pkgsPath } = opts;
   let mapping = new ProjectMapping(directories);
   new FileWatcherServer(websocketPort, mapping).start();
   let app = server({ mapping }, opts.builderServer, opts.uiServer);
   app.listen(port);
+  if (pkgsPath) {
+    let pkgsPort = port + 1;
+    let pkgsApp = pkgServer(pkgsPath);
+    pkgsApp.listen(pkgsPort);
+    console.log(`serving catalogjs pkgs on port: ${pkgsPort}`);
+  }
   console.log(`server listening on port: ${port}`);
 }
 
@@ -49,13 +57,33 @@ export function server(
   let app = new Koa();
   app.use(
     compose([
-      serverLog,
+      serverLog("fileDaemon"),
       errorHandler,
       cors,
       route.get("/catalogjs/alive", (ctxt: KoaRoute.Context) => {
         ctxt.status = 200;
       }),
       serveFiles(mapping, builderServer, uiServer),
+    ])
+  );
+  return app;
+}
+
+export function pkgServer(pkgsPath: string) {
+  let app = new Koa();
+  app.use(
+    compose([
+      serverLog("pkgServer"),
+      errorHandler,
+      cors,
+      route.get("/(.*)", (ctxt: KoaRoute.Context) => {
+        let file = ctxt.routeParams[0];
+        if (file === "alive") {
+          ctxt.status = 200;
+          return;
+        }
+        return send(ctxt, file, { root: pkgsPath });
+      }),
     ])
   );
   return app;

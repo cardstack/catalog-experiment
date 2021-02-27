@@ -170,9 +170,21 @@ export class HttpFileDescriptor implements FileDescriptor {
     this.inode = underlyingURL.href;
   }
 
+  private looksLikeDir() {
+    return this.underlyingURL.href.endsWith("/");
+  }
+
   async close() {}
 
   async stat(): Promise<HttpStat> {
+    if (this.looksLikeDir()) {
+      return {
+        mtime: 0,
+        size: undefined,
+        contentType: "unknown",
+        type: "file",
+      };
+    }
     let response = await this.getIfNoneMatch();
     let headers: Headers;
     if (response.status === 304) {

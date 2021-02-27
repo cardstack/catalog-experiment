@@ -3,7 +3,7 @@ import { ModuleResolutionsNode, ModuleResolution } from "./resolution";
 import { ModuleDescription } from "../describe-file";
 import { EntrypointsJSONNode, Entrypoint, Dependencies } from "./entrypoint";
 import { getAssigner } from "../assigners";
-import { catalogjsHref, Resolver } from "../resolver";
+import { Resolver } from "../resolver";
 import { LockEntries } from "./lock-file";
 import { CombineModulesNode } from "./combine-modules";
 import { addDescriptionToSource } from "../description-encoder";
@@ -59,7 +59,6 @@ export interface BundleAssignment {
 }
 export interface BundleOptions {
   assigner?: BundleAssignment["assigner"];
-  mountedPkgSource?: URL;
   testing?: {
     origin: string;
     exports?: {
@@ -115,8 +114,7 @@ export class BundleAssignmentsNode implements BuilderNode {
       this.projectInput,
       this.projectOutput,
       resolutions,
-      entrypoints,
-      this.opts?.mountedPkgSource ?? new URL(catalogjsHref)
+      entrypoints
     );
     let { assignments, resolutionsInDepOrder } = assigner;
 
@@ -217,12 +215,7 @@ export class BundleNode implements BuilderNode {
         );
       }
       let [{ module }] = ourAssignments;
-      value = rewriteImportURLs(
-        module,
-        this.opts?.mountedPkgSource ?? new URL(catalogjsHref),
-        this.inputRoot,
-        this.outputRoot
-      );
+      value = rewriteImportURLs(module, this.inputRoot, this.outputRoot);
     } else {
       throw new Error(
         `should never get here: there was no BundleNode dep resolution for ${this.cacheKey}`
@@ -234,7 +227,6 @@ export class BundleNode implements BuilderNode {
 
 function rewriteImportURLs(
   module: ModuleResolution,
-  mountedPkgSource: URL,
   projectInput: URL,
   projectOutput: URL
 ): string {
@@ -265,7 +257,6 @@ function rewriteImportURLs(
     let sourceURL = module.resolvedImports[region.importIndex].url;
     let outputSourceURL = inputToOutput(
       sourceURL.href,
-      mountedPkgSource,
       projectInput,
       projectOutput
     );
