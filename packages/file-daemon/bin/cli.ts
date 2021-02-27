@@ -31,6 +31,11 @@ const argv = yargs.options({
     description:
       "For active development of catalogjs, instead of relying upon the bundled catalogjs UI code, you can point the file daemon at a server that is hosting the ui. This is nice for auto rebuilds of the UI as you are developing catalogjs.",
   },
+  pkgsPath: {
+    type: "string",
+    description:
+      "the path that contains packages to be served by a mock CDN which that would otherwise be found on the catalogjs CDN",
+  },
 }).argv;
 
 if (argv._.length === 0) {

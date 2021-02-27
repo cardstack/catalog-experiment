@@ -1,7 +1,6 @@
 import { Handler } from "./request-handler";
 import { BuildManager } from "../build-manager";
 import { BundleAssignment } from "../nodes/bundle";
-import { localDiskPkgsHref } from "../resolver";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 
@@ -18,7 +17,7 @@ export function handleBuild(buildManager: BuildManager) {
       await buildManager.configure(
         projects.map(([input, output]) => [new URL(input), new URL(output)]),
         {
-          bundle: { assigner, mountedPkgSource: new URL(localDiskPkgsHref) },
+          bundle: { assigner },
         }
       );
       await buildManager.rebuilder!.build();

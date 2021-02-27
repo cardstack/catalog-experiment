@@ -3,5 +3,17 @@
   "html": [
     "index.html",
     "test/index.html"
-  ]
+  ],
+  "dependencies": {
+    "@babel/core": {
+      "type": "npm",
+      "pkgName": "@babel/core",
+      "range": "^7.9.0"
+    },
+    "lodash": {
+      "type": "npm",
+      "pkgName": "lodash",
+      "range": "^4.17.19"
+    }
+  }
 }

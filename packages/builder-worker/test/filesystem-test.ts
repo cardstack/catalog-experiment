@@ -467,7 +467,7 @@ QUnit.module("filesystem", function (origHooks) {
       });
 
       test("can read a stream from a file", async function (assert) {
-        let buffer = await readStream(await file.getReadbleStream());
+        let buffer = await readStream(await file.getReadableStream());
         assert.deepEqual(
           buffer,
           new TextEncoder().encode("Hello World"),

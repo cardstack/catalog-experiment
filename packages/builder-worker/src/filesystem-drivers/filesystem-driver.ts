@@ -56,7 +56,7 @@ export interface FileDescriptor extends Descriptor {
   write(text: string): Promise<void>;
   read(): Promise<Uint8Array>;
   readText(): Promise<string>;
-  getReadbleStream(): Promise<ReadableStream>;
+  getReadableStream(): Promise<ReadableStream>;
 }
 
 export async function readStream(stream: ReadableStream): Promise<Uint8Array> {

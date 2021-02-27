@@ -1,9 +1,0 @@
-import { default as isArrayLike } from "./isArrayLike.js";
-import { default as isObjectLike } from "./isObjectLike.js";
-function isArrayLikeObject(value) {
-  return isObjectLike(value) && isArrayLike(value);
-}
-export { isArrayLikeObject as default };
-/*====catalogjs annotation start====
-k5KVwrAuL2lzQXJyYXlMaWtlLmpzA8LAlcKxLi9pc09iamVjdExpa2UuanMHwsCBp2RlZmF1bHSVoWyxaXNBcnJheUxpa2VPYmplY3QPwMDcABGXoW8AAAPAkMCZoWQJAAIEkQLAwpmhaatpc0FycmF5TGlrZZICDcAAp2RlZmF1bHTAwMCYoXILC8DAkQHAwpyhaQABAQeRBMDCAMLAwJihZwgSwMCQwMKZoWQJAAYIkQbAwpmhaaxpc09iamVjdExpa2WSBgzAAadkZWZhdWx0wMDAmKFyCwzAwJEFwMKcoWkBAQUJkQjAwgHCwMCYoWcIE8DAkMDCl6FvAQAKDpDAmaFkAAoLwJMMDQvAwpmhbLFpc0FycmF5TGlrZU9iamVjdJILEMDAwMCQ2VFXbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvaXNBcnJheUxpa2VPYmplY3QuanOYoXIJEcAMkQrAwpihchMMwA2RBcDCmKFyCwvAwJEBwMKYoWcBAw/AkMDCmKFnCQsQwJEQwMKYoXIAEcDAkQrAwg==
-====catalogjs annotation end====*/

@@ -241,7 +241,7 @@ export class MemoryFileDescriptor implements FileDescriptor {
     return this.resource.buffer ? utf8.decode(this.resource.buffer) : "";
   }
 
-  async getReadbleStream() {
+  async getReadableStream() {
     return makeStream(this.resource.buffer);
   }
 }

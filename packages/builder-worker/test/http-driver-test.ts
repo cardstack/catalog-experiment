@@ -317,7 +317,7 @@ QUnit.module("filesystem - http driver", function (origHooks) {
           new TextEncoder().encode("Hello World"),
           "the file was read correctly"
         );
-        let buffer = await readStream(await file.getReadbleStream());
+        let buffer = await readStream(await file.getReadableStream());
         assert.deepEqual(
           buffer,
           new TextEncoder().encode("Hello World"),
@@ -353,7 +353,7 @@ QUnit.module("filesystem - http driver", function (origHooks) {
           new TextEncoder().encode(`fetch ${initialReadCount + 3}`),
           "the file was read correctly"
         );
-        let buffer = await readStream(await file.getReadbleStream());
+        let buffer = await readStream(await file.getReadableStream());
         assert.deepEqual(
           buffer,
           new TextEncoder().encode(`fetch ${initialReadCount + 4}`),
@@ -386,7 +386,7 @@ QUnit.module("filesystem - http driver", function (origHooks) {
 
       test("can read a stream from a file", async function (assert) {
         let file = await openFile(assert.fs);
-        let buffer = await readStream(await file.getReadbleStream());
+        let buffer = await readStream(await file.getReadableStream());
         assert.deepEqual(
           buffer,
           new TextEncoder().encode("Hello World"),

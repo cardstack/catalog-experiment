@@ -1,9 +1,0 @@
-import { default as isInteger } from "./isInteger.js";
-var MAX_SAFE_INTEGER = 9007199254740991;
-function isSafeInteger(value) {
-  return isInteger(value) && value >= -MAX_SAFE_INTEGER && value <= MAX_SAFE_INTEGER;
-}
-export { isSafeInteger as default };
-/*====catalogjs annotation start====
-k5GVwq4uL2lzSW50ZWdlci5qcwPCwIGnZGVmYXVsdJWhbK1pc1NhZmVJbnRlZ2VyD8DA3AARl6FvAAADwJDAmaFkCQACBJECwMKZoWmpaXNJbnRlZ2VykgILwACnZGVmYXVsdMDAwJihcgsJwMCRAcDCnKFpAAEBBZEEwMIAwsDAmKFnCBDAwJDAwpehbwEABg6QwJihZwABBwmQwMKZoWQEEwjAkggGwMKZoWywTUFYX1NBRkVfSU5URUdFUpMIDA3AwMAGkNlNV25wbS9sb2Rhc2gvNC4xNy4xOS83S0E5OC1vRzY0SmM0SnRWdE5Pamk5cDlSNEk9L19fYnVpbGRfc3JjL2lzU2FmZUludGVnZXIuanOYoXIAEMDAkQfAwpmhZAEDCsCVCwwNCgfAwpmhbK1pc1NhZmVJbnRlZ2VykgoQwMDAwJDZTVducG0vbG9kYXNoLzQuMTcuMTkvN0tBOTgtb0c2NEpjNEp0VnROT2ppOXA5UjRJPS9fX2J1aWxkX3NyYy9pc1NhZmVJbnRlZ2VyLmpzmKFyCQ3AC5EJwMKYoXITCcAMkQHAwpihchUQwA2RB8DCmKFyDRDAwJEHwMKYoWcBAw/AkMDCmKFnCQsQwJEQwMKYoXIADcDAkQnAwg==
-====catalogjs annotation end====*/

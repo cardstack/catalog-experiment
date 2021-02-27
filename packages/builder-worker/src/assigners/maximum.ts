@@ -14,7 +14,6 @@ export class MaximumAssigner extends AbstractAssigner {
     projectOutput: URL,
     resolutions: ModuleResolution[],
     entrypoints: Entrypoint[],
-    mountedPkgSource: URL,
     htmlJSEntrypointURLs?: URL[]
   ) {
     super(
@@ -24,7 +23,6 @@ export class MaximumAssigner extends AbstractAssigner {
       resolutions,
       entrypoints,
       false,
-      mountedPkgSource,
       htmlJSEntrypointURLs
     );
   }

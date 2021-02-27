@@ -4,8 +4,8 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "start-pkg": "node ../file-daemon/dist/main.js . ../test-lib ../../cdn/pkgs",
-    "start": "node ../file-daemon/bin/file-daemon --builderServer=http://localhost:8080 --uiServer=http://localhost:4300/catalogjs/ui/ . ../test-lib ../../cdn/pkgs"
+    "start-pkg": "node ../file-daemon/dist/main.js . ../test-lib",
+    "start": "node ../file-daemon/bin/file-daemon --builderServer=http://localhost:8080 --uiServer=http://localhost:4300/catalogjs/ui/ . ../test-lib"
   },
   "volta": {
     "node": "14.5.0"

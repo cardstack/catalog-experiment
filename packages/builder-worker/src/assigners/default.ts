@@ -12,6 +12,7 @@ import {
 import { Entrypoint, HTMLEntrypoint } from "../nodes/entrypoint";
 import { setIntersection as intersection } from "../utils";
 import { makeURLEndInDir } from "../path";
+import { catalogjsHref } from "../resolver";
 export interface Assigner {
   assignments: BundleAssignment[];
   resolutionsInDepOrder: ModuleResolution[];
@@ -47,7 +48,6 @@ export abstract class AbstractAssigner implements Assigner {
     resolutions: ModuleResolution[],
     entrypoints: Entrypoint[],
     private usesInternalBundleURLs: boolean,
-    private mountedPkgSource: URL,
     htmlJSEntrypointURLs?: URL[]
   ) {
     if (htmlJSEntrypointURLs) {
@@ -72,12 +72,7 @@ export abstract class AbstractAssigner implements Assigner {
   protected abstract doAssignments(leaves: Set<ModuleResolution>): void;
 
   protected inputToOutput(href: string): URL {
-    return inputToOutput(
-      href,
-      this.mountedPkgSource,
-      this.projectInput,
-      this.projectOutput
-    );
+    return inputToOutput(href, this.projectInput, this.projectOutput);
   }
 
   protected assignConsumersOfModule(
@@ -141,7 +136,6 @@ export class DefaultAssigner extends AbstractAssigner {
     projectOutput: URL,
     resolutions: ModuleResolution[],
     entrypoints: Entrypoint[],
-    mountedPkgSource: URL,
     htmlJSEntrypointURLs?: URL[]
   ) {
     super(
@@ -151,7 +145,6 @@ export class DefaultAssigner extends AbstractAssigner {
       resolutions,
       entrypoints,
       true,
-      mountedPkgSource,
       htmlJSEntrypointURLs
     );
   }
@@ -402,14 +395,13 @@ export function ensureExposed(exported: string, assignment: BundleAssignment) {
 }
 export function inputToOutput(
   href: string,
-  mountedPkgSource: URL,
   projectInput: URL,
   projectOutput: URL
 ): URL {
   return new URL(
     href
       .replace(
-        makeURLEndInDir(mountedPkgSource).href,
+        makeURLEndInDir(new URL(catalogjsHref)).href,
         makeURLEndInDir(new URL("pkgs/", projectOutput)).href
       )
       .replace(

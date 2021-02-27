@@ -14,13 +14,15 @@ This will install catalogjs to your `~/.catalogjs` folder, as well as add the ca
 ## Running it
 After installing CatalogJS you can run it by changing directories to your project, and executing `catalogjs` followed by the directories that you want available to the catalogjs build environment. This would be your project directory and any other local dependencies your project has (e.g. another library your project consumes that you also want built by CatalogJS). For example:
 ```
-catalogjs . ../test-lib ../../cdn/pkgs
+catalogjs . ../test-lib
 ```
-where `../test-lib` and `../../cdn/pkgs` are directories that you want to make available to the CatalogJS build environment.
+where `.` and `../test-lib` are directories that you want to make available to the CatalogJS build environment.
 
 After the CatalogJS file server starts, you can open your browser with the URL displayed on the command line (http://localhost:4200 is the default).
 
 Note: if you want to work with local recipes, you can just mount that directory as well. We'll default to the github hosted recipes unless a local recipes filesystem is mounted, in which case we'll use the local one. Recipes can be locally referenced from the `packages/recipes` directory in this project.
+
+Note: if you want to work with a local CatalogJS package registry, then you can provide the `--pkgsPath path/to/your/pkgs` parameter. Make sure to use `packages/builder-node/bin/install.js` script to generate your CatalogJS packages locally.
 
 ## Building it
 
@@ -49,7 +51,10 @@ yarn install
    ```sh
    yarn serve
    ```
+
    Note: if you want to be able to work with recipes locally (instead of being served from github, which is the default), then you can additionally mount the `../recipes` folder in the package.json for the `packages/test-app` (or `packages/test-lib`). When a local recipes filesystem is mounted we will use that instead of the github hosted recipes.
+
+   Note: if you want to be able to work with a local CatalogJS package registry, then you can provide the `--pkgsPath path/to/your/pkgs` parameter to start script command in the package.json for the `packages/test-app` (or `packages/test-lib`). Make sure to use the `packages/builder-node/bin/install.js` script to generate your CatalogJS packages locally.
 
 If you want to use a `tsc --watch`, it's a little tricky since each package has
 its own `tsconfig.json` and needs to have it's own `tsc --watch`. You can run

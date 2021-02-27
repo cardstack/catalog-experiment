@@ -17,22 +17,26 @@ import { BuildManager } from "./build-manager";
 import { handleListing } from "./request-handlers/project-listing-handler";
 import { handleBuild } from "./request-handlers/run-build-handler";
 import { explainAsDot } from "./builder";
-import { localDiskPkgsHref } from "./resolver";
+import { catalogjsHref } from "./resolver";
 import { recipesURL } from "./recipes";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 const fs = new FileSystem();
-const uiURL = new URL("http://localhost:4200/catalogjs/ui/");
+const originURL = new URL(worker.origin);
+const uiURL = new URL("catalogjs/ui/", originURL);
 const githubRecipesURL = new URL(
-  "https://raw.githubusercontent.com/cardstack/catalog-experiment/master/packages/recipes/index.js"
+  "https://raw.githubusercontent.com/cardstack/catalog-experiment/master/packages/recipes/recipes/"
 );
+const registryURL = new URL(catalogjsHref);
 const localRecipesURL = new URL("https://local-disk/recipes/");
+const localRegistryURL = new URL(
+  `${originURL.protocol}//${originURL.hostname}:${parseInt(originURL.port) + 1}`
+);
 
 let websocketURL: URL;
 let isDisabled = false;
 let volume: FileDaemonClientVolume | undefined;
 let eventHandler: ClientEventHandler;
-let originURL = new URL(worker.origin);
 let buildManager: BuildManager;
 let activated: () => void;
 let activating: Promise<void>;
@@ -75,6 +79,22 @@ async function activate() {
     fs.mount(recipesURL, recipesDriver),
   ]);
 
+  let useLocalRegistry: boolean;
+  try {
+    let response = await fetch(`${localRegistryURL.href}alive`);
+    useLocalRegistry = response.ok;
+  } catch (e) {
+    useLocalRegistry = false;
+  }
+
+  if (useLocalRegistry) {
+    let registryDriver = new HttpFileSystemDriver(localRegistryURL);
+    await fs.mount(registryURL, registryDriver);
+  } else {
+    let registryDriver = new HttpFileSystemDriver(registryURL);
+    await fs.mount(registryURL, registryDriver);
+  }
+
   let useLocalRecipes = false;
   try {
     await fs.openDirectory(localRecipesURL);
@@ -98,7 +118,7 @@ async function activate() {
   buildManager = new BuildManager(
     fs,
     useLocalRecipes ? localRecipesURL : recipesURL,
-    { bundle: { mountedPkgSource: new URL(localDiskPkgsHref) } },
+    undefined,
     () => {
       if (Logger.getInstance().logLevel === "debug") {
         let dot = explainAsDot(buildManager.rebuilder!.explain());

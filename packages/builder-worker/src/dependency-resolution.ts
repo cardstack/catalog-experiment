@@ -194,7 +194,6 @@ export class DependencyResolver {
       this.consumptionCache.set(pkgHref, new Map());
       return;
     }
-
     // this is a map of bundleHrefs (which include the pkg version), to a set of
     // bundle versions whose consumption range satisfies the bundleHref version.
     // The goal is to find the package that has the most amount of range
@@ -354,24 +353,24 @@ export class DependencyResolver {
       // resolution whose consumedBy is actually the bundleHref, if there are
       // none, then chose the resolution whose consumedBy is the earliest module
       // when all modules in the bundle are sorted in dependency order.
-      let winningSideEffectConsumer: string | undefined;
+      let winningSideEffectConsumers: string[];
       let consumerHrefs = Object.keys(dupeSideEffectResolutions);
       if (consumerHrefs.length > 1) {
-        winningSideEffectConsumer = consumerHrefs.find((consumerHref) =>
+        winningSideEffectConsumers = consumerHrefs.filter((consumerHref) =>
           bundleHrefs.includes(consumerHref)
         );
         // our own bundle as a consumer has the lowest priority
         consumerHrefs = consumerHrefs.filter((h) => h !== this.bundle.href);
-        if (!winningSideEffectConsumer) {
+        if (winningSideEffectConsumers.length === 0) {
           consumerHrefs.sort(
             (a, b) =>
               this.resolutionsInDepOrder.findIndex((m) => m.url.href === a) -
               this.resolutionsInDepOrder.findIndex((m) => m.url.href === b)
           );
-          winningSideEffectConsumer = consumerHrefs.shift()!;
+          winningSideEffectConsumers = [consumerHrefs.shift()!];
         }
       } else {
-        winningSideEffectConsumer = consumerHrefs[0];
+        winningSideEffectConsumers = [consumerHrefs[0]];
       }
 
       for (let resolution of pkgVersions.get(selectedBundleVer)!) {
@@ -445,7 +444,7 @@ export class DependencyResolver {
         }
         if (
           resolution.type === "side-effect" &&
-          resolution.consumedBy.url.href !== winningSideEffectConsumer
+          !winningSideEffectConsumers.includes(resolution.consumedBy.url.href)
         ) {
           // you lost, we only keep track of the winning side effect resolutions
           // (there is no identity map for side effects)
@@ -961,20 +960,22 @@ function gatherDependencies(
 
     for (let { module } of ownAssignments) {
       // Add consumption points for all the side effects
-      for (let pointer of module.desc.regions[documentPointer].dependsOn) {
-        let region = module.desc.regions[pointer];
-        if (region.type === "general") {
-          addResolution(
-            bundleHref,
-            {
-              type: "side-effect",
-              consumedByPointer: pointer,
-              consumedBy: module,
-              range: dependency.range,
-              bundleHref: bundleHref,
-            },
-            consumedDeps
-          );
+      if (module.url.href === bundleHref) {
+        for (let pointer of module.desc.regions[documentPointer].dependsOn) {
+          let region = module.desc.regions[pointer];
+          if (region.type === "general") {
+            addResolution(
+              bundleHref,
+              {
+                type: "side-effect",
+                consumedByPointer: pointer,
+                consumedBy: module,
+                range: dependency.range,
+                bundleHref: bundleHref,
+              },
+              consumedDeps
+            );
+          }
         }
       }
       // Add consumption points for all the reexports. reexports are a form of

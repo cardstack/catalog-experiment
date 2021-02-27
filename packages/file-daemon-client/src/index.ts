@@ -504,7 +504,7 @@ class ClientFileDescriptor implements FileDescriptor {
   async readText(): Promise<string> {
     return utf8.decode(this.fileCache.data);
   }
-  async getReadbleStream(): Promise<ReadableStream> {
+  async getReadableStream(): Promise<ReadableStream> {
     return makeStream(this.fileCache.data);
   }
 }
