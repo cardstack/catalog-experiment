@@ -256,7 +256,7 @@ export class HttpFileDescriptor implements FileDescriptor {
     return utf8.decode(buffer);
   }
 
-  async getReadbleStream(): Promise<ReadableStream> {
+  async getReadableStream(): Promise<ReadableStream> {
     let response = await this.getIfNoneMatch();
     let stream = await getResponseReadableStream(
       response,

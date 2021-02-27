@@ -209,10 +209,10 @@ QUnit.module("Node FileSystem", function (origHooks) {
       });
 
       test("can read a stream from a file", async function (assert) {
-        let stream = new DOMToNodeReadable(await file.getReadbleStream());
+        let stream = new DOMToNodeReadable(await file.getReadableStream());
         let buffer: Buffer;
 
-        let done = new Promise((res) => {
+        let done = new Promise<void>((res) => {
           stream.on("data", (data) => {
             buffer = data;
           });

@@ -290,7 +290,7 @@ export class NodeFileDescriptor implements FileDescriptor {
     return utf8.decode(buffer);
   }
 
-  async getReadbleStream() {
+  async getReadableStream() {
     let readableStream = createReadStream("", {
       fd: this.fd,
       autoClose: false,

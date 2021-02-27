@@ -97,7 +97,7 @@ async function serveFile(url: URL, fs: FileSystem): Promise<Response> {
       return file;
     }
 
-    let response = new Response(await file.getReadbleStream());
+    let response = new Response(await file.getReadableStream());
     await setContentHeaders(response, url.href, file);
     return response;
   } finally {
