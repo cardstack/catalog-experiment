@@ -1,6 +1,0 @@
-import { default as createFlow } from "./dist/36.js";
-var flowRight = createFlow(true);
-export { flowRight as default };
-/*====catalogjs annotation start====
-k5GVwqwuL2Rpc3QvMzYuanMDwsCBp2RlZmF1bHSVoWypZmxvd1JpZ2h0DMDAnpehbwAAA8CRB8CZoWQJAAIEkQLAwpmhaapjcmVhdGVGbG93kgIKwACnZGVmYXVsdMDAwJihcgsKwMCRAcDCnKFpAAEBBZEEwMIAwsDAmKFnCA7AwJDAwpehbwEABguQwJihZwABB8CQwMKZoWQEAAjAkwgGCcDCmaFsqWZsb3dSaWdodJIIDcDAwAaQ2UlXbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvZmxvd1JpZ2h0LmpzmKFyAAnACZEHwMKYoWcDBgrAkQrAwpihcgAKwMCRAcDCmKFnAQMMwJDAwpihZwkLDcCRDcDCmKFyAAnAwJEHwMI=
-====catalogjs annotation end====*/

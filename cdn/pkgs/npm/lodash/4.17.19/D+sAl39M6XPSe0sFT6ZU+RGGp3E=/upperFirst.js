@@ -1,6 +1,0 @@
-import { default as createCaseFirst } from "./dist/18.js";
-var upperFirst = createCaseFirst('toUpperCase');
-export { upperFirst as default };
-/*====catalogjs annotation start====
-k5GVwqwuL2Rpc3QvMTguanMDwsCBp2RlZmF1bHSVoWyqdXBwZXJGaXJzdAzAwJ6XoW8AAAPAkQfAmaFkCQACBJECwMKZoWmvY3JlYXRlQ2FzZUZpcnN0kgIKwACnZGVmYXVsdMDAwJihcgsPwMCRAcDCnKFpAAEBBZEEwMIAwsDAmKFnCA7AwJDAwpehbwEABguQwJihZwABB8CQwMKZoWQEAAjAkwgGCcDCmaFsqnVwcGVyRmlyc3SSCA3AwMAGkNlKV25wbS9sb2Rhc2gvNC4xNy4xOS83S0E5OC1vRzY0SmM0SnRWdE5Pamk5cDlSNEk9L19fYnVpbGRfc3JjL3VwcGVyRmlyc3QuanOYoXIACsAJkQfAwpihZwMPCsCRCsDCmKFyAA/AwJEBwMKYoWcBAwzAkMDCmKFnCQsNwJENwMKYoXIACsDAkQfAwg==
-====catalogjs annotation end====*/

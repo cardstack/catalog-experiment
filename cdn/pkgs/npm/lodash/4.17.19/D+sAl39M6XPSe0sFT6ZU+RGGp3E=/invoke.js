@@ -1,7 +1,0 @@
-import { default as baseInvoke } from "./dist/8.js";
-import { default as baseRest } from "./dist/49.js";
-var invoke = baseRest(baseInvoke);
-export { invoke as default };
-/*====catalogjs annotation start====
-k5KVwqsuL2Rpc3QvOC5qcwPCwJXCrC4vZGlzdC80OS5qcwfCwIGnZGVmYXVsdJWhbKZpbnZva2URwMDcABOXoW8AAAPAkQvAmaFkCQACBJECwMKZoWmqYmFzZUludm9rZZICD8AAp2RlZmF1bHTAwMCYoXILCsDAkQHAwpyhaQABAQeRBMDCAMLAwJihZwgNwMCQwMKZoWQJAAYIkQbAwpmhaahiYXNlUmVzdJIGDsABp2RlZmF1bHTAwMCYoXILCMDAkQXAwpyhaQEBBQmRCMDCAcLAwJihZwgOwMCQwMKXoW8BAAoQkMCYoWcAAQvAkMDCmaFkBAAMwJMMCg3AwpmhbKZpbnZva2WSDBLAwMAKkNlGV25wbS9sb2Rhc2gvNC4xNy4xOS83S0E5OC1vRzY0SmM0SnRWdE5Pamk5cDlSNEk9L19fYnVpbGRfc3JjL2ludm9rZS5qc5ihcgAGwA2RC8DCmKFnAwEOwJIOD8DCmKFyAAjAD5EFwMKYoXIBCsDAkQHAwpihZwEDEcCQwMKYoWcJCxLAkRLAwpihcgAGwMCRC8DC
-====catalogjs annotation end====*/

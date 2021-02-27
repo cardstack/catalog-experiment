@@ -1,7 +1,0 @@
-import { default as createFind } from "./dist/3.js";
-import { default as findIndex } from "./findIndex.js";
-var find0 = createFind(findIndex);
-export { find0 as default };
-/*====catalogjs annotation start====
-k5KVwqsuL2Rpc3QvMy5qcwPCwJXCri4vZmluZEluZGV4LmpzB8LAgadkZWZhdWx0laFspWZpbmQwEcDA3AATl6FvAAADwJELwJmhZAkAAgSRAsDCmaFpqmNyZWF0ZUZpbmSSAg7AAKdkZWZhdWx0wMDAmKFyCwrAwJEBwMKcoWkAAQEHkQTAwgDCwMCYoWcIDcDAkMDCmaFkCQAGCJEGwMKZoWmpZmluZEluZGV4kgYPwAGnZGVmYXVsdMDAwJihcgsJwMCRBcDCnKFpAQEFCZEIwMIBwsDAmKFnCBDAwJDAwpehbwEAChCQwJihZwABC8CQwMKZoWQEAAzAkwwKDcDCmaFspWZpbmQwkgwSwMDACpDZRFducG0vbG9kYXNoLzQuMTcuMTkvN0tBOTgtb0c2NEpjNEp0VnROT2ppOXA5UjRJPS9fX2J1aWxkX3NyYy9maW5kLmpzmKFyAAXADZELwMKYoWcDAQ7Akg4PwMKYoXIACsAPkQHAwpihcgEJwMCRBcDCmKFnAQMRwJDAwpihZwkLEsCREsDCmKFyAAXAwJELwMI=
-====catalogjs annotation end====*/

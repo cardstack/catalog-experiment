@@ -1,6 +1,0 @@
-import { default as overArg } from "./138.js";
-var getPrototype = overArg(Object.getPrototypeOf, Object);
-export { getPrototype as default };
-/*====catalogjs annotation start====
-k5GVwqguLzEzOC5qcwPCwIGnZGVmYXVsdJWhbKxnZXRQcm90b3R5cGUMwMCel6FvAAADwJEHwJmhZAkAAgSRAsDCmaFpp292ZXJBcmeSAgrAAKdkZWZhdWx0wMDAmKFyCwfAwJEBwMKcoWkAAQEFkQTAwgDCwMCYoWcICsDAkMDCl6FvAQAGC5DAmKFnAAEHwJDAwpmhZAQACMCTCAYJwMKZoWysZ2V0UHJvdG90eXBlkggNwMDABpDZTVducG0vbG9kYXNoLzQuMTcuMTkvN0tBOTgtb0c2NEpjNEp0VnROT2ppOXA5UjRJPS9fX2J1aWxkX3NyYy9fZ2V0UHJvdG90eXBlLmpzmKFyAAzACZEHwMKYoWcDHwrAkQrAwpihcgAHwMCRAcDCmKFnAQMMwJDAwpihZwkLDcCRDcDCmKFyAAzAwJEHwMI=
-====catalogjs annotation end====*/

@@ -1,7 +1,0 @@
-import { default as baseRest } from "./dist/49.js";
-import { default as unzip } from "./unzip.js";
-var zip = baseRest(unzip);
-export { zip as default };
-/*====catalogjs annotation start====
-k5KVwqwuL2Rpc3QvNDkuanMDwsCVwqouL3VuemlwLmpzB8LAgadkZWZhdWx0laFso3ppcBHAwNwAE5ehbwAAA8CRC8CZoWQJAAIEkQLAwpmhaahiYXNlUmVzdJICDsAAp2RlZmF1bHTAwMCYoXILCMDAkQHAwpyhaQABAQeRBMDCAMLAwJihZwgOwMCQwMKZoWQJAAYIkQbAwpmhaaV1bnppcJIGD8ABp2RlZmF1bHTAwMCYoXILBcDAkQXAwpyhaQEBBQmRCMDCAcLAwJihZwgMwMCQwMKXoW8BAAoQkMCYoWcAAQvAkMDCmaFkBAAMwJMMCg3AwpmhbKN6aXCSDBLAwMAKkNlDV25wbS9sb2Rhc2gvNC4xNy4xOS83S0E5OC1vRzY0SmM0SnRWdE5Pamk5cDlSNEk9L19fYnVpbGRfc3JjL3ppcC5qc5ihcgADwA2RC8DCmKFnAwEOwJIOD8DCmKFyAAjAD5EBwMKYoXIBBcDAkQXAwpihZwEDEcCQwMKYoWcJCxLAkRLAwpihcgADwMCRC8DC
-====catalogjs annotation end====*/

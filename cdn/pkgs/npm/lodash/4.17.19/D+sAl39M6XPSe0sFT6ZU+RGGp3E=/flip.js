@@ -1,9 +1,0 @@
-import { default as createWrap } from "./dist/23.js";
-var WRAP_FLIP_FLAG = 512;
-function flip(func) {
-  return createWrap(func, WRAP_FLIP_FLAG);
-}
-export { flip as default };
-/*====catalogjs annotation start====
-k5GVwqwuL2Rpc3QvMjMuanMDwsCBp2RlZmF1bHSVoWykZmxpcA7AwNwAEJehbwAAA8CQwJmhZAkAAgSRAsDCmaFpqmNyZWF0ZVdyYXCSAgvAAKdkZWZhdWx0wMDAmKFyCwrAwJEBwMKcoWkAAQEFkQTAwgDCwMCYoWcIDsDAkMDCl6FvAQAGDZDAmKFnAAEHCZDAwpmhZAQGCMCSCAbAwpmhbK5XUkFQX0ZMSVBfRkxBR5IIDMDAwAaQ2URXbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvZmxpcC5qc5ihcgAOwMCRB8DCmaFkAQQKwJQLDAoHwMKZoWykZmxpcJIKD8DAwMCQ2URXbnBtL2xvZGFzaC80LjE3LjE5LzdLQTk4LW9HNjRKYzRKdFZ0Tk9qaTlwOVI0ST0vX19idWlsZF9zcmMvZmxpcC5qc5ihcgkEwAuRCcDCmKFyEgrADJEBwMKYoXIHDsDAkQfAwpihZwEDDsCQwMKYoWcJCw/AkQ/AwpihcgAEwMCRCcDC
-====catalogjs annotation end====*/
