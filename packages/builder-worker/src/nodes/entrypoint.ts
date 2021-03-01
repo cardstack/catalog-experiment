@@ -226,6 +226,12 @@ export class HTMLEntrypoint {
       );
       this.replace(element, new dom.Element("script", scriptAttrs));
     }
+    // inject the service worker's js into the application entrypoint so that we
+    // can communicate with the window (this allows us to trigger reloads after
+    // rebuilds)
+    this.parsedHTML.push(
+      new dom.Element("script", { src: "https://service-worker/main.js" })
+    );
     return render(this.parsedHTML);
   }
 }

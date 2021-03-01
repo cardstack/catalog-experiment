@@ -11,7 +11,7 @@ import { HttpStat } from "../filesystem-drivers/http-driver";
 import { BuildManager } from "../build-manager";
 import sortBy from "lodash/sortBy";
 
-const builderOrigin = "http://localhost:8080";
+const builderOrigin = "https://service-worker";
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 
 export function handleFile(fs: FileSystem, buildManager: BuildManager) {
