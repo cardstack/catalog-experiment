@@ -167,6 +167,9 @@ class CoreBuildNode implements BuilderNode {
             "@catalogjs/loader":
               "https://pkgs.catalogjs.com/@catalogjs/loader/0.0.1/index.js",
           },
+          // when building packages from npm, it would be weird to not always
+          // want the minimum possible bundles for the package
+          bundle: { assigner: "minimum" },
         }
       ),
     };

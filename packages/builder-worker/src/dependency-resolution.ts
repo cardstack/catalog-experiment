@@ -418,13 +418,16 @@ export class DependencyResolver {
           // when there are duplicate resolutions, first we try to find the
           // resolution whose consumedBy is actually the bundleHref, if there
           // are none, then first one when sorted by dependency order wins
-          let winningResolution = dupeResolutions.find(
+          let winningResolution: ResolvedDependency | undefined;
+          let winningResolutions = dupeResolutions.filter(
             (r) =>
               r.bundleHref === r.consumedBy.url.href ||
               (r.type === "declaration" &&
                 r.importedSource?.declaredIn.url.href === r.bundleHref)
           );
-          if (!winningResolution) {
+          if (winningResolutions.length === 1) {
+            winningResolution = winningResolutions[0];
+          } else {
             dupeResolutions.sort(
               ({ consumedBy: consumedByA }, { consumedBy: consumedByB }) =>
                 this.resolutionsInDepOrder.findIndex(

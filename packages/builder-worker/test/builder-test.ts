@@ -36,7 +36,7 @@ Logger.setLogLevel("debug");
 Logger.echoInConsole(true);
 
 QUnit.module("module builder", function (origHooks) {
-  let { test, skip, hooks } = installFileAssertions(origHooks);
+  let { test, hooks } = installFileAssertions(origHooks);
   let builder: Builder<unknown> | undefined;
   let rebuilder: Rebuilder<unknown> | undefined;
 
@@ -9772,7 +9772,167 @@ QUnit.module("module builder", function (origHooks) {
       }
     });
 
-    skip("it can build library using a 'minimum' bundles assigner", async function () {});
-    skip("a minimum bundle assigner falls back to a default bundle assigner when dynamic imports exist in project", async function () {});
+    test("it can build library using a 'minimum' bundles assigner", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["a.js", "b.js"] }`,
+        "a.js": `
+          import { common } from "./c.js";
+          export function doA() {
+            return common() + 1;
+          }
+        `,
+        "b.js": `
+          import { common } from "./c.js";
+          export function doB() {
+            return common() - 1;
+          }
+        `,
+        "c.js": `
+          export function common() {
+            return 1;
+          }
+        `,
+      });
+      builder = makeBuilder(assert.fs, undefined, {
+        bundle: { assigner: "minimum" },
+      });
+      await builder.build();
+      await assert.file("output/a.js").exists();
+      await assert.file("output/b.js").exists();
+      await assert.file("output/dist/0.js").doesNotExist();
+      await assert.file("output/c.js").doesNotExist();
+
+      {
+        let fd = await assert.fs.openFile(url("output/a.js"));
+        let { source } = extractDescriptionFromSource(await fd.readText());
+        assert.codeEqual(
+          source,
+          `
+          function common() {
+            return 1;
+          }
+          function doA() {
+            return common() + 1;
+          }
+          export { doA };
+          `
+        );
+      }
+
+      {
+        let fd = await assert.fs.openFile(url("output/b.js"));
+        let { source } = extractDescriptionFromSource(await fd.readText());
+        assert.codeEqual(
+          source,
+          `
+          function common() {
+            return 1;
+          }
+          function doB() {
+            return common() - 1;
+          }
+          export { doB };
+          `
+        );
+      }
+    });
+
+    test("a minimum bundle assigner falls back to a default bundle assigner when dynamic imports exist in project", async function (assert) {
+      await assert.setupFiles({
+        "entrypoints.json": `{ "js": ["a.js", "b.js"] }`,
+        "a.js": `
+          import { common } from "./c.js";
+          export async function doA() {
+            let { dynamic } = await import("./d.js");
+            return common() + dynamic() + 1;
+          }
+        `,
+        "b.js": `
+          import { common } from "./c.js";
+          export function doB() {
+            return common() - 1;
+          }
+        `,
+        "c.js": `
+          export function common() {
+            return 1;
+          }
+        `,
+        "d.js": `
+          export function dynamic() {
+            return 2;
+          }
+        `,
+      });
+      builder = makeBuilder(assert.fs, undefined, {
+        bundle: { assigner: "minimum" },
+      });
+      await builder.build();
+      await assert.file("output/a.js").exists();
+      await assert.file("output/b.js").exists();
+      await assert.file("output/dist/0.js").exists();
+      await assert.file("output/dist/1.js").exists();
+      await assert.file("output/c.js").doesNotExist();
+      await assert.file("output/d.js").doesNotExist();
+
+      {
+        let fd = await assert.fs.openFile(url("output/a.js"));
+        let { source } = extractDescriptionFromSource(await fd.readText());
+        assert.codeEqual(
+          source,
+          `
+          import { common } from "./dist/0.js";
+          async function doA() {
+            let { dynamic } = await import("./dist/1.js");
+            return common() + dynamic() + 1;
+          }
+          export { doA };
+          `
+        );
+      }
+
+      {
+        let fd = await assert.fs.openFile(url("output/b.js"));
+        let { source } = extractDescriptionFromSource(await fd.readText());
+        assert.codeEqual(
+          source,
+          `
+          import { common } from "./dist/0.js";
+          function doB() {
+            return common() - 1;
+          }
+          export { doB };
+          `
+        );
+      }
+
+      {
+        let fd = await assert.fs.openFile(url("output/dist/0.js"));
+        let { source } = extractDescriptionFromSource(await fd.readText());
+        assert.codeEqual(
+          source,
+          `
+          function common() {
+            return 1;
+          }
+          export { common };
+          `
+        );
+      }
+
+      {
+        let fd = await assert.fs.openFile(url("output/dist/1.js"));
+        let { source } = extractDescriptionFromSource(await fd.readText());
+        assert.codeEqual(
+          source,
+          `
+          function dynamic() {
+            return 2;
+          }
+          export { dynamic };
+          `
+        );
+      }
+    });
   });
 });

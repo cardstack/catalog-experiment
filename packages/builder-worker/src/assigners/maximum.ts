@@ -25,6 +25,7 @@ export class MaximumAssigner extends AbstractAssigner {
       false,
       htmlJSEntrypointURLs
     );
+    this.doAssignments(this.leaves);
   }
   protected doAssignments(leaves: Set<ModuleResolution>): void {
     for (let leaf of leaves) {

@@ -276,58 +276,102 @@ export class RegionWalker {
     // selected as the "winning" pkg version (our pkg resolution will tell us
     // where to go next on our "walk").
     else if (
+      // TODO we also need to consider regions that have resolutions, but not an
+      // "original" because they are coming from a direct dependency
       region.type === "declaration" &&
-      region.declaration.type === "local" &&
-      region.declaration.original
+      region.declaration.type === "local" // &&
+      // region.declaration.original
     ) {
-      let pkgBundleHref = region.declaration.original.bundleHref;
-      let {
-        resolvedConsumingModule,
-        resolvedConsumingPointer,
-        resolution,
-        isRegionObviated,
-      } = this.resolvePkgDependency(pkgBundleHref, module, pointer) ?? {};
-      // the region we want to memorialize for this step in our "walk" is
-      // probably different than the region that we entered this method with
-      // due to how the declaration was resolved.
-      id = regionId(resolvedConsumingModule, resolvedConsumingPointer);
-
-      if (isRegionObviated) {
-        return this.walk(
+      let pkgBundleHref: string | undefined;
+      if (region.declaration.original) {
+        pkgBundleHref = region.declaration.original.bundleHref;
+      } else {
+        let pkgURL = pkgInfoFromCatalogJsURL(module.url)?.pkgURL;
+        if (pkgURL) {
+          pkgBundleHref = pkgURL.href;
+        }
+      }
+      let resolvedConsumingModule: Resolution | undefined;
+      let resolvedConsumingPointer: RegionPointer | undefined;
+      let resolution: ResolvedDependency | undefined;
+      let isRegionObviated: boolean | undefined;
+      if (pkgBundleHref) {
+        ({
           resolvedConsumingModule,
           resolvedConsumingPointer,
-          stack,
-          originalId
-        );
+          resolution,
+          isRegionObviated,
+        } = this.resolvePkgDependency(pkgBundleHref, module, pointer) ?? {});
       }
 
-      // in this case we are replacing a local namespace object declaration with
-      // a namespace import (because it's resolution won), meaning that we'll
-      // re-derive the namespace object. In order to do that we keep the
-      // namespace import, which is our signal to the downstream processes that
-      // we want a namespace object manufactured here.
-      else if (
-        resolution?.type === "declaration" &&
-        isNamespaceMarker(resolution?.name) &&
-        resolution.importedSource?.declaredIn
+      // consider the scenario where the declaration has a dependency resolution
+      if (
+        resolvedConsumingModule &&
+        resolution &&
+        resolvedConsumingPointer != null &&
+        isRegionObviated != null
       ) {
-        let namespaceModule = resolution.importedSource.declaredIn;
-        return this.withSideEffects(
-          resolvedConsumingModule,
-          stack,
-          (_stack) => {
-            let namespaceMarker = this.visitNamespace(namespaceModule, _stack);
-            this.keepRegion(originalId, id, new Set([namespaceMarker]));
-            return id;
-          }
-        );
-      }
+        // the region we want to memorialize for this step in our "walk" is
+        // probably different than the region that we entered this method with
+        // due to how the declaration was resolved.
+        id = regionId(resolvedConsumingModule, resolvedConsumingPointer);
 
-      // In this case the region that we entered our walk with is actually the
-      // winning resolution, so we keep this region and continue our journey.
+        if (isRegionObviated) {
+          return this.walk(
+            resolvedConsumingModule,
+            resolvedConsumingPointer,
+            stack,
+            originalId
+          );
+        }
+
+        // in this case we are replacing a local namespace object declaration with
+        // a namespace import (because it's resolution won), meaning that we'll
+        // re-derive the namespace object. In order to do that we keep the
+        // namespace import, which is our signal to the downstream processes that
+        // we want a namespace object manufactured here.
+        else if (
+          resolution?.type === "declaration" &&
+          isNamespaceMarker(resolution?.name) &&
+          resolution.importedSource?.declaredIn
+        ) {
+          let namespaceModule = resolution.importedSource.declaredIn;
+          return this.withSideEffects(
+            resolvedConsumingModule,
+            stack,
+            (_stack) => {
+              let namespaceMarker = this.visitNamespace(
+                namespaceModule,
+                _stack
+              );
+              this.keepRegion(originalId, id, new Set([namespaceMarker]));
+              return id;
+            }
+          );
+        }
+
+        // In this case the region that we entered our walk with is actually the
+        // winning resolution, so we keep this region and continue our journey.
+        else {
+          return this.withSideEffects(
+            resolvedConsumingModule,
+            stack,
+            (_stack) =>
+              this.walkNext(
+                resolvedConsumingModule!,
+                region,
+                id,
+                originalId,
+                _stack
+              )
+          );
+        }
+      }
+      // In this case the declaration region has no resolution, it's just a
+      // plain local declaration
       else {
-        return this.withSideEffects(resolvedConsumingModule, stack, (_stack) =>
-          this.walkNext(resolvedConsumingModule, region, id, originalId, _stack)
+        return this.withSideEffects(module, stack, (_stack) =>
+          this.walkNext(module, region, id, originalId, _stack)
         );
       }
     }

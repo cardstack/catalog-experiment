@@ -38,14 +38,14 @@ export abstract class AbstractAssigner implements Assigner {
   protected entrypoints: Map<string, { url: URL; isLibrary: boolean }>;
   private internalBundleCount = 0;
   protected consumersOf: Consumers;
+  protected leaves: Set<ModuleResolution>;
   private requestedEntrypointURLs: URL[] = [];
-  private resolutions: ModuleResolution[];
 
   constructor(
     readonly type: BundleAssignment["assigner"],
     protected projectInput: URL,
     protected projectOutput: URL,
-    resolutions: ModuleResolution[],
+    protected resolutions: ModuleResolution[],
     entrypoints: Entrypoint[],
     private usesInternalBundleURLs: boolean,
     htmlJSEntrypointURLs?: URL[]
@@ -57,9 +57,9 @@ export abstract class AbstractAssigner implements Assigner {
     let { consumersOf, leaves, resolutionsInDepOrder } = invertDependencies(
       resolutions
     );
+    this.leaves = leaves;
     this.consumersOf = consumersOf;
     this.resolutions = [...resolutionsInDepOrder];
-    this.doAssignments(leaves);
   }
 
   get assignments(): BundleAssignment[] {
@@ -147,6 +147,7 @@ export class DefaultAssigner extends AbstractAssigner {
       true,
       htmlJSEntrypointURLs
     );
+    this.doAssignments(this.leaves);
   }
   protected doAssignments(leaves: Set<ModuleResolution>): void {
     for (let leaf of leaves) {
