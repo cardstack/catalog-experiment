@@ -1,11 +1,9 @@
 import WebSocket from "ws";
 import sane, { Watcher } from "sane";
 import { Stats } from "fs";
-import { ProjectMapping } from "./daemon";
+import { Project } from "./daemon";
 import bind from "bind-decorator";
 import { FileInfo } from "./interfaces";
-import { REGTYPE } from "@catalogjs/tarstream/constants";
-import { unixTime } from "./utils";
 import flatMap from "lodash/flatMap";
 
 export default class FileWatcherServer {
@@ -17,12 +15,13 @@ export default class FileWatcherServer {
   // yet.
   private flushNotifications: Promise<void[]> = Promise.resolve([]);
 
-  constructor(private port: number, mapping: ProjectMapping) {
-    for (let [name, path] of mapping.nameToPath) {
-      let watcher = sane(path);
-      watcher.on("add", this.notify("add", name));
-      watcher.on("change", this.notify("change", name));
-      watcher.on("delete", this.notify("delete", name));
+  constructor(private port: number, projects: Project[]) {
+    for (let project of projects) {
+      let watcher = sane(project.dir);
+      let handler = this.notify(project);
+      watcher.on("add", handler);
+      watcher.on("change", handler);
+      watcher.on("delete", handler);
       this.watchers.push(watcher);
     }
   }
@@ -51,27 +50,17 @@ export default class FileWatcherServer {
   }
 
   @bind
-  private notify(action: "add" | "change" | "delete", name: string) {
+  private notify(project: Project) {
     return (path: string, _root: string, stat?: Stats) => {
       if (this.watchers.length === 0 || (stat && stat.isDirectory())) {
         return;
       }
-      path = `${name}/${path}`;
+      path = `${project.localName}/${path}`;
       let fileHash = stat ? `${stat.size}_${stat.mtime.valueOf()}` : null;
       let info: FileInfo = {
         name: path,
         etag: fileHash,
       };
-      if (action !== "delete" && stat) {
-        info.header = {
-          name: path,
-          mode: stat.mode,
-          type: REGTYPE,
-          size: stat.size,
-          modifyTime: unixTime(stat.mtime.getTime()),
-        };
-      }
-
       this.notificationQueue.push(info);
       (async () => await this.drainNotificationQueue())();
     };

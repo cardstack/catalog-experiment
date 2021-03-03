@@ -4,8 +4,10 @@ import Koa from "koa";
 import compose from "koa-compose";
 import route, { KoaRoute } from "koa-better-route";
 import { cors, serverLog, errorHandler } from "./koa-util";
-import { basename } from "path";
+import { basename, join } from "path";
 import send from "koa-send";
+import { readFileSync } from "fs-extra";
+import { transformSync } from "@babel/core";
 
 interface Options {
   port: number;
@@ -18,28 +20,93 @@ interface Options {
   ignore: string[];
 }
 
-export class ProjectMapping {
-  nameToPath: Map<string, string> = new Map();
-  pathToName: Map<string, string> = new Map();
-  constructor(directories: string[]) {
-    for (let dir of directories) {
+export type FileSource =
+  | string
+  | { streamFile: string }
+  | { status: number; message?: string };
+
+export class Project {
+  constructor(public localName: string, public dir: string) {}
+
+  static forDirs(dirs: string[]): Project[] {
+    let usedNames = new Set<string>();
+    let projects: Project[] = [];
+    for (let dir of dirs) {
       let localName = basename(dir);
       let counter = 0;
-      while (this.nameToPath.has(localName)) {
+      while (usedNames.has(localName)) {
         localName = `${localName}/${counter}`;
         counter++;
       }
-      this.nameToPath.set(localName, dir);
-      this.pathToName.set(dir, localName);
+      projects.push(new Project(localName, dir));
     }
+    return projects;
+  }
+
+  outputFiles(
+    inputRelativePath: string
+  ): {
+    outputRelativePath: string;
+    load: () => FileSource;
+  }[] {
+    if (inputRelativePath.endsWith(".js")) {
+      return [
+        {
+          outputRelativePath: inputRelativePath,
+          load: applyBabel(this.dir, inputRelativePath),
+        },
+      ];
+    }
+
+    if (inputRelativePath.endsWith(".hbs")) {
+      return [
+        {
+          outputRelativePath: `${inputRelativePath}.js`,
+          load: () => {
+            return `export default template = "I am template ${inputRelativePath}"`;
+          },
+        },
+      ];
+    }
+
+    return [
+      {
+        outputRelativePath: inputRelativePath,
+        load() {
+          return { streamFile: inputRelativePath };
+        },
+      },
+    ];
+  }
+
+  loadFile(outputRelativePath: string): FileSource {
+    if (outputRelativePath.endsWith(".hbs")) {
+      return { status: 404 };
+    }
+
+    if (outputRelativePath.endsWith(".hbs.js")) {
+      return `export default template = "I am template ${outputRelativePath.slice(
+        0,
+        -3
+      )}"`;
+    }
+    if (outputRelativePath.endsWith(".js")) {
+      return (
+        `// I was transformed\n` +
+        readFileSync(join(this.dir, outputRelativePath), "utf8")
+      );
+    }
+    return {
+      streamFile: outputRelativePath,
+    };
   }
 }
 
 export function start(opts: Options) {
   let { port, websocketPort, directories, pkgsPath } = opts;
-  let mapping = new ProjectMapping(directories);
-  new FileWatcherServer(websocketPort, mapping).start();
-  let app = server({ mapping }, opts.ignore, opts.builderServer, opts.uiServer);
+  let projects = Project.forDirs(directories);
+  new FileWatcherServer(websocketPort, projects).start();
+  let app = server(projects, opts.ignore, opts.builderServer, opts.uiServer);
   app.listen(port);
   if (pkgsPath) {
     let pkgsPort = port + 1;
@@ -51,7 +118,7 @@ export function start(opts: Options) {
 }
 
 export function server(
-  { mapping }: { mapping: ProjectMapping },
+  projects: Project[],
   ignore: string[] = [],
   builderServer?: string,
   uiServer?: string
@@ -65,7 +132,7 @@ export function server(
       route.get("/catalogjs/alive", (ctxt: KoaRoute.Context) => {
         ctxt.status = 200;
       }),
-      serveFiles(mapping, ignore, builderServer, uiServer),
+      serveFiles(projects, ignore, builderServer, uiServer),
     ])
   );
   return app;
@@ -89,4 +156,20 @@ export function pkgServer(pkgsPath: string) {
     ])
   );
   return app;
+}
+
+function applyBabel(projectDir: string, relativePath: string): () => string {
+  return function () {
+    let filename = join(projectDir, relativePath);
+    // we're depending on embroider from branch catalogjs-experiment in the
+    // snowpack-experiment repo. However, the hack section in
+    // adjust-imports-plugin must be enabled when we're running babel here, but
+    // disabled when we're running it in the node build for importing npm
+    // dependencies.
+    let config = require(join(projectDir, "_babel_config_.js"));
+    return transformSync(readFileSync(filename, "utf8"), {
+      ...config,
+      filename,
+    })!.code!;
+  };
 }

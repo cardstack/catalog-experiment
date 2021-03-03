@@ -1,3 +1,4 @@
+import { TransformOptions } from "@babel/core";
 import { satisfies, coerce } from "semver";
 import { FileSystem } from "./filesystem";
 import { FileDescriptor } from "./filesystem-drivers/filesystem-driver";
@@ -62,6 +63,10 @@ export interface Recipe {
   // becoming part of the spec. To utilize additional babel plugins, specify
   // those in the "babelPlugins" property
   babelPlugins?: (string | [string, { [optName: string]: any }])[];
+
+  // Optionally apply a custom babel configuration while importing an NPM
+  // package to catalogjs.
+  babelConfigPath?: string;
 
   // If you wish to override the resolver and provide a specific resolution,
   // then use the "resolution" property. This is an object whose keys are

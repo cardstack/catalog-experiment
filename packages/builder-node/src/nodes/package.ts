@@ -26,6 +26,7 @@ import {
 import { SrcTransformNode } from "./src-transform";
 import { Recipe } from "../../../builder-worker/src/recipes";
 import { coerce } from "semver";
+import { transform, TransformOptions } from "@babel/core";
 
 export const buildOutputDir = "__output/";
 export const buildSrcDir = `__build_src/`;
@@ -236,12 +237,29 @@ export class PackageSrcPrepareNode implements BuilderNode {
       absolute: true,
       ignore: `${srcPath}/${srcIgnoreGlob}`,
     });
+
+    let babelConfig: TransformOptions | undefined;
+    if (recipe?.babelConfigPath) {
+      babelConfig = require(recipe.babelConfigPath);
+    }
+
     let contents = await Promise.all(
       files.map(async (file) => {
         let content = await readFile(file, "utf8");
         for (let [macro, replacement] of Object.entries(macros ?? {})) {
           content = content.replace(new RegExp(macro, "g"), replacement);
         }
+
+        if (babelConfig && file.endsWith(".js")) {
+          let output = transform(content, { ...babelConfig, filename: file });
+          if (!output || output.code == null) {
+            throw new Error(
+              `Empty babel result after babel transform of ${file}`
+            );
+          }
+          content = output.code;
+        }
+
         return content;
       })
     );

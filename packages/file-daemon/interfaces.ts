@@ -12,5 +12,5 @@ export interface FileHeader extends BaseFileEntry {
 export interface FileInfo {
   name: string;
   etag: string | null; // null means deleted
-  header?: FileHeader; // deleted files have no header
+  //header?: FileHeader; // deleted files have no header
 }

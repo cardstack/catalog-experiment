@@ -34,7 +34,7 @@ if (!pkgs || pkgs.filter(Boolean).length === 0) {
   );
   process.exit(1);
 }
-let projectDir = resolve(join(process.cwd(), project));
+let projectDir = resolve(process.cwd(), project);
 
 (async () => {
   // TODO this should probably come from the command line. the src cloning is a
