@@ -24,10 +24,9 @@
       "args": [
         "--builderServer=http://localhost:8080",
         "--uiServer=http://localhost:4300/catalogjs/ui/",
-        ".",
-        "../test-lib",
-        "../recipes",
-        "../../cdn/pkgs"
+        "--ignore=node_modules",
+        "--port=4201",
+        "/private/var/folders/w2/yk_dqq_942v4x63jgps2mv5r0000gn/T/embroider/468ade/packages/ember-app"
       ]
     },
     {

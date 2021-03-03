@@ -29,6 +29,7 @@ global = Object.assign(global, webStreams);
 
 export function serveFiles(
   mapping: ProjectMapping,
+  ignore: string[] = [],
   builderServer?: string,
   uiServer?: string
 ) {
@@ -47,7 +48,7 @@ export function serveFiles(
     }),
     route.get(`/catalogjs/files`, (ctxt: KoaRoute.Context) => {
       ctxt.res.setHeader("content-type", "application/x-tar");
-      ctxt.body = streamFileSystem(mapping);
+      ctxt.body = streamFileSystem(mapping, ignore);
     }),
 
     !builderServer
@@ -107,10 +108,12 @@ export function serveFiles(
   ]);
 }
 
-function streamFileSystem(mapping: ProjectMapping): Readable {
+function streamFileSystem(mapping: ProjectMapping, ignore: string[]): Readable {
   let tar = new Tar();
   for (let [localName, dir] of mapping.nameToPath) {
-    for (let entry of walkSync.entries(dir)) {
+    for (let entry of walkSync.entries(dir, {
+      ignore,
+    })) {
       let { fullPath, size, mtime, mode, relativePath } = entry;
 
       relativePath = `${localName}/${relativePath}`;

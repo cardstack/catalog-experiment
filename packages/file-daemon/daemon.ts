@@ -15,6 +15,7 @@ interface Options {
   uiServer?: string;
   key?: string;
   pkgsPath?: string;
+  ignore: string[];
 }
 
 export class ProjectMapping {
@@ -38,7 +39,7 @@ export function start(opts: Options) {
   let { port, websocketPort, directories, pkgsPath } = opts;
   let mapping = new ProjectMapping(directories);
   new FileWatcherServer(websocketPort, mapping).start();
-  let app = server({ mapping }, opts.builderServer, opts.uiServer);
+  let app = server({ mapping }, opts.ignore, opts.builderServer, opts.uiServer);
   app.listen(port);
   if (pkgsPath) {
     let pkgsPort = port + 1;
@@ -51,6 +52,7 @@ export function start(opts: Options) {
 
 export function server(
   { mapping }: { mapping: ProjectMapping },
+  ignore: string[] = [],
   builderServer?: string,
   uiServer?: string
 ) {
@@ -63,7 +65,7 @@ export function server(
       route.get("/catalogjs/alive", (ctxt: KoaRoute.Context) => {
         ctxt.status = 200;
       }),
-      serveFiles(mapping, builderServer, uiServer),
+      serveFiles(mapping, ignore, builderServer, uiServer),
     ])
   );
   return app;
