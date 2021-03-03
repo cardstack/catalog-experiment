@@ -75,6 +75,7 @@ export class EntrypointsJSONNode implements BuilderNode {
     for (let src of [...(json.html || []), ...(json.js || [])]) {
       entrypoints.push(
         new EntrypointNode(
+          this.input,
           new URL(src, this.input),
           new URL(src, this.output),
           dependencies
@@ -89,11 +90,12 @@ export class EntrypointNode implements BuilderNode {
   cacheKey: string;
 
   constructor(
+    private projectRoot: URL,
     private src: URL,
     private dest: URL,
     private dependencies: Dependencies
   ) {
-    this.cacheKey = `entrypoint:${this.src.href}:${
+    this.cacheKey = `entrypoint:${this.projectRoot.href}:${this.src.href}:${
       this.dest.href
     },${JSON.stringify(this.dependencies)}`;
   }
@@ -125,6 +127,7 @@ export class EntrypointNode implements BuilderNode {
     if (parsedHTML) {
       return {
         value: new HTMLEntrypoint(
+          this.projectRoot,
           this.src,
           this.dest,
           parsedHTML,
@@ -166,6 +169,7 @@ export interface JSEntrypoint {
 
 export class HTMLEntrypoint {
   constructor(
+    private projectRoot: URL,
     private src: URL,
     private dest: URL,
     private parsedHTML: dom.Node[],
@@ -200,6 +204,10 @@ export class HTMLEntrypoint {
       }
       let url = maybeURL(element.attribs.src, this.src);
       if (url && url.origin === this.src.origin) {
+        if (!url.href.startsWith(this.projectRoot.href)) {
+          // root-relative URLs need to be remapped into our project root.
+          url = new URL(url.pathname.slice(1), this.projectRoot.href);
+        }
         jsEntrypoints.set(url.href, { url, element });
       }
     }
