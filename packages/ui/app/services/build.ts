@@ -43,10 +43,15 @@ export default class BuildService extends Service {
     this.assigner = assigner;
     yield this.initialize.lastPerformed;
 
-    yield fetch("/build", {
+    let response = yield fetch("/build", {
       method: "POST",
       body: JSON.stringify({ projects, assigner }),
     });
+
+    if (response.status !== 200) {
+      alert("oh no");
+      return;
+    }
 
     // doing this instead of reloading as we shouldn't assume what the current
     // location is. This will load the selected projects.

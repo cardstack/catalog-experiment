@@ -19,12 +19,15 @@
     "lint:js": "eslint . --cache",
     "lint:js:fix": "eslint . --fix",
     "start": "ember serve",
+    "start:catalogjs": "start-catalogjs.sh",
     "test": "npm-run-all lint test:*",
     "test:ember": "ember test"
   },
   "devDependencies": {
     "@ember/optional-features": "^2.0.0",
     "@ember/test-helpers": "^2.2.0",
+    "@embroider/core": "^0.36.0",
+    "@embroider/compat": "^0.36.0",
     "@glimmer/component": "^1.0.3",
     "@glimmer/tracking": "^1.0.3",
     "babel-eslint": "^10.1.0",
@@ -65,5 +68,8 @@
   },
   "ember": {
     "edition": "octane"
+  },
+  "volta": {
+    "node": "14.16.0"
   }
 }

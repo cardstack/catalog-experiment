@@ -20,7 +20,8 @@
       "**/@types/qunit",
       "**/@types/rsvp",
       "**/ember-load-initializers",
-      "**/ember-load-initializers/**"
+      "**/ember-load-initializers/**",
+      "**/@ember/string"
     ]
   },
   "private": true,
