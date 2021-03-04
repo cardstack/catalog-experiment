@@ -1,4 +1,3 @@
-import { TransformOptions } from "@babel/core";
 import { satisfies, coerce } from "semver";
 import { FileSystem } from "./filesystem";
 import { FileDescriptor } from "./filesystem-drivers/filesystem-driver";
