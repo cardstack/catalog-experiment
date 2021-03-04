@@ -3,7 +3,7 @@
   "recipes": [
     {
       "semverRange": "*",
-      "babelConfigPath": "/private/var/folders/w2/yk_dqq_942v4x63jgps2mv5r0000gn/T/embroider/468ade/packages/ember-app/_babel_config_.js"
+      "babelConfigPath": "_babel_config_.js"
     }
   ]
 }

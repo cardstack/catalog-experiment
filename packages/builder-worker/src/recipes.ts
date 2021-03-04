@@ -65,7 +65,8 @@ export interface Recipe {
   babelPlugins?: (string | [string, { [optName: string]: any }])[];
 
   // Optionally apply a custom babel configuration while importing an NPM
-  // package to catalogjs.
+  // package to catalogjs. The path provide is relative to the project specified
+  // when the node build was launched.
   babelConfigPath?: string;
 
   // If you wish to override the resolver and provide a specific resolution,

@@ -101,6 +101,19 @@
     {
       "type": "node",
       "request": "launch",
+      "name": "Run ember app pkg install",
+      "cwd": "${workspaceRoot}",
+      "console": "integratedTerminal",
+      "env": {},
+      "program": "${workspaceRoot}/packages/builder-node/bin/install.js",
+      "args": [
+        "--project=/private/var/folders/8z/_x2_6pv12n96tlr8g19hqp6h0000gn/T/embroider/e08385/packages/ember-app",
+        "ember-resolver"
+      ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
       "name": "Describe bundle",
       "cwd": "${workspaceRoot}",
       "console": "integratedTerminal",

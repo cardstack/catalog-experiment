@@ -19,7 +19,7 @@
     "lint:js": "eslint . --cache",
     "lint:js:fix": "eslint . --fix",
     "start": "ember serve",
-    "start:catalogjs": "start-catalogjs.sh",
+    "start:catalogjs": "./start-catalogjs.sh",
     "test": "npm-run-all lint test:*",
     "test:ember": "ember test"
   },

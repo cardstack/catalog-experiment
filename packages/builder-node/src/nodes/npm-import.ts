@@ -71,7 +71,7 @@ export class NpmImportPackageNode implements BuilderNode {
   private pkgJSON: PackageJSON;
   constructor(
     name: string,
-    consumedFrom: string,
+    private consumedFrom: string,
     private workingDir: string,
     private resolver: Resolver
   ) {
@@ -94,7 +94,8 @@ export class NpmImportPackageNode implements BuilderNode {
       workingPkgURL: new PreparePackageNode(
         this.pkgPath,
         this.pkgJSON,
-        this.workingDir
+        this.workingDir,
+        this.consumedFrom
       ),
     };
   }

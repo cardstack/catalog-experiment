@@ -17,7 +17,7 @@ import childProcess from "child_process";
 import { promisify } from "util";
 import { ensureDirSync, existsSync, readJSONSync } from "fs-extra";
 import fs from "fs";
-import { join } from "path";
+import { join, resolve } from "path";
 import _glob from "glob";
 import {
   WriteFileNode,
@@ -55,7 +55,8 @@ export class PreparePackageNode implements BuilderNode {
   constructor(
     private pkgPath: string,
     private pkgJSON: PackageJSON,
-    private workingDir: string
+    private workingDir: string,
+    private consumedFrom: string
   ) {
     this.cacheKey = `prepare-pkg:${pkgPath}`;
   }
@@ -76,7 +77,8 @@ export class PreparePackageNode implements BuilderNode {
         this.pkgPath,
         pkgURL,
         this.pkgJSON,
-        this.workingDir
+        this.workingDir,
+        this.consumedFrom
       ),
     };
   }
@@ -134,7 +136,8 @@ class FinishPackagePreparationNode implements BuilderNode {
     private pkgPath: string,
     private pkgURL: URL,
     private pkgJSON: PackageJSON,
-    private workingDir: string
+    private workingDir: string,
+    private consumedFrom: string
   ) {
     this.cacheKey = `finish-pkg-preparation:${pkgPath}`;
   }
@@ -146,7 +149,8 @@ class FinishPackagePreparationNode implements BuilderNode {
         this.pkgJSON,
         this.pkgPath,
         this.pkgURL,
-        this.workingDir
+        this.workingDir,
+        this.consumedFrom
       )
     );
     return {
@@ -182,7 +186,8 @@ export class PackageSrcNode implements BuilderNode {
     private pkgJSON: PackageJSON,
     private pkgPath: string,
     private pkgURL: URL,
-    private workingDir: string
+    private workingDir: string,
+    private consumedFrom: string
   ) {
     this.cacheKey = `pkg-source:${pkgPath}`;
   }
@@ -193,7 +198,8 @@ export class PackageSrcNode implements BuilderNode {
         this.pkgJSON,
         this.pkgPath,
         this.pkgURL,
-        this.workingDir
+        this.workingDir,
+        this.consumedFrom
       ),
     };
   }
@@ -211,7 +217,8 @@ export class PackageSrcPrepareNode implements BuilderNode {
     private pkgJSON: PackageJSON,
     private pkgPath: string,
     private pkgURL: URL,
-    private workingDir: string
+    private workingDir: string,
+    private consumedFrom: string
   ) {
     this.cacheKey = `pkg-source-prepare:${pkgPath}`;
   }
@@ -240,7 +247,9 @@ export class PackageSrcPrepareNode implements BuilderNode {
 
     let babelConfig: TransformOptions | undefined;
     if (recipe?.babelConfigPath) {
-      babelConfig = require(recipe.babelConfigPath);
+      let babelConfigPath = resolve(this.consumedFrom, recipe.babelConfigPath);
+      console.log(`evaluating babel config ${babelConfigPath}`);
+      babelConfig = require(babelConfigPath);
     }
 
     let contents = await Promise.all(
