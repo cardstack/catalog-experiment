@@ -1,4 +1,5 @@
-import { server, Project } from "../daemon";
+import { server } from "../daemon";
+import { Project } from "../project";
 import request from "supertest";
 const { test } = QUnit;
 

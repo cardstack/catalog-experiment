@@ -1,7 +1,7 @@
 import WebSocket from "ws";
 import sane, { Watcher } from "sane";
 import { Stats } from "fs";
-import { Project } from "./daemon";
+import { Project } from "./project";
 import bind from "bind-decorator";
 import { FileInfo } from "./interfaces";
 import flatMap from "lodash/flatMap";

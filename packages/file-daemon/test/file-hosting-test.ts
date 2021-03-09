@@ -3,7 +3,7 @@ import request from "supertest";
 import FixturifyProject from "fixturify-project";
 import merge from "lodash/merge";
 import Koa from "koa";
-import { Project } from "../daemon";
+import { Project } from "../project";
 
 const { test } = QUnit;
 

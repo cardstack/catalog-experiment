@@ -18,7 +18,7 @@ import route, { KoaRoute } from "koa-better-route";
 import compose from "koa-compose";
 import proxy from "koa-proxies";
 import flatMap from "lodash/flatMap";
-import { Project } from "./daemon";
+import { Project } from "./project";
 
 const catalogjsDist = resolve(join(__dirname, ".."));
 const builderDist = join(catalogjsDist, "builder");
