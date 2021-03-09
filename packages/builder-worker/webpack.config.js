@@ -64,17 +64,6 @@ let dom = Object.assign({}, config, {
   },
 });
 
-let node = Object.assign({}, config, {
-  target: "node",
-  entry: {
-    node: "../builder-node/src/index.ts",
-    "node-test": "../builder-node/test/index.ts",
-  },
-  node: {
-    __dirname: false,
-  },
-});
-
 let worker = Object.assign({}, config, {
   target: "webworker",
   entry: {
@@ -82,4 +71,4 @@ let worker = Object.assign({}, config, {
   },
 });
 
-module.exports = [dom, worker, node];
+module.exports = [dom, worker];

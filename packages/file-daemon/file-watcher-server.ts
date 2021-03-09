@@ -55,13 +55,20 @@ export default class FileWatcherServer {
       if (this.watchers.length === 0 || (stat && stat.isDirectory())) {
         return;
       }
-      path = `${project.localName}/${path}`;
-      let fileHash = stat ? `${stat.size}_${stat.mtime.valueOf()}` : null;
-      let info: FileInfo = {
-        name: path,
-        etag: fileHash,
-      };
-      this.notificationQueue.push(info);
+      let paths = project
+        .outputFiles(path)
+        .map(
+          ({ outputRelativePath }) =>
+            `${project.localName}/${outputRelativePath}`
+        );
+      for (let outputPath of paths) {
+        let fileHash = stat ? `${stat.size}_${stat.mtime.valueOf()}` : null;
+        let info: FileInfo = {
+          name: outputPath,
+          etag: fileHash,
+        };
+        this.notificationQueue.push(info);
+      }
       (async () => await this.drainNotificationQueue())();
     };
   }

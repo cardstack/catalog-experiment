@@ -1,5 +1,38 @@
 {
   "$schema": "../../builder-worker/entrypoints-schema.json",
-  "html": ["index.html"],
-  "dependencies": {}
+  "html": [
+    "index.html"
+  ],
+  "dependencies": {
+    "ember-resolver": {
+      "type": "npm",
+      "pkgName": "ember-resolver",
+      "range": "^8.0.2"
+    },
+    "ember-load-initializers": {
+      "type": "npm",
+      "pkgName": "ember-load-initializers",
+      "range": "^2.1.2"
+    },
+    "@glimmer/component": {
+      "type": "npm",
+      "pkgName": "@glimmer/component",
+      "range": "^1.0.3"
+    },
+    "ember-cli-app-version": {
+      "type": "npm",
+      "pkgName": "ember-cli-app-version",
+      "range": "^4.0.0"
+    },
+    "ember-page-title": {
+      "type": "npm",
+      "pkgName": "ember-page-title",
+      "range": "^6.2.1"
+    },
+    "ember-welcome-page": {
+      "type": "npm",
+      "pkgName": "ember-welcome-page",
+      "range": "^4.0.0"
+    }
+  }
 }

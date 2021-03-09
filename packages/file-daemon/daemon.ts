@@ -8,6 +8,7 @@ import { basename, join } from "path";
 import send from "koa-send";
 import { readFileSync } from "fs-extra";
 import { transformSync } from "@babel/core";
+import { applyVariantToTemplateCompiler, Variant } from "@embroider/core";
 
 interface Options {
   port: number;
@@ -17,7 +18,7 @@ interface Options {
   uiServer?: string;
   key?: string;
   pkgsPath?: string;
-  ignore: string[];
+  ignore: string;
 }
 
 export type FileSource =
@@ -26,7 +27,19 @@ export type FileSource =
   | { status: number; message?: string };
 
 export class Project {
-  constructor(public localName: string, public dir: string) {}
+  private compile: (path: string, template: string) => string;
+  constructor(public localName: string, public dir: string) {
+    let variant: Variant = {
+      name: "default",
+      runtime: "all",
+      optimizeForProduction: false,
+    };
+    let templateCompiler = require(join(this.dir, "./_template_compiler_.js"));
+    this.compile = applyVariantToTemplateCompiler(
+      variant,
+      templateCompiler.compile
+    );
+  }
 
   static forDirs(dirs: string[]): Project[] {
     let usedNames = new Set<string>();
@@ -59,11 +72,13 @@ export class Project {
     }
 
     if (inputRelativePath.endsWith(".hbs")) {
+      let filePath = join(this.dir, inputRelativePath);
+      let template = readFileSync(filePath, "utf8");
       return [
         {
           outputRelativePath: `${inputRelativePath}.js`,
           load: () => {
-            return `export default template = "I am template ${inputRelativePath}"`;
+            return this.compile(filePath, template);
           },
         },
       ];
@@ -85,16 +100,12 @@ export class Project {
     }
 
     if (outputRelativePath.endsWith(".hbs.js")) {
-      return `export default template = "I am template ${outputRelativePath.slice(
-        0,
-        -3
-      )}"`;
+      let filePath = join(this.dir, outputRelativePath.slice(0, -3));
+      let template = readFileSync(filePath, "utf8");
+      return this.compile(filePath, template);
     }
     if (outputRelativePath.endsWith(".js")) {
-      return (
-        `// I was transformed\n` +
-        readFileSync(join(this.dir, outputRelativePath), "utf8")
-      );
+      return applyBabel(this.dir, outputRelativePath)();
     }
     return {
       streamFile: outputRelativePath,
@@ -106,7 +117,12 @@ export function start(opts: Options) {
   let { port, websocketPort, directories, pkgsPath } = opts;
   let projects = Project.forDirs(directories);
   new FileWatcherServer(websocketPort, projects).start();
-  let app = server(projects, opts.ignore, opts.builderServer, opts.uiServer);
+  let app = server(
+    projects,
+    opts.ignore.split(","),
+    opts.builderServer,
+    opts.uiServer
+  );
   app.listen(port);
   if (pkgsPath) {
     let pkgsPort = port + 1;
@@ -167,6 +183,11 @@ function applyBabel(projectDir: string, relativePath: string): () => string {
     // disabled when we're running it in the node build for importing npm
     // dependencies.
     let config = require(join(projectDir, "_babel_config_.js"));
+    // This is a hack that allows us to communicate to our embroider
+    // babel-config hack so that we don't have to hand edit it each time we add
+    // a new pkg dep, and rather just rely on the catalogjs.lock to understand
+    // our pkg deps
+    process.env.CATALOGJS_LOCK_FILE = join(projectDir, "catalogjs.lock");
     return transformSync(readFileSync(filename, "utf8"), {
       ...config,
       filename,

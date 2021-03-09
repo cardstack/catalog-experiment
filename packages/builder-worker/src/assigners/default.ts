@@ -400,6 +400,11 @@ export function inputToOutput(
 ): URL {
   return new URL(
     href
+      // TODO get rid of this when we stop using skypack for @babel/runtime
+      .replace(
+        makeURLEndInDir(new URL("https://cdn.skypack.dev/")).href,
+        makeURLEndInDir(new URL("pkgs/", projectOutput)).href
+      )
       .replace(
         makeURLEndInDir(new URL(catalogjsHref)).href,
         makeURLEndInDir(new URL("pkgs/", projectOutput)).href

@@ -57,8 +57,5 @@
     "dependencies": {
       "$ref": "#/definitions/dependencies"
     }
-  },
-  "required": [
-    "name"
-  ]
+  }
 }

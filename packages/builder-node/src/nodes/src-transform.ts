@@ -10,7 +10,7 @@ import {
   FileNode,
   WriteFileNode,
 } from "../../../builder-worker/src/nodes/file";
-import { transform, TransformOptions } from "@babel/core";
+import { transform } from "@babel/core";
 import { ListingEntry } from "../../../builder-worker/src/filesystem";
 import { PackageJSON } from "./package";
 

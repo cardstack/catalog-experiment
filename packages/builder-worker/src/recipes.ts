@@ -64,9 +64,14 @@ export interface Recipe {
   babelPlugins?: (string | [string, { [optName: string]: any }])[];
 
   // Optionally apply a custom babel configuration while importing an NPM
-  // package to catalogjs. The path provide is relative to the project specified
+  // package to catalogjs. The path provided is relative to the project specified
   // when the node build was launched.
   babelConfigPath?: string;
+
+  // Optionally apply a Glimmer template compiler while importing an NPM
+  // package to catalogjs. The path provided is relative to the project specified
+  // when the node build was launched.
+  templateCompilerPath?: string;
 
   // If you wish to override the resolver and provide a specific resolution,
   // then use the "resolution" property. This is an object whose keys are
@@ -104,6 +109,14 @@ export interface Recipe {
   macros?: {
     [macro: string]: string;
   };
+
+  // If the package is an ember addon, then set this flag to true. This setting
+  // will include the @babel/runtime as a package dependency in the resulting
+  // entrypoints.json, as well as, this setting will add resolutions for
+  // @babel/runtime and automatically add entrypoints for your addon using the
+  // ember conventions for addon layout. TODO: need to auto add resolutions and
+  // entrypoints--those are manually entered right now
+  isEmberAddon?: true;
 }
 
 let cache: Map<string, Recipe | undefined> = new Map();

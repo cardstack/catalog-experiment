@@ -12,7 +12,23 @@
       "env": {},
       "console": "integratedTerminal",
       "program": "${workspaceRoot}/dist/file-daemon/main.js",
-      "args": [".", "../test-lib", "../recipes", "../../cdn/pkgs"]
+      "args": [".", "../test-lib"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Serve ember-app",
+      "cwd": "${workspaceRoot}/packages/ember-app",
+      "env": {},
+      "console": "integratedTerminal",
+      "program": "${workspaceRoot}/packages/file-daemon/bin/file-daemon.js",
+      "args": [
+        "--builderServer=http://localhost:8080",
+        "--uiServer=http://localhost:4300/catalogjs/ui/",
+        "--pkgsPath=../../working/cdn/pkgs",
+        "--ignore=node_modules",
+        "/private/var/folders/8z/_x2_6pv12n96tlr8g19hqp6h0000gn/T/embroider/e08385/packages/ember-app"
+      ]
     },
     {
       "type": "node",
@@ -24,9 +40,9 @@
       "args": [
         "--builderServer=http://localhost:8080",
         "--uiServer=http://localhost:4300/catalogjs/ui/",
-        "--ignore=node_modules",
-        "--port=4201",
-        "/private/var/folders/w2/yk_dqq_942v4x63jgps2mv5r0000gn/T/embroider/468ade/packages/ember-app"
+        "--pkgsPath=../../working/cdn/pkgs",
+        ".",
+        "../recipes"
       ]
     },
     {
@@ -39,9 +55,9 @@
       "args": [
         "--builderServer=http://localhost:8080",
         "--uiServer=http://localhost:4300/catalogjs/ui/",
+        "--pkgsPath=../../working/cdn/pkgs",
         ".",
-        "../recipes",
-        "../../cdn/pkgs"
+        "../recipes"
       ]
     },
     {
@@ -107,8 +123,9 @@
       "env": {},
       "program": "${workspaceRoot}/packages/builder-node/bin/install.js",
       "args": [
-        "--project=/private/var/folders/8z/_x2_6pv12n96tlr8g19hqp6h0000gn/T/embroider/e08385/packages/ember-app",
-        "ember-resolver"
+        // "--project=/private/var/folders/8z/_x2_6pv12n96tlr8g19hqp6h0000gn/T/embroider/e08385/packages/ember-app",
+        "--project=/private/var/folders/8z/_x2_6pv12n96tlr8g19hqp6h0000gn/T/embroider/e08385",
+        "ember-welcome-page/components/welcome-page"
       ]
     },
     {

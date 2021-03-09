@@ -1,0 +1,12 @@
+{
+  "ember-resolver": "https://pkgs.catalogjs.com/npm/ember-resolver/8.0.2/GQqWCyuTYZpel1ax3h9ZXceGNfc=/index.js",
+  "ember-resolver/resolvers/classic/container-debug-adapter": "https://pkgs.catalogjs.com/npm/ember-resolver/8.0.2/GQqWCyuTYZpel1ax3h9ZXceGNfc=/resolvers/classic/container-debug-adapter.js",
+  "ember-load-initializers": "https://pkgs.catalogjs.com/npm/ember-load-initializers/2.1.2/wdp8Zi5xQIZWydN6Ucyr4h-SmXA=/index.js",
+  "@glimmer/component": "https://pkgs.catalogjs.com/npm/@glimmer/component/1.0.4/OXvFmuiY6mJ05Bu2AKFBAg-H7f0=/index.js",
+  "@glimmer/component/-private/ember-component-manager": "https://pkgs.catalogjs.com/npm/@glimmer/component/1.0.4/OXvFmuiY6mJ05Bu2AKFBAg-H7f0=/-private/ember-component-manager.js",
+  "ember-cli-app-version/initializer-factory": "https://pkgs.catalogjs.com/npm/ember-cli-app-version/4.0.0/rHZtfzZo6vl1+TSTDAUitzDe2N8=/initializer-factory.js",
+  "ember-page-title/helpers/page-title": "https://pkgs.catalogjs.com/npm/ember-page-title/6.2.1/Ockyp+mGheF75nmqUp04j2U46J0=/helpers/page-title.js",
+  "ember-page-title/services/page-title": "https://pkgs.catalogjs.com/npm/ember-page-title/6.2.1/Ockyp+mGheF75nmqUp04j2U46J0=/services/page-title.js",
+  "ember-page-title/services/page-title-list": "https://pkgs.catalogjs.com/npm/ember-page-title/6.2.1/Ockyp+mGheF75nmqUp04j2U46J0=/services/page-title-list.js",
+  "ember-welcome-page/components/welcome-page": "https://pkgs.catalogjs.com/npm/ember-welcome-page/4.0.0/sJN4XLBoKsdIpGhYSw6egTSPJco=/components/welcome-page.js"
+}

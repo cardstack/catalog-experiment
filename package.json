@@ -41,7 +41,7 @@
     "test:file-daemon": "cd packages/file-daemon && yarn test",
     "test:file-daemon-client": "cd packages/file-daemon-client && yarn test",
     "test:builder-worker": "cd packages/builder-worker && yarn test",
-    "test:builder-node": "cd packages/builder-worker && yarn webpack && yarn qunit assets/node-test.js",
+    "test:builder-node": "cd packages/builder-node && yarn test",
     "acceptance-test": "npm-run-all acceptance-test:*",
     "acceptance-test:init": "rm -rf ./test-working && mkdir ./test-working",
     "acceptance-test:bundle": "cd ./test-working && node ../packages/builder-node/bin/install.js --project=.. @babel/core",

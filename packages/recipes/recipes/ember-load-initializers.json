@@ -4,10 +4,9 @@
     {
       "semverRange": "*",
       "babelConfigPath": "_babel_config_.js",
-      "entrypoints": [
-        "./index.js",
-        "./resolvers/classic/container-debug-adapter.js"
-      ]
+      "resolutions": {
+        "require": "https://pkgs.catalogjs.com/@catalogjs/loader/0.0.1/require.js"
+      }
     }
   ]
 }

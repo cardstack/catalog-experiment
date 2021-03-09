@@ -1,0 +1,24 @@
+{
+  "$schema": "../recipe-schema.json",
+  "recipes": [
+    {
+      "semverRange": "*",
+      "babelConfigPath": "packages/ember-app/_babel_config_.js",
+      "templateCompilerPath": "packages/ember-app/_template_compiler_.js",
+      "isEmberAddon": true,
+      "entrypoints": [
+        "./helpers/page-title.js",
+        "./services/page-title.js",
+        "./services/page-title-list.js",
+        "./test-support/get-page-title.js",
+        "./test-support/index.js"
+      ],
+      "resolutions": {
+        "@babel/runtime/helpers/esm/initializerDefineProperty": "https://cdn.skypack.dev/@babel/runtime/helpers/esm/initializerDefineProperty",
+        "@babel/runtime/helpers/esm/defineProperty": "https://cdn.skypack.dev/@babel/runtime/helpers/esm/defineProperty",
+        "@babel/runtime/helpers/esm/applyDecoratedDescriptor": "https://cdn.skypack.dev/@babel/runtime/helpers/esm/applyDecoratedDescriptor",
+        "@babel/runtime/helpers/esm/initializerWarningHelper": "https://cdn.skypack.dev/@babel/runtime/helpers/esm/initializerWarningHelper"
+      }
+    }
+  ]
+}

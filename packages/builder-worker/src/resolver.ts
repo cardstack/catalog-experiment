@@ -69,6 +69,17 @@ export abstract class AbstractResolver implements Resolver {
       return new URL(specifier);
     }
 
+    // TODO: eventually we should stop doing this. see CS-343.
+    // This is a special type of skypack specifier that has their own internal
+    // semantics--don't try to interpret it as a relative path, you'll be very
+    // confused, just let skypack handle it.
+    if (specifier.startsWith("/-/")) {
+      return new URL(specifier, source);
+    }
+    if (specifier.startsWith("@babel/runtime")) {
+      return new URL(`https://cdn.skypack.dev/${specifier}`);
+    }
+
     let url: URL | undefined;
     let useCJSInterop = specifier.endsWith("$cjs$");
     if (useCJSInterop) {
@@ -96,6 +107,11 @@ export abstract class AbstractResolver implements Resolver {
     if (!getExtension(url)) {
       let candidateURL = new URL("index.js", makeURLEndInDir(url));
       if (await this.fileExists(candidateURL)) {
+        url = candidateURL;
+      } else if (
+        (candidateURL = new URL(`${url.href}.hbs.js`)) &&
+        (await this.fileExists(candidateURL))
+      ) {
         url = candidateURL;
       }
     }

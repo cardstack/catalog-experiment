@@ -12,6 +12,6 @@
     "allowUnreachableCode": false,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "lib": ["ES2020", "ScriptHost"]
+    "lib": ["ES2020", "ScriptHost", "DOM"]
   }
 }

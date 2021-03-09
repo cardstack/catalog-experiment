@@ -1,6 +1,7 @@
 {
   "$schema": "../builder-worker/entrypoints-schema.json",
   "js": [
-    "./index.js"
+    "./index.js",
+    "require.js"
   ]
 }

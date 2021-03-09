@@ -221,14 +221,18 @@ export class ModuleResolutionNode
     },
     getRecipe: RecipeGetter
   ): Promise<NextNode<{ resolution: Resolution; lockEntries: LockEntries }>> {
+    let recipeResolutions: { [specifier: string]: string } | undefined;
+    let { pkgName: sourcePkgName, version: sourcePkgVersion } =
+      pkgInfoFromCatalogJsURL(this.url) ?? {};
+    if (sourcePkgName && sourcePkgVersion) {
+      recipeResolutions = (await getRecipe(sourcePkgName, sourcePkgVersion))
+        ?.resolutions;
+    }
+
     let urlNodes = await Promise.all(
       desc.imports.map(async (imp) => {
-        let { pkgName: sourcePkgName, version: sourcePkgVersion } =
-          pkgInfoFromCatalogJsURL(this.url) ?? {};
-        if (sourcePkgName && sourcePkgVersion) {
-          let { resolutions } =
-            (await getRecipe(sourcePkgName, sourcePkgVersion)) ?? {};
-          let href = resolutions?.[imp.specifier!];
+        if (recipeResolutions) {
+          let href = recipeResolutions?.[imp.specifier!];
           if (href) {
             return new ConstantNode(new URL(href));
           }
