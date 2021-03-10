@@ -87,7 +87,8 @@ export class NpmImportPackageNode implements BuilderNode {
     // our pkgPath may actually be an entrypoint that is deep in the pkg
     // hierarchy, work our way up the pkgPath to find the package.json
     while (
-      !existsSync(join(currentDir, "package.json")) &&
+      (!existsSync(join(currentDir, "package.json")) ||
+        !getPackageJSON(currentDir).name) &&
       currentDir.split("/").slice(-2)[0] !== "node_modules"
     ) {
       currentDir = resolve(currentDir, "..");
