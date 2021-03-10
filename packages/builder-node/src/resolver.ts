@@ -18,6 +18,7 @@ import { FileSystem } from "../../builder-worker/src/filesystem";
 import { FileDescriptor } from "../../builder-worker/src/filesystem-drivers/filesystem-driver";
 import { FileNode } from "../../builder-worker/src/nodes/file";
 import { EntrypointsJSON } from "../../builder-worker/src/nodes/entrypoint";
+import { maybeRelativeURL } from "../../builder-worker/src/path";
 
 export class NodeResolver extends AbstractResolver {
   private pkgPathFileCache: Map<string, string> = new Map();
@@ -26,12 +27,32 @@ export class NodeResolver extends AbstractResolver {
   }
   async resolveAsBuilderNode(
     specifier: string,
-    source: URL
+    source: URL,
+    projectInput: URL
   ): Promise<BuilderNode<{ resolution: URL; lockEntries: LockEntries }>> {
     if (specifier.startsWith(".") || specifier.startsWith("/")) {
       let resolution = await this.resolve(specifier, source);
       return new ConstantNode({ resolution, lockEntries: {} });
     }
+
+    // deal with a module that refers to a local import using it's own pkg name
+    let specifierPkgInfo = pkgInfoFromSpecifier(specifier);
+    let sourcePkgInfo = pkgInfoFromCatalogJsURL(source);
+    if (
+      specifierPkgInfo?.pkgName &&
+      specifierPkgInfo?.pkgName === sourcePkgInfo?.pkgName &&
+      specifierPkgInfo.modulePath
+    ) {
+      let specifier = maybeRelativeURL(
+        new URL(`./${specifierPkgInfo.modulePath}`, projectInput),
+        source
+      );
+      if (specifier.startsWith(".") || specifier.startsWith("/")) {
+        let resolution = await this.resolve(specifier, source);
+        return new ConstantNode({ resolution, lockEntries: {} });
+      }
+    }
+
     return new EnterDependencyNode(
       specifier,
       await this.getPkgPath(source),

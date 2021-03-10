@@ -65,6 +65,7 @@ export class ModuleResolutionsNode implements BuilderNode {
         new ModuleResolutionNode(
           new URL(jsEntrypoint),
           this.resolver,
+          this.projectInput,
           this.seededResolutions
         )
     );
@@ -202,6 +203,7 @@ export class ModuleResolutionNode
   constructor(
     private url: URL,
     private resolver: Resolver,
+    private projectInput: URL,
     private lockEntries: LockEntries = {},
     private stack: string[] = []
   ) {
@@ -249,6 +251,7 @@ export class ModuleResolutionNode
         desc,
         source,
         this.resolver,
+        this.projectInput,
         { ...this.lockEntries },
         this.stack
       ),
@@ -299,6 +302,7 @@ class FinishResolutionsFromLockNode implements BuilderNode {
     private consumerDesc: ModuleDescription,
     private consumerSource: string,
     private resolver: Resolver,
+    private projectInput: URL,
     private lockEntries: LockEntries,
     private stack: string[]
   ) {
@@ -325,7 +329,8 @@ class FinishResolutionsFromLockNode implements BuilderNode {
         }
         return await this.resolver.resolveAsBuilderNode(
           imp.specifier!,
-          this.consumerURL
+          this.consumerURL,
+          this.projectInput
         );
       })
     );
@@ -336,6 +341,7 @@ class FinishResolutionsFromLockNode implements BuilderNode {
         this.consumerDesc,
         this.consumerSource,
         this.resolver,
+        this.projectInput,
         { ...this.lockEntries },
         this.stack
       ),
@@ -353,6 +359,7 @@ class FinishResolutionsFromResolverNode implements BuilderNode {
     private consumerDesc: ModuleDescription,
     private consumerSource: string,
     private resolver: Resolver,
+    private projectInput: URL,
     private lockEntries: LockEntries,
     private stack: string[]
   ) {
@@ -382,10 +389,13 @@ class FinishResolutionsFromResolverNode implements BuilderNode {
           this.consumerURL.href,
         ]);
       } else {
-        return new ModuleResolutionNode(url, this.resolver, mergedLockEntries, [
-          ...this.stack,
-          this.consumerURL.href,
-        ]);
+        return new ModuleResolutionNode(
+          url,
+          this.resolver,
+          this.projectInput,
+          mergedLockEntries,
+          [...this.stack, this.consumerURL.href]
+        );
       }
     });
 

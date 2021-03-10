@@ -10,7 +10,8 @@ export const workingHref = "https://working/";
 export interface Resolver {
   resolveAsBuilderNode(
     specifier: string,
-    source: URL
+    source: URL,
+    projectInput: URL
   ): Promise<BuilderNode<{ resolution: URL; lockEntries: LockEntries }>>;
   resolve(specifier: string, source: URL): Promise<URL>;
 }
@@ -50,7 +51,8 @@ export abstract class AbstractResolver implements Resolver {
 
   abstract resolveAsBuilderNode(
     specifier: string,
-    source: URL
+    source: URL,
+    projectInput: URL
   ): Promise<BuilderNode<{ resolution: URL; lockEntries: LockEntries }>>;
 
   async resolve(specifier: string, source: URL): Promise<URL> {
@@ -67,17 +69,6 @@ export abstract class AbstractResolver implements Resolver {
 
     if (specifier.startsWith("https://")) {
       return new URL(specifier);
-    }
-
-    // TODO: eventually we should stop doing this. see CS-343.
-    // This is a special type of skypack specifier that has their own internal
-    // semantics--don't try to interpret it as a relative path, you'll be very
-    // confused, just let skypack handle it.
-    if (specifier.startsWith("/-/")) {
-      return new URL(specifier, source);
-    }
-    if (specifier.startsWith("@babel/runtime")) {
-      return new URL(`https://cdn.skypack.dev/${specifier}`);
     }
 
     let url: URL | undefined;
@@ -143,7 +134,11 @@ export class CoreResolver extends AbstractResolver {
   // URLs that match the project root input folder (currently in the Builder's
   // InternalFileNode) into here--this is a more natural place for
   // that.
-  async resolveAsBuilderNode(specifier: string, source: URL) {
+  async resolveAsBuilderNode(
+    specifier: string,
+    source: URL,
+    _projectInput: URL
+  ) {
     let resolution = await this.resolve(specifier, source);
     return new ConstantNode({ resolution, lockEntries: {} });
   }
