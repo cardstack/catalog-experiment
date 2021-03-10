@@ -102,12 +102,6 @@ async function prepare() {
     await fs.mount(registryURL, driver);
   }
 
-  // TODO eventually we need to phase this out. We are using this specifically
-  // for @babel/runtime. See CS-343
-  let skypackURL = new URL("https://cdn.skypack.dev");
-  let skypackDriver = new HttpFileSystemDriver(skypackURL);
-  await fs.mount(skypackURL, skypackDriver);
-
   let recipesPath = join(resolveNodePkg("@catalogjs/recipes"), "recipes");
   await fs.mount(recipesURL, new NodeFileSystemDriver(recipesPath));
   for (let project of projects) {

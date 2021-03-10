@@ -14,10 +14,10 @@
         "./test-support/index.js"
       ],
       "resolutions": {
-        "@babel/runtime/helpers/esm/initializerDefineProperty": "https://cdn.skypack.dev/@babel/runtime/helpers/esm/initializerDefineProperty",
-        "@babel/runtime/helpers/esm/defineProperty": "https://cdn.skypack.dev/@babel/runtime/helpers/esm/defineProperty",
-        "@babel/runtime/helpers/esm/applyDecoratedDescriptor": "https://cdn.skypack.dev/@babel/runtime/helpers/esm/applyDecoratedDescriptor",
-        "@babel/runtime/helpers/esm/initializerWarningHelper": "https://cdn.skypack.dev/@babel/runtime/helpers/esm/initializerWarningHelper"
+        "@babel/runtime/helpers/esm/initializerDefineProperty": "https://pkgs.catalogjs.com/npm/@babel/runtime/7.13.9/mBfk-1QW4gDBxqsJp2ixJH9zmJc=/helpers/esm/initializerDefineProperty.js",
+        "@babel/runtime/helpers/esm/defineProperty": "https://pkgs.catalogjs.com/npm/@babel/runtime/7.13.9/mBfk-1QW4gDBxqsJp2ixJH9zmJc=/helpers/esm/defineProperty.js",
+        "@babel/runtime/helpers/esm/applyDecoratedDescriptor": "https://pkgs.catalogjs.com/npm/@babel/runtime/7.13.9/mBfk-1QW4gDBxqsJp2ixJH9zmJc=/helpers/esm/applyDecoratedDescriptor.js",
+        "@babel/runtime/helpers/esm/initializerWarningHelper": "https://pkgs.catalogjs.com/npm/@babel/runtime/7.13.9/mBfk-1QW4gDBxqsJp2ixJH9zmJc=/helpers/esm/initializerWarningHelper.js"
       }
     }
   ]

@@ -11,7 +11,6 @@ import { closeAll, NodeFileSystemDriver } from "./node-filesystem-driver";
 import { recipesURL } from "../../builder-worker/src/recipes";
 import { NodeResolver } from "./resolver";
 import { catalogjsHref } from "../../builder-worker/src/resolver";
-import { HttpFileSystemDriver } from "../../builder-worker/src/filesystem-drivers/http-driver";
 
 if (!globalThis.fetch) {
   (globalThis.fetch as any) = fetch;
@@ -57,12 +56,6 @@ let projectDir = resolve(process.cwd(), project);
   );
   let recipesPath = join(resolveNodePkg("@catalogjs/recipes"), "recipes");
   await fs.mount(recipesURL, new NodeFileSystemDriver(recipesPath));
-
-  // TODO eventually we need to phase this out. We are using this specifically
-  // for @babel/runtime. See CS-343
-  let skypackURL = new URL("https://cdn.skypack.dev");
-  let skypackDriver = new HttpFileSystemDriver(skypackURL);
-  await fs.mount(skypackURL, skypackDriver);
 
   let builder = new Builder(fs, [builderRoot], recipesURL);
   await builder.build();

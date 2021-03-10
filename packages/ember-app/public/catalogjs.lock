@@ -1,4 +1,5 @@
 {
+  "@babel/runtime/helpers/esm/defineProperty": "https://pkgs.catalogjs.com/npm/@babel/runtime/7.13.9/mBfk-1QW4gDBxqsJp2ixJH9zmJc=/helpers/esm/defineProperty.js",
   "ember-resolver": "https://pkgs.catalogjs.com/npm/ember-resolver/8.0.2/GQqWCyuTYZpel1ax3h9ZXceGNfc=/index.js",
   "ember-resolver/resolvers/classic/container-debug-adapter": "https://pkgs.catalogjs.com/npm/ember-resolver/8.0.2/GQqWCyuTYZpel1ax3h9ZXceGNfc=/resolvers/classic/container-debug-adapter.js",
   "ember-load-initializers": "https://pkgs.catalogjs.com/npm/ember-load-initializers/2.1.2/wdp8Zi5xQIZWydN6Ucyr4h-SmXA=/index.js",

@@ -70,10 +70,6 @@ worker.addEventListener("activate", () => {
 });
 
 async function activate() {
-  // TODO eventually we need to phase this out. We are using this specifically
-  // for @babel/runtime. See CS-343
-  let skypackURL = new URL("https://cdn.skypack.dev");
-  let skypackDriver = new HttpFileSystemDriver(skypackURL);
   let uiDriver = new HttpFileSystemDriver(uiURL);
   let recipesDriver = new HttpFileSystemDriver(githubRecipesURL);
   let clientDriver = new FileDaemonClientDriver(originURL, websocketURL);
@@ -81,7 +77,6 @@ async function activate() {
     fs.mount(new URL("https://local-disk/"), clientDriver),
     fs.mount(new URL(`/catalogjs/ui/`, originURL), uiDriver),
     fs.mount(recipesURL, recipesDriver),
-    fs.mount(skypackURL, skypackDriver),
   ]);
 
   let useLocalRegistry: boolean;

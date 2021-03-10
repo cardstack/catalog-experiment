@@ -4,6 +4,11 @@
     "index.html"
   ],
   "dependencies": {
+    "@babel/runtime": {
+      "type": "npm",
+      "pkgName": "@babel/runtime",
+      "range": "^7.13.0"
+    },
     "ember-resolver": {
       "type": "npm",
       "pkgName": "ember-resolver",
