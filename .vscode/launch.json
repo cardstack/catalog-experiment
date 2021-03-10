@@ -112,7 +112,7 @@
       "console": "integratedTerminal",
       "env": {},
       "program": "${workspaceRoot}/packages/builder-node/bin/install.js",
-      "args": ["--project=.", "@babel/core"]
+      "args": ["--project=.", "@babel/runtime/helpers/esm/defineProperty"]
     },
     {
       "type": "node",
@@ -123,9 +123,9 @@
       "env": {},
       "program": "${workspaceRoot}/packages/builder-node/bin/install.js",
       "args": [
-        // "--project=/private/var/folders/8z/_x2_6pv12n96tlr8g19hqp6h0000gn/T/embroider/e08385/packages/ember-app",
-        "--project=/private/var/folders/8z/_x2_6pv12n96tlr8g19hqp6h0000gn/T/embroider/e08385",
-        "ember-welcome-page/components/welcome-page"
+        "--project=/private/var/folders/8z/_x2_6pv12n96tlr8g19hqp6h0000gn/T/embroider/e08385/packages/ember-app",
+        // "--project=/private/var/folders/8z/_x2_6pv12n96tlr8g19hqp6h0000gn/T/embroider/e08385",
+        "ember-resolver"
       ]
     },
     {
