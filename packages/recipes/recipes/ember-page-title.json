@@ -5,7 +5,7 @@
       "semverRange": "*",
       "babelConfigPath": "packages/ember-app/_babel_config_.js",
       "templateCompilerPath": "packages/ember-app/_template_compiler_.js",
-      "isEmberAddon": true,
+      "needsBabelRuntime": true,
       "entrypoints": [
         "./helpers/page-title.js",
         "./services/page-title.js",
@@ -14,6 +14,14 @@
         "./test-support/index.js"
       ],
       "resolutions": {
+        "@babel/runtime/helpers/esm/classCallCheck": "https://pkgs.catalogjs.com/npm/@babel/runtime/7.13.9/mBfk-1QW4gDBxqsJp2ixJH9zmJc=/helpers/esm/classCallCheck.js",
+        "@babel/runtime/helpers/esm/createClass": "https://pkgs.catalogjs.com/npm/@babel/runtime/7.13.9/mBfk-1QW4gDBxqsJp2ixJH9zmJc=/helpers/esm/createClass.js",
+        "@babel/runtime/helpers/esm/assertThisInitialized": "https://pkgs.catalogjs.com/npm/@babel/runtime/7.13.9/mBfk-1QW4gDBxqsJp2ixJH9zmJc=/helpers/esm/assertThisInitialized.js",
+        "@babel/runtime/helpers/esm/get": "https://pkgs.catalogjs.com/npm/@babel/runtime/7.13.9/mBfk-1QW4gDBxqsJp2ixJH9zmJc=/helpers/esm/get.js",
+        "@babel/runtime/helpers/esm/inherits": "https://pkgs.catalogjs.com/npm/@babel/runtime/7.13.9/mBfk-1QW4gDBxqsJp2ixJH9zmJc=/helpers/esm/inherits.js",
+        "@babel/runtime/helpers/esm/possibleConstructorReturn": "https://pkgs.catalogjs.com/npm/@babel/runtime/7.13.9/mBfk-1QW4gDBxqsJp2ixJH9zmJc=/helpers/esm/possibleConstructorReturn.js",
+        "@babel/runtime/helpers/esm/getPrototypeOf": "https://pkgs.catalogjs.com/npm/@babel/runtime/7.13.9/mBfk-1QW4gDBxqsJp2ixJH9zmJc=/helpers/esm/getPrototypeOf.js",
+        "@babel/runtime/helpers/esm/toConsumableArray": "https://pkgs.catalogjs.com/npm/@babel/runtime/7.13.9/mBfk-1QW4gDBxqsJp2ixJH9zmJc=/helpers/esm/toConsumableArray.js",
         "@babel/runtime/helpers/esm/initializerDefineProperty": "https://pkgs.catalogjs.com/npm/@babel/runtime/7.13.9/mBfk-1QW4gDBxqsJp2ixJH9zmJc=/helpers/esm/initializerDefineProperty.js",
         "@babel/runtime/helpers/esm/defineProperty": "https://pkgs.catalogjs.com/npm/@babel/runtime/7.13.9/mBfk-1QW4gDBxqsJp2ixJH9zmJc=/helpers/esm/defineProperty.js",
         "@babel/runtime/helpers/esm/applyDecoratedDescriptor": "https://pkgs.catalogjs.com/npm/@babel/runtime/7.13.9/mBfk-1QW4gDBxqsJp2ixJH9zmJc=/helpers/esm/applyDecoratedDescriptor.js",

@@ -164,8 +164,8 @@ class FinishPackagePreparationNode implements BuilderNode {
       "@catalogjs/loader": "^0.0.1",
       "@catalogjs/polyfills": "^0.0.1",
     };
-    if (recipe?.isEmberAddon) {
-      deps["@babel/runtime"] = "^7.12.1";
+    if (recipe?.needsBabelRuntime) {
+      deps["@babel/runtime"] = "^7.13.0";
     }
     return {
       pkgPathFile: new WriteFileNode(

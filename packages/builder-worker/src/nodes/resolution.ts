@@ -19,6 +19,7 @@ import { File } from "@babel/types";
 import { extractDescriptionFromSource } from "../description-encoder";
 import { Resolver, pkgInfoFromCatalogJsURL } from "../resolver";
 import { LockFile, GetLockFileNode, LockEntries } from "./lock-file";
+import globToRegExp from "glob-to-regexp";
 
 export class ModuleResolutionsNode implements BuilderNode {
   cacheKey: string;
@@ -234,7 +235,20 @@ export class ModuleResolutionNode
     let urlNodes = await Promise.all(
       desc.imports.map(async (imp) => {
         if (recipeResolutions) {
-          let href = recipeResolutions?.[imp.specifier!];
+          let specifierGlobs = Object.keys(recipeResolutions).filter((glob) =>
+            globToRegExp(glob).test(imp.specifier!)
+          );
+          if (specifierGlobs.length > 1) {
+            throw new Error(
+              `the specifier '${
+                imp.specifier
+              }' matched multiple recipe resolutions: ${specifierGlobs.join(
+                ", "
+              )}. Please use specifier glob patterns that are more precise.`
+            );
+          }
+          let [specifier] = specifierGlobs;
+          let href = specifier ? recipeResolutions[specifier] : undefined;
           if (href) {
             return new ConstantNode(new URL(href));
           }

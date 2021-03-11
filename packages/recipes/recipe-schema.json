@@ -72,10 +72,10 @@
           "title": "Macros",
           "description": "If you wish to replace macros with specific values at build time, then use the \"macros\" property. This is an object whose keys are the macros that you wish to replace, and whose corresponding values are the macro replacements. Note that macro is the body of a regex, so make sure to escape any regex chars. Also if you are replacing the macro with a string literal, make sure to include quotes in the macro value:\n \"MY_VERSION\": \"'5.6.4'\""
         },
-        "isEmberAddon": {
+        "needsBabelRuntime": {
           "type": "boolean",
-          "title": "Ember Addon",
-          "description": "If the package is an ember addon, then set this flag to true. This setting will include the @babel/runtime as a package dependency in the resulting entrypoints.json, as well as, this setting will add resolutions for @babel/runtime and automatically add entrypoints for your addon using the ember conventions for addon layout."
+          "title": "Babel Runtime",
+          "description": "If this flag is set to true we will will include the @babel/runtime as a package dependency in the resulting entrypoints.json."
         }
       },
       "additionalProperties": false

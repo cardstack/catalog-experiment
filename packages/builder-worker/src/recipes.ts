@@ -110,13 +110,9 @@ export interface Recipe {
     [macro: string]: string;
   };
 
-  // If the package is an ember addon, then set this flag to true. This setting
-  // will include the @babel/runtime as a package dependency in the resulting
-  // entrypoints.json, as well as, this setting will add resolutions for
-  // @babel/runtime and automatically add entrypoints for your addon using the
-  // ember conventions for addon layout. TODO: need to auto add resolutions and
-  // entrypoints--those are manually entered right now
-  isEmberAddon?: true;
+  // If this flag is set to true we will will include the @babel/runtime as a
+  // package dependency in the resulting entrypoints.json
+  needsBabelRuntime?: true;
 }
 
 let cache: Map<string, Recipe | undefined> = new Map();
