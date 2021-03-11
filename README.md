@@ -26,11 +26,13 @@ Note: if you want to work with a local CatalogJS package registry, then you can 
 
 ## Building it
 
-Setup all the npm dependencies:
+1. Setup all the npm dependencies:
 
 ```sh
 yarn install
 ```
+
+2. Yarn link the `@embroider/core` and `@embroider/compat` packages from the `catalogjs-experiment` branch of the https://github.com/ef4/snowpack-experiment repo to the `packages/ember-app` workspace in this repository. (This step eventually goes away after some key upstream embroider changes are made available).
 
 ## Running it (for purposes of development)
 
@@ -49,12 +51,18 @@ yarn install
    ```
 4. Start serving the sample app:
    ```sh
-   yarn serve
+   yarn serve:test-app
    ```
+   or optionally serving the sample ember-app:
+   ```sh
+   yarn serve:ember-app
+   ```
+   This will run both an ember-cli server which uses embroider as scaffolding for generating stage 2 outputs, as well as running a file daemon to host those stage2 outputs.
+
 
    Note: if you want to be able to work with recipes locally (instead of being served from github, which is the default), then you can additionally mount the `../recipes` folder in the package.json for the `packages/test-app` (or `packages/test-lib`). When a local recipes filesystem is mounted we will use that instead of the github hosted recipes.
 
-   Note: if you want to be able to work with a local CatalogJS package registry, then you can provide the `--pkgsPath path/to/your/pkgs` parameter to start script command in the package.json for the `packages/test-app` (or `packages/test-lib`). Make sure to use the `packages/builder-node/bin/install.js` script to generate your CatalogJS packages locally.
+   Note: if you want to be able to work with a local CatalogJS package registry, then you can provide the `--pkgsPath path/to/your/pkgs` parameter to start script command in the package.json for the `packages/test-app` (or `packages/test-lib`). Make sure to use the `packages/builder-node/bin/install.js` script to generate your CatalogJS packages locally. As a convenience, all the test apps have a yarn script to serve the packages locally from the `./working/cdn/pkgs` folder. For example, in `packages/ember-app/package.json` there is a `start:catalogjs-local-pkgs` script that is available to use.
 
 If you want to use a `tsc --watch`, it's a little tricky since each package has
 its own `tsconfig.json` and needs to have it's own `tsc --watch`. You can run
@@ -94,16 +102,12 @@ running in your browser) that the CLI is using and will troll you.
 
 To run the node tests:
 
-1. cd to `packages/builder-worker`
-2. run webpack:
-   ```sh
-   yarn webpack
-   ```
-   (use the `--watch` option if you want to watch the file system for changes)
-3. run the tests:
-   ```sh
-   yarn qunit assets/node-test.js
-   ```
+1. cd to `packages/builder-node`
+2. run `yarn test`
+3. cd to `packages/file-daemon`
+4. run `yarn test`
+5. cd to `packages/file-daemon-client`
+7. run `yarn test`
 
 ## Releasing it
 

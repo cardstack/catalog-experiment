@@ -62,11 +62,21 @@
     "publish-pkgs": "aws s3 cp ./working/cdn/pkgs s3://catalogjs-pkgs --recursive",
     "release": "yarn pkg && yarn pub",
     "builder": "cd packages/builder-worker && yarn start",
-    "serve": "cd packages/test-app && yarn start",
-    "ui": "cd packages/ui && yarn start"
+    "serve:test-app": "cd packages/test-app && yarn start",
+    "serve:test-lib": "cd packages/test-lib && yarn start",
+    "serve:ember-app": "yarn start-server-and-test serve:embroider 'http://localhost:4250/.stage2-output' serve:file-daemon-ember-app",
+    "serve:embroider": "cd packages/ember-app && yarn start",
+    "serve:file-daemon-ember-app": "cd packages/ember-app && yarn start:catalogjs-local-pkgs",
+    "ui": "cd packages/ui && yarn start",
+    "ember-acceptance-test": "npm-run-all ember-acceptance-test:*",
+    "ember-acceptance-test:build": "cd packages/ember-app && yarn build",
+    "ember-acceptance-test:bundle-runtime": "node packages/builder-node/bin/install.js --project=. @babel/runtime/helpers/esm/defineProperty",
+    "ember-acceptance-test:bundle-deps": "node packages/builder-node/bin/install.js --project=`cat ./packages/ember-app/dist/.stage2-output` ember-resolver ember-load-initializers @glimmer/component ember-cli-app-version/initializer-factory",
+    "ember-acceptance-test:bundle-addons": "node packages/builder-node/bin/install.js --project=`cat ./packages/ember-app/dist/.stage2-output`/../.. ember-page-title/helpers/page-title ember-welcome-page/components/welcome-page"
   },
   "devDependencies": {
     "npm-run-all": "^4.1.5",
+    "start-server-and-test": "^1.11.0",
     "testem": "^3.1.0"
   },
   "resolutions": {
