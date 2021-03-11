@@ -1,6 +1,6 @@
 import { basename, join } from "path";
 import { applyVariantToTemplateCompiler, Variant } from "@embroider/core";
-import { readFileSync } from "fs-extra";
+import { existsSync, readFileSync } from "fs-extra";
 import { transformSync } from "@babel/core";
 
 export type FileSource =
@@ -16,11 +16,19 @@ export class Project {
       runtime: "all",
       optimizeForProduction: false,
     };
-    let templateCompiler = require(join(this.dir, "./_template_compiler_.js"));
-    this.compile = applyVariantToTemplateCompiler(
-      variant,
-      templateCompiler.compile
-    );
+    let templateCompilerFile = join(this.dir, "./_template_compiler_.js");
+    if (existsSync(templateCompilerFile)) {
+      let templateCompiler = require(join(
+        this.dir,
+        "./_template_compiler_.js"
+      ));
+      this.compile = applyVariantToTemplateCompiler(
+        variant,
+        templateCompiler.compile
+      );
+    } else {
+      this.compile = (template: string) => template;
+    }
   }
 
   static forDirs(dirs: string[]): Project[] {
@@ -103,15 +111,22 @@ function applyBabel(projectDir: string, relativePath: string): () => string {
     // adjust-imports-plugin must be enabled when we're running babel here, but
     // disabled when we're running it in the node build for importing npm
     // dependencies.
-    let config = require(join(projectDir, "_babel_config_.js"));
-    // This is a hack that allows us to communicate to our embroider
-    // babel-config hack so that we don't have to hand edit it each time we add
-    // a new pkg dep, and rather just rely on the catalogjs.lock to understand
-    // our pkg deps
-    process.env.CATALOGJS_LOCK_FILE = join(projectDir, "catalogjs.lock");
-    return transformSync(readFileSync(filename, "utf8"), {
-      ...config,
-      filename,
-    })!.code!;
+    let configFile = join(projectDir, "_babel_config_.js");
+    if (existsSync(configFile)) {
+      console.log(`using babel config ${configFile}`);
+      let config = require(configFile);
+      // This is a hack that allows us to communicate to our embroider
+      // babel-config hack so that we don't have to hand edit it each time we add
+      // a new pkg dep, and rather just rely on the catalogjs.lock to understand
+      // our pkg deps
+      process.env.CATALOGJS_LOCK_FILE = join(projectDir, "catalogjs.lock");
+      return transformSync(readFileSync(filename, "utf8"), {
+        ...config,
+        filename,
+      })!.code!;
+    } else {
+      console.log(`cannot find babel config ${configFile}`);
+      return readFileSync(filename, "utf8");
+    }
   };
 }
