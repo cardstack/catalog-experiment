@@ -21,6 +21,10 @@ export interface Dependencies {
   [name: string]: Dependency;
 }
 
+export interface EntrypointOptions {
+  suppressServiceWorkerLauncher: boolean;
+}
+
 export type Dependency = NpmDependency | CatalogJSDependency;
 
 export interface NpmDependency {
@@ -56,7 +60,11 @@ export function depAsURL(dependency: Dependency): URL {
 export class EntrypointsJSONNode implements BuilderNode {
   cacheKey: string;
 
-  constructor(private input: URL, private output: URL) {
+  constructor(
+    private input: URL,
+    private output: URL,
+    private options?: EntrypointOptions
+  ) {
     this.cacheKey = `entrypoints-json:${this.input.href}:${this.output.href}`;
   }
 
@@ -78,7 +86,8 @@ export class EntrypointsJSONNode implements BuilderNode {
           this.input,
           new URL(src, this.input),
           new URL(src, this.output),
-          dependencies
+          dependencies,
+          this.options
         )
       );
     }
@@ -93,7 +102,8 @@ export class EntrypointNode implements BuilderNode {
     private projectRoot: URL,
     private src: URL,
     private dest: URL,
-    private dependencies: Dependencies
+    private dependencies: Dependencies,
+    private options?: EntrypointOptions
   ) {
     this.cacheKey = `entrypoint:${this.projectRoot.href}:${this.src.href}:${
       this.dest.href
@@ -131,7 +141,8 @@ export class EntrypointNode implements BuilderNode {
           this.src,
           this.dest,
           parsedHTML,
-          this.dependencies
+          this.dependencies,
+          this.options
         ),
       };
     } else if (js) {
@@ -173,7 +184,8 @@ export class HTMLEntrypoint {
     private src: URL,
     private dest: URL,
     private parsedHTML: dom.Node[],
-    private deps: Dependencies
+    private deps: Dependencies,
+    private options?: EntrypointOptions
   ) {}
 
   get destURL() {
@@ -237,9 +249,11 @@ export class HTMLEntrypoint {
     // inject the service worker's js into the application entrypoint so that we
     // can communicate with the window (this allows us to trigger reloads after
     // rebuilds)
-    this.parsedHTML.push(
-      new dom.Element("script", { src: "https://service-worker/main.js" })
-    );
+    if (!this.options?.suppressServiceWorkerLauncher) {
+      this.parsedHTML.push(
+        new dom.Element("script", { src: "https://service-worker/main.js" })
+      );
+    }
     return render(this.parsedHTML);
   }
 }

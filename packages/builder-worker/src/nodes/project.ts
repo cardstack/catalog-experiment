@@ -1,5 +1,10 @@
 import { BuilderNode, NextNode, AllNode, ConstantNode, Value } from "./common";
-import { EntrypointsJSONNode, HTMLEntrypoint, Entrypoint } from "./entrypoint";
+import {
+  EntrypointsJSONNode,
+  HTMLEntrypoint,
+  Entrypoint,
+  EntrypointOptions,
+} from "./entrypoint";
 import { WriteFileNode } from "./file";
 import uniqBy from "lodash/uniqBy";
 import flatten from "lodash/flatten";
@@ -15,6 +20,7 @@ import { mapValues } from "lodash";
 
 export interface Options {
   bundle?: BundleOptions;
+  entrypoint?: EntrypointOptions;
   seededResolutions?: { [specifier: string]: string };
 }
 
@@ -60,7 +66,8 @@ export class MakeProjectNode implements BuilderNode<LockEntries> {
     );
     let entrypoints = new EntrypointsJSONNode(
       this.inputRoot,
-      this.projectOutputRoot
+      this.projectOutputRoot,
+      this.options?.entrypoint
     );
     return {
       entrypoints,
