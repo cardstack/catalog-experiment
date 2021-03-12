@@ -125,7 +125,6 @@ function applyBabel(projectDir: string, relativePath: string): () => string {
         filename,
       })!.code!;
     } else {
-      console.log(`cannot find babel config ${configFile}`);
       return readFileSync(filename, "utf8");
     }
   };
