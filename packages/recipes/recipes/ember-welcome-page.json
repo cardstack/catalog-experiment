@@ -1,0 +1,14 @@
+{
+  "$schema": "../recipe-schema.json",
+  "recipes": [
+    {
+      "semverRange": "*",
+      "babelConfigPath": "packages/ember-app/_babel_config_.js",
+      "templateCompilerPath": "packages/ember-app/_template_compiler_.js",
+      "needsBabelRuntime": true,
+      "entrypoints": [
+        "./components/welcome-page.js"
+      ]
+    }
+  ]
+}

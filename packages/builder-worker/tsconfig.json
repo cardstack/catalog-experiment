@@ -19,6 +19,7 @@
     "strictPropertyInitialization": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitReturns": true,
-    "lib": ["ES6", "ScriptHost", "WebWorker", "WebWorker.ImportScripts"]
+    "lib": ["ES6", "ScriptHost", "WebWorker", "WebWorker.ImportScripts"],
+    "skipLibCheck": true
   }
 }

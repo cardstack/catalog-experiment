@@ -764,6 +764,7 @@ function buildExports(
   exportRegions: Map<string, RegionPointer>;
   exportSpecifierRegions: Map<string, RegionPointer>;
 } {
+  let hasPreceedingNewline = code.length > 0;
   let { exports, reexports, exportAlls } = exportAssignments!;
   let reexportRegions: Map<string, RegionPointer> = new Map();
   let exportRegions: Map<string, RegionPointer> = new Map();
@@ -795,6 +796,7 @@ function buildExports(
       regions,
       exportSpecifierRegions,
       bundleDeclarations,
+      hasPreceedingNewline,
       bundle
     );
   }
@@ -840,7 +842,7 @@ function buildExports(
         position: 0,
         firstChild: reexportDeclarationPointer + 1,
         nextSibling: undefined,
-        start: 1, // newline
+        start: hasPreceedingNewline ? 1 : 0, // newline
         end: 1, // ";"
         dependsOn: new Set([
           ...[...[...mapping.keys()].entries()].map(
@@ -923,7 +925,7 @@ function buildExports(
           position: 0,
           firstChild: regions.length + 1,
           nextSibling: undefined,
-          start: 1, // newline
+          start: hasPreceedingNewline ? 1 : 0, // newline
           end: 1, // ";"
           dependsOn: new Set([regions.length + 1]),
           preserveGaps: false,
@@ -964,6 +966,7 @@ function buildExportNamedDeclaration(
   regions: CodeRegion[],
   specifierRegions: Map<string, RegionPointer>,
   bundleDeclarations: DeclarationRegionMap,
+  hasPreceedingNewline: boolean,
   bundle: URL
 ): RegionPointer | undefined {
   regions.push({
@@ -971,7 +974,7 @@ function buildExportNamedDeclaration(
     position: 0,
     firstChild: regions.length + 1,
     nextSibling: undefined,
-    start: 1, // newline
+    start: hasPreceedingNewline ? 1 : 0, // newline
     end: 3, // " };"
     dependsOn: new Set(),
     preserveGaps: false,

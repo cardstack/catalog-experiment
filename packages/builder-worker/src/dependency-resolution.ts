@@ -799,11 +799,6 @@ function resolveDeclaration(
       pointer,
       depResolver
     )!; // this function will actually throw when a local desc that has an "original" is missing a resolution
-    if (resolution.importedSource) {
-      throw new Error(
-        `was expecting the resolution for '${declaration.declaredName}' in the module ${sourceModule.url.href} while building bundle ${bundle.href} to _not_ have a "importedSource" property but it did.`
-      );
-    }
     let _module: Resolution;
     ({ consumedBy: _module, consumedByPointer: pointer } = resolution);
     sourceModule = makeNonCyclic(_module);

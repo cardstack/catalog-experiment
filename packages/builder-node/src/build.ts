@@ -139,6 +139,7 @@ async function build() {
 
   let builder = Builder.forProjects(fs, projectRoots, recipesURL, {
     bundle: { assigner },
+    entrypoint: { suppressServiceWorkerLauncher: true },
   });
   await builder.build();
 }

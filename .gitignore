@@ -1,5 +1,6 @@
 .DS_Store
 **/*.log
+/dist
 /node_modules
 /packages/builder-worker/test/test-app
 /packages/builder-worker/.file-daemon-key
@@ -36,4 +37,4 @@
 /packages/shared/**/*.js.map
 
 !webpack.config.js
-!/cdn/**/dist
+

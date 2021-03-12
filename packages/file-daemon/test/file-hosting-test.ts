@@ -1,16 +1,16 @@
 import { serveFiles } from "../file-hosting-server";
 import request from "supertest";
-import Project from "fixturify-project";
+import FixturifyProject from "fixturify-project";
 import merge from "lodash/merge";
 import Koa from "koa";
-import { ProjectMapping } from "../daemon";
+import { Project } from "../project";
 
 const { test } = QUnit;
 
 QUnit.module("file-hosting", function (hooks) {
-  let project: Project;
+  let project: FixturifyProject;
   hooks.before(function () {
-    project = new Project("fixtures");
+    project = new FixturifyProject("fixtures");
     merge(project.files, {
       "test-app": {
         "index.html": "<html></html>",
@@ -35,7 +35,7 @@ QUnit.module("file-hosting", function (hooks) {
     let app = new Koa();
     app.use(
       serveFiles(
-        new ProjectMapping([
+        Project.forDirs([
           `${project.root}/fixtures/test-app`,
           `${project.root}/fixtures/vendor/test-lib`,
         ])

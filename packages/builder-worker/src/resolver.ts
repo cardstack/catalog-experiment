@@ -10,7 +10,8 @@ export const workingHref = "https://working/";
 export interface Resolver {
   resolveAsBuilderNode(
     specifier: string,
-    source: URL
+    source: URL,
+    projectInput: URL
   ): Promise<BuilderNode<{ resolution: URL; lockEntries: LockEntries }>>;
   resolve(specifier: string, source: URL): Promise<URL>;
 }
@@ -50,7 +51,8 @@ export abstract class AbstractResolver implements Resolver {
 
   abstract resolveAsBuilderNode(
     specifier: string,
-    source: URL
+    source: URL,
+    projectInput: URL
   ): Promise<BuilderNode<{ resolution: URL; lockEntries: LockEntries }>>;
 
   async resolve(specifier: string, source: URL): Promise<URL> {
@@ -97,6 +99,11 @@ export abstract class AbstractResolver implements Resolver {
       let candidateURL = new URL("index.js", makeURLEndInDir(url));
       if (await this.fileExists(candidateURL)) {
         url = candidateURL;
+      } else if (
+        (candidateURL = new URL(`${url.href}.hbs.js`)) &&
+        (await this.fileExists(candidateURL))
+      ) {
+        url = candidateURL;
       }
     }
 
@@ -127,7 +134,11 @@ export class CoreResolver extends AbstractResolver {
   // URLs that match the project root input folder (currently in the Builder's
   // InternalFileNode) into here--this is a more natural place for
   // that.
-  async resolveAsBuilderNode(specifier: string, source: URL) {
+  async resolveAsBuilderNode(
+    specifier: string,
+    source: URL,
+    _projectInput: URL
+  ) {
     let resolution = await this.resolve(specifier, source);
     return new ConstantNode({ resolution, lockEntries: {} });
   }

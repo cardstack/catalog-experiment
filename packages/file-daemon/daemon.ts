@@ -4,8 +4,8 @@ import Koa from "koa";
 import compose from "koa-compose";
 import route, { KoaRoute } from "koa-better-route";
 import { cors, serverLog, errorHandler } from "./koa-util";
-import { basename } from "path";
 import send from "koa-send";
+import { Project } from "./project";
 
 interface Options {
   port: number;
@@ -15,30 +15,19 @@ interface Options {
   uiServer?: string;
   key?: string;
   pkgsPath?: string;
-}
-
-export class ProjectMapping {
-  nameToPath: Map<string, string> = new Map();
-  pathToName: Map<string, string> = new Map();
-  constructor(directories: string[]) {
-    for (let dir of directories) {
-      let localName = basename(dir);
-      let counter = 0;
-      while (this.nameToPath.has(localName)) {
-        localName = `${localName}/${counter}`;
-        counter++;
-      }
-      this.nameToPath.set(localName, dir);
-      this.pathToName.set(dir, localName);
-    }
-  }
+  ignore: string;
 }
 
 export function start(opts: Options) {
   let { port, websocketPort, directories, pkgsPath } = opts;
-  let mapping = new ProjectMapping(directories);
-  new FileWatcherServer(websocketPort, mapping).start();
-  let app = server({ mapping }, opts.builderServer, opts.uiServer);
+  let projects = Project.forDirs(directories);
+  new FileWatcherServer(websocketPort, projects).start();
+  let app = server(
+    projects,
+    opts.ignore.split(","),
+    opts.builderServer,
+    opts.uiServer
+  );
   app.listen(port);
   if (pkgsPath) {
     let pkgsPort = port + 1;
@@ -50,7 +39,8 @@ export function start(opts: Options) {
 }
 
 export function server(
-  { mapping }: { mapping: ProjectMapping },
+  projects: Project[],
+  ignore: string[] = [],
   builderServer?: string,
   uiServer?: string
 ) {
@@ -63,7 +53,7 @@ export function server(
       route.get("/catalogjs/alive", (ctxt: KoaRoute.Context) => {
         ctxt.status = 200;
       }),
-      serveFiles(mapping, builderServer, uiServer),
+      serveFiles(projects, ignore, builderServer, uiServer),
     ])
   );
   return app;

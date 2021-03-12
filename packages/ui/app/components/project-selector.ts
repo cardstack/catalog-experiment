@@ -30,6 +30,7 @@ export default class ProjectSelectorComponent extends Component {
     return this.build.listing?.activeProjects;
   }
 
+  @action
   startSelectedProject() {
     this.build.start.perform(this.selectedProjects, this.selectedStrategy);
   }

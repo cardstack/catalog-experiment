@@ -59,9 +59,19 @@ export interface Recipe {
   // By default the optional chaining and nullish coalescing operator plugins
   // will be used when performing the build, as well as we'll continue to add
   // other plugins for late stage TC39 proposals that are on the verge of
-  // becoming part of the spec. To utilize additional babel plugins, specify
-  // those in the "babelPlugins" property
-  babelPlugins?: (string | [string, { [optName: string]: any }])[];
+  // becoming part of the spec. To utilize additional babel plugins as part of
+  // the node build, specify those in the "nodeBabelPlugins" property
+  nodeBabelPlugins?: (string | [string, { [optName: string]: any }])[];
+
+  // Optionally apply a custom babel configuration while importing an NPM
+  // package to catalogjs. The path provided is relative to the project specified
+  // when the node build was launched.
+  babelConfigPath?: string;
+
+  // Optionally apply a Glimmer template compiler while importing an NPM
+  // package to catalogjs. The path provided is relative to the project specified
+  // when the node build was launched.
+  templateCompilerPath?: string;
 
   // If you wish to override the resolver and provide a specific resolution,
   // then use the "resolution" property. This is an object whose keys are
@@ -99,6 +109,10 @@ export interface Recipe {
   macros?: {
     [macro: string]: string;
   };
+
+  // If this flag is set to true we will will include the @babel/runtime as a
+  // package dependency in the resulting entrypoints.json
+  needsBabelRuntime?: true;
 }
 
 let cache: Map<string, Recipe | undefined> = new Map();

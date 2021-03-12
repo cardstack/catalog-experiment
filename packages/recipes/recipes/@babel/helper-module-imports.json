@@ -18,7 +18,7 @@
         "util": "https://pkgs.catalogjs.com/@catalogjs/polyfills/0.0.1/util.js",
         "inherits": "https://pkgs.catalogjs.com/@catalogjs/polyfills/0.0.1/inherits.js"
       },
-      "babelPlugins": [
+      "nodeBabelPlugins": [
         "@babel/plugin-transform-flow-strip-types",
         [
           "@babel/plugin-proposal-decorators",

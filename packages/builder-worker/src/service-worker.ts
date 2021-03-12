@@ -73,9 +73,9 @@ async function activate() {
   let uiDriver = new HttpFileSystemDriver(uiURL);
   let recipesDriver = new HttpFileSystemDriver(githubRecipesURL);
   let clientDriver = new FileDaemonClientDriver(originURL, websocketURL);
-  let [, clientVolume] = await Promise.all([
-    fs.mount(new URL(`/catalogjs/ui/`, originURL), uiDriver),
+  let [clientVolume] = await Promise.all([
     fs.mount(new URL("https://local-disk/"), clientDriver),
+    fs.mount(new URL(`/catalogjs/ui/`, originURL), uiDriver),
     fs.mount(recipesURL, recipesDriver),
   ]);
 

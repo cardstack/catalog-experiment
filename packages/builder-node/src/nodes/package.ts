@@ -17,7 +17,7 @@ import childProcess from "child_process";
 import { promisify } from "util";
 import { ensureDirSync, existsSync, readJSONSync } from "fs-extra";
 import fs from "fs";
-import { join } from "path";
+import { join, resolve } from "path";
 import _glob from "glob";
 import {
   WriteFileNode,
@@ -26,6 +26,8 @@ import {
 import { SrcTransformNode } from "./src-transform";
 import { Recipe } from "../../../builder-worker/src/recipes";
 import { coerce } from "semver";
+import { transform, TransformOptions } from "@babel/core";
+import { applyVariantToTemplateCompiler, Variant } from "@embroider/core";
 
 export const buildOutputDir = "__output/";
 export const buildSrcDir = `__build_src/`;
@@ -54,7 +56,8 @@ export class PreparePackageNode implements BuilderNode {
   constructor(
     private pkgPath: string,
     private pkgJSON: PackageJSON,
-    private workingDir: string
+    private workingDir: string,
+    private consumedFrom: string
   ) {
     this.cacheKey = `prepare-pkg:${pkgPath}`;
   }
@@ -75,7 +78,8 @@ export class PreparePackageNode implements BuilderNode {
         this.pkgPath,
         pkgURL,
         this.pkgJSON,
-        this.workingDir
+        this.workingDir,
+        this.consumedFrom
       ),
     };
   }
@@ -133,21 +137,36 @@ class FinishPackagePreparationNode implements BuilderNode {
     private pkgPath: string,
     private pkgURL: URL,
     private pkgJSON: PackageJSON,
-    private workingDir: string
+    private workingDir: string,
+    private consumedFrom: string
   ) {
     this.cacheKey = `finish-pkg-preparation:${pkgPath}`;
   }
 
-  async deps() {
+  async deps(getRecipe: RecipeGetter) {
     let esCompliance = new MakePkgESCompliantNode(
       this.pkgURL,
       new PackageSrcNode(
         this.pkgJSON,
         this.pkgPath,
         this.pkgURL,
-        this.workingDir
+        this.workingDir,
+        this.consumedFrom
       )
     );
+    let { name, version } = this.pkgJSON;
+    let recipe = await getRecipe(name, version);
+    // all node builds have the runtime loader package available as a
+    // dependency, so that runtime loading situations (e.g. a dynamic
+    // require specifier) can be handled if they arise, as well as a
+    // polyfills package to polyfill node-isms
+    let deps: { [specifier: string]: string } = {
+      "@catalogjs/loader": "^0.0.1",
+      "@catalogjs/polyfills": "^0.0.1",
+    };
+    if (recipe?.needsBabelRuntime) {
+      deps["@babel/runtime"] = "^7.13.0";
+    }
     return {
       pkgPathFile: new WriteFileNode(
         new ConstantNode(this.pkgPath),
@@ -157,14 +176,7 @@ class FinishPackagePreparationNode implements BuilderNode {
         this.pkgJSON,
         this.pkgURL,
         esCompliance,
-        // all node builds have the runtime loader package available as a
-        // dependency, so that runtime loading situations (e.g. a dynamic
-        // require specifier) can be handled if they arise, as well as a
-        // polyfills package to polyfill node-isms
-        {
-          "@catalogjs/loader": "^0.0.1",
-          "@catalogjs/polyfills": "^0.0.1",
-        }
+        deps
       ),
       esCompliance,
     };
@@ -181,7 +193,8 @@ export class PackageSrcNode implements BuilderNode {
     private pkgJSON: PackageJSON,
     private pkgPath: string,
     private pkgURL: URL,
-    private workingDir: string
+    private workingDir: string,
+    private consumedFrom: string
   ) {
     this.cacheKey = `pkg-source:${pkgPath}`;
   }
@@ -192,7 +205,8 @@ export class PackageSrcNode implements BuilderNode {
         this.pkgJSON,
         this.pkgPath,
         this.pkgURL,
-        this.workingDir
+        this.workingDir,
+        this.consumedFrom
       ),
     };
   }
@@ -210,7 +224,8 @@ export class PackageSrcPrepareNode implements BuilderNode {
     private pkgJSON: PackageJSON,
     private pkgPath: string,
     private pkgURL: URL,
-    private workingDir: string
+    private workingDir: string,
+    private consumedFrom: string
   ) {
     this.cacheKey = `pkg-source-prepare:${pkgPath}`;
   }
@@ -228,7 +243,7 @@ export class PackageSrcPrepareNode implements BuilderNode {
       srcPath = this.pkgPath;
     }
     let { srcIncludeGlob, srcIgnoreGlob } = recipe ?? {};
-    srcIncludeGlob = srcIncludeGlob ?? "**/*.{ts,js,json}";
+    srcIncludeGlob = srcIncludeGlob ?? "**/*.{ts,js,json,hbs}";
     srcIgnoreGlob = srcIgnoreGlob ?? "{node_modules,test}/**";
 
     let files = await glob(srcIncludeGlob, {
@@ -236,12 +251,55 @@ export class PackageSrcPrepareNode implements BuilderNode {
       absolute: true,
       ignore: `${srcPath}/${srcIgnoreGlob}`,
     });
+
+    let babelConfig: TransformOptions | undefined;
+    if (recipe?.babelConfigPath) {
+      let babelConfigPath = resolve(this.consumedFrom, recipe.babelConfigPath);
+      log(`evaluating babel config ${babelConfigPath}`);
+      babelConfig = require(babelConfigPath);
+    }
+    let compile: ((filePath: string, template: string) => string) | undefined;
+    if (recipe?.templateCompilerPath) {
+      let variant: Variant = {
+        name: "default",
+        runtime: "all",
+        optimizeForProduction: false,
+      };
+      let templateCompiler = require(join(
+        this.consumedFrom,
+        recipe.templateCompilerPath
+      ));
+      compile = applyVariantToTemplateCompiler(
+        variant,
+        templateCompiler.compile
+      );
+    }
+
     let contents = await Promise.all(
       files.map(async (file) => {
         let content = await readFile(file, "utf8");
         for (let [macro, replacement] of Object.entries(macros ?? {})) {
           content = content.replace(new RegExp(macro, "g"), replacement);
         }
+
+        if (babelConfig && file.endsWith(".js")) {
+          let output = transform(content, { ...babelConfig, filename: file });
+          if (!output || output.code == null) {
+            throw new Error(
+              `Empty babel result after babel transform of ${file}`
+            );
+          }
+          content = output.code;
+        }
+        if (file.endsWith(".hbs")) {
+          if (!compile) {
+            throw new Error(
+              `Encountered an .hbs file, ${file}, but there is no 'templateCompilerPath' specified in the recipe for ${name} ${version}`
+            );
+          }
+          content = compile(file, content);
+        }
+
         return content;
       })
     );
@@ -255,6 +313,9 @@ export class PackageSrcPrepareNode implements BuilderNode {
             file.slice(srcPath.length),
             `${this.pkgURL}__stage1/`
           );
+          if (url.href.endsWith(".hbs")) {
+            url = new URL(`${url.href}.js`);
+          }
           return new WriteFileNode(new ConstantNode(contents[index]), url);
         })
       ),

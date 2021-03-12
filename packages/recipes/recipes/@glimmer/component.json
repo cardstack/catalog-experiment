@@ -1,0 +1,23 @@
+{
+  "$schema": "../../recipe-schema.json",
+  "recipes": [
+    {
+      "semverRange": "*",
+      "babelConfigPath": "_babel_config_.js",
+      "needsBabelRuntime": true,
+      "entrypoints": [
+        "./index.js",
+        "./-private/ember-component-manager.js"
+      ],
+      "resolutions": {
+        "@babel/runtime/helpers/esm/classCallCheck": "https://pkgs.catalogjs.com/npm/@babel/runtime/7.13.9/mBfk-1QW4gDBxqsJp2ixJH9zmJc=/helpers/esm/classCallCheck.js",
+        "@babel/runtime/helpers/esm/createClass": "https://pkgs.catalogjs.com/npm/@babel/runtime/7.13.9/mBfk-1QW4gDBxqsJp2ixJH9zmJc=/helpers/esm/createClass.js",
+        "@babel/runtime/helpers/esm/get": "https://pkgs.catalogjs.com/npm/@babel/runtime/7.13.9/mBfk-1QW4gDBxqsJp2ixJH9zmJc=/helpers/esm/get.js",
+        "@babel/runtime/helpers/esm/inherits": "https://pkgs.catalogjs.com/npm/@babel/runtime/7.13.9/mBfk-1QW4gDBxqsJp2ixJH9zmJc=/helpers/esm/inherits.js",
+        "@babel/runtime/helpers/esm/possibleConstructorReturn": "https://pkgs.catalogjs.com/npm/@babel/runtime/7.13.9/mBfk-1QW4gDBxqsJp2ixJH9zmJc=/helpers/esm/possibleConstructorReturn.js",
+        "@babel/runtime/helpers/esm/getPrototypeOf": "https://pkgs.catalogjs.com/npm/@babel/runtime/7.13.9/mBfk-1QW4gDBxqsJp2ixJH9zmJc=/helpers/esm/getPrototypeOf.js",
+        "@babel/runtime/helpers/esm/typeof": "https://pkgs.catalogjs.com/npm/@babel/runtime/7.13.9/mBfk-1QW4gDBxqsJp2ixJH9zmJc=/helpers/esm/typeof.js"
+      }
+    }
+  ]
+}

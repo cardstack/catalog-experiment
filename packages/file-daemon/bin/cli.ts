@@ -36,6 +36,11 @@ const argv = yargs.options({
     description:
       "the path that contains packages to be served by a mock CDN which that would otherwise be found on the catalogjs CDN",
   },
+  ignore: {
+    type: "string",
+    default: "",
+    description: "comma separated glob pattern of paths to ignore",
+  },
 }).argv;
 
 if (argv._.length === 0) {

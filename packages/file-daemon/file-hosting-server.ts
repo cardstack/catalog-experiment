@@ -11,14 +11,14 @@ import { DIRTYPE, REGTYPE } from "@catalogjs/tarstream/constants";
 import { NodeReadableToDOM, DOMToNodeReadable } from "./stream-shims";
 import { DirectoryEntry } from "@catalogjs/tarstream/types";
 import { unixTime } from "./utils";
-import { join, resolve, dirname } from "path";
+import { join, resolve, dirname, extname } from "path";
 import * as webStreams from "web-streams-polyfill/ponyfill/es2018";
 import send from "koa-send";
 import route, { KoaRoute } from "koa-better-route";
 import compose from "koa-compose";
 import proxy from "koa-proxies";
 import flatMap from "lodash/flatMap";
-import { ProjectMapping } from "./daemon";
+import { Project } from "./project";
 
 const catalogjsDist = resolve(join(__dirname, ".."));
 const builderDist = join(catalogjsDist, "builder");
@@ -28,17 +28,31 @@ const uiDist = join(catalogjsDist, "ui");
 global = Object.assign(global, webStreams);
 
 export function serveFiles(
-  mapping: ProjectMapping,
+  projects: Project[],
+  ignore: string[] = [],
   builderServer?: string,
   uiServer?: string
 ) {
   return compose([
-    ...flatMap([...mapping.nameToPath.entries()], ([localName, dir]) => {
+    ...flatMap(projects, (project) => {
+      let { localName, dir } = project;
       return [
         route.get(
           `/catalogjs/files/${localName}/(.*)`,
-          (ctxt: KoaRoute.Context) => {
-            return send(ctxt, ctxt.routeParams[0], { root: dir });
+          async (ctxt: KoaRoute.Context) => {
+            let source = project.loadFile(ctxt.routeParams[0]);
+            if (typeof source === "string") {
+              ctxt.set("Content-Length", String(source.length));
+              ctxt.body = source;
+              ctxt.type = extname(ctxt.routeParams[0]);
+            } else if ("status" in source) {
+              if (source.message) {
+                ctxt.response.body = source.message;
+              }
+              ctxt.response.status = source.status;
+            } else {
+              await send(ctxt, source.streamFile, { root: dir });
+            }
           }
         ),
         route.post(`/catalogjs/files/${localName}/(.*)`, updateFiles(dir)),
@@ -47,7 +61,7 @@ export function serveFiles(
     }),
     route.get(`/catalogjs/files`, (ctxt: KoaRoute.Context) => {
       ctxt.res.setHeader("content-type", "application/x-tar");
-      ctxt.body = streamFileSystem(mapping);
+      ctxt.body = streamFileSystem(projects, ignore);
     }),
 
     !builderServer
@@ -107,27 +121,46 @@ export function serveFiles(
   ]);
 }
 
-function streamFileSystem(mapping: ProjectMapping): Readable {
+function streamFileSystem(projects: Project[], ignore: string[]): Readable {
   let tar = new Tar();
-  for (let [localName, dir] of mapping.nameToPath) {
-    for (let entry of walkSync.entries(dir)) {
-      let { fullPath, size, mtime, mode, relativePath } = entry;
+  for (let project of projects) {
+    let { localName, dir } = project;
+    for (let entry of walkSync.entries(dir, {
+      ignore,
+    })) {
+      let { size, mtime, mode, relativePath } = entry;
 
-      relativePath = `${localName}/${relativePath}`;
       let file = {
         mode,
         size,
         modifyTime: unixTime(mtime),
         type: entry.isDirectory() ? DIRTYPE : REGTYPE,
-        name: entry.isDirectory() ? relativePath.slice(0, -1) : relativePath,
       };
       if (entry.isDirectory()) {
-        tar.addFile(file as DirectoryEntry);
+        let name = `${localName}/${relativePath}`.slice(0, -1);
+        tar.addFile({ ...file, name } as DirectoryEntry);
       } else {
-        tar.addFile({
-          ...file,
-          stream: () => new NodeReadableToDOM(createReadStream(fullPath)),
-        });
+        for (let source of project.outputFiles(relativePath)) {
+          let loaded = source.load();
+          if (typeof loaded === "string") {
+            tar.addFile({
+              ...file,
+              name: `${localName}/${source.outputRelativePath}`,
+              data: Buffer.from(loaded, "utf8"),
+            });
+          } else if ("status" in loaded) {
+            throw new Error(
+              `${localName} ${relativePath}->${source.outputRelativePath} generated error ${loaded.status} ${loaded.message}`
+            );
+          } else {
+            let streamFile = resolve(project.dir, loaded.streamFile);
+            tar.addFile({
+              ...file,
+              name: `${localName}/${source.outputRelativePath}`,
+              stream: () => new NodeReadableToDOM(createReadStream(streamFile)),
+            });
+          }
+        }
       }
     }
   }

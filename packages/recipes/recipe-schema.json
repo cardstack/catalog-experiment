@@ -42,10 +42,20 @@
           "title": "Source Ignore Glob",
           "description": "This is a glob that describes all the files to ignore in the javascript build from the package. By default this is \"{node_modules,test}/**\", and can be overridden using the \"srcIgnoreGlob\" property."
         },
-        "babelPlugins": {
+        "nodeBabelPlugins": {
           "$ref": "#/definitions/babelPlugins",
-          "title": "Babel Plugins",
-          "description": "By default the optional chaining and nullish coalescing operator plugins will be used when performing the build, as well as we'll continue to add other plugins for late stage TC39 proposals that are on the verge of becoming part of the spec. To utilize additional babel plugins, specify those in the \"babelPlugins\" property"
+          "title": "Node Babel Plugins",
+          "description": "By default the optional chaining and nullish coalescing operator plugins will be used when performing the build, as well as we'll continue to add other plugins for late stage TC39 proposals that are on the verge of becoming part of the spec. To utilize additional babel plugins as part of the node build, specify those in the \"nodeBabelPlugins\" property"
+        },
+        "babelConfigPath": {
+          "type": "string",
+          "title": "Babel Config",
+          "description": "Optionally apply a custom babel configuration while importing an NPM package to catalogjs. The path provide is relative to the project specified when the node build was launched."
+        },
+        "templateCompilerPath": {
+          "type": "string",
+          "title": "Template Compiler",
+          "description": "Optionally apply a Glimmer template compiler while importing an NPM package to catalogjs. The path provided is relative to the project specified when the node build was launched."
         },
         "resolutions": {
           "$ref": "#/definitions/resolutions",
@@ -61,6 +71,11 @@
           "$ref": "#/definitions/macros",
           "title": "Macros",
           "description": "If you wish to replace macros with specific values at build time, then use the \"macros\" property. This is an object whose keys are the macros that you wish to replace, and whose corresponding values are the macro replacements. Note that macro is the body of a regex, so make sure to escape any regex chars. Also if you are replacing the macro with a string literal, make sure to include quotes in the macro value:\n \"MY_VERSION\": \"'5.6.4'\""
+        },
+        "needsBabelRuntime": {
+          "type": "boolean",
+          "title": "Babel Runtime",
+          "description": "If this flag is set to true we will will include the @babel/runtime as a package dependency in the resulting entrypoints.json."
         }
       },
       "additionalProperties": false

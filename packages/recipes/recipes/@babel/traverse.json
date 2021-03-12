@@ -14,7 +14,7 @@
       "macros": {
         "process\\.env\\.NODE_ENV": "'production'"
       },
-      "babelPlugins": [
+      "nodeBabelPlugins": [
         "@babel/plugin-transform-flow-strip-types",
         [
           "@babel/plugin-proposal-decorators",

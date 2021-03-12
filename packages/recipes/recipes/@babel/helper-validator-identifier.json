@@ -2,7 +2,7 @@
   "$schema": "../../recipe-schema.json",
   "recipes": [
     {
-      "semverRange": "*",
+      "semverRange": ">=7.12.11",
       "srcRepo": {
         "repoHref": "https://github.com/babel/babel.git",
         "version": "v$major$.$minor$.$patch$",
@@ -18,7 +18,48 @@
       "macros": {
         "new Set\\(": "new window.Set("
       },
-      "babelPlugins": [
+      "nodeBabelPlugins": [
+        "@babel/plugin-transform-typescript",
+        [
+          "@babel/plugin-proposal-decorators",
+          {
+            "legacy": true
+          }
+        ],
+        [
+          "@babel/plugin-proposal-class-properties",
+          {
+            "loose": true
+          }
+        ],
+        "@babel/plugin-proposal-numeric-separator",
+        [
+          "@babel/plugin-proposal-pipeline-operator",
+          {
+            "proposal": "minimal"
+          }
+        ],
+        "@babel/plugin-proposal-logical-assignment-operators"
+      ]
+    },
+    {
+      "semverRange": "<7.12.11",
+      "srcRepo": {
+        "repoHref": "https://github.com/babel/babel.git",
+        "version": "v$major$.$minor$.$patch$",
+        "subdir": "packages/babel-helper-validator-identifier/"
+      },
+      "entrypoints": [
+        "./src/index.js"
+      ],
+      "srcIgnoreGlob": "{node_modules,test,scripts}/**",
+      "dependencies": {
+        "charcodes": "^0.2.0"
+      },
+      "macros": {
+        "new Set\\(": "new window.Set("
+      },
+      "nodeBabelPlugins": [
         "@babel/plugin-transform-flow-strip-types",
         [
           "@babel/plugin-proposal-decorators",

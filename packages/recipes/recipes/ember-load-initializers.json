@@ -1,0 +1,12 @@
+{
+  "$schema": "../recipe-schema.json",
+  "recipes": [
+    {
+      "semverRange": "*",
+      "babelConfigPath": "_babel_config_.js",
+      "resolutions": {
+        "*/require": "https://pkgs.catalogjs.com/@catalogjs/loader/0.0.1/require.js"
+      }
+    }
+  ]
+}

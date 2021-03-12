@@ -11,7 +11,7 @@
       "entrypoints": [
         "./src/index.js"
       ],
-      "babelPlugins": [
+      "nodeBabelPlugins": [
         "@babel/plugin-transform-flow-strip-types",
         [
           "@babel/plugin-proposal-decorators",

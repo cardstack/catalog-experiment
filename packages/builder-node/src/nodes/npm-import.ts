@@ -15,7 +15,7 @@ import {
 } from "./package";
 import { PublishPackageNode } from "./publish";
 import _glob from "glob";
-import { join } from "path";
+import { join, resolve } from "path";
 import { resolveNodePkg } from "../pkg-resolve";
 import { NodeFileSystemDriver } from "../node-filesystem-driver";
 import { log } from "../../../builder-worker/src/logger";
@@ -24,6 +24,7 @@ import { Resolver } from "../../../builder-worker/src/resolver";
 import { recipesURL } from "../../../builder-worker/src/recipes";
 import { catalogjsHref } from "../../../builder-worker/src/resolver";
 import { LockEntries } from "../../../builder-worker/src/nodes/lock-file";
+import { existsSync } from "fs";
 
 export class NpmImportPackagesNode implements BuilderNode {
   // TODO the cache key for this should probably be some kind of lock file hash.
@@ -71,7 +72,7 @@ export class NpmImportPackageNode implements BuilderNode {
   private pkgJSON: PackageJSON;
   constructor(
     name: string,
-    consumedFrom: string,
+    private consumedFrom: string,
     private workingDir: string,
     private resolver: Resolver
   ) {
@@ -82,8 +83,27 @@ export class NpmImportPackageNode implements BuilderNode {
       );
     }
     this.pkgPath = pkgPath;
-    this.pkgJSON = getPackageJSON(pkgPath);
-    this.cacheKey = `npm-import-pkg:${pkgPath}`;
+    let currentDir = pkgPath;
+    // our pkgPath may actually be an entrypoint that is deep in the pkg
+    // hierarchy, work our way up the pkgPath to find the package.json
+    while (
+      (!existsSync(join(currentDir, "package.json")) ||
+        !getPackageJSON(currentDir).name) &&
+      currentDir.split("/").slice(-2)[0] !== "node_modules"
+    ) {
+      currentDir = resolve(currentDir, "..");
+    }
+    if (!existsSync(join(currentDir, "package.json"))) {
+      throw new Error(
+        `Can't load package.json for ${name} at ${join(
+          pkgPath,
+          "package.json"
+        )}`
+      );
+    }
+    this.pkgPath = currentDir;
+    this.pkgJSON = getPackageJSON(this.pkgPath);
+    this.cacheKey = `npm-import-pkg:${this.pkgPath}`;
   }
 
   async deps() {
@@ -94,7 +114,8 @@ export class NpmImportPackageNode implements BuilderNode {
       workingPkgURL: new PreparePackageNode(
         this.pkgPath,
         this.pkgJSON,
-        this.workingDir
+        this.workingDir,
+        this.consumedFrom
       ),
     };
   }

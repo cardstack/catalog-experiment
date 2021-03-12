@@ -2,6 +2,9 @@
   "name": "@catalogjs/builder-node",
   "version": "0.0.1",
   "license": "MIT",
+  "scripts": {
+    "test": "qunit test/test-entrypoint.js"
+  },
   "dependencies": {
     "@babel/core": "^7.9.0",
     "@babel/plugin-proposal-class-properties": "^7.10.4",
@@ -18,6 +21,7 @@
     "@catalogjs/loader": "0.0.1",
     "@catalogjs/polyfills": "0.0.1",
     "@catalogjs/recipes": "0.0.1",
+    "@embroider/core": "^0.36.0",
     "@types/fs-extra": "^8.1.0",
     "@types/node-fetch": "^2.5.7",
     "@types/resolve": "^1.17.1",

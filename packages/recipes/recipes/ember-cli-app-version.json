@@ -1,0 +1,12 @@
+{
+  "$schema": "../recipe-schema.json",
+  "recipes": [
+    {
+      "semverRange": "*",
+      "babelConfigPath": "_babel_config_.js",
+      "entrypoints": [
+        "./initializer-factory.js"
+      ]
+    }
+  ]
+}

@@ -38,8 +38,10 @@ export class SrcTransformNode implements BuilderNode {
       .filter(
         (entry) =>
           entry.stat.type === "file" &&
-          // TODO what about .ts?
-          (entry.url.href.endsWith(".js") || entry.url.href.endsWith(".json"))
+          !entry.url.href.endsWith(".d.ts") &&
+          (entry.url.href.endsWith(".js") ||
+            entry.url.href.endsWith(".ts") ||
+            entry.url.href.endsWith(".json"))
       )
       .map((entry) => entry.url);
     return {
@@ -77,7 +79,7 @@ class BabelTransformNode implements BuilderNode {
       code = src;
     } else {
       let { name, version } = this.pkgJSON;
-      let { babelPlugins: plugins = [] } =
+      let { nodeBabelPlugins: plugins = [] } =
         (await getRecipe(name, version)) ?? {};
       let output = transform(src, { plugins, comments: false });
       if (!output || output.code == null) {
@@ -92,7 +94,12 @@ class BabelTransformNode implements BuilderNode {
       `${this.pkgURL}__stage2/`
     );
     return {
-      node: new WriteFileNode(new ConstantNode(code), url),
+      node: new WriteFileNode(
+        new ConstantNode(code),
+        url.href.endsWith(".ts")
+          ? new URL(url.href.replace(/\.ts$/, ".js"))
+          : url
+      ),
     };
   }
 }
