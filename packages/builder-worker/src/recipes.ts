@@ -59,9 +59,9 @@ export interface Recipe {
   // By default the optional chaining and nullish coalescing operator plugins
   // will be used when performing the build, as well as we'll continue to add
   // other plugins for late stage TC39 proposals that are on the verge of
-  // becoming part of the spec. To utilize additional babel plugins, specify
-  // those in the "babelPlugins" property
-  babelPlugins?: (string | [string, { [optName: string]: any }])[];
+  // becoming part of the spec. To utilize additional babel plugins as part of
+  // the node build, specify those in the "nodeBabelPlugins" property
+  nodeBabelPlugins?: (string | [string, { [optName: string]: any }])[];
 
   // Optionally apply a custom babel configuration while importing an NPM
   // package to catalogjs. The path provided is relative to the project specified

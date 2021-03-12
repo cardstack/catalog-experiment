@@ -42,10 +42,10 @@
           "title": "Source Ignore Glob",
           "description": "This is a glob that describes all the files to ignore in the javascript build from the package. By default this is \"{node_modules,test}/**\", and can be overridden using the \"srcIgnoreGlob\" property."
         },
-        "babelPlugins": {
+        "nodeBabelPlugins": {
           "$ref": "#/definitions/babelPlugins",
-          "title": "Babel Plugins",
-          "description": "By default the optional chaining and nullish coalescing operator plugins will be used when performing the build, as well as we'll continue to add other plugins for late stage TC39 proposals that are on the verge of becoming part of the spec. To utilize additional babel plugins, specify those in the \"babelPlugins\" property"
+          "title": "Node Babel Plugins",
+          "description": "By default the optional chaining and nullish coalescing operator plugins will be used when performing the build, as well as we'll continue to add other plugins for late stage TC39 proposals that are on the verge of becoming part of the spec. To utilize additional babel plugins as part of the node build, specify those in the \"nodeBabelPlugins\" property"
         },
         "babelConfigPath": {
           "type": "string",

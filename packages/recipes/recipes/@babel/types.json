@@ -14,7 +14,7 @@
       "macros": {
         "process\\.env\\.BABEL_TYPES_8_BREAKING": "false"
       },
-      "babelPlugins": [
+      "nodeBabelPlugins": [
         "@babel/plugin-transform-flow-strip-types",
         [
           "@babel/plugin-proposal-decorators",
