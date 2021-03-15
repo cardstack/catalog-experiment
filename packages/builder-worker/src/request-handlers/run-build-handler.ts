@@ -1,6 +1,7 @@
 import { Handler } from "./request-handler";
 import { BuildManager } from "../build-manager";
 import { BundleAssignment } from "../nodes/bundle";
+import { NotStartedBuildStatus } from "../builder";
 
 const worker = (self as unknown) as ServiceWorkerGlobalScope;
 
@@ -23,12 +24,46 @@ export function handleBuild(buildManager: BuildManager) {
       await buildManager.rebuilder!.build();
       let status = buildManager.rebuilder?.status;
       if (status && status.name === "failed") {
-        return new Response(`build failed: ${status.exception}`, {
-          status: 400,
-        });
+        return new Response(
+          JSON.stringify({ ...status, exception: String(status.exception) }),
+          {
+            status: 400,
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }
+        );
       } else if (status && status.name === "succeeded") {
         return new Response("build succeeded", { status: 200 });
       }
+    } else if (
+      requestURL.pathname.startsWith("/build") &&
+      request.method === "GET"
+    ) {
+      if (!buildManager.rebuilder) {
+        return new Response(
+          JSON.stringify({ name: "not started" } as NotStartedBuildStatus),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }
+        );
+      }
+      await buildManager.isIdle();
+      let status = buildManager.rebuilder?.status;
+      let responseBuildStatus = JSON.stringify(
+        status.name === "failed"
+          ? { ...status, exception: String(status.exception) }
+          : status
+      );
+      return new Response(responseBuildStatus, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
     }
     return undefined;
   }) as Handler;

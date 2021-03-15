@@ -29,6 +29,17 @@ export default class ProjectSelectorComponent extends Component {
   get activeProjects() {
     return this.build.listing?.activeProjects;
   }
+  get buildStatus() {
+    return this.build.buildStatus;
+  }
+  get buildFailed() {
+    return !this.build.start.isRunning && this.buildStatus?.name === "failed";
+  }
+  get buildSucceeded() {
+    return (
+      !this.build.start.isRunning && this.buildStatus?.name === "succeeded"
+    );
+  }
 
   @action
   startSelectedProject() {

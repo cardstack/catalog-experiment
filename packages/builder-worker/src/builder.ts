@@ -41,6 +41,25 @@ type BoolForEach<T> = {
 // nodes are allowed to use any type as their cacheKey, we use this alias to
 // make our own types more readable
 type CacheKey = unknown;
+export interface SuccessBuildStatus {
+  name: "succeeded";
+}
+export interface NotStartedBuildStatus {
+  name: "not started";
+}
+export interface FailedBuildStatus {
+  name: "failed";
+  exception: Error;
+}
+export interface RunningBuildStatus {
+  name: "running";
+}
+
+export type BuildStatus =
+  | SuccessBuildStatus
+  | NotStartedBuildStatus
+  | FailedBuildStatus
+  | RunningBuildStatus;
 
 type InternalResult =
   | { node: BuilderNode; changed: boolean }
@@ -524,11 +543,7 @@ export class Rebuilder<Input> {
     return this.successfulBuildOccurred;
   }
 
-  get status():
-    | { name: "not started" }
-    | { name: "succeeded" }
-    | { name: "failed"; exception: Error }
-    | { name: "running" } {
+  get status(): BuildStatus {
     if (this.state.name === "idle") {
       return this.state.lastBuildSucceeded
         ? { name: "succeeded" }

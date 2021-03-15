@@ -43,4 +43,16 @@
     0) 'true' }}>Start</button>
   {{/if}}
   {{/if}}
+
+  {{#if this.buildFailed}}
+  <p class="build-failure">
+    <span>Build Failed</span>
+  <pre>{{this.buildStatus.exception}}</pre>
+  </p>
+  {{/if}}
+  {{#if this.buildSucceeded}}
+  <p class="build-success">
+    <span>Build succeeded</span>
+  </p>
+  {{/if}}
 </div>
