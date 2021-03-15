@@ -149,3 +149,13 @@ input[type="checkbox"] {
   margin: 0;
   white-space: pre-wrap;
 }
+
+.build-failure {
+  color: red;
+  font-weight: bold;
+}
+
+.build-success {
+  color: green;
+  font-weight: bold;
+}
