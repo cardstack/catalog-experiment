@@ -476,6 +476,7 @@ type RebuilderState =
     };
 
 export class Rebuilder<Input> {
+  private successfulBuildOccurred = false;
   private runner: BuildRunner<Input>;
   private state: RebuilderState = {
     name: "created",
@@ -515,6 +516,12 @@ export class Rebuilder<Input> {
       whenIdle,
       hasAlreadyBuilt
     );
+  }
+
+  // this intent here is just to indicate that at least one build has been
+  // successful
+  get hadSuccessfulBuild() {
+    return this.successfulBuildOccurred;
   }
 
   get status():
@@ -581,6 +588,7 @@ export class Rebuilder<Input> {
             if (this.state.name === "working" && this.hasAlreadyBuilt) {
               dispatchEvent({ reload: true } as Event);
             }
+            this.successfulBuildOccurred = true;
             this.hasAlreadyBuilt = true;
             this.setState({ name: "idle", lastBuildSucceeded: true });
           } catch (err) {
