@@ -37,7 +37,7 @@ export function handleFile(fs: FileSystem, buildManager: BuildManager) {
 
     // if the projects have not been built yet, then serve the UI
     if (
-      !buildManager.rebuilder &&
+      (!buildManager.rebuilder || !buildManager.rebuilder.hadSuccessfulBuild) &&
       !requestURL.href.startsWith(`${originURL}catalogjs/ui/`)
     ) {
       requestURL = new URL(
@@ -52,7 +52,7 @@ export function handleFile(fs: FileSystem, buildManager: BuildManager) {
     // we serve each project's input files as a fallback to their output
     // files, which lets you not worry about assets that are unchanged by the
     // build.
-    if (response.status === 404 && buildManager.rebuilder) {
+    if (response.status === 404 && buildManager.rebuilder?.hadSuccessfulBuild) {
       // find the closest matching project output to our file URL, which will be the output
       // that has the longest URL (in this case one project has an output URL that
       // is the parent of another project)
