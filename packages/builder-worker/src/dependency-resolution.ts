@@ -470,6 +470,9 @@ export class DependencyResolver {
             finalResolution.importedSource.pointer,
             {
               ...finalResolution,
+              bundleHref: finalResolution.importedSource.declaredIn.url.href,
+              consumedBy: finalResolution.importedSource.declaredIn,
+              consumedByPointer: finalResolution.importedSource.pointer,
               importedSource: undefined,
             },
             resolutionsForPkg
