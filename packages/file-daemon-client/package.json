@@ -50,7 +50,7 @@
     "columnify": "^1.5.4",
     "dom-serializer": "^0.2.2",
     "htmlparser2": "^4.1.0",
-    "lodash": "^4.17.19",
+    "lodash": "^4.17.21",
     "moment": "^2.25.3"
   },
   "volta": {

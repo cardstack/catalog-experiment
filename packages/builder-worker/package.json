@@ -57,7 +57,7 @@
     "idb-keyval": "^5.0.2",
     "imurmurhash": "^0.1.4",
     "json-stable-stringify": "^1.0.1",
-    "lodash": "^4.17.19",
+    "lodash": "^4.17.21",
     "moment": "^2.25.3",
     "semver": "^7.3.2",
     "semver-intersect": "^1.4.0"
