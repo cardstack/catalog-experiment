@@ -58,7 +58,7 @@
     "imurmurhash": "^0.1.4",
     "json-stable-stringify": "^1.0.1",
     "lodash": "^4.17.19",
-    "moment": "^2.25.3",
+    "moment": "^2.29.4",
     "semver": "^7.3.2",
     "semver-intersect": "^1.4.0"
   },
