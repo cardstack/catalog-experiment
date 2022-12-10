@@ -36,7 +36,7 @@
     "koa-proxies": "^0.11.0",
     "koa-send": "^5.0.1",
     "mime-types": "^2.1.26",
-    "qs": "^6.9.3",
+    "qs": "^6.9.7",
     "sane": "^4.1.0",
     "supertest": "^4.0.2",
     "typescript": "^3.9.3",
